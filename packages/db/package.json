@@ -1,0 +1,32 @@
+{
+  "name": "@better-stack/db",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "db:studio": "drizzle-kit studio",
+    "db:migrate": "bun --env-file=../../apps/server/.env src/migrate-command.ts"
+  },
+  "dependencies": {
+    "@better-stack/env": "workspace:*",
+    "dotenv": "catalog:",
+    "drizzle-orm": "catalog:",
+    "pg": "^8.22.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@better-stack/config": "workspace:*",
+    "@types/pg": "catalog:",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "catalog:"
+  }
+}
