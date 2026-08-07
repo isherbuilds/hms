@@ -34,7 +34,7 @@ export const patients = pgTable(
      * Sex is constrained here to keep downstream matching and analytics simple and
      * to avoid free-form values propagating past write boundaries.
      */
-    sex: text("sex", { enum: ["male", "female", "other"] }).notNull(),
+    sex: text("sex", { enum: ["male", "female", "other", "unknown"] }).notNull(),
     dateOfBirth: date("date_of_birth", { mode: "string" }),
     ageYears: integer("age_years"),
     /**
@@ -42,6 +42,13 @@ export const patients = pgTable(
      * provided; no null semantics are needed for downstream rendering.
      */
     address: text("address").notNull(),
+    email: text("email"),
+    bloodGroup: text("blood_group", {
+      enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
+    }),
+    allergies: text("allergies"),
+    medicalHistory: text("medical_history"),
+    uid: text("uid"),
     createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -51,13 +58,24 @@ export const patients = pgTable(
       "patients_age_or_dob_check",
       sql`${table.dateOfBirth} is not null or ${table.ageYears} is not null`,
     ),
-    check("patients_sex_check", sql`${table.sex} in ('male', 'female', 'other')`),
+    check("patients_sex_check", sql`${table.sex} in ('male', 'female', 'other', 'unknown')`),
     check(
       "patients_age_range_check",
       sql`${table.ageYears} is null or ${table.ageYears} between 0 and 150`,
     ),
+    check(
+      "patients_blood_group_check",
+      sql`${table.bloodGroup} is null or ${table.bloodGroup} in ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')`,
+    ),
     uniqueIndex("patients_org_mrn_idx").on(table.orgId, table.mrn),
-    index("patients_org_phone_idx").on(table.orgId, table.phone),
+    uniqueIndex("patients_org_uid_idx")
+      .on(table.orgId, table.uid)
+      .where(sql`${table.uid} is not null`),
+    uniqueIndex("patients_org_phone_name_idx").on(
+      table.orgId,
+      table.phone,
+      sql`lower(${table.name})`,
+    ),
     // Covers patient search/list keyset pagination: org, newest-first id tiebreak.
     index("patients_org_created_idx").on(table.orgId, table.createdAt.desc(), table.id.desc()),
   ],

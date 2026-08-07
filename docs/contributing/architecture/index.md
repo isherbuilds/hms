@@ -36,6 +36,7 @@ Everything else in this folder is downstream of those two.
 - [Data storage](./data-storage.md) — schema conventions and indexing
 - [Audit](./audit.md) — what to record and how
 - [File storage](./file-storage.md) — presigned-only object storage
+- [HMS domain layer](./domain-layer.md) — live relationships and front-desk boundary
 
 ## Source of truth in code
 

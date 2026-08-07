@@ -5,29 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1786073762716,
-      "tag": "0000_fine_starbolt",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1786111497091,
-      "tag": "0001_graceful_moon_knight",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1786113123376,
-      "tag": "0002_thick_roxanne_simpson",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1786118027227,
-      "tag": "0003_sudden_living_lightning",
+      "when": 1786125418226,
+      "tag": "0000_quiet_prima",
       "breakpoints": true
     }
   ]

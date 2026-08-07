@@ -5,6 +5,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { isUniqueViolation } from "../lib/db-errors";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 
 const catalogFields = z.object({
@@ -18,19 +19,6 @@ const catalogFields = z.object({
     .default("0"),
   taxCode: z.string().trim().max(20).nullish(),
 });
-
-function isUniqueViolation(error: unknown): boolean {
-  let current = error;
-
-  while (current && typeof current === "object") {
-    if ("code" in current && current.code === "23505") {
-      return true;
-    }
-    current = "cause" in current ? current.cause : undefined;
-  }
-
-  return false;
-}
 
 export const catalogRouter = {
   list: orgProcedure(

@@ -41,11 +41,13 @@ Do not audit reads, list calls, or ordinary creates and updates.
 
 ## When fire-and-forget is not enough
 
-Compliance-critical domains — patient records, student data — need the entry to
-exist if and only if the mutation committed. Those insert into `auditLog`
-**inside the mutation's transaction** instead of calling `audit()`. That trades
-the latency guarantee for atomicity; make that trade deliberately and per
-domain, not globally.
+Compliance-critical domains — patient records, student data — may one day need
+the entry to exist if and only if the mutation committed, by inserting into
+`auditLog` **inside the mutation's transaction** instead of calling `audit()`.
+That trades the latency guarantee for atomicity. **This trade is deliberately
+not taken in v0** (user decision 2026-08-07, restated in the spec's Explicitly
+Deferred list): every domain, including patients, uses fire-and-forget
+`audit()` until a compliance requirement demands commit-atomic entries.
 
 ## Reading the log
 

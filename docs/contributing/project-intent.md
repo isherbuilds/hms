@@ -2,11 +2,16 @@
 
 ## What this repo is
 
-A base for **multi-tenant B2B SaaS**: the parts every such product needs and
-that are expensive to retrofit — tenant isolation, an organization-scoped
-permission model, an audit trail, private file storage, and a closed account
-model — implemented once, correctly, with tests that fail when the
-isolation breaks.
+A **hospital management system** built on a multi-tenant application spine:
+tenant isolation, an organization-scoped permission model, an audit trail,
+private file storage, and a closed account model are implemented once and
+protected by tests that fail when isolation breaks.
+
+The live HMS domains are patient registration and search, priced catalog setup,
+department and practitioner setup, dashboard reporting, and AI chat. Organization
+settings and the platform surfaces for members, audit, and files support them.
+Appointments and encounters, orders, results, charging, and beds are product
+direction, not shipped scope.
 
 Stack: Bun + Turborepo; TanStack Start (`apps/web`) and Hono/oRPC
 (`apps/server`) over a shared `packages/api` router; Drizzle + PostgreSQL;
@@ -16,17 +21,17 @@ Better Auth with the organization plugin.
 
 - **Not a framework.** Every package is ordinary application code meant to be
   read and edited, not configured from the outside.
-- **Not a demo.** The worked example (`todo`) has been replaced by the first
-  real domain: `settings`. `files`, `members`, and `audit` are not examples —
-  they are the product.
-- **Not opinionated about your domain.** The hard rules constrain _tenancy,
-  authorization, and auditing_ only.
+- **Not a demo.** `settings`, `patient`, `catalog`, `staff`, `dashboard`, and AI
+  are live product domains. `files`, `members`, and `audit` are platform
+  capabilities, not examples.
+- **Not a claim that the whole hospital workflow is built.** The product has a
+  front-desk foundation; later clinical and charging workflows are not live.
 
 ## Who it is for
 
-Teams shipping a product where one deployment serves many customer
-organizations, and where one customer seeing another's row is a company-ending
-bug rather than an inconvenience.
+Teams building an HMS where one deployment serves many hospitals and where one
+hospital seeing another's patient, staff, catalog, or platform row is a
+company-ending bug rather than an inconvenience.
 
 ## Product intent
 

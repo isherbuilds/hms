@@ -6,19 +6,25 @@ import { and, desc, eq, ilike, lt, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { isUniqueViolation } from "../lib/db-errors";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
 
 const patientFields = z.object({
   name: z.string().trim().min(1).max(200),
   phone: z.string().trim().min(4).max(20),
-  sex: z.enum(["male", "female", "other"]),
+  sex: z.enum(["male", "female", "other", "unknown"]),
   dateOfBirth: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .nullish(),
   ageYears: z.number().int().min(0).max(150).nullish(),
   address: z.string().trim().max(500).default(""),
+  email: z.email().nullish(),
+  bloodGroup: z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]).nullish(),
+  allergies: z.string().nullish(),
+  medicalHistory: z.string().nullish(),
+  uid: z.string().trim().min(1).max(100).nullish(),
 });
 
 const registerInput = orgInput
@@ -44,30 +50,43 @@ export const patientRouter = {
       // Prefix is read through the settings cache; bounded staleness is acceptable for numbering and keeps the counter lock window minimal.
       const settings = await readOrgSettings(scope.orgId);
 
-      const patient = await db.transaction(async (tx) => {
-        const seq = await nextCounter(tx, scope.orgId, "mrn");
-        const mrn = `${settings.mrnPrefix}${String(seq).padStart(6, "0")}`;
+      let patient: typeof patients.$inferSelect;
+      try {
+        patient = await db.transaction(async (tx) => {
+          const seq = await nextCounter(tx, scope.orgId, "mrn");
+          const mrn = `${settings.mrnPrefix}${String(seq).padStart(6, "0")}`;
 
-        const [row] = await tx
-          .insert(patients)
-          .values({
-            ...fields,
-            id,
-            orgId: scope.orgId,
-            mrn,
-            dateOfBirth: fields.dateOfBirth ?? null,
-            ageYears: fields.ageYears ?? null,
-            createdBy: scope.userId,
-          })
-          .returning();
+          const [row] = await tx
+            .insert(patients)
+            .values({
+              ...fields,
+              id,
+              orgId: scope.orgId,
+              mrn,
+              dateOfBirth: fields.dateOfBirth ?? null,
+              ageYears: fields.ageYears ?? null,
+              email: fields.email ?? null,
+              bloodGroup: fields.bloodGroup ?? null,
+              allergies: fields.allergies ?? null,
+              medicalHistory: fields.medicalHistory ?? null,
+              uid: fields.uid ?? null,
+              createdBy: scope.userId,
+            })
+            .returning();
 
-        if (!row) {
-          throw new ORPCError("INTERNAL_SERVER_ERROR", {
-            message: "Failed to register patient",
-          });
+          if (!row) {
+            throw new ORPCError("INTERNAL_SERVER_ERROR", {
+              message: "Failed to register patient",
+            });
+          }
+          return row;
+        });
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          throw new ORPCError("CONFLICT");
         }
-        return row;
-      });
+        throw error;
+      }
 
       audit({
         action: "patient.register",
@@ -147,19 +166,32 @@ export const patientRouter = {
   update: orgProcedure({ patient: ["update"] }, updateInput).handler(async ({ context, input }) => {
     const { scope } = context;
     const { orgSlug: _claim, patientId, ...fields } = input;
-    const [patient] = await db
-      .update(patients)
-      .set({
-        ...fields,
-        dateOfBirth: fields.dateOfBirth ?? null,
-        ageYears: fields.ageYears ?? null,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, patientId)))
-      .returning();
+    let patient: typeof patients.$inferSelect | undefined;
+    try {
+      [patient] = await db
+        .update(patients)
+        .set({
+          ...fields,
+          dateOfBirth: fields.dateOfBirth ?? null,
+          ageYears: fields.ageYears ?? null,
+          email: fields.email ?? null,
+          bloodGroup: fields.bloodGroup ?? null,
+          allergies: fields.allergies ?? null,
+          medicalHistory: fields.medicalHistory ?? null,
+          uid: fields.uid ?? null,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, patientId)))
+        .returning();
 
-    if (!patient) {
-      throw new ORPCError("NOT_FOUND");
+      if (!patient) {
+        throw new ORPCError("NOT_FOUND");
+      }
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ORPCError("CONFLICT");
+      }
+      throw error;
     }
 
     audit({

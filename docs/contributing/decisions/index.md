@@ -35,3 +35,5 @@ Decision records are point-in-time documents by design; everything else in
 - [0014 — The first organization is created by the founding email](./0014-founding-email-bootstrap.md)
 - [0015 — Procedures are declared through orgProcedure only](./0015-org-procedure-only.md)
 - [0016 — Organization settings are TTL-cached in-process for derived reads](./0016-settings-ttl-cache.md)
+- [0017 — Keep AI streaming as a narrow HTTP exception](./0017-ai-streaming-http-surface.md)
+- [0018 — Allocate display MRNs with an organization-scoped counter](./0018-org-scoped-mrn-counter.md)

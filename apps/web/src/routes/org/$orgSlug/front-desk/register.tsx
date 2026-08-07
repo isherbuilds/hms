@@ -31,13 +31,18 @@ const patientFormSchema = z
   .object({
     name: z.string().trim().min(1, "Enter the patient's name").max(200),
     phone: z.string().trim().min(4, "Enter at least 4 characters").max(20),
-    sex: z.enum(["male", "female", "other"]),
+    sex: z.enum(["male", "female", "other", "unknown"]),
     dateOfBirth: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date")
       .nullable(),
     ageYears: z.number().int().min(0).max(150).nullable(),
     address: z.string().trim().max(500).default(""),
+    email: z.email("Enter a valid email address").nullable(),
+    bloodGroup: z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]).nullable(),
+    allergies: z.string().nullable(),
+    medicalHistory: z.string().nullable(),
+    uid: z.string().trim().min(1).max(100).nullable(),
   })
   .refine((values) => values.dateOfBirth !== null || values.ageYears !== null, {
     message: "Enter a date of birth or age",
@@ -67,6 +72,11 @@ function RegisterPatientRoute() {
       dateOfBirth: null,
       ageYears: null,
       address: "",
+      email: null,
+      bloodGroup: null,
+      allergies: null,
+      medicalHistory: null,
+      uid: null,
     },
   });
   const phone = form.watch("phone");
@@ -90,7 +100,18 @@ function RegisterPatientRoute() {
           params: { orgSlug, patientId: patient.id },
         });
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => {
+        const conflict =
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "CONFLICT";
+        toast.error(
+          conflict
+            ? "A patient with this name and phone (or the same UID) already exists."
+            : error.message,
+        );
+      },
     }),
   );
 
@@ -175,6 +196,7 @@ function RegisterPatientRoute() {
                         <option value="male">Male</option>
                         <option value="female">Female</option>
                         <option value="other">Other</option>
+                        <option value="unknown">Unknown</option>
                       </select>
                     </FormControl>
                     <FormMessage />
@@ -229,6 +251,79 @@ function RegisterPatientRoute() {
               />
             </div>
 
+            <div className="grid gap-3 sm:grid-cols-3">
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="email"
+                        autoComplete="email"
+                        value={field.value ?? ""}
+                        onChange={(event) => field.onChange(event.target.value || null)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="uid"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>National ID / UID</FormLabel>
+                    <FormControl>
+                      <Input
+                        value={field.value ?? ""}
+                        onChange={(event) => field.onChange(event.target.value || null)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="bloodGroup"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Blood group</FormLabel>
+                    <FormControl>
+                      <select
+                        className={SELECT_CLASS}
+                        value={field.value ?? ""}
+                        onChange={(event) => field.onChange(event.target.value || null)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      >
+                        <option value="">Not recorded</option>
+                        <option value="A+">A+</option>
+                        <option value="A-">A-</option>
+                        <option value="B+">B+</option>
+                        <option value="B-">B-</option>
+                        <option value="AB+">AB+</option>
+                        <option value="AB-">AB-</option>
+                        <option value="O+">O+</option>
+                        <option value="O-">O-</option>
+                      </select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
             <FormField
               control={form.control}
               name="address"
@@ -242,6 +337,48 @@ function RegisterPatientRoute() {
                 </FormItem>
               )}
             />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="allergies"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Allergies</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        rows={3}
+                        value={field.value ?? ""}
+                        onChange={(event) => field.onChange(event.target.value || null)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="medicalHistory"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Medical history</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        rows={3}
+                        value={field.value ?? ""}
+                        onChange={(event) => field.onChange(event.target.value || null)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <div>
               <SubmitButton isSubmitting={register.isPending}>Register patient</SubmitButton>

@@ -39,5 +39,12 @@ style, tests, and runtime architecture.
   - [Data storage](./architecture/data-storage.md)
   - [Audit](./architecture/audit.md)
   - [File storage](./architecture/file-storage.md)
+  - [HMS domain layer](./architecture/domain-layer.md) — live relationships and
+    front-desk boundary
+
+## Research
+
+- [Research](../research/) — evidence and external reference analysis; not a
+  statement of current behavior or an accepted decision
 
 End-user product documentation lives in `apps/fumadocs`, not here.

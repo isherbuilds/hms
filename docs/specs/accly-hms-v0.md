@@ -130,10 +130,13 @@ key)` helper (exported from `@better-stack/db/counter`) increments with a single
   practice), `invoice:<fiscalYear>`, `receipt:<fiscalYear>`, `creditNote:<fiscalYear>`,
   `refund:<fiscalYear>`. Document numbers are `{prefix}{fiscalYear}/{seq}`; gapless within a
   series.
-- `patients`: MRN (text, unique per org, assigned from counter at insert), name, phone, sex,
-  `dateOfBirth` nullable + `ageYears` nullable (check: at least one present), address,
-  `createdBy`. Index on (org, phone) for dedupe lookup; keyset-paginated search per stack
-  pagination pattern.
+- `patients`: MRN (text, unique per org, assigned from counter at insert), name, phone, sex
+  (`male | female | other | unknown`), `dateOfBirth` nullable + `ageYears` nullable (check: at
+  least one present), address, `createdBy`; nullable email, blood group (eight-value ABO/Rh
+  check), allergies, medical history, and opaque UID (unique per org when present). Unique
+  `(org, phone, lower(name))` constraint (added 2026-08-07) rejects exact name+phone duplicates
+  case-insensitively while allowing family members to share a phone; its `(org, phone)` prefix
+  serves the dedupe lookup. Keyset-paginated search follows the stack pagination pattern.
 - `departments`, `practitioners`: practitioner has name, `departmentId`, registration number,
   nullable `memberUserId` (doctors without logins exist), nullable `consultFeeItemId` →
   catalog. Slice 5 additions (amended 2026-08-07 after the catalog-flexibility review,
@@ -341,8 +344,10 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     guarded-call sweep); browser smoke — register → MRN `000001` toast + detail page,
     duplicate-phone warning lists the existing patient, search by name returns the row.
   - Interfaces delivered: `patient.register/search/get/update({ orgSlug, … })`; Patient row
-    shape for visit + billing slices (id, mrn, name, phone, sex ("male"|"female"|"other"),
-    dateOfBirth `YYYY-MM-DD`|null, ageYears|null, address).
+    shape for visit + billing slices (id, mrn, name, phone, sex
+    ("male"|"female"|"other"|"unknown"), dateOfBirth `YYYY-MM-DD`|null, ageYears|null, address,
+    email|null, bloodGroup|null, allergies|null, medicalHistory|null, uid|null) (added
+    2026-08-07 per docs/improvements/05).
 - [x] Slice 4: Catalog, departments, practitioners (admin CRUD) — **done** (2026-08-07, this
       session).
   - Delivered: `departments` (unique (org, name)), `catalog_items` (unique (org, code),
@@ -444,9 +449,14 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     `consultNote.sign` audited; signed content immutable — edits rejected, addenda
     appendable; A5 prescription
     print; signing rejected unless session user is the visit practitioner's linked member;
-    provenance columns written as `member`.
+    provenance columns written as `member`. Carried over from `docs/improvements/03-orders.md`
+    (decision log 2026-08-07): order rows store `category` denormalized from the catalog item
+    at creation (order semantics must not change if the item is later re-categorized), and
+    order cancellation takes the expected current status as input, rejecting with `CONFLICT`
+    on mismatch (no lost-update races between doctor and desk).
   - Verify: integration tests for sign transaction effects, immutability, and authorization;
-    tenancy four-questions for `consult`; manual print check.
+    cancel with a stale expected status rejected `CONFLICT`; tenancy four-questions for
+    `consult`; manual print check.
   - Depends on: Slice 5 (and Slice 4 catalog categories)
   - Owns/Touches: `packages/db/src/schema/{consult-notes,diagnosis-lines,prescription-lines,orders,note-addenda}.ts`,
     `packages/api/src/routers/consult.ts`, `apps/web/src/routes/org/$orgSlug/consult/*`; adds
@@ -493,6 +503,10 @@ feature (including the ambient scribe — separate spec after the speech feasibi
   practitioner-only signing).
 - ICD coding on diagnosis lines (column exists, unused).
 - Thermal-printer format tuning against the pilot's actual hardware.
+- Formal family/guardian relations on patients (2026-08-07): v0 derives the household from
+  the shared phone number — searching a phone lists every family member on it, which is how
+  the front desk reuses records. A guardian/next-of-kin table becomes worth modeling when a
+  consumer exists (pediatric consent, billing guarantor); until then it is dead data.
 - Catalog satellite tables (deferred 2026-08-07 after the catalog-flexibility review,
   `docs/research/01-catalog-flexibility.md` — each is additive beside the flat catalog
   because Charges snapshot price/tax, so adopting one never reprices history):

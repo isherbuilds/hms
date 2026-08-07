@@ -8,6 +8,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { isUniqueViolation } from "../lib/db-errors";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 
 const departmentName = z.string().trim().min(1).max(200);
@@ -19,20 +20,6 @@ const practitionerFields = z.object({
   memberUserId: z.string().nullish(),
   consultFeeItemId: z.string().nullish(),
 });
-
-function isUniqueViolation(error: unknown): boolean {
-  let current = error;
-
-  while (current && typeof current === "object") {
-    const candidate = current as { cause?: unknown; code?: unknown };
-    if (candidate.code === "23505") {
-      return true;
-    }
-    current = candidate.cause;
-  }
-
-  return false;
-}
 
 async function assertDepartmentInScope(departmentId: string, orgId: string): Promise<void> {
   const [row] = await db

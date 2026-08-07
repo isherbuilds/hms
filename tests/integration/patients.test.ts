@@ -56,6 +56,56 @@ test("registration uses the organization's configured MRN prefix", async () => {
   expect(patient.mrn).toBe("HMS-000001");
 });
 
+test("register rejects the same name and phone in one organization", async () => {
+  const owner = await createTestUser("patient-identity-duplicate");
+  const organization = await createOrganization(owner, "patient-identity-duplicate");
+  const api = clientFor(owner);
+  const input = registration(organization.slug, "Duplicate Patient", "5550150");
+
+  await api.patient.register(input);
+  await expectORPCCode(api.patient.register(input), "CONFLICT");
+});
+
+test("register allows family members with the same phone and different names", async () => {
+  const owner = await createTestUser("patient-identity-family");
+  const organization = await createOrganization(owner, "patient-identity-family");
+  const api = clientFor(owner);
+
+  const parent = await api.patient.register(
+    registration(organization.slug, "Family Parent", "5550151"),
+  );
+  const child = await api.patient.register(
+    registration(organization.slug, "Family Child", "5550151"),
+  );
+
+  expect(child.id).not.toBe(parent.id);
+});
+
+test("register allows the same name and phone in different organizations", async () => {
+  const owner = await createTestUser("patient-identity-tenancy");
+  const one = await createOrganization(owner, "patient-identity-tenancy-one");
+  const two = await createOrganization(owner, "patient-identity-tenancy-two");
+  const api = clientFor(owner);
+
+  const first = await api.patient.register(registration(one.slug, "Shared Identity", "5550152"));
+  const second = await api.patient.register(registration(two.slug, "Shared Identity", "5550152"));
+
+  expect(first.orgId).toBe(one.id);
+  expect(second.orgId).toBe(two.id);
+});
+
+test("register rejects case-only name differences with the same phone", async () => {
+  const owner = await createTestUser("patient-identity-case");
+  const organization = await createOrganization(owner, "patient-identity-case");
+  const api = clientFor(owner);
+
+  await api.patient.register(registration(organization.slug, "Case Patient", "5550153"));
+  await expectORPCCode(
+    api.patient.register(registration(organization.slug, "case patient", "5550153")),
+    "CONFLICT",
+  );
+});
+
 test("exact-phone dedupe returns every match in the caller's organization only", async () => {
   const owner = await createTestUser("patient-dedupe");
   const one = await createOrganization(owner, "patient-dedupe-one");
@@ -184,6 +234,61 @@ test("registration requires either date of birth or age", async () => {
     }),
     "BAD_REQUEST",
   );
+});
+
+test("new patient fields round-trip and unknown sex is accepted", async () => {
+  const owner = await createTestUser("patient-master-fields");
+  const organization = await createOrganization(owner, "patient-master-fields");
+  const api = clientFor(owner);
+
+  const registered = await api.patient.register({
+    ...registration(organization.slug, "Patient Master Fields", "5550550"),
+    sex: "unknown",
+    email: "patient@example.com",
+    bloodGroup: "AB-",
+    allergies: "Penicillin",
+    medicalHistory: "Hypertension",
+    uid: "  NATIONAL-123  ",
+  });
+  const patient = await api.patient.get({
+    orgSlug: organization.slug,
+    patientId: registered.id,
+  });
+
+  expect(patient).toMatchObject({
+    sex: "unknown",
+    email: "patient@example.com",
+    bloodGroup: "AB-",
+    allergies: "Penicillin",
+    medicalHistory: "Hypertension",
+    uid: "NATIONAL-123",
+  });
+});
+
+test("UID is unique within an organization but reusable in another organization", async () => {
+  const owner = await createTestUser("patient-uid");
+  const one = await createOrganization(owner, "patient-uid-one");
+  const two = await createOrganization(owner, "patient-uid-two");
+  const api = clientFor(owner);
+
+  await api.patient.register({
+    ...registration(one.slug, "UID One", "5550560"),
+    uid: "SHARED-UID",
+  });
+  await expectORPCCode(
+    api.patient.register({
+      ...registration(one.slug, "UID Duplicate", "5550561"),
+      uid: "SHARED-UID",
+    }),
+    "CONFLICT",
+  );
+
+  const otherOrgPatient = await api.patient.register({
+    ...registration(two.slug, "UID Other Org", "5550562"),
+    uid: "SHARED-UID",
+  });
+  expect(otherOrgPatient.orgId).toBe(two.id);
+  expect(otherOrgPatient.uid).toBe("SHARED-UID");
 });
 
 test("register and update successes are written to the audit trail", async () => {
