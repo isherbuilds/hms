@@ -10,10 +10,10 @@ Every query against it carries `eq(table.orgId, scope.orgId)`. This is not a
 convention that applies "mostly" — see [tenancy](./tenancy.md) and
 [security](../security.md).
 
-Isolation is enforced in application code, in the single `requirePermission`
-guard, rather than by row-level security. One enforcement point that every entry
-point shares is auditable in a way that a policy per table is not, and it is
-what `tests/integration/tenancy.test.ts` exercises directly.
+Isolation is enforced in application code, in `orgProcedure`'s internal guard,
+rather than by row-level security. One enforcement point that every procedure
+shares is auditable in a way that a policy per table is not, and it is what
+`tests/integration/tenancy.test.ts` exercises directly.
 
 ## Table conventions
 

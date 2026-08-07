@@ -7,7 +7,7 @@ import { and, asc, eq, gt, ilike, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
-import { orgInput, publicProcedure, requirePermission } from "../lib/procedures/factory";
+import { orgInput, orgProcedure } from "../lib/procedures/factory";
 
 const roleInput = z.enum(ORG_ROLES);
 
@@ -45,191 +45,186 @@ export const membersRouter = {
    * The caller's own roles in this org, so the client can hide controls it is
    * not allowed to use. Authorization still happens server-side on every call.
    */
-  me: publicProcedure
-    .input(orgInput)
-    .use(requirePermission({ member: ["read"] }))
-    .handler(async ({ context }) => {
-      const { orgId, userId } = context.scope;
-      const [row] = await db
-        .select({ role: member.role })
+  me: orgProcedure({ member: ["read"] }, orgInput).handler(async ({ context }) => {
+    const { orgId, userId } = context.scope;
+    const [row] = await db
+      .select({ role: member.role })
+      .from(member)
+      .where(and(eq(member.organizationId, orgId), eq(member.userId, userId)))
+      .limit(1);
+
+    if (!row) {
+      throw new ORPCError("NOT_FOUND", { message: "Membership not found" });
+    }
+    return { roles: parseRoles(row.role) };
+  }),
+
+  list: orgProcedure(
+    { member: ["read"] },
+    orgInput.extend({
+      q: z.string().trim().max(200).optional(),
+      limit: z.number().int().min(1).max(200).default(100),
+    }),
+  ).handler(async ({ context, input }) => {
+    const { orgId } = context.scope;
+    const search = input.q ? likePattern(input.q) : undefined;
+    const [members, invitations] = await Promise.all([
+      db
+        .select({
+          id: member.id,
+          userId: member.userId,
+          role: member.role,
+          name: user.name,
+          email: user.email,
+          image: user.image,
+          joinedAt: member.createdAt,
+        })
         .from(member)
-        .where(and(eq(member.organizationId, orgId), eq(member.userId, userId)))
-        .limit(1);
-
-      if (!row) {
-        throw new ORPCError("NOT_FOUND", { message: "Membership not found" });
-      }
-      return { roles: parseRoles(row.role) };
-    }),
-
-  list: publicProcedure
-    .input(
-      orgInput.extend({
-        q: z.string().trim().max(200).optional(),
-        limit: z.number().int().min(1).max(200).default(100),
-      }),
-    )
-    .use(requirePermission({ member: ["read"] }))
-    .handler(async ({ context, input }) => {
-      const { orgId } = context.scope;
-      const search = input.q ? likePattern(input.q) : undefined;
-      const [members, invitations] = await Promise.all([
-        db
-          .select({
-            id: member.id,
-            userId: member.userId,
-            role: member.role,
-            name: user.name,
-            email: user.email,
-            image: user.image,
-            joinedAt: member.createdAt,
-          })
-          .from(member)
-          .innerJoin(user, eq(member.userId, user.id))
-          .where(
-            and(
-              eq(member.organizationId, orgId),
-              search ? or(ilike(user.name, search), ilike(user.email, search)) : undefined,
-            ),
-          )
-          .orderBy(asc(member.createdAt))
-          .limit(input.limit),
-        db
-          .select({
-            id: invitation.id,
-            email: invitation.email,
-            role: invitation.role,
-            expiresAt: invitation.expiresAt,
-          })
-          .from(invitation)
-          .where(
-            and(
-              eq(invitation.organizationId, orgId),
-              eq(invitation.status, "pending"),
-              gt(invitation.expiresAt, new Date()),
-              search ? ilike(invitation.email, search) : undefined,
-            ),
-          )
-          .orderBy(asc(invitation.expiresAt))
-          .limit(input.limit),
-      ]);
-
-      return { members, invitations };
-    }),
-
-  invite: publicProcedure
-    .input(orgInput.extend({ email: z.email(), role: roleInput.default("member") }))
-    .use(requirePermission({ invitation: ["create"] }))
-    .handler(async ({ context, input }) => {
-      const created = await auth.api.createInvitation({
-        body: {
-          email: input.email,
-          role: input.role,
-          organizationId: context.scope.orgId,
-        },
-        headers: context.headers,
-      });
-
-      audit({
-        action: "member.invite",
-        actorId: context.scope.userId,
-        orgId: context.scope.orgId,
-        target: `email:${input.email}`,
-        meta: { role: input.role },
-      });
-
-      // Returned so an admin can hand the link over directly while no email
-      // provider is wired up.
-      return {
-        id: created.id,
-        email: created.email,
-        url: invitationUrl(created.id),
-      };
-    }),
-
-  revokeInvitation: publicProcedure
-    .input(orgInput.extend({ invitationId: z.string().min(1) }))
-    .use(requirePermission({ invitation: ["cancel"] }))
-    .handler(async ({ context, input }) => {
-      // Scoped read first: an invitation id from another tenant must not reach
-      // Better Auth's cancel path at all.
-      const [row] = await db
-        .select({ email: invitation.email })
+        .innerJoin(user, eq(member.userId, user.id))
+        .where(
+          and(
+            eq(member.organizationId, orgId),
+            search ? or(ilike(user.name, search), ilike(user.email, search)) : undefined,
+          ),
+        )
+        .orderBy(asc(member.createdAt))
+        .limit(input.limit),
+      db
+        .select({
+          id: invitation.id,
+          email: invitation.email,
+          role: invitation.role,
+          expiresAt: invitation.expiresAt,
+        })
         .from(invitation)
         .where(
           and(
-            eq(invitation.id, input.invitationId),
-            eq(invitation.organizationId, context.scope.orgId),
+            eq(invitation.organizationId, orgId),
+            eq(invitation.status, "pending"),
+            gt(invitation.expiresAt, new Date()),
+            search ? ilike(invitation.email, search) : undefined,
           ),
         )
-        .limit(1);
+        .orderBy(asc(invitation.expiresAt))
+        .limit(input.limit),
+    ]);
 
-      if (!row) {
-        throw new ORPCError("NOT_FOUND", { message: "Invitation not found" });
-      }
+    return { members, invitations };
+  }),
 
-      await auth.api.cancelInvitation({
-        body: { invitationId: input.invitationId },
-        headers: context.headers,
-      });
+  invite: orgProcedure(
+    { invitation: ["create"] },
+    orgInput.extend({ email: z.email(), role: roleInput.default("member") }),
+  ).handler(async ({ context, input }) => {
+    const created = await auth.api.createInvitation({
+      body: {
+        email: input.email,
+        role: input.role,
+        organizationId: context.scope.orgId,
+      },
+      headers: context.headers,
+    });
 
-      audit({
-        action: "member.invite.revoke",
-        actorId: context.scope.userId,
-        orgId: context.scope.orgId,
-        target: `email:${row.email}`,
-      });
+    audit({
+      action: "member.invite",
+      actorId: context.scope.userId,
+      orgId: context.scope.orgId,
+      target: `email:${input.email}`,
+      meta: { role: input.role },
+    });
 
-      return { success: true as const };
-    }),
+    // Returned so an admin can hand the link over directly while no email
+    // provider is wired up.
+    return {
+      id: created.id,
+      email: created.email,
+      url: invitationUrl(created.id),
+    };
+  }),
 
-  updateRole: publicProcedure
-    .input(orgInput.extend({ memberId: z.string().min(1), role: roleInput }))
-    .use(requirePermission({ member: ["update"] }))
-    .handler(async ({ context, input }) => {
-      await assertMemberInScope(input.memberId, context.scope.orgId);
+  revokeInvitation: orgProcedure(
+    { invitation: ["cancel"] },
+    orgInput.extend({ invitationId: z.string().min(1) }),
+  ).handler(async ({ context, input }) => {
+    // Scoped read first: an invitation id from another tenant must not reach
+    // Better Auth's cancel path at all.
+    const [row] = await db
+      .select({ email: invitation.email })
+      .from(invitation)
+      .where(
+        and(
+          eq(invitation.id, input.invitationId),
+          eq(invitation.organizationId, context.scope.orgId),
+        ),
+      )
+      .limit(1);
 
-      await auth.api.updateMemberRole({
-        body: {
-          memberId: input.memberId,
-          role: input.role,
-          organizationId: context.scope.orgId,
-        },
-        headers: context.headers,
-      });
+    if (!row) {
+      throw new ORPCError("NOT_FOUND", { message: "Invitation not found" });
+    }
 
-      audit({
-        action: "member.role.update",
-        actorId: context.scope.userId,
-        orgId: context.scope.orgId,
-        target: `member:${input.memberId}`,
-        meta: { role: input.role },
-      });
+    await auth.api.cancelInvitation({
+      body: { invitationId: input.invitationId },
+      headers: context.headers,
+    });
 
-      return { success: true as const };
-    }),
+    audit({
+      action: "member.invite.revoke",
+      actorId: context.scope.userId,
+      orgId: context.scope.orgId,
+      target: `email:${row.email}`,
+    });
 
-  remove: publicProcedure
-    .input(orgInput.extend({ memberId: z.string().min(1) }))
-    .use(requirePermission({ member: ["delete"] }))
-    .handler(async ({ context, input }) => {
-      await assertMemberInScope(input.memberId, context.scope.orgId);
+    return { success: true as const };
+  }),
 
-      await auth.api.removeMember({
-        body: {
-          memberIdOrEmail: input.memberId,
-          organizationId: context.scope.orgId,
-        },
-        headers: context.headers,
-      });
+  updateRole: orgProcedure(
+    { member: ["update"] },
+    orgInput.extend({ memberId: z.string().min(1), role: roleInput }),
+  ).handler(async ({ context, input }) => {
+    await assertMemberInScope(input.memberId, context.scope.orgId);
 
-      audit({
-        action: "member.remove",
-        actorId: context.scope.userId,
-        orgId: context.scope.orgId,
-        target: `member:${input.memberId}`,
-      });
+    await auth.api.updateMemberRole({
+      body: {
+        memberId: input.memberId,
+        role: input.role,
+        organizationId: context.scope.orgId,
+      },
+      headers: context.headers,
+    });
 
-      return { success: true as const };
-    }),
+    audit({
+      action: "member.role.update",
+      actorId: context.scope.userId,
+      orgId: context.scope.orgId,
+      target: `member:${input.memberId}`,
+      meta: { role: input.role },
+    });
+
+    return { success: true as const };
+  }),
+
+  remove: orgProcedure(
+    { member: ["delete"] },
+    orgInput.extend({ memberId: z.string().min(1) }),
+  ).handler(async ({ context, input }) => {
+    await assertMemberInScope(input.memberId, context.scope.orgId);
+
+    await auth.api.removeMember({
+      body: {
+        memberIdOrEmail: input.memberId,
+        organizationId: context.scope.orgId,
+      },
+      headers: context.headers,
+    });
+
+    audit({
+      action: "member.remove",
+      actorId: context.scope.userId,
+      orgId: context.scope.orgId,
+      target: `member:${input.memberId}`,
+    });
+
+    return { success: true as const };
+  }),
 };

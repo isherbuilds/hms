@@ -1,16 +1,13 @@
 import { db } from "@better-stack/db";
 import { nextCounter } from "@better-stack/db/counter";
-import {
-  SETTINGS_DEFAULTS,
-  organizationSettings,
-} from "@better-stack/db/schema/organization-settings";
 import { patients } from "@better-stack/db/schema/patients";
 import { ORPCError } from "@orpc/server";
 import { and, desc, eq, ilike, lt, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
-import { orgInput, publicProcedure, requirePermission } from "../lib/procedures/factory";
+import { orgInput, orgProcedure } from "../lib/procedures/factory";
+import { readOrgSettings } from "../lib/settings-cache";
 
 const patientFields = z.object({
   name: z.string().trim().min(1).max(200),
@@ -39,23 +36,17 @@ const updateInput = orgInput
   });
 
 export const patientRouter = {
-  register: publicProcedure
-    .input(registerInput)
-    .use(requirePermission({ patient: ["create"] }))
-    .handler(async ({ context, input }) => {
+  register: orgProcedure({ patient: ["create"] }, registerInput).handler(
+    async ({ context, input }) => {
       const { scope } = context;
       const { orgSlug: _claim, ...fields } = input;
       const id = crypto.randomUUID();
+      // Prefix is read through the settings cache; bounded staleness is acceptable for numbering and keeps the counter lock window minimal.
+      const settings = await readOrgSettings(scope.orgId);
 
       const patient = await db.transaction(async (tx) => {
-        const [settings] = await tx
-          .select({ mrnPrefix: organizationSettings.mrnPrefix })
-          .from(organizationSettings)
-          .where(eq(organizationSettings.orgId, scope.orgId))
-          .limit(1);
         const seq = await nextCounter(tx, scope.orgId, "mrn");
-        const mrnPrefix = settings?.mrnPrefix ?? SETTINGS_DEFAULTS.mrnPrefix;
-        const mrn = `${mrnPrefix}${String(seq).padStart(6, "0")}`;
+        const mrn = `${settings.mrnPrefix}${String(seq).padStart(6, "0")}`;
 
         const [row] = await tx
           .insert(patients)
@@ -86,63 +77,60 @@ export const patientRouter = {
       });
 
       return patient;
+    },
+  ),
+
+  search: orgProcedure(
+    { patient: ["read"] },
+    orgInput.extend({
+      query: z.string().trim().optional(),
+      phone: z.string().trim().min(4).max(20).optional(),
+      cursor: z.object({ createdAt: z.coerce.date(), id: z.string() }).optional(),
+      limit: z.number().int().min(1).max(100).default(20),
     }),
+  ).handler(async ({ context, input }) => {
+    const scoped = and(
+      eq(patients.orgId, context.scope.orgId),
+      input.phone ? eq(patients.phone, input.phone) : undefined,
+      input.query
+        ? or(
+            ilike(patients.name, `%${input.query}%`),
+            ilike(patients.mrn, `%${input.query}%`),
+            ilike(patients.phone, `%${input.query}%`),
+          )
+        : undefined,
+    );
 
-  search: publicProcedure
-    .input(
-      orgInput.extend({
-        query: z.string().trim().optional(),
-        phone: z.string().trim().min(4).max(20).optional(),
-        cursor: z.object({ createdAt: z.coerce.date(), id: z.string() }).optional(),
-        limit: z.number().int().min(1).max(100).default(20),
-      }),
-    )
-    .use(requirePermission({ patient: ["read"] }))
-    .handler(async ({ context, input }) => {
-      const scoped = and(
-        eq(patients.orgId, context.scope.orgId),
-        input.phone ? eq(patients.phone, input.phone) : undefined,
-        input.query
-          ? or(
-              ilike(patients.name, `%${input.query}%`),
-              ilike(patients.mrn, `%${input.query}%`),
-              ilike(patients.phone, `%${input.query}%`),
-            )
-          : undefined,
-      );
-
-      const items = await db
-        .select()
-        .from(patients)
-        .where(
-          input.cursor
-            ? and(
-                scoped,
-                or(
-                  lt(patients.createdAt, input.cursor.createdAt),
-                  and(
-                    eq(patients.createdAt, input.cursor.createdAt),
-                    lt(patients.id, input.cursor.id),
-                  ),
+    const items = await db
+      .select()
+      .from(patients)
+      .where(
+        input.cursor
+          ? and(
+              scoped,
+              or(
+                lt(patients.createdAt, input.cursor.createdAt),
+                and(
+                  eq(patients.createdAt, input.cursor.createdAt),
+                  lt(patients.id, input.cursor.id),
                 ),
-              )
-            : scoped,
-        )
-        .orderBy(desc(patients.createdAt), desc(patients.id))
-        .limit(input.limit);
+              ),
+            )
+          : scoped,
+      )
+      .orderBy(desc(patients.createdAt), desc(patients.id))
+      .limit(input.limit);
 
-      const last = items[items.length - 1];
-      return {
-        items,
-        nextCursor:
-          items.length === input.limit && last ? { createdAt: last.createdAt, id: last.id } : null,
-      };
-    }),
+    const last = items[items.length - 1];
+    return {
+      items,
+      nextCursor:
+        items.length === input.limit && last ? { createdAt: last.createdAt, id: last.id } : null,
+    };
+  }),
 
-  get: publicProcedure
-    .input(orgInput.extend({ patientId: z.string() }))
-    .use(requirePermission({ patient: ["read"] }))
-    .handler(async ({ context, input }) => {
+  get: orgProcedure({ patient: ["read"] }, orgInput.extend({ patientId: z.string() })).handler(
+    async ({ context, input }) => {
       const [patient] = await db
         .select()
         .from(patients)
@@ -153,36 +141,34 @@ export const patientRouter = {
         throw new ORPCError("NOT_FOUND");
       }
       return patient;
-    }),
+    },
+  ),
 
-  update: publicProcedure
-    .input(updateInput)
-    .use(requirePermission({ patient: ["update"] }))
-    .handler(async ({ context, input }) => {
-      const { scope } = context;
-      const { orgSlug: _claim, patientId, ...fields } = input;
-      const [patient] = await db
-        .update(patients)
-        .set({
-          ...fields,
-          dateOfBirth: fields.dateOfBirth ?? null,
-          ageYears: fields.ageYears ?? null,
-          updatedAt: new Date(),
-        })
-        .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, patientId)))
-        .returning();
+  update: orgProcedure({ patient: ["update"] }, updateInput).handler(async ({ context, input }) => {
+    const { scope } = context;
+    const { orgSlug: _claim, patientId, ...fields } = input;
+    const [patient] = await db
+      .update(patients)
+      .set({
+        ...fields,
+        dateOfBirth: fields.dateOfBirth ?? null,
+        ageYears: fields.ageYears ?? null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, patientId)))
+      .returning();
 
-      if (!patient) {
-        throw new ORPCError("NOT_FOUND");
-      }
+    if (!patient) {
+      throw new ORPCError("NOT_FOUND");
+    }
 
-      audit({
-        action: "patient.update",
-        actorId: scope.userId,
-        orgId: scope.orgId,
-        target: `patient:${patientId}`,
-      });
+    audit({
+      action: "patient.update",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `patient:${patientId}`,
+    });
 
-      return patient;
-    }),
+    return patient;
+  }),
 };

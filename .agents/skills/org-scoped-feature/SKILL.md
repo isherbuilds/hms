@@ -3,7 +3,7 @@ name: org-scoped-feature
 description: >-
   Add or change an organization-scoped domain in this repo — schema, migration, permission,
   oRPC router, route, and the tenancy test. Use whenever work touches a table with orgId, a
-  procedure guarded by requirePermission, packages/auth/src/access.ts, or a page under
+  procedure declared with orgProcedure, packages/auth/src/access.ts, or a page under
   apps/web/src/routes/org/$orgSlug/.
 ---
 
@@ -62,16 +62,15 @@ export const ac = createAccessControl({ ..., thing: ["create", "read", "update",
 
 ## 4. Router — `packages/api/src/routers/<thing>.ts`
 
-```ts
+````ts
 export const thingRouter = {
-  list: publicProcedure
-    .input(orgInput.extend({ cursor: ..., limit: z.number().int().min(1).max(100).default(50) }))
-    .use(requirePermission({ thing: ["read"] }))
-    .handler(async ({ context, input }) => {
-      return db.select().from(thing).where(eq(thing.orgId, context.scope.orgId)) /* ... */;
-    }),
+  list: orgProcedure(
+    { thing: ["read"] },
+    orgInput.extend({ cursor: ..., limit: z.number().int().min(1).max(100).default(50) }),
+  ).handler(async ({ context, input }) => {
+    return db.select().from(thing).where(eq(thing.orgId, context.scope.orgId)) /* ... */;
+  }),
 };
-```
 
 Non-negotiable in every handler:
 
@@ -83,9 +82,9 @@ Non-negotiable in every handler:
   select-then-write. Missing row → `NOT_FOUND`.
 - Keyset pagination, never `OFFSET`.
 - `audit()` for destructive or sensitive successes only. Verified role denials
-  are audited centrally in `requirePermission`; an unverified foreign org claim
-  must never write into that tenant's audit trail. Audit only additional domain
-  denials after scope is proven.
+  are audited centrally in `orgProcedure`'s internal guard; an unverified foreign
+  org claim must never write into that tenant's audit trail. Audit only
+  additional domain denials after scope is proven.
 
 Register it in `packages/api/src/routers/index.ts`.
 
@@ -116,7 +115,7 @@ back a fire-and-forget `audit()` write, use `eventually`.
 
 ```sh
 bun run check-types && bun run check && bun run test
-```
+````
 
 ## Self-check before calling it done
 

@@ -18,13 +18,13 @@ context.scope.orgId)` belongs in the `where` even when the query also filters
    alone is not scoped.
 3. **The org is explicit procedure input and is proven per guarded request.**
    The `/org/:orgSlug` page parameter is passed as `input.orgSlug`. It is an
-   unverified claim until `requirePermission` resolves it to verified
+   unverified claim until `orgProcedure`'s internal guard resolves it to verified
    `context.scope`. Handlers never use the claim for authorization or SQL scope.
    There is no fallback to `session.activeOrganizationId`.
-4. **Membership is resolved directly by every permission guard and is not cached
-   across requests.** Public procedures do no membership work. Removal is
-   effective on the next guarded request; a TTL would reopen the revocation
-   window.
+4. **Membership is resolved directly by every org procedure and is not cached
+   across requests.** `orgProcedure` requires the permission and input schema as
+   constructor arguments, and the raw builder is not exported. Removal is
+   effective on the next request; a TTL would reopen the revocation window.
 5. **Roles authorize as a union.** Use `parseRoles` / `authorize` from
    `@better-stack/auth/access`. Never `role.split(",")[0]`, and never silently
    downgrade an unrecognized role — `parseRoles` throws on purpose.
@@ -33,8 +33,8 @@ context.scope.orgId)` belongs in the `where` even when the query also filters
    A second place that decides what a role may do is a second place to get it
    wrong.
 7. **Client-side permission checks are cosmetic.** Hiding a button is a UX
-   affordance. Every mutation is re-checked server-side by
-   `requirePermission`.
+   affordance. Every mutation is re-checked server-side by `orgProcedure`'s
+   internal guard.
 8. **Sign-up is disabled; accounts are created by an operator.** The public
    sign-up endpoint is closed (`emailAndPassword.disableSignUp`). Accounts are
    inserted directly through `createUserWithPassword`

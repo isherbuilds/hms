@@ -28,9 +28,9 @@ An audit log that records every read is an audit log nobody reads, and it costs
 a write on every request. Record:
 
 - **Permission denials after membership is verified** — audited centrally in
-  `requirePermission`. Routers never repeat this. A foreign membership claim is
-  rejected but cannot write into the claimed tenant's audit trail; record it in
-  request/security logs instead.
+  `orgProcedure`'s internal guard. Routers never repeat this. A foreign
+  membership claim is rejected but cannot write into the claimed tenant's audit
+  trail; record it in request/security logs instead.
 - **Domain-specific denials the guard cannot see** — `assertKeyInScope` records
   a probe for another tenant's object key, because a request that is correctly
   authorized _and_ reaching for a foreign key is exactly what the trail is for.
@@ -49,8 +49,9 @@ domain, not globally.
 
 ## Reading the log
 
-`audit.list` is guarded by `requirePermission({ audit: ["read"] })` — `admin`
-and `owner` only — and is keyset-paginated on the insertion-ordered `id`.
+`audit.list` is declared with
+`orgProcedure({ audit: ["read"] }, orgInput.extend({ ... }))` — `admin` and
+`owner` only — and is keyset-paginated on the insertion-ordered `id`.
 
 ## Testing it
 

@@ -13,7 +13,7 @@ denial — are exactly the things a fake would get wrong.
 | `tests/integration/*` | Anything touching the router, auth, or the database. The default for feature work. |
 
 Integration tests call the router in-process via `clientFor` (`createRouterClient`),
-so they exercise the real context, the real `requirePermission` guard, and the
+so they exercise the real context, `orgProcedure`'s real internal guard, and the
 real queries without an HTTP hop.
 
 ## Rules

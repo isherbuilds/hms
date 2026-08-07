@@ -33,3 +33,5 @@ Decision records are point-in-time documents by design; everything else in
 - [0012 — Migrations run before the server](./0012-migrations-run-before-the-server.md)
 - [0013 — Sign-up is disabled; accounts are created by an operator](./0013-signup-disabled.md)
 - [0014 — The first organization is created by the founding email](./0014-founding-email-bootstrap.md)
+- [0015 — Procedures are declared through orgProcedure only](./0015-org-procedure-only.md)
+- [0016 — Organization settings are TTL-cached in-process for derived reads](./0016-settings-ttl-cache.md)

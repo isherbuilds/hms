@@ -8,7 +8,8 @@ import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 
 import { audit } from "../audit";
-import { orgInput, publicProcedure, requirePermission } from "../lib/procedures/factory";
+import { orgInput, orgProcedure } from "../lib/procedures/factory";
+import { invalidateOrgSettings } from "../lib/settings-cache";
 
 /**
  * The full settings row is validated and written as one unit — there is no
@@ -33,10 +34,8 @@ const settingsFields = z.object({
 export type SettingsFields = z.infer<typeof settingsFields>;
 
 export const settingsRouter = {
-  get: publicProcedure
-    .input(orgInput)
-    .use(requirePermission({ settings: ["read"] }))
-    .handler(async ({ context }): Promise<SettingsFields> => {
+  get: orgProcedure({ settings: ["read"] }, orgInput).handler(
+    async ({ context }): Promise<SettingsFields> => {
       const [row] = await db
         .select()
         .from(organizationSettings)
@@ -49,12 +48,11 @@ export const settingsRouter = {
       }
       const { orgId: _orgId, createdAt: _c, updatedAt: _u, ...fields } = row;
       return fields;
-    }),
+    },
+  ),
 
-  update: publicProcedure
-    .input(orgInput.extend(settingsFields.shape))
-    .use(requirePermission({ settings: ["update"] }))
-    .handler(async ({ context, input }): Promise<SettingsFields> => {
+  update: orgProcedure({ settings: ["update"] }, orgInput.extend(settingsFields.shape)).handler(
+    async ({ context, input }): Promise<SettingsFields> => {
       const { scope } = context;
       const { orgSlug: _claim, ...fields } = input;
 
@@ -71,6 +69,9 @@ export const settingsRouter = {
         throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Failed to save settings" });
       }
 
+      // Derived reads (document numbering) must see the new prefixes on the next call in this process.
+      invalidateOrgSettings(scope.orgId);
+
       // Tax identity and numbering prefixes shape every printed invoice —
       // a sensitive success, recorded fire-and-forget.
       audit({
@@ -82,5 +83,6 @@ export const settingsRouter = {
 
       const { orgId: _orgId, createdAt: _c, updatedAt: _u, ...saved } = row;
       return saved;
-    }),
+    },
+  ),
 };

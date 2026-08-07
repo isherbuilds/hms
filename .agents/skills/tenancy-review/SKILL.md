@@ -35,24 +35,24 @@ For every query added or changed:
   from the URL, session, or input.
 - The claim is a slug, the proven value is an id. A handler predicating on a slug
   — or a `Scope` carrying one — is a defect.
-- Does every org procedure parse `orgInput` before applying
-  `requirePermission`?
+- Is every org procedure declared with
+  `orgProcedure(permission, orgInput.extend(...))`?
 
 ## 3. Context and guard
 
 Changes to `packages/api/src/lib/context.ts` or
 `packages/api/src/lib/procedures/factory.ts` deserve the most scrutiny:
 
-- Does `requirePermission` use parsed `input.orgSlug` only to query membership,
-  then expose the matched row's org as verified `context.scope`?
+- Does `orgProcedure`'s internal guard use parsed `input.orgSlug` only to query
+  membership, then expose the matched row's org as verified `context.scope`?
 - Does slug resolution still happen _inside_ the membership join? Splitting it
   into a separate lookup reintroduces an oracle for which orgs exist.
 - Is `beforeUpdateOrganization` in `packages/auth` still rejecting slug changes?
   A mutable slug would let a rename re-point existing links at another tenant
   ([0011](../../../docs/contributing/decisions/0011-org-slug-as-request-claim.md)).
-- Is membership resolved for every guarded procedure and uncached across
-  requests?
-- Do public procedures avoid both the membership lookup and denial audit?
+- Is membership resolved for every org procedure and uncached across requests?
+- Is the permission a required `orgProcedure` constructor argument, with the raw
+  builder unavailable to routers?
 - Is foreign membership still `FORBIDDEN`, with no fallback to the user's only
   org, last org, or `session.activeOrganizationId`?
 - Are role denials audited only after membership is verified?

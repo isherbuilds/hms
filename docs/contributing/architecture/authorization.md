@@ -60,9 +60,10 @@ and quietly granting less is how a permission bug hides.
 
 ## The guard
 
-An org procedure parses `orgInput` before applying `requirePermission`.
-The framework adapter supplies the session and headers; the guard performs the
-membership lookup directly and requires, in order:
+An org procedure is declared with `orgProcedure(permission, input)`. Its input
+schema extends `orgInput`, and its internal guard performs the membership lookup
+directly after parsing. The framework adapter supplies the session and headers;
+the guard requires, in order:
 
 1. A session, else `UNAUTHORIZED`.
 2. A verified membership, else `FORBIDDEN`.
@@ -72,15 +73,15 @@ It adds verified `scope` to context. The original input claim remains ordinary
 handler input, but it is never used for authorization or query scope.
 
 ```ts
-delete: publicProcedure
-  .input(orgInput.extend({ id: z.number() }))
-  .use(requirePermission({ storage: ["delete"] }))
-  .handler(async ({ context, input }) => {
-    // input.orgSlug is the claim; context.scope.orgId is proven.
-  }),
+delete: orgProcedure(
+  { storage: ["delete"] },
+  orgInput.extend({ id: z.number() }),
+).handler(async ({ context, input }) => {
+  // input.orgSlug is the claim; context.scope.orgId is proven.
+}),
 ```
 
-`requirePermission` tenant-audits role denials only after membership is verified.
+The internal guard tenant-audits role denials only after membership is verified.
 A foreign membership claim is rejected without a tenant audit write because the
 claimed org is not proven scope. Context construction has no audit side effects.
 Routers do not repeat guard denials; they call
@@ -93,14 +94,16 @@ another tenant's object key.
 1. Add the statement (or the action) to `ac` in `access.ts`.
 2. Add the grant to each role that should have it — explicitly, in each role
    block.
-3. Parse `orgInput` and then apply
-   `.use(requirePermission({ resource: ["action"] }))`. `AppPermission` is
-   derived from `ac`, so a typo is a compile error.
+3. Declare the procedure with
+   `orgProcedure({ resource: ["action"] }, orgInput.extend({ ... }))`.
+   `AppPermission` is derived from `ac`, so a typo is a compile error. The
+   permission is a required constructor argument and the raw builder is not
+   exported, so the guard cannot be omitted.
 4. Cover it in `tests/unit/access.test.ts` if the grant matrix is non-obvious,
    and in `tests/integration/tenancy.test.ts` if a role must be _denied_.
 
 ## Client-side checks are cosmetic
 
 The client can import `access.ts` to hide a control a member cannot use. That is
-a UX affordance only. Every mutation is re-checked by `requirePermission` on the
-server; a hidden button is not an access control.
+a UX affordance only. Every mutation is re-checked by `orgProcedure`'s internal
+guard on the server; a hidden button is not an access control.

@@ -81,9 +81,10 @@ bootstrap is done. Package scope is `@better-stack/*`. `files`, `members`, `audi
 
 - Every domain table carries `orgId text NOT NULL` referencing `organization` with
   `onDelete: "cascade"`; `userId` columns are attribution only.
-- Procedures are `publicProcedure.input(orgInput.extend(...)).use(requirePermission({...}))`;
-  the page's `/org/$orgSlug` route param travels as `input.orgSlug`, `requirePermission`
-  resolves membership fresh per request and exposes verified `context.scope`.
+- Procedures are `orgProcedure({ resource: ["action"] }, orgInput.extend(...))`;
+  the page's `/org/$orgSlug` route param travels as `input.orgSlug`, and the
+  factory's internal guard resolves membership fresh per request and exposes
+  verified `context.scope`.
 - Every query — including PK lookups — carries `eq(table.orgId, context.scope.orgId)`.
   Mutations are single scoped `UPDATE`/`DELETE ... RETURNING`, never select-then-write, except
   where a multi-statement transaction is the point (invoice issuance, note signing) — those
@@ -292,9 +293,10 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
       deleted — **done** (2026-08-07, this session).
   - Delivered: `organization_settings` and `counter` tables + generated
     migration `0001_graceful_moon_knight.sql`; `nextCounter(tx, orgId, key)` exported from
-    `@better-stack/db/counter`; `settings` router get/update guarded by
-    `requirePermission({ settings: [...] })` with per-role grants in `access.ts`
-    (read: all roles; update: admin/owner); `settings.update` audited fire-and-forget;
+    `@better-stack/db/counter`; `settings` router get/update declared with
+    `orgProcedure({ settings: [...] }, orgInput.extend(...))` and per-role grants
+    in `access.ts` (read: all roles; update: admin/owner); `settings.update`
+    audited fire-and-forget;
     settings page under `org/$orgSlug/admin/settings` built on the new RHF primitives
     (`packages/ui` `form.tsx` + `submit-button.tsx`, `useZodForm` hook); `todo` domain fully
     removed (schema, router, route, nav, dashboard tile, seed, grants, tests) with its drop

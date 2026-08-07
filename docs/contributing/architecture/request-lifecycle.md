@@ -39,15 +39,18 @@ The framework adapter resolves the session and returns the small shared
 }
 ```
 
-`requirePermission` performs the indexed membership lookup after input parsing.
-It is not cached across requests, and public procedures do no membership work.
-`headers` lets member procedures call Better Auth as the authenticated caller.
+`orgProcedure(permission, input)` parses the explicit org claim, performs the
+indexed membership lookup, checks the role grant, and adds verified scope. The
+lookup is fresh for every request. The permission is a required constructor
+argument and the raw oRPC builder is not exported, so the guard cannot be
+omitted. `headers` lets org procedures call Better Auth as the authenticated
+caller.
 
 ```text
-publicProcedure      → no requirement
-.input(orgInput...)  → parses the caller's org claim
-requirePermission    → session + membership + role grant, else 401/403
-                       adds { scope: { userId, orgId } }
+orgProcedure(permission, orgInput...) → parses the caller's org claim
+                                       → session + membership + role grant,
+                                         else 401/403
+                                       → adds { scope: { userId, orgId } }
 ```
 
 Handlers use `context.scope`, never the input claim, and keep the org predicate
@@ -60,7 +63,7 @@ utilities. Web routes import that concrete module directly:
 
 - browser calls `${VITE_SERVER_URL}/rpc` with credentials;
 - SSR calls the router in-process with request headers;
-- public and protected procedures use the same client.
+- org procedures use the same client.
 
 The landing-page transport check calls the public `GET /` endpoint directly;
 it is not an oRPC procedure and therefore does not resolve a session.

@@ -10,7 +10,7 @@ records attribution, not scope.
         ↓ route parameter
 procedure input { orgSlug, ...domainInput }
         ↓ parsed untrusted claim
-requirePermission
+orgProcedure(permission, orgInput...)
         ↓ indexed slug + member join, role check
 { scope: { orgId, userId } }
         ↓ handler query
@@ -29,12 +29,14 @@ uses one `/rpc` endpoint and one client. Organization procedures include
 tenant. The session's `activeOrganizationId` is not used.
 
 Framework adapters build the small oRPC context from request headers and the
-resolved session. `requirePermission` resolves the slug and proves membership in
-a single indexed join. Public procedures do no membership work, and membership
-is uncached so removal takes effect on the next guarded request.
+resolved session. `orgProcedure(permission, input)` parses the explicit slug
+claim, then its internal guard proves membership in a single indexed join.
+Membership is uncached, so removal takes effect on the next request. The
+permission is a required constructor argument and the raw builder is not
+exported, so an org procedure cannot omit the guard.
 
-`requirePermission` receives parsed input, treats `orgSlug` as an unverified
-claim, checks membership and roles, and exposes verified `context.scope`.
+The internal guard treats `orgSlug` as an unverified claim, checks membership
+and roles, and exposes verified `context.scope`.
 Handlers may receive the input claim but never use it for authorization or SQL
 scope. A foreign membership, a missing permission, and an org that does not
 exist are all `FORBIDDEN` — resolving and proving in one statement is what keeps
@@ -77,7 +79,7 @@ faster first paint.
 1. Add `orgId NOT NULL` and a tenant-leading index.
 2. Generate the migration with `bun run db:generate`.
 3. Add grants in `packages/auth/src/access.ts`.
-4. Extend `orgInput`, then apply `requirePermission` after `.input(...)`.
+4. Declare the procedure with `orgProcedure(permission, orgInput.extend(...))`.
 5. Predicate every query with `context.scope.orgId`.
 6. Put the page under `routes/org/$orgSlug/`, import `orpc`, and include
    `orgSlug` in every query, mutation, direct call, and tenant-specific

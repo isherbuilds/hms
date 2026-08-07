@@ -13,9 +13,14 @@ export type Scope = {
   orgId: string;
 };
 
-const o = os.$context<ORPCContext>();
-
-export const publicProcedure = o;
+/**
+ * The raw builder is deliberately not exported: every procedure in this app is
+ * org-scoped and permission-guarded, so the only way to declare one is
+ * `orgProcedure`, which cannot be constructed without stating a permission.
+ * A genuinely public endpoint would be a new architectural decision, not a
+ * default (see ADR 0015).
+ */
+const base = os.$context<ORPCContext>();
 
 /**
  * The unverified tenant claim, named by the page URL. Safe to key authorization
@@ -71,8 +76,17 @@ export async function authorizeOrg(
   return { userId, orgId };
 }
 
-export const requirePermission = (permission: AppPermission) =>
-  publicProcedure.middleware(async ({ context, next }, input: { orgSlug: string }) => {
-    const scope = await authorizeOrg(context, input.orgSlug, permission);
+/**
+ * The single way to declare a procedure. The permission is a constructor
+ * argument, so an unguarded org endpoint cannot compile; the input schema must
+ * carry the `orgSlug` claim (extend `orgInput`) because the guard reads it
+ * after validation. Membership is resolved fresh per request — never cached.
+ */
+export const orgProcedure = <TSchema extends z.ZodType<{ orgSlug: string }, any>>(
+  permission: AppPermission,
+  input: TSchema,
+) =>
+  base.input(input).use(async ({ context, next }, { orgSlug }: { orgSlug: string }) => {
+    const scope = await authorizeOrg(context, orgSlug, permission);
     return next({ context: { scope } });
   });

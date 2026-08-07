@@ -4,7 +4,8 @@ import type { Context as HonoContext } from "hono";
 
 /**
  * Framework adapters supply request dependencies only. Authorization state is
- * derived by `requirePermission` from the org claim in procedure input.
+ * derived by the `orgProcedure` permission guard from the org claim in
+ * procedure input.
  */
 export type ORPCContext = {
   headers: Headers;
