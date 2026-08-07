@@ -36,60 +36,62 @@ test("public email sign-up is disabled", async () => {
   );
 });
 
-test("a todo is scoped by explicit input and paged by a stable tenant-scoped cursor", async () => {
-  const owner = await createTestUser("todo-pages");
-  const organization = await createOrganization(owner, "todo-pages");
+test("settings are scoped by explicit input: defaults until saved, then the saved row", async () => {
+  const owner = await createTestUser("settings-pages");
+  const organization = await createOrganization(owner, "settings-pages");
   const api = clientFor(owner);
-  const created = await api.todo.create({ orgSlug: organization.slug, text: "one" });
-  await api.todo.create({ orgSlug: organization.slug, text: "two" });
-  await api.todo.create({ orgSlug: organization.slug, text: "three" });
+
+  // A fresh organization answers with defaults; reads never create a row.
+  const fresh = await api.settings.get({ orgSlug: organization.slug });
+  expect(fresh.currency).toBe("INR");
+  expect(fresh.legalName).toBe("");
+
+  const saved = await api.settings.update({
+    orgSlug: organization.slug,
+    ...fresh,
+    legalName: "Settings Pages Hospital Pvt. Ltd.",
+    invoicePrefix: "SPH",
+  });
+  expect(saved.legalName).toBe("Settings Pages Hospital Pvt. Ltd.");
 
   // The org named in the input is the org written to and read back from.
-  expect(created.orgId).toBe(organization.id);
-  const all = await api.todo.getAll({ orgSlug: organization.slug });
-  expect(all.items.map((row) => row.id)).toContain(created.id);
+  expect(await api.settings.get({ orgSlug: organization.slug })).toEqual(saved);
 
-  const first = await api.todo.getAll({ orgSlug: organization.slug, limit: 2 });
-  expect(first.items).toHaveLength(2);
-  expect(first.nextCursor).not.toBeNull();
-
-  const second = await api.todo.getAll({
-    orgSlug: organization.slug,
-    limit: 2,
-    cursor: first.nextCursor!,
+  // Saving settings is a sensitive success and lands in the audit trail.
+  const entry = await eventually(async () => {
+    const audit = await api.audit.list({ orgSlug: organization.slug });
+    return audit.items.find((item) => item.action === "settings.update");
   });
-  expect(second.items).toHaveLength(1);
-  expect(second.items.map((row) => row.id)).not.toContain(first.items[0]!.id);
-  expect(second.items.map((row) => row.id)).not.toContain(first.items[1]!.id);
+  expect(entry.actorId).toBe(owner.user.id);
+  expect(entry.orgId).toBe(organization.id);
 });
 
-test("todos are invisible across orgs, and a foreign org is FORBIDDEN", async () => {
+test("settings are invisible across orgs, and a foreign org is FORBIDDEN", async () => {
   const alice = await createTestUser("alice");
   const alpha = await createOrganization(alice, "alpha");
   const aliceClient = clientFor(alice);
-  const aliceTodo = await aliceClient.todo.create({
+  const alphaDefaults = await aliceClient.settings.get({ orgSlug: alpha.slug });
+  await aliceClient.settings.update({
     orgSlug: alpha.slug,
-    text: "alpha secret",
+    ...alphaDefaults,
+    legalName: "alpha secret",
   });
 
   const bob = await createTestUser("bob");
   const beta = await createOrganization(bob, "beta");
   const bobClient = clientFor(bob);
 
-  const visible = await bobClient.todo.getAll({ orgSlug: beta.slug });
-  expect(visible.items.map((t) => t.id)).not.toContain(aliceTodo.id);
+  // Beta still sees its own defaults, not alpha's saved row.
+  const visible = await bobClient.settings.get({ orgSlug: beta.slug });
+  expect(visible.legalName).toBe("");
 
-  await expectORPCCode(
-    bobClient.todo.toggle({
-      orgSlug: beta.slug,
-      id: aliceTodo.id,
-      completed: true,
-    }),
-    "NOT_FOUND",
-  );
+  // Bob saving beta's settings must not touch alpha's.
+  await bobClient.settings.update({ orgSlug: beta.slug, ...visible, legalName: "beta public" });
+  const alphaAfter = await aliceClient.settings.get({ orgSlug: alpha.slug });
+  expect(alphaAfter.legalName).toBe("alpha secret");
 
   // Explicitly naming an org you are not a member of fails loud.
-  await expectORPCCode(bobClient.todo.getAll({ orgSlug: alpha.slug }), "FORBIDDEN");
+  await expectORPCCode(bobClient.settings.get({ orgSlug: alpha.slug }), "FORBIDDEN");
 });
 
 test("a foreign org claim cannot write into that tenant's audit trail", async () => {
@@ -97,7 +99,10 @@ test("a foreign org claim cannot write into that tenant's audit trail", async ()
   const organization = await createOrganization(owner, "foreign-claim-audit");
   const visitor = await createTestUser("visitor");
 
-  await expectORPCCode(clientFor(visitor).todo.getAll({ orgSlug: organization.slug }), "FORBIDDEN");
+  await expectORPCCode(
+    clientFor(visitor).settings.get({ orgSlug: organization.slug }),
+    "FORBIDDEN",
+  );
   // Draining beats sleeping: a negative assertion behind a fixed interval
   // passes wrongly the moment a reintroduced write lands just after it.
   await drainAuditWrites();
@@ -113,15 +118,18 @@ test("one client can work in different orgs concurrently", async () => {
   const api = clientFor(user);
 
   const [inOne, inTwo] = await Promise.all([
-    api.todo.create({ orgSlug: one.slug, text: "from tab one" }),
-    api.todo.create({ orgSlug: two.slug, text: "from tab two" }),
+    api.settings
+      .get({ orgSlug: one.slug })
+      .then((s) => api.settings.update({ orgSlug: one.slug, ...s, legalName: "from tab one" })),
+    api.settings
+      .get({ orgSlug: two.slug })
+      .then((s) => api.settings.update({ orgSlug: two.slug, ...s, legalName: "from tab two" })),
   ]);
-  expect(inOne.orgId).toBe(one.id);
-  expect(inTwo.orgId).toBe(two.id);
+  expect(inOne.legalName).toBe("from tab one");
+  expect(inTwo.legalName).toBe("from tab two");
 
-  const seenInOne = await api.todo.getAll({ orgSlug: one.slug });
-  expect(seenInOne.items.map((t) => t.id)).toContain(inOne.id);
-  expect(seenInOne.items.map((t) => t.id)).not.toContain(inTwo.id);
+  const seenInOne = await api.settings.get({ orgSlug: one.slug });
+  expect(seenInOne.legalName).toBe("from tab one");
 });
 
 test("dashboard summaries are scoped, concurrent, and immediately revoke removed members", async () => {
@@ -133,9 +141,6 @@ test("dashboard summaries are scoped, concurrent, and immediately revoke removed
   await joinOrganization(member, one.id);
 
   const ownerClient = clientFor(owner);
-  const openTodo = await ownerClient.todo.create({ orgSlug: one.slug, text: "open" });
-  const completedTodo = await ownerClient.todo.create({ orgSlug: one.slug, text: "done" });
-  await ownerClient.todo.toggle({ orgSlug: one.slug, id: completedTodo.id, completed: true });
   await db.insert(file).values([
     {
       id: `${one.id}/${crypto.randomUUID()}/ready.txt`,
@@ -159,9 +164,8 @@ test("dashboard summaries are scoped, concurrent, and immediately revoke removed
     ownerClient.dashboard.summary({ orgSlug: one.slug }),
     ownerClient.dashboard.summary({ orgSlug: two.slug }),
   ]);
-  expect(inOne).toEqual({ openTodos: 1, files: 1, people: 2 });
-  expect(inTwo).toEqual({ openTodos: 0, files: 0, people: 1 });
-  expect(openTodo.orgId).toBe(one.id);
+  expect(inOne).toEqual({ files: 1, people: 2 });
+  expect(inTwo).toEqual({ files: 0, people: 1 });
 
   await expectORPCCode(clientFor(visitor).dashboard.summary({ orgSlug: one.slug }), "FORBIDDEN");
 
@@ -191,6 +195,59 @@ test("plain members are denied audit:read, the denial is recorded, and admins se
     );
   });
   expect(denial.denied).toBe(true);
+});
+
+test("settings writes are admin-gated while reads are org-wide", async () => {
+  const owner = await createTestUser("settings-gate-owner");
+  const organization = await createOrganization(owner, "settings-gate");
+  const person = await createTestUser("settings-gate-member");
+  await joinOrganization(person, organization.id);
+
+  const personClient = clientFor(person);
+  const seen = await personClient.settings.get({ orgSlug: organization.slug });
+  expect(seen.currency).toBe("INR");
+
+  await expectORPCCode(
+    personClient.settings.update({ orgSlug: organization.slug, ...seen, legalName: "denied" }),
+    "FORBIDDEN",
+  );
+
+  const membership = await clientFor(owner).members.list({ orgSlug: organization.slug });
+  const row = membership.members.find((m) => m.userId === person.user.id);
+  expect(row).toBeDefined();
+  await setMemberRoles(owner, row!.id, ["admin"], organization.id);
+
+  const saved = await personClient.settings.update({
+    orgSlug: organization.slug,
+    ...seen,
+    legalName: "now allowed",
+  });
+  expect(saved.legalName).toBe("now allowed");
+});
+
+test("the audit trail pages by a stable tenant-scoped cursor", async () => {
+  const owner = await createTestUser("audit-pages");
+  const organization = await createOrganization(owner, "audit-pages");
+  const api = clientFor(owner);
+
+  const base = await api.settings.get({ orgSlug: organization.slug });
+  for (const legalName of ["one", "two", "three"]) {
+    await api.settings.update({ orgSlug: organization.slug, ...base, legalName });
+  }
+  await drainAuditWrites();
+
+  const first = await api.audit.list({ orgSlug: organization.slug, limit: 2 });
+  expect(first.items).toHaveLength(2);
+  expect(first.nextCursor).not.toBeNull();
+
+  const second = await api.audit.list({
+    orgSlug: organization.slug,
+    limit: 2,
+    cursor: first.nextCursor!,
+  });
+  expect(second.items).toHaveLength(1);
+  const firstIds = first.items.map((entry) => entry.id);
+  expect(firstIds).not.toContain(second.items[0]!.id);
 });
 
 test("a member,admin holder gets the union of both roles' permissions", async () => {
@@ -241,12 +298,12 @@ test("an org slug is immutable, so the tenant claim can never be re-pointed", as
 
   // The original claim still resolves, and the display name is still editable.
   const api = clientFor(owner);
-  await api.todo.getAll({ orgSlug: organization.slug });
+  await api.settings.get({ orgSlug: organization.slug });
   await auth.api.updateOrganization({
     body: { organizationId: organization.id, data: { name: "Renamed" } },
     headers: owner.headers,
   });
-  await api.todo.getAll({ orgSlug: organization.slug });
+  await api.settings.get({ orgSlug: organization.slug });
 });
 
 test("an unknown slug is FORBIDDEN, not NOT_FOUND — existence never leaks", async () => {
@@ -257,10 +314,10 @@ test("an unknown slug is FORBIDDEN, not NOT_FOUND — existence never leaks", as
   // Identical to the code a real-but-foreign org returns, so the two cases are
   // indistinguishable: a caller cannot probe which slugs exist.
   await expectORPCCode(
-    api.todo.getAll({ orgSlug: `absent-${crypto.randomUUID().slice(0, 8)}` }),
+    api.settings.get({ orgSlug: `absent-${crypto.randomUUID().slice(0, 8)}` }),
     "FORBIDDEN",
   );
-  await api.todo.getAll({ orgSlug: organization.slug });
+  await api.settings.get({ orgSlug: organization.slug });
 });
 
 /**
@@ -273,10 +330,20 @@ test("an unknown slug is FORBIDDEN, not NOT_FOUND — existence never leaks", as
  */
 const GUARDED_CALLS = {
   "dashboard.summary": (api, claim) => api.dashboard.summary({ ...claim }),
-  "todo.getAll": (api, claim) => api.todo.getAll({ ...claim }),
-  "todo.create": (api, claim) => api.todo.create({ ...claim, text: "intrusion" }),
-  "todo.toggle": (api, claim) => api.todo.toggle({ ...claim, id: 1, completed: true }),
-  "todo.delete": (api, claim) => api.todo.delete({ ...claim, id: 1 }),
+  "settings.get": (api, claim) => api.settings.get({ ...claim }),
+  "settings.update": (api, claim) =>
+    api.settings.update({
+      ...claim,
+      legalName: "intrusion",
+      address: "",
+      taxId: "",
+      currency: "INR",
+      mrnPrefix: "",
+      invoicePrefix: "INV",
+      receiptPrefix: "RCT",
+      creditNotePrefix: "CN",
+      fiscalYearStartMonth: 4,
+    }),
   "audit.list": (api, claim) => api.audit.list({ ...claim }),
   "files.list": (api, claim) => api.files.list({ ...claim }),
   "files.createUpload": (api, claim) =>
@@ -341,15 +408,10 @@ test("every procedure is FORBIDDEN for a removed member on the very next request
   await joinOrganization(member, organization.id);
 
   const memberClient = clientFor(member);
-  const orgTodo = await clientFor(owner).todo.create({
-    orgSlug: organization.slug,
-    text: "roadmap",
-  });
-
-  // Sanity: while a member, the org todo is visible. Without this the sweep
+  // Sanity: while a member, org settings are readable. Without this the sweep
   // below would pass just as well against a user who never joined at all.
-  const before = await memberClient.todo.getAll({ orgSlug: organization.slug });
-  expect(before.items.map((t) => t.id)).toContain(orgTodo.id);
+  const before = await memberClient.settings.get({ orgSlug: organization.slug });
+  expect(before.currency).toBe("INR");
 
   await removeFromOrganization(owner, member.user.email, organization.id);
 

@@ -1,7 +1,6 @@
 import { db } from "@better-stack/db";
 import { member } from "@better-stack/db/schema/auth";
 import { file } from "@better-stack/db/schema/file";
-import { todo } from "@better-stack/db/schema/todo";
 import { sql } from "drizzle-orm";
 
 import { orgInput, publicProcedure, requirePermission } from "../lib/procedures/factory";
@@ -11,17 +10,14 @@ export const dashboardRouter = {
     .input(orgInput)
     .use(
       requirePermission({
-        todo: ["read"],
         member: ["read"],
         storage: ["read"],
       }),
     )
     .handler(async ({ context }) => {
       const { orgId } = context.scope;
-      const result = await db.execute<{ openTodos: number; files: number; people: number }>(sql`
+      const result = await db.execute<{ files: number; people: number }>(sql`
         select
-          (select count(*)::integer from ${todo}
-            where ${todo.orgId} = ${orgId} and ${todo.completed} = false) as "openTodos",
           (select count(*)::integer from ${file}
             where ${file.orgId} = ${orgId} and ${file.status} = 'ready') as "files",
           (select count(*)::integer from ${member}

@@ -1,13 +1,21 @@
 # Spec: accly-hms v0 — OPD front office + billing (+ optional consult screen)
 
 Status: ready
-Authority: brainstorm decision record `hms-docs/01-mvp-decisions.md` (2026-08-03) + user
-selections in-session; advisory amendment on per-aggregate lifecycles applied.
-Supersedes: none.
-Canonical home after bootstrap: `accly-hms/docs/specs/accly-hms-v0.md` (this file moves there in
-Slice 1; `hms-docs/` copy becomes a pointer).
+Authority: brainstorm decision record `docs/01-mvp-decisions.md` (2026-08-03) + user selections
+in-session; advisory amendment on per-aggregate lifecycles applied.
+Amended 2026-08-07: reconciled to the bootstrapped repo. The spec was written against
+`post-dash-stack`; the actual base is **better-stack** (this repo, `accly-ai/hms`), whose
+tenancy/authorization architecture differs materially. Domain decisions (schema shapes, state
+machines, money invariants) are unchanged; every stack-integration decision (guards, paths,
+roles, event log, verify commands) is restated in this repo's real conventions. Slice 1
+(bootstrap) is complete — this repository is its output.
+Amended 2026-08-07 (later, user decisions): forms use **React Hook Form in the midday-ai
+shape** (`useZodForm`, shared `Form*` primitives and `SubmitButton` in `packages/ui`); the
+audit trail stays **fire-and-forget `audit()` for sensitive actions only** — in-transaction
+audit is explicitly deferred, not built. Slice 2 is complete.
+Supersedes: the 2026-08-03 revision of this file.
 
-Vocabulary: `hms-docs/CONTEXT.md`. Terms Organization, Member, Patient, Visit, Charge, Invoice,
+Vocabulary: `docs/CONTEXT.md`. Terms Organization, Member, Patient, Visit, Charge, Invoice,
 Credit Note, Service Catalog, MRN, Provenance Envelope are used exactly as defined there.
 
 ## Problem
@@ -20,19 +28,19 @@ for the ambient-AI wedge, and leaves accounting in Tally.
 
 ## Solution
 
-Multi-tenant web HMS on the post-dash-stack architecture. One hospital = one Organization. v0
+Multi-tenant web HMS on the better-stack architecture. One hospital = one Organization. v0
 delivers: patient registration with per-org MRN and phone dedupe; departments/practitioners;
 priced Service Catalog with tax classes; OPD Visit creation with queue and token; charges
 accumulating on the Visit; immutable GST-capable Invoices with on-the-spot Receipt printing;
 Credit Notes for corrections; daily reports and Tally day-book export; an optional per-doctor
 consult screen (diagnosis, Rx print, orders that create Charges). AI ships later; v0 carries the
-Provenance Envelope, per-aggregate state machines, and an append-only audit event log so AI
+Provenance Envelope, per-aggregate state machines, and an audit trail on sensitive actions so AI
 drafting slots in without rework.
 
 ## Validation / Evidence
 
 Contracted/owner-funded: one committed pilot hospital (currently HMS + Tally). Market research
-packet: `hms-docs/research/00-synthesis.md`. Not market-validated beyond the pilot; pricing and
+packet: `docs/research/00-synthesis.md`. Not market-validated beyond the pilot; pricing and
 broader demand remain open business questions deliberately excluded here.
 
 ## User Stories
@@ -62,36 +70,63 @@ broader demand remain open business questions deliberately excluded here.
 
 ## Implementation Decisions
 
-**Repo**: new top-level directory `accly-hms/`, copied from `post-dash-stack/` with fresh git
-history, following that README's documented reuse path: keep `schema/auth.ts` (Better Auth CLI
-owned) and the organization-files slice (future document uploads); delete `migrations/` and
-regenerate. Package scope stays `@workspace/*`. post-dash-stack improvements are cherry-picked
-deliberately, never auto-merged.
+**Repo**: this repository (`accly-ai/hms`, better-stack base) is the workspace — Slice 1's
+bootstrap is done. Package scope is `@better-stack/*`. `files`, `members`, `audit`, and
+`dashboard` are product, not examples. The `todo` worked example was deleted in Slice 2
+(schema, router, route, tests, `access.ts` grants, drop migration), per
+`docs/contributing/project-intent.md`.
 
-**Tenancy & authorization**: unchanged stack pattern — every domain table carries
-`organizationId` FK; every db query function takes `(userId, slug)` and enforces membership in
-the query (pattern: `packages/db/src/queries/organization-files.ts`); routers are
-`protectedProcedure` with Zod contracts (pattern: `packages/api/src/routers/file.ts`).
+**Tenancy & authorization** (repo hard rules; end-to-end path in
+`.agents/skills/org-scoped-feature/SKILL.md`):
 
-**Roles (v0, deliberately coarse)**: Better Auth `owner`/`admin` gate settings, catalog,
-department, practitioner, and credit-note writes. Any Member may register patients, create
-Visits, and bill. Signing a consult note requires the session user to be the linked
-`practitioners.memberUserId` for that Visit's practitioner. A `memberProfiles` table
-(`organizationId`, `userId`, `appRole` enum `reception|doctor|billing|admin`) drives UI
-navigation only, not API authorization, in v0.
+- Every domain table carries `orgId text NOT NULL` referencing `organization` with
+  `onDelete: "cascade"`; `userId` columns are attribution only.
+- Procedures are `publicProcedure.input(orgInput.extend(...)).use(requirePermission({...}))`;
+  the page's `/org/$orgSlug` route param travels as `input.orgSlug`, `requirePermission`
+  resolves membership fresh per request and exposes verified `context.scope`.
+- Every query — including PK lookups — carries `eq(table.orgId, context.scope.orgId)`.
+  Mutations are single scoped `UPDATE`/`DELETE ... RETURNING`, never select-then-write, except
+  where a multi-statement transaction is the point (invoice issuance, note signing) — those
+  re-assert the tenant predicate on every statement inside the transaction.
+- Keyset pagination only; tenant-leading indexes matching query order. Pattern files:
+  `packages/api/src/routers/files.ts` (keyset-paginated list),
+  `packages/api/src/routers/settings.ts` (singleton get/update, admin-gated write).
 
-**Domain schema** (new files in `packages/db/src/schema/`, all org-scoped, uuid PKs, check
-constraints in-schema per stack convention):
+**Roles (v0, deliberately coarse)**: permissions live in `packages/auth/src/access.ts` only,
+granted explicitly per role (no inheritance). New statements and grants:
+
+- All roles (`member`, `admin`, `owner`): `patient: ["create","read","update"]`,
+  `visit: ["create","read","update"]`, `billing: ["read","write"]` (charges, invoices,
+  payments), `consult: ["read","write"]`, `catalog: ["read"]`, `staff: ["read"]`,
+  `settings: ["read"]`, `report: ["read"]` (includes Tally export).
+- `admin` + `owner` additionally: `settings: ["update"]`, `catalog: ["create","update"]`,
+  `staff: ["create","update"]`, `billing: ["creditNote"]` (credit-note issuance and refund
+  recording).
+- Signing a consult note requires `consult: ["write"]` **and** the domain check that the
+  session user is the Visit practitioner's linked `practitioners.memberUserId`.
+- No stored "app role" (amended 2026-08-07): the earlier `member-profiles` table was dropped
+  before it gained a writer — its values are derivable (doctor = linked
+  `practitioners.memberUserId`; admin = the Better Auth role) and reception-vs-billing has no
+  permission or navigation consumer in v0. Console routing derives at login: admin/owner →
+  Admin area, linked practitioner → doctor queue, everyone else → front desk/billing (which
+  are permission-open by design). A stored routing preference returns only if Slice 5/6 nav
+  needs a value this derivation cannot supply. Clinical roles enter `access.ts` as real
+  Better Auth roles only when their grants actually diverge (fine-grained roles explicitly
+  deferred, to be decided with the pilot).
+
+**Domain schema** (new files in `packages/db/src/schema/`, exported from `schema/index.ts`; all
+org-scoped, text PKs (UUID strings) per repo convention, `withTimezone` timestamps, check
+constraints in-schema):
 
 - `organization-settings`: 1:1 with organization — legal name, address, tax id (GSTIN/PAN),
   currency (default INR), `mrnPrefix`, `invoicePrefix`, `receiptPrefix`, `creditNotePrefix`,
   `fiscalYearStartMonth` (default 4).
-- `counters`: (`organizationId`, `key`, `value`) with unique (org, key); `nextCounter(tx, orgId,
-  key)` helper increments under `SELECT … FOR UPDATE` in the caller's transaction. Keys:
-  `mrn`, `token:<practitionerId>:<yyyy-mm-dd>` (tokens are per doctor queue per day, matching
-  real OPD practice), `invoice:<fiscalYear>`, `receipt:<fiscalYear>`,
-  `creditNote:<fiscalYear>`, `refund:<fiscalYear>`. Document numbers are
-  `{prefix}{fiscalYear}/{seq}`; gapless within a
+- `counter`: (`orgId`, `key`, `value`) with composite PK (org, key); `nextCounter(tx, orgId,
+key)` helper (exported from `@better-stack/db/counter`) increments with a single
+  conflict-target upsert whose row lock is held until the caller's transaction ends. Keys: `mrn`,
+  `token:<practitionerId>:<yyyy-mm-dd>` (tokens are per doctor queue per day, matching real OPD
+  practice), `invoice:<fiscalYear>`, `receipt:<fiscalYear>`, `creditNote:<fiscalYear>`,
+  `refund:<fiscalYear>`. Document numbers are `{prefix}{fiscalYear}/{seq}`; gapless within a
   series.
 - `patients`: MRN (text, unique per org, assigned from counter at insert), name, phone, sex,
   `dateOfBirth` nullable + `ageYears` nullable (check: at least one present), address,
@@ -158,7 +193,7 @@ constraints in-schema per stack convention):
     exist on the invoice. The invoice-level bounds `refundsTotal ≤ creditTotal` and
     `refundsTotal ≤ paymentsTotal` follow from these two but remain stated for test coverage.
   - Balance shown everywhere as `outstanding = grandTotal − creditTotal − paymentsTotal +
-    refundsTotal`; a negative value renders as **"refund due"** on the billing screen and in
+refundsTotal`; a negative value renders as **"refund due"** on the billing screen and in
     reports until a Refund is recorded. Crediting a fully paid invoice is legal and simply
     surfaces refund-due; the correction flow is credit note → refund, never invoice mutation.
 - `consult-notes`: visitId, practitionerId, status `draft|signed`, chiefComplaint, `signedAt`.
@@ -171,9 +206,16 @@ constraints in-schema per stack convention):
 - **Provenance Envelope columns** on consult-notes, prescription-lines, orders, charges:
   `generatedBy` enum `member|ai` (default member), nullable `modelName`, `modelVersion`,
   `reviewedBy`. v0 writes `member`; columns exist so AI drafting is additive.
-- `events`: append-only — organizationId, actorUserId, entityType, entityId, action, jsonb
-  payload, createdAt. Written by a `recordEvent(tx, …)` helper inside the same transaction as
-  every state-changing mutation. No update/delete path.
+
+**Audit trail** (replaces the earlier `events` table — the base already ships one; amended
+2026-08-07): sensitive and destructive successes are recorded in the append-only `auditLog`
+via the existing **fire-and-forget `audit()`** (`packages/api/src/audit.ts`) — never awaited,
+never able to fail a mutation. Mapping: `action` is the dotted verb (`settings.update`,
+`patient.register`, `visit.transition`, `invoice.issue`, `payment.record`, `creditNote.issue`,
+`refund.record`, `consultNote.sign`, `charge.void`), `target` is `"<entityType>:<id>"`, `meta`
+carries the payload. Reads and list calls are never audited. In-transaction audit (the
+repo-documented option for compliance-critical domains) is **deliberately not built now** —
+see Explicitly Deferred. `audit.list` (admin/owner) is the read path; no new events router.
 
 **Money**: `numeric(12,2)` throughout, org-level currency, no conversion. Tax is per-line rate;
 invoice print groups by rate and, when org country is India, displays the CGST/SGST half-split
@@ -189,162 +231,197 @@ a fixed convention documented in the export screen; refinement with the pilot's 
 explicitly deferred iteration.
 
 **Routers** (`packages/api/src/routers/`): `settings`, `patient`, `staff` (departments +
-practitioners), `catalog`, `visit`, `billing` (charges, invoices, payments, credit notes),
-`consult`, `report` (collections, OPD register, unbilled), `export`. Registered in `appRouter`
-beside existing `auth/file/health/organization/profile`.
+practitioners), `catalog`, `visit`, `billing` (charges, invoices, payments, credit notes,
+refunds), `consult`, `report` (collections, OPD register, unbilled, refund-due, Tally export).
+Registered in `appRouter` (`packages/api/src/routers/index.ts`) beside existing
+`dashboard/audit/files/members`.
 
-**Web** (`apps/web`): route group per area — Front Desk (register/search, new visit, queue),
-Billing (visit charges → invoice → payment → print), Consult (doctor queue, note editor, Rx
-print), Admin (catalog, staff, settings), Reports. React Hook Form + Zod per stack constraint;
-mutations refresh explicit query keys (no realtime).
+**Web** (`apps/web/src/routes/org/$orgSlug/`): route group per area — `front-desk/`
+(register/search, new visit, queue), `billing/` (visit charges → invoice → payment → print),
+`consult/` (doctor queue, note editor, Rx print), `admin/` (catalog, staff, settings),
+`reports/`. Pages import the singleton `orpc` from `@/lib/orpc` and pass the route `orgSlug` in
+every call and tenant-specific invalidation key; mutations refresh explicit query keys (no
+realtime). Forms follow the midday-ai React Hook Form pattern: `useZodForm`
+(`apps/web/src/hooks/use-zod-form.ts`, `react-hook-form` + `@hookform/resolvers`) with a local
+Zod schema mirroring the router contract, defaultValues from the loaded query, and the shared
+`Form`/`FormField`/`FormItem`/`FormLabel`/`FormControl`/`FormMessage` +
+`SubmitButton` primitives in `packages/ui`. UI follows `packages/ui` (`base-lyra`: zero radius, `text-xs`,
+compact); motion rationed per repo UI rules — this is an all-day console.
+
+**Onboarding the pilot**: sign-up stays disabled (ADR 0013). The pilot hospital's Organization
+is created by the founding account (`scripts/create-founder.ts`, ADR 0014); staff accounts by an
+operator via `scripts/create-user.ts` and invited as members with Better Auth roles.
 
 **Out of the stack's way**: no new infrastructure — no queues, no workers, no websockets, no
 search engine. Dedupe is an indexed phone lookup; reports are SQL.
 
 ## Test Seams
 
-Existing seams only; prior art in `tests/`:
+Existing seams only; prior art in `tests/` (real Postgres via `tests/support/database.ts`,
+helpers `createTestUser`/`createOrganization`/`joinOrganization`/`clientFor`/`expectORPCCode`
+from `tests/support/`; assert oRPC codes, not message text):
 
-1. **DB integration** (`tests/integration/db`, real Postgres via `tests/support/database.ts`):
-   counter concurrency (parallel `nextCounter` yields gapless unique sequence); charge/invoice
-   state transitions (double-invoice attempt fails; voiding an invoiced charge fails); signed
-   note immutability; org-scoping denial (member of org A cannot read/write org B rows) —
-   the stack's mandated denial tests.
-2. **API integration** (`tests/integration/api`): register→visit→bill→pay happy path through
-   routers; credit-note over-issue rejected; crediting a partially and a fully paid invoice
-   surfaces the correct refund-due balance; refund exceeding credited or paid amount rejected;
-   sign-consult authorization (non-linked member
-   rejected); every mutation writes an `events` row.
-3. **Unit** (`tests/unit`): document-number formatting (fiscal year rollover); invoice-line
+1. **Tenancy** (`tests/integration/tenancy.test.ts`, extended per domain — the repo's mandated
+   four questions): foreign-org data invisible; same client works against two orgs
+   concurrently; a request naming a foreign org is `FORBIDDEN`; a removed member is `FORBIDDEN`
+   on the very next request.
+2. **Domain integration** (new files under `tests/integration/`): counter concurrency (parallel
+   `nextCounter` yields gapless unique sequence); charge/invoice state transitions
+   (double-invoice attempt fails; voiding an invoiced charge fails); signed note immutability;
+   register→visit→bill→pay happy path through routers; credit-note over-issue rejected;
+   crediting a partially and a fully paid invoice surfaces the correct refund-due balance;
+   refund exceeding credited or paid amount rejected; sign-consult authorization (non-linked
+   member rejected); every sensitive mutation records its `audit()` row (asserted with
+   `eventually`, per the repo's audit testing guidance — the write is fire-and-forget).
+3. **Unit** (`tests/unit/`): document-number formatting (fiscal year rollover); invoice-line
    math — pro-rata discount allocation whose lines sum exactly to header totals (incl. rounding
    remainder on the largest line), multi-rate tax; credit-note math — full credit of every line
    reproduces invoice totals exactly, partial-credit gross→taxable derivation; CGST/SGST
-   display split; Tally XML builder output
-   shape.
+   display split; Tally XML builder output shape.
 
-Verify commands are the repo's real ones: `bun run typecheck`, `bun run lint`,
-`bun run test:unit`, `bun run test:integration`.
+Verify commands are the repo's real ones: `bun run check-types`, `bun run check`,
+`bun run test` (Postgres up via `bun run db:up`; the suite uses and wipes `better_stack_test`).
 
 ## Task Plan
 
-- [ ] Slice 1: Bootstrap `accly-hms/` from post-dash-stack
-  - Acceptance: fresh directory + git history; example domain slice retained per decisions
-    (auth.ts, organization-files kept); migrations regenerated from scratch; `bun run dev`
-    serves web+API locally; existing stack tests pass unchanged; this spec moved to
-    `accly-hms/docs/specs/`.
-  - Verify: `bun install && bun run db:dev:start && bun run db:migrate && bun run test`
-  - Depends on: none
-  - Owns/Touches: `accly-hms/` (entire new tree); `hms-docs/specs/accly-hms-v0.md` (replace with
-    pointer)
-  - Interfaces: produces the workspace all later slices edit.
-- [ ] Slice 2: Foundation — settings, counters, events, member profiles (proof slice for schema
-      conventions)
-  - Acceptance: `organization-settings`, `counters`, `events`, `member-profiles` tables +
-    migrations; `nextCounter(tx, organizationId, key)` and `recordEvent(tx, …)` exported from
-    `@workspace/db`; `settings` router get/update (admin-gated); settings page in Admin UI.
-  - Verify: counter-concurrency and org-denial integration tests pass;
-    `bun run typecheck && bun run test:integration`
-  - Depends on: Slice 1
-  - Owns/Touches: `packages/db/src/schema/{organization-settings,counters,events,member-profiles}.ts`,
-    `packages/db/src/queries/{settings,counters,events}.ts`, `packages/api/src/routers/settings.ts`,
-    `apps/web/src/routes/**/admin/settings*`
-  - Interfaces: `nextCounter(tx, orgId: string, key: string): Promise<number>`;
-    `recordEvent(tx, { organizationId, actorUserId, entityType, entityId, action, payload })`;
-    settings read used by every print view and numbering call.
+- [x] Slice 1: Bootstrap — **done**. This repository (`accly-ai/hms`, better-stack base) is the
+      workspace: fresh history, migrations regenerated (`0000_fine_starbolt.sql`), spec lives at
+      `docs/specs/accly-hms-v0.md`, and the full gate passes (verified 2026-08-07:
+      `bun run check-types && bun run check && bun run test` → 40/40).
+- [x] Slice 2: Foundation — settings, counter; RHF form stack; `todo`
+      deleted — **done** (2026-08-07, this session).
+  - Delivered: `organization_settings` and `counter` tables + generated
+    migration `0001_graceful_moon_knight.sql`; `nextCounter(tx, orgId, key)` exported from
+    `@better-stack/db/counter`; `settings` router get/update guarded by
+    `requirePermission({ settings: [...] })` with per-role grants in `access.ts`
+    (read: all roles; update: admin/owner); `settings.update` audited fire-and-forget;
+    settings page under `org/$orgSlug/admin/settings` built on the new RHF primitives
+    (`packages/ui` `form.tsx` + `submit-button.tsx`, `useZodForm` hook); `todo` domain fully
+    removed (schema, router, route, nav, dashboard tile, seed, grants, tests) with its drop
+    migration; seed now writes Mercy's settings row.
+  - Verified: `bun run check-types && bun run check && bun run test` → 45/45 (counter
+    concurrency gapless under 25 parallel transactions, rollback leaves no gap; tenancy
+    four-questions for `settings`; admin-gating; audit-trail keyset paging); browser
+    smoke test — form renders seeded values, pristine-disabled save, dirty save → toast,
+    exact value round-trip after reload.
+  - Interfaces delivered: `nextCounter(tx, orgId: string, key: string): Promise<number>`;
+    `settings.get/update({ orgSlug, … }) → SettingsFields`; `SETTINGS_DEFAULTS` in
+    `@better-stack/db/schema/organization-settings`; settings read used by every print view
+    and numbering call.
 - [ ] Slice 3: Patients — register, dedupe, search
   - Acceptance: registration form assigns MRN via counter; entering a phone number surfaces
     existing matches before save; keyset-paginated patient search (MRN, name, phone); edit
-    demographics; every write audit-logged.
-  - Verify: API integration test registers, detects duplicate phone, searches;
-    denial test for cross-org patient read.
+    demographics; register and demographic-edit audited via `audit()`.
+  - Verify: integration test registers, detects duplicate phone, searches; tenancy
+    four-questions for `patient`.
   - Depends on: Slice 2
-  - Owns/Touches: `packages/db/src/schema/patients.ts`, `packages/db/src/queries/patients.ts`,
-    `packages/api/src/routers/patient.ts`, `apps/web/src/routes/**/front-desk/*`
-  - Interfaces: `patient.register/search/get/update` router contracts; Patient row shape
-    consumed by visit + billing slices (id, mrn, name, phone, ageYears/dateOfBirth, sex).
+  - Owns/Touches: `packages/db/src/schema/patients.ts`,
+    `packages/api/src/routers/patient.ts`, `apps/web/src/routes/org/$orgSlug/front-desk/*`;
+    adds `patient` statement/grants in `packages/auth/src/access.ts` (coordinator-owned).
+  - Interfaces: `patient.register/search/get/update` contracts (all inputs extend `orgInput`);
+    Patient row shape consumed by visit + billing slices (id, mrn, name, phone,
+    ageYears/dateOfBirth, sex).
 - [ ] Slice 4: Catalog, departments, practitioners (admin CRUD)
-  - Acceptance: admin-gated CRUD for all three; catalog items carry price/taxRate/taxCode/
-    category; deactivation hides from pickers without breaking existing Charges; practitioner
-    links optional `memberUserId` and consult-fee item.
-  - Verify: API integration tests incl. non-admin write rejection.
+  - Acceptance: CRUD for all three, writes guarded by admin/owner-only grants
+    (`catalog`/`staff` statements); catalog items carry price/taxRate/taxCode/category;
+    deactivation hides from pickers without breaking existing Charges; practitioner links
+    optional `memberUserId` and consult-fee item.
+  - Verify: API integration tests incl. member-role write rejection (`FORBIDDEN`); tenancy
+    four-questions for `catalog` and `staff`.
   - Depends on: Slice 2
   - Owns/Touches: `packages/db/src/schema/{catalog-items,departments,practitioners}.ts`,
-    matching queries, `packages/api/src/routers/{catalog,staff}.ts`,
-    `apps/web/src/routes/**/admin/{catalog,staff}*`
-  - Interfaces: `catalog.list({ category?, activeOnly })` used by visit, consult, billing
-    slices; practitioner shape (id, name, departmentId, memberUserId, consultFeeItemId).
+    `packages/api/src/routers/{catalog,staff}.ts`,
+    `apps/web/src/routes/org/$orgSlug/admin/{catalog,staff}*`; adds `catalog`/`staff`
+    statements/grants in `access.ts` (coordinator-owned).
+  - Interfaces: `catalog.list({ orgSlug, category?, activeOnly })` used by visit, consult,
+    billing slices; practitioner shape (id, name, departmentId, memberUserId,
+    consultFeeItemId).
 - [ ] Slice 5: Visits — OPD ticket + queue
   - Acceptance: create Visit (patient + department + practitioner) → daily token from counter +
     auto consult-fee Charge (pending, snapshot from practitioner's consult-fee item); queue view
     per practitioner/department with status transitions waiting→in_consult→completed,
-    waiting→cancelled (cancel voids the visit's pending charges with reason); visit slip print.
+    waiting→cancelled (cancel voids the visit's pending charges with reason); visit slip print;
+    creation and transitions audited via `audit()`.
   - Verify: integration test asserts charge auto-creation with snapshotted price and the legal
-    transition set; illegal transition rejected.
+    transition set; illegal transition rejected; tenancy four-questions for `visit`.
   - Depends on: Slices 3, 4
-  - Owns/Touches: `packages/db/src/schema/{visits,charges}.ts`, queries,
-    `packages/api/src/routers/visit.ts`, front-desk queue routes
-  - Interfaces: Charge row shape + `charges.listPendingByVisit` consumed by billing; visit
-    status consumed by consult slice; `visit.create/transition` contracts.
+  - Owns/Touches: `packages/db/src/schema/{visits,charges}.ts`,
+    `packages/api/src/routers/visit.ts`, `apps/web/src/routes/org/$orgSlug/front-desk/*`
+    (queue routes); adds `visit` statement/grants in `access.ts` (coordinator-owned).
+  - Interfaces: Charge row shape + `billing.listPendingCharges({ orgSlug, visitId })` consumed
+    by billing; visit status consumed by consult slice; `visit.create/transition` contracts.
 - [ ] Slice 6: Billing — invoice, payment, receipt, credit note, refund (riskiest domain logic)
   - Acceptance: billing screen shows pending Charges per Visit; add manual/catalog Charge; void
     pending Charge with reason; issue Invoice in one transaction (number from fiscal series,
     invoice-lines materialized with allocated discount/taxableValue/taxAmount/gross, header
-    totals as line sums, charges → invoiced, event recorded) — issued Invoice has no update
-    path; record payments (cash/upi/card) each printing a numbered Receipt; Credit Note
-    issuance with lines referencing invoice-lines (full-line = exact snapshot copy, partial =
-    gross-entered), capped per invoice-line and in total, admin-gated; Refund recording
-    against a Credit Note with refund-due surfaced on the billing screen; A5 + thermal print
-    views render from snapshot data only.
+    totals as line sums, charges → invoiced, `invoice.issue` audited) — issued
+    Invoice has no update path; record payments (cash/upi/card) each printing a numbered
+    Receipt; Credit Note issuance with lines referencing invoice-lines (full-line = exact
+    snapshot copy, partial = gross-entered), capped per invoice-line and in total, guarded by
+    `billing: ["creditNote"]` (admin/owner); Refund recording against a Credit Note with
+    refund-due surfaced on the billing screen; A5 + thermal print views render from snapshot
+    data only.
   - Verify: integration tests — double-invoice race (two concurrent issuances of same charges:
     one wins), payment exceeding current positive outstanding rejected (incl. paying after a
     credit on an unpaid invoice), per-line and total credit over-issue rejected,
-    discounted-invoice partial credit yields correct GST breakup, credit on
-    fully/partially paid invoice yields correct refund-due, refund invariants enforced
-    (refund above current refund-due rejected — named scenario: G=100, P=50, CN=80 → refund
-    capped at 30, attempt of 50 rejected; per-credit-note: refund riding on a small credit
-    note while a larger credit exists elsewhere on the invoice is rejected),
-    numbering gapless under 20 concurrent issuances; unit tests for totals/tax-split.
+    discounted-invoice partial credit yields correct GST breakup, credit on fully/partially
+    paid invoice yields correct refund-due, refund invariants enforced (refund above current
+    refund-due rejected — named scenario: G=100, P=50, CN=80 → refund capped at 30, attempt of
+    50 rejected; per-credit-note: refund riding on a small credit note while a larger credit
+    exists elsewhere on the invoice is rejected), numbering gapless under 20 concurrent
+    issuances; member-role credit-note attempt `FORBIDDEN`; tenancy four-questions for
+    `billing`; unit tests for totals/tax-split.
   - Depends on: Slice 5
-  - Owns/Touches: `packages/db/src/schema/{invoices,invoice-lines,credit-notes,payments,refunds}.ts`, queries,
-    `packages/api/src/routers/billing.ts`, billing + print routes
-  - Interfaces: `billing.issueInvoice(visitId, { discountAmount?, discountReason? })`,
-    `billing.recordPayment`, `billing.issueCreditNote(invoiceId, { reason, lines: [{
-    invoiceLineId, gross } | { invoiceLineId, full: true }] })`,
-    `billing.recordRefund(creditNoteId, { method, amount, reference? })`, and a
+  - Owns/Touches:
+    `packages/db/src/schema/{invoices,invoice-lines,credit-notes,credit-note-lines,payments,refunds}.ts`,
+    `packages/api/src/routers/billing.ts`, `apps/web/src/routes/org/$orgSlug/billing/*` incl.
+    print views; adds `billing` statement/grants in `access.ts` (coordinator-owned); invoice
+    math helpers in `packages/api/src/lib/` (unit-testable pure functions).
+  - Interfaces: `billing.issueInvoice({ orgSlug, visitId, discountAmount?, discountReason? })`,
+    `billing.recordPayment`, `billing.issueCreditNote({ orgSlug, invoiceId, reason, lines:
+[{ invoiceLineId, gross } | { invoiceLineId, full: true }] })`,
+    `billing.recordRefund({ orgSlug, creditNoteId, method, amount, reference? })`, and a
     `billing.invoiceBalance` read (grandTotal, creditTotal, paymentsTotal, refundsTotal,
-    outstanding); invoice/payment/credit-note/refund shapes consumed by reports + export slice.
+    outstanding); invoice/payment/credit-note/refund shapes consumed by the reports slice.
 - [ ] Slice 7: Consult screen — note, Rx, orders, signing
   - Acceptance: doctor queue lists own waiting/in_consult Visits; note editor (chief complaint,
     diagnosis lines, prescription lines, orders from lab/radiology/procedure catalog); sign is
-    one transaction: note→signed, orders→active, one pending Charge per order, event recorded;
-    signed content immutable — edits rejected, addenda appendable; A5 prescription print;
-    signing rejected unless session user is the visit practitioner's linked member; provenance
-    columns written as `member`.
+    one transaction: note→signed, orders→active, one pending Charge per order,
+    `consultNote.sign` audited; signed content immutable — edits rejected, addenda
+    appendable; A5 prescription
+    print; signing rejected unless session user is the visit practitioner's linked member;
+    provenance columns written as `member`.
   - Verify: integration tests for sign transaction effects, immutability, and authorization;
-    manual print check.
+    tenancy four-questions for `consult`; manual print check.
   - Depends on: Slice 5 (and Slice 4 catalog categories)
-  - Owns/Touches: `packages/db/src/schema/{consult-notes,note-addenda}.ts` (+ child line
-    tables), queries, `packages/api/src/routers/consult.ts`, consult routes
-  - Interfaces: order→Charge creation reuses Slice 5 Charge shape with
-    `sourceType='order'`; no other slice consumes consult internals.
+  - Owns/Touches: `packages/db/src/schema/{consult-notes,diagnosis-lines,prescription-lines,orders,note-addenda}.ts`,
+    `packages/api/src/routers/consult.ts`, `apps/web/src/routes/org/$orgSlug/consult/*`; adds
+    `consult` statement/grants in `access.ts` (coordinator-owned).
+  - Interfaces: order→Charge creation reuses Slice 5 Charge shape with `sourceType='order'`;
+    no other slice consumes consult internals.
 - [ ] Slice 8: Reports + Tally export
   - Acceptance: daily collections by method (payments minus refunds, credit notes listed
-    separately), OPD register
-    (visits + invoice totals per day), unbilled-activity list (visits with pending Charges older
-    than N hours), refund-due list (invoices with negative outstanding); date-range Tally XML +
-    CSV export downloads containing every invoice,
+    separately), OPD register (visits + invoice totals per day), unbilled-activity list (visits
+    with pending Charges older than N hours), refund-due list (invoices with negative
+    outstanding); date-range Tally XML + CSV export downloads containing every invoice,
     payment, credit note, and refund exactly once; export documents ledger-name convention on
     screen.
   - Verify: integration test seeds a day of activity and asserts report totals equal the sum of
-    issued documents; unit test validates Tally XML structure.
+    issued documents; unit test validates Tally XML structure; tenancy four-questions for
+    `report`.
   - Depends on: Slice 6
-  - Owns/Touches: `packages/db/src/queries/reports.ts`, `packages/api/src/routers/{report,export}.ts`,
-    reports routes
+  - Owns/Touches: `packages/api/src/routers/report.ts`,
+    `apps/web/src/routes/org/$orgSlug/reports/*`; Tally XML builder in
+    `packages/api/src/lib/tally.ts`; adds `report` statement/grants in `access.ts`
+    (coordinator-owned).
   - Interfaces: consumes billing shapes from Slice 6; produces nothing downstream.
 
 Parallelism: Slices 3 and 4 have disjoint write sets and may run concurrently after Slice 2.
-Slices 6 and 7 both touch charge queries — run sequentially or coordinate on
-`packages/db/src/queries/charges.ts` as coordinator-owned.
+Slices 6 and 7 both write charge state — run sequentially or coordinate on the charge
+transition queries. Shared files touched by every slice — `packages/auth/src/access.ts`,
+`packages/db/src/schema/index.ts`, `packages/api/src/routers/index.ts`,
+`tests/integration/tenancy.test.ts` — are coordinator-owned: each slice appends its own
+statements/exports/cases only.
 
 ## Out of Scope
 
@@ -358,13 +435,16 @@ feature (including the ambient scribe — separate spec after the speech feasibi
 - Tally voucher/ledger mapping refinement with the pilot's accountant (generic mapping ships).
 - GST rate table per service class from an accountant (v0 ships rates as org-editable catalog
   fields; engineering does not hard-code tax law).
-- Fine-grained API-level role permissions (v0: admin-gated writes + practitioner-only signing;
-  `appRole` is UI-only).
+- Fine-grained API-level role permissions (v0: coarse `access.ts` grants above + linked
+  practitioner-only signing).
 - ICD coding on diagnosis lines (column exists, unused).
 - Thermal-printer format tuning against the pilot's actual hardware.
+- In-transaction audit for clinical/financial mutations (user decision 2026-08-07: keep
+  fire-and-forget `audit()` for now; revisit when a compliance requirement demands
+  commit-atomic entries).
 - Appointment booking (queue-first per pilot's walk-in reality).
 
 ## Open Questions
 
 None. Business questions (pricing, ABDM timeline, speech spike) live in
-`hms-docs/01-mvp-decisions.md` and do not block v0 implementation.
+`docs/01-mvp-decisions.md` and do not block v0 implementation.

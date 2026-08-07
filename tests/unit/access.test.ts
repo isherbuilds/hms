@@ -20,10 +20,13 @@ const MATRIX: Array<{
   admin: boolean;
   member: boolean;
 }> = [
-  { permission: { todo: ["create"] }, owner: true, admin: true, member: true },
-  { permission: { todo: ["read"] }, owner: true, admin: true, member: true },
-  { permission: { todo: ["update"] }, owner: true, admin: true, member: true },
-  { permission: { todo: ["delete"] }, owner: true, admin: true, member: true },
+  { permission: { settings: ["read"] }, owner: true, admin: true, member: true },
+  {
+    permission: { settings: ["update"] },
+    owner: true,
+    admin: true,
+    member: false,
+  },
 
   { permission: { audit: ["read"] }, owner: true, admin: true, member: false },
 
@@ -123,5 +126,5 @@ test("authorize grants the union across roles, matching Better Auth's own semant
   expect(authorize(parseRoles("member,admin"), { storage: ["delete"] })).toBe(true);
 
   expect(authorize(["member"], { organization: ["delete"] })).toBe(false);
-  expect(authorize([], { todo: ["read"] })).toBe(false);
+  expect(authorize([], { settings: ["read"] })).toBe(false);
 });

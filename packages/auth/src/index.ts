@@ -10,10 +10,7 @@ import { ac, roles } from "./access";
 
 /** The page that lists a user's pending invitations and lets them accept one. */
 export function invitationUrl(invitationId: string): string {
-  return new URL(
-    `/onboarding?invitation=${invitationId}`,
-    env.CORS_ORIGIN,
-  ).toString();
+  return new URL(`/onboarding?invitation=${invitationId}`, env.CORS_ORIGIN).toString();
 }
 
 export function createAuth() {
@@ -77,8 +74,7 @@ export function createAuth() {
           beforeUpdateOrganization: async ({ organization: update }) => {
             if (update.slug !== undefined) {
               throw new APIError("BAD_REQUEST", {
-                message:
-                  "An organization slug cannot be changed after creation",
+                message: "An organization slug cannot be changed after creation",
               });
             }
           },
@@ -90,12 +86,7 @@ export function createAuth() {
          * also returns it so an admin can pass it on directly; the flow is
          * never silently broken.
          */
-        sendInvitationEmail: async ({
-          id,
-          email,
-          organization: org,
-          inviter,
-        }) => {
+        sendInvitationEmail: async ({ id, email, organization: org, inviter }) => {
           console.info(
             `[invite] ${inviter.user.email} invited ${email} to ${org.name}: ${invitationUrl(id)}`,
           );

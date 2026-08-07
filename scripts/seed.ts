@@ -3,7 +3,10 @@ import { createUserWithPassword } from "@better-stack/auth/manual-user";
 import { db } from "@better-stack/db";
 import { runMigrations } from "@better-stack/db/migrate";
 import { member, user } from "@better-stack/db/schema/auth";
-import { todo } from "@better-stack/db/schema/todo";
+import {
+  SETTINGS_DEFAULTS,
+  organizationSettings,
+} from "@better-stack/db/schema/organization-settings";
 import { env } from "@better-stack/env/server";
 import { count, eq } from "drizzle-orm";
 import pg from "pg";
@@ -99,15 +102,15 @@ async function createOrg(owner: Person, name: string, slug: string): Promise<str
   return org.id;
 }
 
-async function addTodos(orgId: string, userId: string, texts: string[]): Promise<void> {
-  await db.insert(todo).values(
-    texts.map((text, index) => ({
-      text,
-      orgId,
-      userId,
-      completed: index % 3 === 2,
-    })),
-  );
+/** Mercy arrives configured so print prefixes and tax id show up on day one. */
+async function addSettings(orgId: string): Promise<void> {
+  await db.insert(organizationSettings).values({
+    orgId,
+    ...SETTINGS_DEFAULTS,
+    legalName: "Mercy General Hospital Pvt. Ltd.",
+    address: "12 Hospital Road, Pune, Maharashtra 411001",
+    taxId: "27AAACM1234A1Z5",
+  });
 }
 
 async function main(): Promise<void> {
@@ -132,7 +135,7 @@ async function main(): Promise<void> {
 
   const owner = await createUser("owner@example.com", "Ada Lovelace");
   const mercy = await createOrg(owner, "Mercy General Hospital", "mercy-general");
-  const ridgeview = await createOrg(owner, "Ridgeview Academy", "ridgeview-academy");
+  await createOrg(owner, "Ridgeview Academy", "ridgeview-academy");
 
   const admin = await createUser("admin@example.com", "Grace Hopper");
   const staff = await createUser("staff@example.com", "Alan Turing");
@@ -145,15 +148,7 @@ async function main(): Promise<void> {
     headers: owner.headers,
   });
 
-  await addTodos(mercy, owner.id, [
-    "Review ward A staffing for the weekend",
-    "Sign off on the new admissions checklist",
-    "Archive Q2 discharge summaries",
-  ]);
-  await addTodos(ridgeview, owner.id, [
-    "Publish the autumn timetable",
-    "Confirm safeguarding training dates",
-  ]);
+  await addSettings(mercy);
 
   const [mercyCount] = await db
     .select({ value: count() })

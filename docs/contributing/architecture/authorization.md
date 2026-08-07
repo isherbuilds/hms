@@ -13,7 +13,7 @@ organization, and their effective permissions are the **union** of those roles.
 export const ac = createAccessControl({
   ...defaultStatements,
   member: ["create", "read", "update", "delete"],
-  todo: ["create", "read", "update", "delete"],
+  settings: ["read", "update"],
   audit: ["read"],
   storage: ["upload", "read", "delete"],
   ai: ["use"],
@@ -49,7 +49,7 @@ Better Auth stores a member's roles comma-joined and authorizes them as a union.
 
 ```ts
 const roles = parseRoles(row.role); // ["admin", "member"]
-authorize(roles, { todo: ["delete"] }); // true if ANY role grants it
+authorize(roles, { settings: ["update"] }); // true if ANY role grants it
 ```
 
 Never read `row.role.split(",")[0]` — that silently drops a member's privileges,

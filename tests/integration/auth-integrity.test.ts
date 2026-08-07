@@ -7,7 +7,6 @@ import { db } from "@better-stack/db";
 import { auditLog } from "@better-stack/db/schema/audit";
 import { member, user } from "@better-stack/db/schema/auth";
 import { file } from "@better-stack/db/schema/file";
-import { todo } from "@better-stack/db/schema/todo";
 import { env } from "@better-stack/env/server";
 import { eq } from "drizzle-orm";
 
@@ -157,14 +156,6 @@ test("a user can have only one membership row per organization", async () => {
 test("deleting an attributed user preserves organization content", async () => {
   const owner = await createTestUser("attribution-owner");
   const organization = await createOrganization(owner, "attribution");
-  const [createdTodo] = await db
-    .insert(todo)
-    .values({
-      orgId: organization.id,
-      userId: owner.user.id,
-      text: "Keep this todo",
-    })
-    .returning({ id: todo.id });
   const fileId = `${organization.id}/${crypto.randomUUID()}/keep.txt`;
   await db.insert(file).values({
     id: fileId,
@@ -177,9 +168,7 @@ test("deleting an attributed user preserves organization content", async () => {
 
   await db.delete(user).where(eq(user.id, owner.user.id));
 
-  const [preservedTodo] = await db.select().from(todo).where(eq(todo.id, createdTodo!.id));
   const [preservedFile] = await db.select().from(file).where(eq(file.id, fileId));
-  expect(preservedTodo?.userId).toBeNull();
   expect(preservedFile?.userId).toBeNull();
 });
 

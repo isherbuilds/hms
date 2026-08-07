@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { FileIcon, ListChecksIcon, UsersIcon, type LucideIcon } from "lucide-react";
+import { FileIcon, UsersIcon, type LucideIcon } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell";
 import { authClient } from "@/lib/auth-client";
@@ -27,7 +27,7 @@ function Tile({
   value,
   pending,
 }: {
-  to: "/org/$orgSlug/todos" | "/org/$orgSlug/files" | "/org/$orgSlug/members";
+  to: "/org/$orgSlug/files" | "/org/$orgSlug/members";
   orgSlug: string;
   label: string;
   icon: LucideIcon;
@@ -68,15 +68,7 @@ function DashboardRoute() {
         </div>
       )}
 
-      <div className="grid gap-3 p-4 sm:grid-cols-3">
-        <Tile
-          to="/org/$orgSlug/todos"
-          orgSlug={orgSlug}
-          label="Open todos"
-          icon={ListChecksIcon}
-          value={summary.data?.openTodos}
-          pending={summary.isPending}
-        />
+      <div className="grid gap-3 p-4 sm:grid-cols-2">
         <Tile
           to="/org/$orgSlug/files"
           orgSlug={orgSlug}

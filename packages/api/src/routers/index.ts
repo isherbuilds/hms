@@ -4,11 +4,11 @@ import { auditRouter } from "./audit";
 import { dashboardRouter } from "./dashboard";
 import { filesRouter } from "./files";
 import { membersRouter } from "./members";
-import { todoRouter } from "./todo";
+import { settingsRouter } from "./settings";
 
 export const appRouter = {
   dashboard: dashboardRouter,
-  todo: todoRouter,
+  settings: settingsRouter,
   audit: auditRouter,
   files: filesRouter,
   members: membersRouter,

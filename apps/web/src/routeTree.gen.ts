@@ -18,7 +18,7 @@ import { Route as OrgOrgSlugAuditRouteImport } from './routes/org/$orgSlug/audit
 import { Route as OrgOrgSlugDashboardRouteImport } from './routes/org/$orgSlug/dashboard'
 import { Route as OrgOrgSlugFilesRouteImport } from './routes/org/$orgSlug/files'
 import { Route as OrgOrgSlugMembersRouteImport } from './routes/org/$orgSlug/members'
-import { Route as OrgOrgSlugTodosRouteImport } from './routes/org/$orgSlug/todos'
+import { Route as OrgOrgSlugAdminSettingsRouteImport } from './routes/org/$orgSlug/admin/settings'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -65,9 +65,9 @@ const OrgOrgSlugMembersRoute = OrgOrgSlugMembersRouteImport.update({
   path: '/members',
   getParentRoute: () => OrgOrgSlugRouteRoute,
 } as any)
-const OrgOrgSlugTodosRoute = OrgOrgSlugTodosRouteImport.update({
-  id: '/todos',
-  path: '/todos',
+const OrgOrgSlugAdminSettingsRoute = OrgOrgSlugAdminSettingsRouteImport.update({
+  id: '/admin/settings',
+  path: '/admin/settings',
   getParentRoute: () => OrgOrgSlugRouteRoute,
 } as any)
 
@@ -81,7 +81,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgSlug/dashboard': typeof OrgOrgSlugDashboardRoute
   '/org/$orgSlug/files': typeof OrgOrgSlugFilesRoute
   '/org/$orgSlug/members': typeof OrgOrgSlugMembersRoute
-  '/org/$orgSlug/todos': typeof OrgOrgSlugTodosRoute
+  '/org/$orgSlug/admin/settings': typeof OrgOrgSlugAdminSettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -93,7 +93,7 @@ export interface FileRoutesByTo {
   '/org/$orgSlug/dashboard': typeof OrgOrgSlugDashboardRoute
   '/org/$orgSlug/files': typeof OrgOrgSlugFilesRoute
   '/org/$orgSlug/members': typeof OrgOrgSlugMembersRoute
-  '/org/$orgSlug/todos': typeof OrgOrgSlugTodosRoute
+  '/org/$orgSlug/admin/settings': typeof OrgOrgSlugAdminSettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -106,7 +106,7 @@ export interface FileRoutesById {
   '/org/$orgSlug/dashboard': typeof OrgOrgSlugDashboardRoute
   '/org/$orgSlug/files': typeof OrgOrgSlugFilesRoute
   '/org/$orgSlug/members': typeof OrgOrgSlugMembersRoute
-  '/org/$orgSlug/todos': typeof OrgOrgSlugTodosRoute
+  '/org/$orgSlug/admin/settings': typeof OrgOrgSlugAdminSettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -120,7 +120,7 @@ export interface FileRouteTypes {
     | '/org/$orgSlug/dashboard'
     | '/org/$orgSlug/files'
     | '/org/$orgSlug/members'
-    | '/org/$orgSlug/todos'
+    | '/org/$orgSlug/admin/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -132,7 +132,7 @@ export interface FileRouteTypes {
     | '/org/$orgSlug/dashboard'
     | '/org/$orgSlug/files'
     | '/org/$orgSlug/members'
-    | '/org/$orgSlug/todos'
+    | '/org/$orgSlug/admin/settings'
   id:
     | '__root__'
     | '/'
@@ -144,7 +144,7 @@ export interface FileRouteTypes {
     | '/org/$orgSlug/dashboard'
     | '/org/$orgSlug/files'
     | '/org/$orgSlug/members'
-    | '/org/$orgSlug/todos'
+    | '/org/$orgSlug/admin/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -219,11 +219,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgSlugMembersRouteImport
       parentRoute: typeof OrgOrgSlugRouteRoute
     }
-    '/org/$orgSlug/todos': {
-      id: '/org/$orgSlug/todos'
-      path: '/todos'
-      fullPath: '/org/$orgSlug/todos'
-      preLoaderRoute: typeof OrgOrgSlugTodosRouteImport
+    '/org/$orgSlug/admin/settings': {
+      id: '/org/$orgSlug/admin/settings'
+      path: '/admin/settings'
+      fullPath: '/org/$orgSlug/admin/settings'
+      preLoaderRoute: typeof OrgOrgSlugAdminSettingsRouteImport
       parentRoute: typeof OrgOrgSlugRouteRoute
     }
   }
@@ -235,7 +235,7 @@ interface OrgOrgSlugRouteRouteChildren {
   OrgOrgSlugDashboardRoute: typeof OrgOrgSlugDashboardRoute
   OrgOrgSlugFilesRoute: typeof OrgOrgSlugFilesRoute
   OrgOrgSlugMembersRoute: typeof OrgOrgSlugMembersRoute
-  OrgOrgSlugTodosRoute: typeof OrgOrgSlugTodosRoute
+  OrgOrgSlugAdminSettingsRoute: typeof OrgOrgSlugAdminSettingsRoute
 }
 
 const OrgOrgSlugRouteRouteChildren: OrgOrgSlugRouteRouteChildren = {
@@ -244,7 +244,7 @@ const OrgOrgSlugRouteRouteChildren: OrgOrgSlugRouteRouteChildren = {
   OrgOrgSlugDashboardRoute: OrgOrgSlugDashboardRoute,
   OrgOrgSlugFilesRoute: OrgOrgSlugFilesRoute,
   OrgOrgSlugMembersRoute: OrgOrgSlugMembersRoute,
-  OrgOrgSlugTodosRoute: OrgOrgSlugTodosRoute,
+  OrgOrgSlugAdminSettingsRoute: OrgOrgSlugAdminSettingsRoute,
 }
 
 const OrgOrgSlugRouteRouteWithChildren = OrgOrgSlugRouteRoute._addFileChildren(

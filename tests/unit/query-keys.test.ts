@@ -10,8 +10,8 @@ test("organization input partitions generated query keys", async () => {
     process.env.SKIP_ENV_VALIDATION = previousSkip;
   }
 
-  const alpha = orpc.todo.getAll.queryKey({ input: { orgSlug: "alpha" } });
-  const beta = orpc.todo.getAll.queryKey({ input: { orgSlug: "beta" } });
+  const alpha = orpc.settings.get.queryKey({ input: { orgSlug: "alpha" } });
+  const beta = orpc.settings.get.queryKey({ input: { orgSlug: "beta" } });
 
   expect(alpha).not.toEqual(beta);
   // Not just different — the slug must actually be in the key, or a builder

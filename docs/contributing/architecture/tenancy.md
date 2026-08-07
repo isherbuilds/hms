@@ -48,7 +48,7 @@ Every read and write carries the verified tenant predicate, including primary-ke
 lookups:
 
 ```ts
-.where(and(eq(todo.id, input.id), eq(todo.orgId, context.scope.orgId)))
+.where(and(eq(file.id, input.id), eq(file.orgId, context.scope.orgId)))
 ```
 
 That turns a foreign ID into `NOT_FOUND`. Infrastructure rows such as files and

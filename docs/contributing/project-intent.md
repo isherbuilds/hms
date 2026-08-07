@@ -16,9 +16,9 @@ Better Auth with the organization plugin.
 
 - **Not a framework.** Every package is ordinary application code meant to be
   read and edited, not configured from the outside.
-- **Not a demo.** `todo` is the worked example of an org-scoped domain; delete
-  it when the real domain arrives. `files`, `members`, and `audit` are not
-  examples — they are the product.
+- **Not a demo.** The worked example (`todo`) has been replaced by the first
+  real domain: `settings`. `files`, `members`, and `audit` are not examples —
+  they are the product.
 - **Not opinionated about your domain.** The hard rules constrain _tenancy,
   authorization, and auditing_ only.
 

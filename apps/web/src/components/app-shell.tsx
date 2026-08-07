@@ -18,11 +18,11 @@ import {
   ChevronsUpDownIcon,
   FileIcon,
   LayoutDashboardIcon,
-  ListChecksIcon,
   LogOutIcon,
   MenuIcon,
   PlusIcon,
   ScrollTextIcon,
+  SettingsIcon,
   SparklesIcon,
   UsersIcon,
   XIcon,
@@ -35,7 +35,7 @@ import { orpc } from "@/lib/orpc";
 const NAV: readonly {
   to:
     | "/org/$orgSlug/dashboard"
-    | "/org/$orgSlug/todos"
+    | "/org/$orgSlug/admin/settings"
     | "/org/$orgSlug/files"
     | "/org/$orgSlug/ai"
     | "/org/$orgSlug/members"
@@ -49,12 +49,6 @@ const NAV: readonly {
     label: "Dashboard",
     icon: LayoutDashboardIcon,
     permission: { member: ["read"] },
-  },
-  {
-    to: "/org/$orgSlug/todos",
-    label: "Todos",
-    icon: ListChecksIcon,
-    permission: { todo: ["read"] },
   },
   {
     to: "/org/$orgSlug/files",
@@ -79,6 +73,14 @@ const NAV: readonly {
     label: "Audit",
     icon: ScrollTextIcon,
     permission: { audit: ["read"] },
+  },
+  {
+    to: "/org/$orgSlug/admin/settings",
+    label: "Settings",
+    icon: SettingsIcon,
+    // Read is org-wide, but the page is a save form — surface it only to
+    // the roles that can actually save.
+    permission: { settings: ["update"] },
   },
 ];
 
