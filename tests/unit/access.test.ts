@@ -32,6 +32,34 @@ const MATRIX: Array<{
 
   { permission: { ai: ["use"] }, owner: true, admin: true, member: true },
 
+  { permission: { catalog: ["read"] }, owner: true, admin: true, member: true },
+  {
+    permission: { catalog: ["create"] },
+    owner: true,
+    admin: true,
+    member: false,
+  },
+  {
+    permission: { catalog: ["update"] },
+    owner: true,
+    admin: true,
+    member: false,
+  },
+
+  { permission: { staff: ["read"] }, owner: true, admin: true, member: true },
+  {
+    permission: { staff: ["create"] },
+    owner: true,
+    admin: true,
+    member: false,
+  },
+  {
+    permission: { staff: ["update"] },
+    owner: true,
+    admin: true,
+    member: false,
+  },
+
   {
     permission: { storage: ["upload"] },
     owner: true,

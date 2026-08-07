@@ -25,6 +25,8 @@ import {
   ScrollTextIcon,
   SettingsIcon,
   SparklesIcon,
+  StethoscopeIcon,
+  TagsIcon,
   UsersIcon,
   XIcon,
 } from "lucide-react";
@@ -37,6 +39,8 @@ const NAV: readonly {
   to:
     | "/org/$orgSlug/dashboard"
     | "/org/$orgSlug/admin/settings"
+    | "/org/$orgSlug/admin/catalog"
+    | "/org/$orgSlug/admin/staff"
     | "/org/$orgSlug/files"
     | "/org/$orgSlug/front-desk"
     | "/org/$orgSlug/ai"
@@ -81,6 +85,20 @@ const NAV: readonly {
     label: "Audit",
     icon: ScrollTextIcon,
     permission: { audit: ["read"] },
+  },
+  {
+    to: "/org/$orgSlug/admin/catalog",
+    label: "Catalog",
+    icon: TagsIcon,
+    // Read is org-wide, but this page is admin CRUD — surface it only to
+    // the roles that can actually change the catalog.
+    permission: { catalog: ["update"] },
+  },
+  {
+    to: "/org/$orgSlug/admin/staff",
+    label: "Staff",
+    icon: StethoscopeIcon,
+    permission: { staff: ["update"] },
   },
   {
     to: "/org/$orgSlug/admin/settings",

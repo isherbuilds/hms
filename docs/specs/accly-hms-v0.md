@@ -121,7 +121,8 @@ constraints in-schema):
 
 - `organization-settings`: 1:1 with organization — legal name, address, tax id (GSTIN/PAN),
   currency (default INR), `mrnPrefix`, `invoicePrefix`, `receiptPrefix`, `creditNotePrefix`,
-  `fiscalYearStartMonth` (default 4).
+  `fiscalYearStartMonth` (default 4). Slice 5 adds `followUpValidityDays` (default 14,
+  org-editable) for follow-up consult pricing.
 - `counter`: (`orgId`, `key`, `value`) with composite PK (org, key); `nextCounter(tx, orgId,
 key)` helper (exported from `@better-stack/db/counter`) increments with a single
   conflict-target upsert whose row lock is held until the caller's transaction ends. Keys: `mrn`,
@@ -135,11 +136,22 @@ key)` helper (exported from `@better-stack/db/counter`) increments with a single
   pagination pattern.
 - `departments`, `practitioners`: practitioner has name, `departmentId`, registration number,
   nullable `memberUserId` (doctors without logins exist), nullable `consultFeeItemId` →
-  catalog.
+  catalog. Slice 5 additions (amended 2026-08-07 after the catalog-flexibility review,
+  `docs/research/01-catalog-flexibility.md`; mirrors Danphe's employee→department fallback and
+  Frappe Health's practitioner→appointment-type→settings chain):
+  - `departments.defaultConsultFeeItemId` (nullable → catalog) — the department's standard
+    consult fee; a pricier doctor overrides it via their own `consultFeeItemId`.
+  - `practitioners.followUpFeeItemId` (nullable → catalog) — follow-up consult pricing,
+    first-class in both reference codebases.
+  - `practitioners.followUpValidityDays` (nullable) — per-doctor follow-up window override;
+    falls back to the org-level `organization_settings.followUpValidityDays`.
 - `catalog-items`: name, short code, category enum
   `consultation|procedure|lab|radiology|other`, `unitPrice numeric(12,2)`,
   `taxRatePercent numeric(4,2)` (0 for exempt healthcare services), `taxCode` (HSN/SAC,
   nullable), `active` flag. Soft-deactivate only — Charges snapshot price at creation.
+  `catalog.update` writes the new `unitPrice`/`taxRatePercent`/`active` into audit `meta`, so
+  the audit trail doubles as the price-change history (the references keep a dedicated
+  price-history table; ours is reconstructible from successive entries).
 - `visits`: patientId, practitionerId, departmentId, class enum `opd` (enum exists for later
   `ipd|er`), daily `tokenNumber`, status enum `waiting|in_consult|completed|cancelled`,
   timestamps per transition. State machine: waiting → in_consult → completed; waiting →
@@ -331,32 +343,62 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
   - Interfaces delivered: `patient.register/search/get/update({ orgSlug, … })`; Patient row
     shape for visit + billing slices (id, mrn, name, phone, sex ("male"|"female"|"other"),
     dateOfBirth `YYYY-MM-DD`|null, ageYears|null, address).
-- [ ] Slice 4: Catalog, departments, practitioners (admin CRUD)
-  - Acceptance: CRUD for all three, writes guarded by admin/owner-only grants
-    (`catalog`/`staff` statements); catalog items carry price/taxRate/taxCode/category;
-    deactivation hides from pickers without breaking existing Charges; practitioner links
-    optional `memberUserId` and consult-fee item.
-  - Verify: API integration tests incl. member-role write rejection (`FORBIDDEN`); tenancy
-    four-questions for `catalog` and `staff`.
-  - Depends on: Slice 2
-  - Owns/Touches: `packages/db/src/schema/{catalog-items,departments,practitioners}.ts`,
-    `packages/api/src/routers/{catalog,staff}.ts`,
-    `apps/web/src/routes/org/$orgSlug/admin/{catalog,staff}*`; adds `catalog`/`staff`
-    statements/grants in `access.ts` (coordinator-owned).
-  - Interfaces: `catalog.list({ orgSlug, category?, activeOnly })` used by visit, consult,
-    billing slices; practitioner shape (id, name, departmentId, memberUserId,
-    consultFeeItemId).
+- [x] Slice 4: Catalog, departments, practitioners (admin CRUD) — **done** (2026-08-07, this
+      session).
+  - Delivered: `departments` (unique (org, name)), `catalog_items` (unique (org, code),
+    category/price/tax checks, `active` soft-deactivation flag, name-ordered tenant indexes),
+    and `practitioners` (nullable `memberUserId`/`consultFeeItemId`, org+name and
+    org+department indexes) tables + generated migration `0003_sudden_living_lightning.sql`;
+    `catalog` router (`list` with category/activeOnly filters as an unpaginated picker feed,
+    `create`, `update` — deactivation is `update { active: false }`, duplicate code →
+    `CONFLICT`) and `staff` router
+    (`listDepartments`/`createDepartment`/`updateDepartment`/`listPractitioners`/
+    `createPractitioner`/`updatePractitioner`) with org-scoped existence checks on
+    `departmentId`, `consultFeeItemId`, and `memberUserId` (foreign ids → `NOT_FOUND`; FKs
+    alone never prove tenancy); `catalog`/`staff` statements granted read to all roles,
+    create/update to admin/owner only, in `access.ts`; all six mutations audited
+    fire-and-forget; admin pages `org/$orgSlug/admin/catalog` (filterable table,
+    create/edit dialogs on the RHF stack, deactivate via edit) and `admin/staff`
+    (departments + practitioners sections, member and consultation-fee pickers) plus
+    permission-gated Catalog/Staff nav entries.
+  - Verified: `bun run check-types && bun run check && bun run test` → 74/74 (CRUD
+    roundtrips; duplicate code/name `CONFLICT` in-org but legal cross-org; deactivation
+    hidden from `activeOnly` but not plain list; member-role writes `FORBIDDEN` while reads
+    pass; cross-org department/consult-fee/member references `NOT_FOUND`; audit rows via
+    `eventually`; tenancy four-questions for `catalog` and `staff` incl. the guarded-call
+    sweep; access-matrix rows). Browser smoke — create item → row + toast, deactivate →
+    Inactive badge + hidden under Active-only, reactivate, create department, create
+    practitioner linked to department + member + consult-fee item, row resolves all three.
+  - Interfaces delivered: `catalog.list({ orgSlug, category?, activeOnly? })` →
+    name-ordered rows for visit/consult/billing pickers; practitioner shape (id, name,
+    departmentId, registrationNumber, memberUserId, consultFeeItemId) for Slice 5;
+    `catalog.update` audits new price/tax/active values in `meta` (price-change history,
+    added 2026-08-07 after the catalog-flexibility review).
 - [ ] Slice 5: Visits — OPD ticket + queue
   - Acceptance: create Visit (patient + department + practitioner) → daily token from counter +
-    auto consult-fee Charge (pending, snapshot from practitioner's consult-fee item); queue view
-    per practitioner/department with status transitions waiting→in_consult→completed,
-    waiting→cancelled (cancel voids the visit's pending charges with reason); visit slip print;
-    creation and transitions audited via `audit()`.
+    auto consult-fee Charge (pending, snapshotted). Fee item resolution, in order:
+    1. follow-up — the practitioner's `followUpFeeItemId`, when set and the patient has a
+       non-cancelled visit with the same practitioner within the follow-up window
+       (practitioner's `followUpValidityDays`, else the org setting);
+    2. the practitioner's `consultFeeItemId` (the "this doctor charges more" override);
+    3. the department's `defaultConsultFeeItemId`;
+    4. none resolved → the visit is still created, with no auto charge — the front desk adds
+       a catalog/manual charge in billing (fail-open here is a workflow choice: registration
+       must never block on fee configuration).
+       Queue view per practitioner/department with status transitions waiting→in_consult→completed,
+       waiting→cancelled (cancel voids the visit's pending charges with reason); visit slip print;
+       creation and transitions audited via `audit()`.
   - Verify: integration test asserts charge auto-creation with snapshotted price and the legal
-    transition set; illegal transition rejected; tenancy four-questions for `visit`.
+    transition set; illegal transition rejected; fee resolution covers all four rungs
+    (follow-up inside the window, practitioner override, department default, no-charge
+    fallback) and the per-practitioner window overrides the org default; tenancy
+    four-questions for `visit`.
   - Depends on: Slices 3, 4
-  - Owns/Touches: `packages/db/src/schema/{visits,charges}.ts`,
-    `packages/api/src/routers/visit.ts`, `apps/web/src/routes/org/$orgSlug/front-desk/*`
+  - Owns/Touches: `packages/db/src/schema/{visits,charges}.ts`, additive migrations extending
+    `practitioners` (`followUpFeeItemId`, `followUpValidityDays`), `departments`
+    (`defaultConsultFeeItemId`), and `organization_settings` (`followUpValidityDays`),
+    `packages/api/src/routers/visit.ts` (+ `staff`/`settings` router fields for the new
+    columns), `apps/web/src/routes/org/$orgSlug/front-desk/*`
     (queue routes); adds `visit` statement/grants in `access.ts` (coordinator-owned).
   - Interfaces: Charge row shape + `billing.listPendingCharges({ orgSlug, visitId })` consumed
     by billing; visit status consumed by consult slice; `visit.create/transition` contracts.
@@ -365,8 +407,10 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     pending Charge with reason; issue Invoice in one transaction (number from fiscal series,
     invoice-lines materialized with allocated discount/taxableValue/taxAmount/gross, header
     totals as line sums, charges → invoiced, `invoice.issue` audited) — issued
-    Invoice has no update path; record payments (cash/upi/card) each printing a numbered
-    Receipt; Credit Note issuance with lines referencing invoice-lines (full-line = exact
+    Invoice has no update path; record payments (cash/upi/card) — **partial payments are
+    normal**, each capped at the current positive outstanding and each printing its own
+    numbered Receipt (the invoice is the itemized service record; a receipt only proves a
+    payment); Credit Note issuance with lines referencing invoice-lines (full-line = exact
     snapshot copy, partial = gross-entered), capped per invoice-line and in total, guarded by
     `billing: ["creditNote"]` (admin/owner); Refund recording against a Credit Note with
     refund-due surfaced on the billing screen; A5 + thermal print views render from snapshot
@@ -449,6 +493,15 @@ feature (including the ambient scribe — separate spec after the speech feasibi
   practitioner-only signing).
 - ICD coding on diagnosis lines (column exists, unused).
 - Thermal-printer format tuning against the pilot's actual hardware.
+- Catalog satellite tables (deferred 2026-08-07 after the catalog-flexibility review,
+  `docs/research/01-catalog-flexibility.md` — each is additive beside the flat catalog
+  because Charges snapshot price/tax, so adopting one never reprices history):
+  price categories/schemes (per-payer tariffs — v0 pilot is cash-only; becomes a
+  `(priceCategoryId, catalogItemId) → price` map when insurance/TPA enters the roadmap),
+  packages/panels (bundle master + member items), per-line performer attribution for
+  doctor-share payouts, billing-department linkage on catalog items, and an org-editable
+  category master (the closed enum is load-bearing for Slice 7 order restrictions and Tally
+  mapping; new values are one additive enum migration).
 - In-transaction audit for clinical/financial mutations (user decision 2026-08-07: keep
   fire-and-forget `audit()` for now; revisit when a compliance requirement demands
   commit-atomic entries).

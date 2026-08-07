@@ -18,7 +18,9 @@ import { Route as OrgOrgSlugAuditRouteImport } from './routes/org/$orgSlug/audit
 import { Route as OrgOrgSlugDashboardRouteImport } from './routes/org/$orgSlug/dashboard'
 import { Route as OrgOrgSlugFilesRouteImport } from './routes/org/$orgSlug/files'
 import { Route as OrgOrgSlugMembersRouteImport } from './routes/org/$orgSlug/members'
+import { Route as OrgOrgSlugAdminCatalogRouteImport } from './routes/org/$orgSlug/admin/catalog'
 import { Route as OrgOrgSlugAdminSettingsRouteImport } from './routes/org/$orgSlug/admin/settings'
+import { Route as OrgOrgSlugAdminStaffRouteImport } from './routes/org/$orgSlug/admin/staff'
 import { Route as OrgOrgSlugFrontDeskIndexRouteImport } from './routes/org/$orgSlug/front-desk/index'
 import { Route as OrgOrgSlugFrontDeskRegisterRouteImport } from './routes/org/$orgSlug/front-desk/register'
 import { Route as OrgOrgSlugFrontDeskPatientsPatientIdRouteImport } from './routes/org/$orgSlug/front-desk/patients.$patientId'
@@ -68,9 +70,19 @@ const OrgOrgSlugMembersRoute = OrgOrgSlugMembersRouteImport.update({
   path: '/members',
   getParentRoute: () => OrgOrgSlugRouteRoute,
 } as any)
+const OrgOrgSlugAdminCatalogRoute = OrgOrgSlugAdminCatalogRouteImport.update({
+  id: '/admin/catalog',
+  path: '/admin/catalog',
+  getParentRoute: () => OrgOrgSlugRouteRoute,
+} as any)
 const OrgOrgSlugAdminSettingsRoute = OrgOrgSlugAdminSettingsRouteImport.update({
   id: '/admin/settings',
   path: '/admin/settings',
+  getParentRoute: () => OrgOrgSlugRouteRoute,
+} as any)
+const OrgOrgSlugAdminStaffRoute = OrgOrgSlugAdminStaffRouteImport.update({
+  id: '/admin/staff',
+  path: '/admin/staff',
   getParentRoute: () => OrgOrgSlugRouteRoute,
 } as any)
 const OrgOrgSlugFrontDeskIndexRoute =
@@ -102,7 +114,9 @@ export interface FileRoutesByFullPath {
   '/org/$orgSlug/dashboard': typeof OrgOrgSlugDashboardRoute
   '/org/$orgSlug/files': typeof OrgOrgSlugFilesRoute
   '/org/$orgSlug/members': typeof OrgOrgSlugMembersRoute
+  '/org/$orgSlug/admin/catalog': typeof OrgOrgSlugAdminCatalogRoute
   '/org/$orgSlug/admin/settings': typeof OrgOrgSlugAdminSettingsRoute
+  '/org/$orgSlug/admin/staff': typeof OrgOrgSlugAdminStaffRoute
   '/org/$orgSlug/front-desk/register': typeof OrgOrgSlugFrontDeskRegisterRoute
   '/org/$orgSlug/front-desk/': typeof OrgOrgSlugFrontDeskIndexRoute
   '/org/$orgSlug/front-desk/patients/$patientId': typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
@@ -117,7 +131,9 @@ export interface FileRoutesByTo {
   '/org/$orgSlug/dashboard': typeof OrgOrgSlugDashboardRoute
   '/org/$orgSlug/files': typeof OrgOrgSlugFilesRoute
   '/org/$orgSlug/members': typeof OrgOrgSlugMembersRoute
+  '/org/$orgSlug/admin/catalog': typeof OrgOrgSlugAdminCatalogRoute
   '/org/$orgSlug/admin/settings': typeof OrgOrgSlugAdminSettingsRoute
+  '/org/$orgSlug/admin/staff': typeof OrgOrgSlugAdminStaffRoute
   '/org/$orgSlug/front-desk/register': typeof OrgOrgSlugFrontDeskRegisterRoute
   '/org/$orgSlug/front-desk': typeof OrgOrgSlugFrontDeskIndexRoute
   '/org/$orgSlug/front-desk/patients/$patientId': typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
@@ -133,7 +149,9 @@ export interface FileRoutesById {
   '/org/$orgSlug/dashboard': typeof OrgOrgSlugDashboardRoute
   '/org/$orgSlug/files': typeof OrgOrgSlugFilesRoute
   '/org/$orgSlug/members': typeof OrgOrgSlugMembersRoute
+  '/org/$orgSlug/admin/catalog': typeof OrgOrgSlugAdminCatalogRoute
   '/org/$orgSlug/admin/settings': typeof OrgOrgSlugAdminSettingsRoute
+  '/org/$orgSlug/admin/staff': typeof OrgOrgSlugAdminStaffRoute
   '/org/$orgSlug/front-desk/register': typeof OrgOrgSlugFrontDeskRegisterRoute
   '/org/$orgSlug/front-desk/': typeof OrgOrgSlugFrontDeskIndexRoute
   '/org/$orgSlug/front-desk/patients/$patientId': typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
@@ -150,7 +168,9 @@ export interface FileRouteTypes {
     | '/org/$orgSlug/dashboard'
     | '/org/$orgSlug/files'
     | '/org/$orgSlug/members'
+    | '/org/$orgSlug/admin/catalog'
     | '/org/$orgSlug/admin/settings'
+    | '/org/$orgSlug/admin/staff'
     | '/org/$orgSlug/front-desk/register'
     | '/org/$orgSlug/front-desk/'
     | '/org/$orgSlug/front-desk/patients/$patientId'
@@ -165,7 +185,9 @@ export interface FileRouteTypes {
     | '/org/$orgSlug/dashboard'
     | '/org/$orgSlug/files'
     | '/org/$orgSlug/members'
+    | '/org/$orgSlug/admin/catalog'
     | '/org/$orgSlug/admin/settings'
+    | '/org/$orgSlug/admin/staff'
     | '/org/$orgSlug/front-desk/register'
     | '/org/$orgSlug/front-desk'
     | '/org/$orgSlug/front-desk/patients/$patientId'
@@ -180,7 +202,9 @@ export interface FileRouteTypes {
     | '/org/$orgSlug/dashboard'
     | '/org/$orgSlug/files'
     | '/org/$orgSlug/members'
+    | '/org/$orgSlug/admin/catalog'
     | '/org/$orgSlug/admin/settings'
+    | '/org/$orgSlug/admin/staff'
     | '/org/$orgSlug/front-desk/register'
     | '/org/$orgSlug/front-desk/'
     | '/org/$orgSlug/front-desk/patients/$patientId'
@@ -258,11 +282,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgSlugMembersRouteImport
       parentRoute: typeof OrgOrgSlugRouteRoute
     }
+    '/org/$orgSlug/admin/catalog': {
+      id: '/org/$orgSlug/admin/catalog'
+      path: '/admin/catalog'
+      fullPath: '/org/$orgSlug/admin/catalog'
+      preLoaderRoute: typeof OrgOrgSlugAdminCatalogRouteImport
+      parentRoute: typeof OrgOrgSlugRouteRoute
+    }
     '/org/$orgSlug/admin/settings': {
       id: '/org/$orgSlug/admin/settings'
       path: '/admin/settings'
       fullPath: '/org/$orgSlug/admin/settings'
       preLoaderRoute: typeof OrgOrgSlugAdminSettingsRouteImport
+      parentRoute: typeof OrgOrgSlugRouteRoute
+    }
+    '/org/$orgSlug/admin/staff': {
+      id: '/org/$orgSlug/admin/staff'
+      path: '/admin/staff'
+      fullPath: '/org/$orgSlug/admin/staff'
+      preLoaderRoute: typeof OrgOrgSlugAdminStaffRouteImport
       parentRoute: typeof OrgOrgSlugRouteRoute
     }
     '/org/$orgSlug/front-desk/': {
@@ -295,7 +333,9 @@ interface OrgOrgSlugRouteRouteChildren {
   OrgOrgSlugDashboardRoute: typeof OrgOrgSlugDashboardRoute
   OrgOrgSlugFilesRoute: typeof OrgOrgSlugFilesRoute
   OrgOrgSlugMembersRoute: typeof OrgOrgSlugMembersRoute
+  OrgOrgSlugAdminCatalogRoute: typeof OrgOrgSlugAdminCatalogRoute
   OrgOrgSlugAdminSettingsRoute: typeof OrgOrgSlugAdminSettingsRoute
+  OrgOrgSlugAdminStaffRoute: typeof OrgOrgSlugAdminStaffRoute
   OrgOrgSlugFrontDeskRegisterRoute: typeof OrgOrgSlugFrontDeskRegisterRoute
   OrgOrgSlugFrontDeskIndexRoute: typeof OrgOrgSlugFrontDeskIndexRoute
   OrgOrgSlugFrontDeskPatientsPatientIdRoute: typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
@@ -307,7 +347,9 @@ const OrgOrgSlugRouteRouteChildren: OrgOrgSlugRouteRouteChildren = {
   OrgOrgSlugDashboardRoute: OrgOrgSlugDashboardRoute,
   OrgOrgSlugFilesRoute: OrgOrgSlugFilesRoute,
   OrgOrgSlugMembersRoute: OrgOrgSlugMembersRoute,
+  OrgOrgSlugAdminCatalogRoute: OrgOrgSlugAdminCatalogRoute,
   OrgOrgSlugAdminSettingsRoute: OrgOrgSlugAdminSettingsRoute,
+  OrgOrgSlugAdminStaffRoute: OrgOrgSlugAdminStaffRoute,
   OrgOrgSlugFrontDeskRegisterRoute: OrgOrgSlugFrontDeskRegisterRoute,
   OrgOrgSlugFrontDeskIndexRoute: OrgOrgSlugFrontDeskIndexRoute,
   OrgOrgSlugFrontDeskPatientsPatientIdRoute:

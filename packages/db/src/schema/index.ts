@@ -4,3 +4,6 @@ export * from "./file";
 export * from "./counter";
 export * from "./organization-settings";
 export * from "./patients";
+export * from "./departments";
+export * from "./catalog-items";
+export * from "./practitioners";
