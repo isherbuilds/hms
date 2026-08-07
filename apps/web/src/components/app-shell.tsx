@@ -19,6 +19,7 @@ import {
   ClipboardPlusIcon,
   FileIcon,
   LayoutDashboardIcon,
+  ListOrderedIcon,
   LogOutIcon,
   MenuIcon,
   PlusIcon,
@@ -43,6 +44,7 @@ const NAV: readonly {
     | "/org/$orgSlug/admin/staff"
     | "/org/$orgSlug/files"
     | "/org/$orgSlug/front-desk"
+    | "/org/$orgSlug/front-desk/queue"
     | "/org/$orgSlug/ai"
     | "/org/$orgSlug/members"
     | "/org/$orgSlug/audit";
@@ -61,6 +63,12 @@ const NAV: readonly {
     label: "Front desk",
     icon: ClipboardPlusIcon,
     permission: { patient: ["read"] },
+  },
+  {
+    to: "/org/$orgSlug/front-desk/queue",
+    label: "Queue",
+    icon: ListOrderedIcon,
+    permission: { visit: ["read"] },
   },
   {
     to: "/org/$orgSlug/files",

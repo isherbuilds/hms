@@ -19,6 +19,8 @@ const practitionerFields = z.object({
   registrationNumber: z.string().trim().max(50).nullish(),
   memberUserId: z.string().nullish(),
   consultFeeItemId: z.string().nullish(),
+  followUpFeeItemId: z.string().nullish(),
+  followUpValidityDays: z.number().int().min(1).max(365).nullish(),
 });
 
 async function assertDepartmentInScope(departmentId: string, orgId: string): Promise<void> {
@@ -62,6 +64,7 @@ async function assertPractitionerReferences(
     departmentId: string;
     memberUserId?: string | null;
     consultFeeItemId?: string | null;
+    followUpFeeItemId?: string | null;
   },
   orgId: string,
 ): Promise<void> {
@@ -69,6 +72,9 @@ async function assertPractitionerReferences(
     assertDepartmentInScope(fields.departmentId, orgId),
     fields.consultFeeItemId != null
       ? assertCatalogItemInScope(fields.consultFeeItemId, orgId)
+      : Promise.resolve(),
+    fields.followUpFeeItemId != null
+      ? assertCatalogItemInScope(fields.followUpFeeItemId, orgId)
       : Promise.resolve(),
     fields.memberUserId != null
       ? assertMemberInScope(fields.memberUserId, orgId)
@@ -87,15 +93,26 @@ export const staffRouter = {
 
   createDepartment: orgProcedure(
     { staff: ["create"] },
-    orgInput.extend({ name: departmentName }),
+    orgInput.extend({
+      name: departmentName,
+      defaultConsultFeeItemId: z.string().nullish(),
+    }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const id = crypto.randomUUID();
+    if (input.defaultConsultFeeItemId != null) {
+      await assertCatalogItemInScope(input.defaultConsultFeeItemId, scope.orgId);
+    }
 
     try {
       const [department] = await db
         .insert(departments)
-        .values({ id, orgId: scope.orgId, name: input.name })
+        .values({
+          id,
+          orgId: scope.orgId,
+          name: input.name,
+          defaultConsultFeeItemId: input.defaultConsultFeeItemId ?? null,
+        })
         .returning();
 
       if (!department) {
@@ -122,15 +139,26 @@ export const staffRouter = {
 
   updateDepartment: orgProcedure(
     { staff: ["update"] },
-    orgInput.extend({ departmentId: z.string(), name: departmentName }),
+    orgInput.extend({
+      departmentId: z.string(),
+      name: departmentName,
+      defaultConsultFeeItemId: z.string().nullish(),
+    }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
+    if (input.defaultConsultFeeItemId != null) {
+      await assertCatalogItemInScope(input.defaultConsultFeeItemId, scope.orgId);
+    }
     let department;
 
     try {
       [department] = await db
         .update(departments)
-        .set({ name: input.name, updatedAt: new Date() })
+        .set({
+          name: input.name,
+          defaultConsultFeeItemId: input.defaultConsultFeeItemId ?? null,
+          updatedAt: new Date(),
+        })
         .where(and(eq(departments.orgId, scope.orgId), eq(departments.id, input.departmentId)))
         .returning();
     } catch (error) {
@@ -181,6 +209,8 @@ export const staffRouter = {
         registrationNumber: fields.registrationNumber ?? null,
         memberUserId: fields.memberUserId ?? null,
         consultFeeItemId: fields.consultFeeItemId ?? null,
+        followUpFeeItemId: fields.followUpFeeItemId ?? null,
+        followUpValidityDays: fields.followUpValidityDays ?? null,
       })
       .returning();
 
@@ -216,6 +246,8 @@ export const staffRouter = {
         registrationNumber: fields.registrationNumber ?? null,
         memberUserId: fields.memberUserId ?? null,
         consultFeeItemId: fields.consultFeeItemId ?? null,
+        followUpFeeItemId: fields.followUpFeeItemId ?? null,
+        followUpValidityDays: fields.followUpValidityDays ?? null,
         updatedAt: new Date(),
       })
       .where(and(eq(practitioners.orgId, scope.orgId), eq(practitioners.id, practitionerId)))

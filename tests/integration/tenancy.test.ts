@@ -343,6 +343,7 @@ const GUARDED_CALLS = {
       receiptPrefix: "RCT",
       creditNotePrefix: "CN",
       fiscalYearStartMonth: 4,
+      followUpValidityDays: 14,
     }),
   "audit.list": (api, claim) => api.audit.list({ ...claim }),
   "files.list": (api, claim) => api.files.list({ ...claim }),
@@ -414,6 +415,21 @@ const GUARDED_CALLS = {
       name: "Intrusion",
       departmentId: crypto.randomUUID(),
     }),
+  "visit.create": (api, claim) =>
+    api.visit.create({
+      ...claim,
+      patientId: crypto.randomUUID(),
+      practitionerId: crypto.randomUUID(),
+      departmentId: crypto.randomUUID(),
+    }),
+  "visit.transition": (api, claim) =>
+    api.visit.transition({
+      ...claim,
+      visitId: crypto.randomUUID(),
+      to: "in_consult",
+    }),
+  "visit.queue": (api, claim) => api.visit.queue({ ...claim }),
+  "visit.get": (api, claim) => api.visit.get({ ...claim, visitId: crypto.randomUUID() }),
   "members.me": (api, claim) => api.members.me({ ...claim }),
   "members.list": (api, claim) => api.members.list({ ...claim }),
   "members.invite": (api, claim) => api.members.invite({ ...claim, email: "x@example.com" }),
@@ -770,5 +786,131 @@ describe("staff tenancy four questions", () => {
       memberClient.staff.listDepartments({ orgSlug: organization.slug }),
       "FORBIDDEN",
     );
+  });
+});
+
+describe("visit tenancy four questions", () => {
+  test("org B cannot see org A visits through queue or get", async () => {
+    const alice = await createTestUser("visit-scope-alice");
+    const alpha = await createOrganization(alice, "visit-scope-alpha");
+    const aliceClient = clientFor(alice);
+    const patient = await aliceClient.patient.register({
+      orgSlug: alpha.slug,
+      name: "Alpha Visit Patient",
+      phone: "5552401",
+      sex: "other",
+      ageYears: 30,
+      address: "",
+    });
+    const department = await aliceClient.staff.createDepartment({
+      orgSlug: alpha.slug,
+      name: "Alpha Visit Department",
+    });
+    const practitioner = await aliceClient.staff.createPractitioner({
+      orgSlug: alpha.slug,
+      name: "Dr. Alpha Visit",
+      departmentId: department.id,
+    });
+    const created = await aliceClient.visit.create({
+      orgSlug: alpha.slug,
+      patientId: patient.id,
+      practitionerId: practitioner.id,
+      departmentId: department.id,
+    });
+
+    const bob = await createTestUser("visit-scope-bob");
+    const beta = await createOrganization(bob, "visit-scope-beta");
+    const bobClient = clientFor(bob);
+    expect(await bobClient.visit.queue({ orgSlug: beta.slug })).toEqual([]);
+    await expectORPCCode(
+      bobClient.visit.get({ orgSlug: beta.slug, visitId: created.visit.id }),
+      "NOT_FOUND",
+    );
+  });
+
+  test("one client concurrently scopes visit calls to two organizations", async () => {
+    const user = await createTestUser("visit-scope-multi");
+    const one = await createOrganization(user, "visit-scope-one");
+    const two = await createOrganization(user, "visit-scope-two");
+    const api = clientFor(user);
+    const [patientOne, patientTwo] = await Promise.all([
+      api.patient.register({
+        orgSlug: one.slug,
+        name: "Visit Patient One",
+        phone: "5552402",
+        sex: "other",
+        ageYears: 30,
+        address: "",
+      }),
+      api.patient.register({
+        orgSlug: two.slug,
+        name: "Visit Patient Two",
+        phone: "5552403",
+        sex: "other",
+        ageYears: 30,
+        address: "",
+      }),
+    ]);
+    const [departmentOne, departmentTwo] = await Promise.all([
+      api.staff.createDepartment({ orgSlug: one.slug, name: "Visit Department One" }),
+      api.staff.createDepartment({ orgSlug: two.slug, name: "Visit Department Two" }),
+    ]);
+    const [practitionerOne, practitionerTwo] = await Promise.all([
+      api.staff.createPractitioner({
+        orgSlug: one.slug,
+        name: "Dr. Visit One",
+        departmentId: departmentOne.id,
+      }),
+      api.staff.createPractitioner({
+        orgSlug: two.slug,
+        name: "Dr. Visit Two",
+        departmentId: departmentTwo.id,
+      }),
+    ]);
+
+    const [inOne, inTwo] = await Promise.all([
+      api.visit.create({
+        orgSlug: one.slug,
+        patientId: patientOne.id,
+        practitionerId: practitionerOne.id,
+        departmentId: departmentOne.id,
+      }),
+      api.visit.create({
+        orgSlug: two.slug,
+        patientId: patientTwo.id,
+        practitionerId: practitionerTwo.id,
+        departmentId: departmentTwo.id,
+      }),
+    ]);
+    const [seenInOne, seenInTwo] = await Promise.all([
+      api.visit.queue({ orgSlug: one.slug }),
+      api.visit.queue({ orgSlug: two.slug }),
+    ]);
+
+    expect(seenInOne.map((visit) => visit.id)).toEqual([inOne.visit.id]);
+    expect(seenInTwo.map((visit) => visit.id)).toEqual([inTwo.visit.id]);
+  });
+
+  test("a visit request naming a foreign organization is FORBIDDEN", async () => {
+    const owner = await createTestUser("visit-scope-owner");
+    const organization = await createOrganization(owner, "visit-scope-foreign");
+    const outsider = await createTestUser("visit-scope-outsider");
+
+    await expectORPCCode(
+      clientFor(outsider).visit.queue({ orgSlug: organization.slug }),
+      "FORBIDDEN",
+    );
+  });
+
+  test("a removed member is FORBIDDEN on the very next visit call", async () => {
+    const owner = await createTestUser("visit-scope-revoke-owner");
+    const organization = await createOrganization(owner, "visit-scope-revoke");
+    const member = await createTestUser("visit-scope-revoke-member");
+    await joinOrganization(member, organization.id);
+    const memberClient = clientFor(member);
+
+    expect(await memberClient.visit.queue({ orgSlug: organization.slug })).toEqual([]);
+    await removeFromOrganization(owner, member.user.email, organization.id);
+    await expectORPCCode(memberClient.visit.queue({ orgSlug: organization.slug }), "FORBIDDEN");
   });
 });

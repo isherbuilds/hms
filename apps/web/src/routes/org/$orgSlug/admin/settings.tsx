@@ -2,6 +2,7 @@ import type { SettingsFields } from "@better-stack/api/routers/settings";
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -42,6 +43,7 @@ const formSchema = z.object({
   receiptPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
   creditNotePrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
   fiscalYearStartMonth: z.number().int().min(1).max(12),
+  followUpValidityDays: z.number().int().min(1).max(365),
 });
 
 const MONTHS = [
@@ -233,32 +235,57 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
               )}
             />
           </div>
-          <FormField
-            control={form.control}
-            name="fiscalYearStartMonth"
-            render={({ field }) => (
-              <FormItem className="sm:max-w-[calc(50%-0.375rem)]">
-                <FormLabel>Fiscal year starts in</FormLabel>
-                <FormControl>
-                  <select
-                    className={SELECT_CLASS}
-                    value={field.value}
-                    onChange={(event) => field.onChange(Number(event.target.value))}
-                    onBlur={field.onBlur}
-                    name={field.name}
-                    ref={field.ref}
-                  >
-                    {MONTHS.map((month, index) => (
-                      <option key={month} value={index + 1}>
-                        {month}
-                      </option>
-                    ))}
-                  </select>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="fiscalYearStartMonth"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Fiscal year starts in</FormLabel>
+                  <FormControl>
+                    <select
+                      className={SELECT_CLASS}
+                      value={field.value}
+                      onChange={(event) => field.onChange(Number(event.target.value))}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                      ref={field.ref}
+                    >
+                      {MONTHS.map((month, index) => (
+                        <option key={month} value={index + 1}>
+                          {month}
+                        </option>
+                      ))}
+                    </select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="followUpValidityDays"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Follow-up validity (days)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={365}
+                      step={1}
+                      {...field}
+                      onChange={(event) => field.onChange(Number(event.target.value))}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Consult within this many days of the last visit bills the follow-up fee.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
         </section>
 
         <div>

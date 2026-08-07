@@ -57,6 +57,14 @@ That turns a foreign ID into `NOT_FOUND`. Infrastructure rows such as files and
 audit entries follow the same rule. Mutations use one scoped
 `UPDATE`/`DELETE ... RETURNING`, not select-then-write.
 
+Writes that reference other rows (`patientId`, `catalogItemId`, …) verify each
+id under the same predicate before writing — a foreign-key constraint alone
+proves existence, not tenancy, and the browser's pickers prove nothing at all.
+These checks stay server-side no matter what the UI sent; the sanctioned ways
+to remove their _cost_ (folding the check into the write, composite
+`(org_id, id)` FKs) are recorded in
+[0019](../decisions/0019-server-verified-references-and-prices.md).
+
 ## Web client
 
 Org pages live under `apps/web/src/routes/org/$orgSlug/` and import the

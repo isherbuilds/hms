@@ -74,6 +74,13 @@ input, so it requires no custom header.
 `where` turns a foreign id into `NOT_FOUND`, and the caller learns nothing about
 whether the row exists.
 
+**Cross-tenant reference in a write.** A member of one org submits another
+org's `practitionerId` or `catalogItemId` in a mutation. Closed by invariant 1
+applied to referenced rows: every write re-verifies each referenced id under
+the tenant predicate (foreign id → `NOT_FOUND`), and money fields are never
+client input — charges snapshot price and tax from the server-read catalog row
+([0019](./decisions/0019-server-verified-references-and-prices.md)).
+
 **Privilege retention after removal.** Closed by invariant 4: the next guarded
 request re-reads `member` and finds nothing.
 

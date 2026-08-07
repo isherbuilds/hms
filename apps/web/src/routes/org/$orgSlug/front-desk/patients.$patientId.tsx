@@ -1,3 +1,12 @@
+import { Button } from "@better-stack/ui/components/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@better-stack/ui/components/dialog";
 import {
   Form,
   FormControl,
@@ -11,7 +20,9 @@ import { Skeleton } from "@better-stack/ui/components/skeleton";
 import { SubmitButton } from "@better-stack/ui/components/submit-button";
 import { Textarea } from "@better-stack/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { PlusIcon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -53,8 +64,14 @@ const patientFormSchema = z
     path: ["dateOfBirth"],
   });
 
+const visitFormSchema = z.object({
+  departmentId: z.string().min(1, "Choose a department"),
+  practitionerId: z.string().min(1, "Choose a practitioner"),
+});
+
 function PatientDetailRoute() {
   const { orgSlug, patientId } = Route.useParams();
+  const [visitDialogOpen, setVisitDialogOpen] = useState(false);
   const patient = useQuery(orpc.patient.get.queryOptions({ input: { orgSlug, patientId } }));
 
   return (
@@ -62,6 +79,14 @@ function PatientDetailRoute() {
       <PageHeader
         title={patient.data ? `${patient.data.mrn} · ${patient.data.name}` : "Patient"}
         description="Patient demographics"
+        action={
+          patient.data ? (
+            <Button onClick={() => setVisitDialogOpen(true)}>
+              <PlusIcon data-icon="inline-start" />
+              New visit
+            </Button>
+          ) : undefined
+        }
       />
       <div className="max-w-2xl p-4">
         {patient.isPending ? (
@@ -84,6 +109,14 @@ function PatientDetailRoute() {
           />
         )}
       </div>
+      {visitDialogOpen ? (
+        <NewVisitDialog
+          orgSlug={orgSlug}
+          patientId={patientId}
+          patientName={patient.data?.name ?? ""}
+          onClose={() => setVisitDialogOpen(false)}
+        />
+      ) : null}
     </>
   );
 }
@@ -391,5 +424,149 @@ function PatientForm({
         </div>
       </form>
     </Form>
+  );
+}
+
+function NewVisitDialog({
+  orgSlug,
+  patientId,
+  patientName,
+  onClose,
+}: {
+  orgSlug: string;
+  patientId: string;
+  patientName: string;
+  onClose: () => void;
+}) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const departments = useQuery(orpc.staff.listDepartments.queryOptions({ input: { orgSlug } }));
+  const practitioners = useQuery(orpc.staff.listPractitioners.queryOptions({ input: { orgSlug } }));
+  const form = useZodForm(visitFormSchema, {
+    defaultValues: { departmentId: "", practitionerId: "" },
+  });
+  const departmentId = form.watch("departmentId");
+
+  const createVisit = useMutation(
+    orpc.visit.create.mutationOptions({
+      onSuccess: ({ visit }) => {
+        void queryClient.invalidateQueries({
+          queryKey: orpc.visit.queue.key({ input: { orgSlug } }),
+        });
+        toast.success(`Token ${visit.tokenNumber} created`);
+        onClose();
+        void navigate({
+          to: "/org/$orgSlug/front-desk/visits/$visitId",
+          params: { orgSlug, visitId: visit.id },
+        });
+      },
+      onError: (error) => toast.error(error.message),
+    }),
+  );
+  const submit = form.handleSubmit(({ departmentId: selectedDepartmentId, practitionerId }) => {
+    createVisit.mutate({
+      orgSlug,
+      patientId,
+      departmentId: selectedDepartmentId,
+      practitionerId,
+    });
+  });
+  const loadingOptions = departments.isPending || practitioners.isPending;
+
+  return (
+    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New visit</DialogTitle>
+          <DialogDescription>Create an outpatient token for {patientName}.</DialogDescription>
+        </DialogHeader>
+        {departments.isError || practitioners.isError ? (
+          <div role="alert" className="border-l-2 border-destructive pl-3 text-xs">
+            <p className="font-medium">Could not load staff options</p>
+            <p className="mt-0.5 text-muted-foreground">
+              {(departments.error ?? practitioners.error)?.message}
+            </p>
+          </div>
+        ) : (
+          <Form {...form}>
+            <form onSubmit={submit} className="flex flex-col gap-4">
+              <FormField
+                control={form.control}
+                name="departmentId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Department</FormLabel>
+                    <FormControl>
+                      <select
+                        className={SELECT_CLASS}
+                        value={field.value}
+                        onChange={(event) => {
+                          field.onChange(event);
+                          form.setValue("practitionerId", "");
+                        }}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                        disabled={loadingOptions || createVisit.isPending}
+                        autoFocus
+                      >
+                        <option value="">Choose a department</option>
+                        {(departments.data ?? []).map((department) => (
+                          <option key={department.id} value={department.id}>
+                            {department.name}
+                          </option>
+                        ))}
+                      </select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="practitionerId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Practitioner</FormLabel>
+                    <FormControl>
+                      <select
+                        className={SELECT_CLASS}
+                        {...field}
+                        disabled={!departmentId || loadingOptions || createVisit.isPending}
+                      >
+                        <option value="">
+                          {departmentId ? "Choose a practitioner" : "Choose a department first"}
+                        </option>
+                        {(practitioners.data ?? [])
+                          .filter((practitioner) => practitioner.departmentId === departmentId)
+                          .map((practitioner) => (
+                            <option key={practitioner.id} value={practitioner.id}>
+                              {practitioner.name}
+                            </option>
+                          ))}
+                      </select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={createVisit.isPending}
+                  onClick={onClose}
+                >
+                  Cancel
+                </Button>
+                <SubmitButton isSubmitting={createVisit.isPending} disabled={loadingOptions}>
+                  Create visit
+                </SubmitButton>
+              </DialogFooter>
+            </form>
+          </Form>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

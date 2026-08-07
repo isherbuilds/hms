@@ -379,7 +379,39 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     departmentId, registrationNumber, memberUserId, consultFeeItemId) for Slice 5;
     `catalog.update` audits new price/tax/active values in `meta` (price-change history,
     added 2026-08-07 after the catalog-flexibility review).
-- [ ] Slice 5: Visits — OPD ticket + queue
+- [x] Slice 5: Visits — OPD ticket + queue — **done** (2026-08-07, this session).
+  - Delivered: `visits` (state machine waiting→in_consult→completed / waiting→cancelled,
+    per-transition timestamps, daily `tokenNumber`) and `charges` (price/tax snapshot columns,
+    `invoiceId` without FK until Slice 6, provenance columns written as `member`) tables plus
+    additive columns `practitioners.followUpFeeItemId`/`followUpValidityDays`,
+    `departments.defaultConsultFeeItemId`, `organization_settings.followUpValidityDays`
+    (default 14) — generated migration `0001_typical_mole_man.sql`; `visit` router
+    (`create`/`transition`/`queue`/`get`) — create resolves the four-rung fee ladder
+    (follow-up window → practitioner override → department default → no charge, inactive or
+    missing items falling through) and allocates the per-practitioner per-UTC-day token from
+    counter key `token:<practitionerId>:<yyyy-mm-dd>` in one transaction with the snapshotted
+    consult-fee Charge; transition is a status-guarded scoped UPDATE (stale/illegal →
+    `CONFLICT`), cancel voiding pending charges with the reason in the same transaction;
+    `visit.create`/`visit.transition` audited fire-and-forget; `visit` statement granted to
+    all three roles; staff/settings routers and admin pages carry the new fee/window fields;
+    front-desk queue page (practitioner/department/status filters, transition actions with
+    cancel-reason dialog), visit detail with browser-print token slip, create-visit dialog on
+    patient detail, and a permission-gated Queue nav entry.
+  - Verified: `bun run check-types && bun run check && bun run test` → 94/94 (token
+    sequencing per practitioner/day; all four fee-ladder rungs incl. per-practitioner window
+    override and inactive-item fall-through; charge snapshot immune to later price change;
+    legal/illegal transitions; cancel voids pending charges; foreign refs `NOT_FOUND`; audit
+    rows via `eventually`; tenancy four-questions for `visit` incl. the guarded-call sweep).
+    Browser smoke — catalog item → department with default fee → practitioner; visit create →
+    token 1 toast, ₹300 pending consult-fee charge from the department default; waiting →
+    in_consult → completed; second visit token 2 cancelled with reason → charge voided; queue
+    filters and completed/cancelled toggle; print-media slip renders letterhead, token, fee
+    line; settings page exposes follow-up validity with pristine-disabled save.
+  - Interfaces delivered: `visit.create({ orgSlug, patientId, departmentId, practitionerId })
+→ { visit, charge|null }`; `visit.transition({ orgSlug, visitId, to, cancelReason? })`;
+    `visit.queue`/`visit.get` for consult (Slice 7); Charge row shape (visitId, catalogItemId,
+    description/unitPrice/taxRatePercent/taxCode snapshots, qty, sourceType, status,
+    invoiceId) for billing (Slice 6).
   - Acceptance: create Visit (patient + department + practitioner) → daily token from counter +
     auto consult-fee Charge (pending, snapshotted). Fee item resolution, in order:
     1. follow-up — the practitioner's `followUpFeeItemId`, when set and the patient has a
@@ -520,6 +552,12 @@ feature (including the ambient scribe — separate spec after the speech feasibi
   fire-and-forget `audit()` for now; revisit when a compliance requirement demands
   commit-atomic entries).
 - Appointment booking (queue-first per pilot's walk-in reality).
+- Verification-cost optimization for client-named references (ADR 0019, 2026-08-07):
+  server-side org-scoped verification of referenced ids and server-snapshotted prices are
+  non-negotiable; folding the checks into writes (`INSERT … SELECT`) and constraint-level
+  tenancy proof (`UNIQUE (org_id, id)` + composite FKs) are the sanctioned paths to remove
+  their query cost, explored only if profiling after Slice 6 shows verification as a
+  measurable share of request time.
 
 ## Open Questions
 

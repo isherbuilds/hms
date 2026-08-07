@@ -6,7 +6,8 @@ import { organization } from "./auth";
 /**
  * Single source of truth for a fresh organization's settings: `settings.get`
  * returns these until the first save, and `settings.update` always writes a
- * full row, so the columns carry no defaults of their own to drift.
+ * full row. The follow-up-days DB default exists only to backfill existing
+ * rows during migration; `SETTINGS_DEFAULTS` remains the application source.
  */
 export const SETTINGS_DEFAULTS = {
   legalName: "",
@@ -18,6 +19,7 @@ export const SETTINGS_DEFAULTS = {
   receiptPrefix: "RCT",
   creditNotePrefix: "CN",
   fiscalYearStartMonth: 4,
+  followUpValidityDays: 14,
 } as const;
 
 // 1:1 with organization — the org id is the primary key.
@@ -39,6 +41,11 @@ export const organizationSettings = pgTable(
     creditNotePrefix: text("credit_note_prefix").notNull(),
     /** 1–12; April (4) is the Indian fiscal year start. */
     fiscalYearStartMonth: integer("fiscal_year_start_month").notNull(),
+    /**
+     * The DB default exists solely to backfill existing rows in the migration;
+     * `SETTINGS_DEFAULTS` remains the application-level source.
+     */
+    followUpValidityDays: integer("follow_up_validity_days").notNull().default(14),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -46,6 +53,10 @@ export const organizationSettings = pgTable(
     check(
       "organization_settings_fiscal_month_check",
       sql`${table.fiscalYearStartMonth} between 1 and 12`,
+    ),
+    check(
+      "organization_settings_follow_up_days_check",
+      sql`${table.followUpValidityDays} between 1 and 365`,
     ),
   ],
 );

@@ -56,6 +56,7 @@ const departmentSchema = z.object({
     .trim()
     .min(1, "Enter a department name")
     .max(200, "Keep the name under 200 characters"),
+  defaultConsultFeeItemId: z.string().min(1).nullable().optional(),
 });
 
 const practitionerSchema = z.object({
@@ -68,6 +69,8 @@ const practitionerSchema = z.object({
   registrationNumber: z.string().trim().nullable().optional(),
   memberUserId: z.string().min(1).nullable().optional(),
   consultFeeItemId: z.string().min(1).nullable().optional(),
+  followUpFeeItemId: z.string().min(1).nullable().optional(),
+  followUpValidityDays: z.number().int().min(1).max(365).nullable().optional(),
 });
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -79,6 +82,7 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 type Department = {
   id: string;
   name: string;
+  defaultConsultFeeItemId: string | null;
   createdAt: Date | string;
 };
 
@@ -89,6 +93,8 @@ type Practitioner = {
   registrationNumber: string | null;
   memberUserId: string | null;
   consultFeeItemId: string | null;
+  followUpFeeItemId: string | null;
+  followUpValidityDays: number | null;
 };
 
 type MemberOption = {
@@ -174,6 +180,7 @@ function StaffRoute() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
+                    <TableHead>Default consult fee</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead className="w-16 text-right">Action</TableHead>
                   </TableRow>
@@ -181,7 +188,7 @@ function StaffRoute() {
                 <TableBody>
                   {departments.data.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={3} className="text-center text-muted-foreground">
+                      <TableCell colSpan={4} className="text-center text-muted-foreground">
                         No departments yet
                       </TableCell>
                     </TableRow>
@@ -189,6 +196,11 @@ function StaffRoute() {
                     departments.data.map((department) => (
                       <TableRow key={department.id}>
                         <TableCell className="font-medium">{department.name}</TableCell>
+                        <TableCell>
+                          {department.defaultConsultFeeItemId
+                            ? (catalogById.get(department.defaultConsultFeeItemId)?.name ?? "—")
+                            : "—"}
+                        </TableCell>
                         <TableCell className="whitespace-nowrap text-muted-foreground">
                           {dateFormatter.format(new Date(department.createdAt))}
                         </TableCell>
@@ -249,13 +261,14 @@ function StaffRoute() {
                     <TableHead>Registration no.</TableHead>
                     <TableHead>Linked account</TableHead>
                     <TableHead>Consult fee item</TableHead>
+                    <TableHead>Follow-up fee item</TableHead>
                     <TableHead className="w-16 text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {practitioners.data.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center text-muted-foreground">
                         No practitioners yet
                       </TableCell>
                     </TableRow>
@@ -290,6 +303,11 @@ function StaffRoute() {
                               ? (catalogById.get(practitioner.consultFeeItemId)?.name ?? "—")
                               : "—"}
                           </TableCell>
+                          <TableCell>
+                            {practitioner.followUpFeeItemId
+                              ? (catalogById.get(practitioner.followUpFeeItemId)?.name ?? "—")
+                              : "—"}
+                          </TableCell>
                           <TableCell className="text-right">
                             <Button
                               size="xs"
@@ -314,6 +332,8 @@ function StaffRoute() {
         <DepartmentDialog
           state={departmentDialog}
           orgSlug={orgSlug}
+          catalogItems={catalog.data ?? []}
+          catalogPending={catalog.isPending}
           onClose={() => setDepartmentDialog(null)}
         />
       ) : null}
@@ -336,16 +356,23 @@ function StaffRoute() {
 function DepartmentDialog({
   state,
   orgSlug,
+  catalogItems,
+  catalogPending,
   onClose,
 }: {
   state: Exclude<DepartmentDialogState, null>;
   orgSlug: string;
+  catalogItems: CatalogOption[];
+  catalogPending: boolean;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
   const department = state.mode === "edit" ? state.department : null;
   const form = useZodForm(departmentSchema, {
-    defaultValues: { name: department?.name ?? "" },
+    defaultValues: {
+      name: department?.name ?? "",
+      defaultConsultFeeItemId: department?.defaultConsultFeeItemId ?? null,
+    },
   });
 
   const onSuccess = (message: string) => {
@@ -380,11 +407,12 @@ function DepartmentDialog({
     }),
   );
   const isSubmitting = createDepartment.isPending || updateDepartment.isPending;
-  const submit = form.handleSubmit(({ name }) => {
+  const submit = form.handleSubmit(({ name, defaultConsultFeeItemId }) => {
+    const fields = { name, defaultConsultFeeItemId: defaultConsultFeeItemId || null };
     if (department) {
-      updateDepartment.mutate({ orgSlug, departmentId: department.id, name });
+      updateDepartment.mutate({ orgSlug, departmentId: department.id, ...fields });
     } else {
-      createDepartment.mutate({ orgSlug, name });
+      createDepartment.mutate({ orgSlug, ...fields });
     }
   });
 
@@ -409,6 +437,34 @@ function DepartmentDialog({
                   <FormLabel>Name</FormLabel>
                   <FormControl>
                     <Input {...field} autoFocus disabled={isSubmitting} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="defaultConsultFeeItemId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Default consult fee (optional)</FormLabel>
+                  <FormControl>
+                    <select
+                      className={SELECT_CLASS}
+                      name={field.name}
+                      ref={field.ref}
+                      onBlur={field.onBlur}
+                      value={field.value ?? ""}
+                      onChange={(event) => field.onChange(event.target.value || null)}
+                      disabled={isSubmitting || catalogPending}
+                    >
+                      <option value="">None</option>
+                      {catalogItems.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name} ({item.code})
+                        </option>
+                      ))}
+                    </select>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -457,6 +513,8 @@ function PractitionerDialog({
       registrationNumber: practitioner?.registrationNumber ?? null,
       memberUserId: practitioner?.memberUserId ?? null,
       consultFeeItemId: practitioner?.consultFeeItemId ?? null,
+      followUpFeeItemId: practitioner?.followUpFeeItemId ?? null,
+      followUpValidityDays: practitioner?.followUpValidityDays ?? null,
     },
   });
 
@@ -490,6 +548,8 @@ function PractitionerDialog({
       registrationNumber: values.registrationNumber?.trim() || null,
       memberUserId: values.memberUserId || null,
       consultFeeItemId: values.consultFeeItemId || null,
+      followUpFeeItemId: values.followUpFeeItemId || null,
+      followUpValidityDays: values.followUpValidityDays ?? null,
     };
     if (practitioner) {
       updatePractitioner.mutate({ orgSlug, practitionerId: practitioner.id, ...fields });
@@ -619,6 +679,65 @@ function PractitionerDialog({
                 </FormItem>
               )}
             />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="followUpFeeItemId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Follow-up fee (optional)</FormLabel>
+                    <FormControl>
+                      <select
+                        className={SELECT_CLASS}
+                        name={field.name}
+                        ref={field.ref}
+                        onBlur={field.onBlur}
+                        value={field.value ?? ""}
+                        onChange={(event) => field.onChange(event.target.value || null)}
+                        disabled={isSubmitting || catalogPending}
+                      >
+                        <option value="">None</option>
+                        {catalogItems.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name} ({item.code})
+                          </option>
+                        ))}
+                      </select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="followUpValidityDays"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Follow-up window (days)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={365}
+                        step={1}
+                        name={field.name}
+                        ref={field.ref}
+                        onBlur={field.onBlur}
+                        value={field.value ?? ""}
+                        onChange={(event) =>
+                          field.onChange(
+                            event.target.value === "" ? null : Number(event.target.value),
+                          )
+                        }
+                        placeholder="Organization default"
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <DialogFooter>
               <Button type="button" variant="ghost" disabled={isSubmitting} onClick={onClose}>

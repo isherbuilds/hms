@@ -1,6 +1,7 @@
 import { pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { organization } from "./auth";
+import { catalogItems } from "./catalog-items";
 
 /**
  * Clinical departments (OPD units). Referenced by practitioners and, from
@@ -14,6 +15,8 @@ export const departments = pgTable(
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    /** Fallback consult-fee catalog item when a practitioner has no fee configured. */
+    defaultConsultFeeItemId: text("default_consult_fee_item_id").references(() => catalogItems.id),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
