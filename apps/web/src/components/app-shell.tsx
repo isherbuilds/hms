@@ -16,6 +16,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import {
   CheckIcon,
   ChevronsUpDownIcon,
+  ClipboardPlusIcon,
   FileIcon,
   LayoutDashboardIcon,
   LogOutIcon,
@@ -37,6 +38,7 @@ const NAV: readonly {
     | "/org/$orgSlug/dashboard"
     | "/org/$orgSlug/admin/settings"
     | "/org/$orgSlug/files"
+    | "/org/$orgSlug/front-desk"
     | "/org/$orgSlug/ai"
     | "/org/$orgSlug/members"
     | "/org/$orgSlug/audit";
@@ -49,6 +51,12 @@ const NAV: readonly {
     label: "Dashboard",
     icon: LayoutDashboardIcon,
     permission: { member: ["read"] },
+  },
+  {
+    to: "/org/$orgSlug/front-desk",
+    label: "Front desk",
+    icon: ClipboardPlusIcon,
+    permission: { patient: ["read"] },
   },
   {
     to: "/org/$orgSlug/files",

@@ -19,6 +19,9 @@ import { Route as OrgOrgSlugDashboardRouteImport } from './routes/org/$orgSlug/d
 import { Route as OrgOrgSlugFilesRouteImport } from './routes/org/$orgSlug/files'
 import { Route as OrgOrgSlugMembersRouteImport } from './routes/org/$orgSlug/members'
 import { Route as OrgOrgSlugAdminSettingsRouteImport } from './routes/org/$orgSlug/admin/settings'
+import { Route as OrgOrgSlugFrontDeskIndexRouteImport } from './routes/org/$orgSlug/front-desk/index'
+import { Route as OrgOrgSlugFrontDeskRegisterRouteImport } from './routes/org/$orgSlug/front-desk/register'
+import { Route as OrgOrgSlugFrontDeskPatientsPatientIdRouteImport } from './routes/org/$orgSlug/front-desk/patients.$patientId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -70,6 +73,24 @@ const OrgOrgSlugAdminSettingsRoute = OrgOrgSlugAdminSettingsRouteImport.update({
   path: '/admin/settings',
   getParentRoute: () => OrgOrgSlugRouteRoute,
 } as any)
+const OrgOrgSlugFrontDeskIndexRoute =
+  OrgOrgSlugFrontDeskIndexRouteImport.update({
+    id: '/front-desk/',
+    path: '/front-desk/',
+    getParentRoute: () => OrgOrgSlugRouteRoute,
+  } as any)
+const OrgOrgSlugFrontDeskRegisterRoute =
+  OrgOrgSlugFrontDeskRegisterRouteImport.update({
+    id: '/front-desk/register',
+    path: '/front-desk/register',
+    getParentRoute: () => OrgOrgSlugRouteRoute,
+  } as any)
+const OrgOrgSlugFrontDeskPatientsPatientIdRoute =
+  OrgOrgSlugFrontDeskPatientsPatientIdRouteImport.update({
+    id: '/front-desk/patients/$patientId',
+    path: '/front-desk/patients/$patientId',
+    getParentRoute: () => OrgOrgSlugRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -82,6 +103,9 @@ export interface FileRoutesByFullPath {
   '/org/$orgSlug/files': typeof OrgOrgSlugFilesRoute
   '/org/$orgSlug/members': typeof OrgOrgSlugMembersRoute
   '/org/$orgSlug/admin/settings': typeof OrgOrgSlugAdminSettingsRoute
+  '/org/$orgSlug/front-desk/register': typeof OrgOrgSlugFrontDeskRegisterRoute
+  '/org/$orgSlug/front-desk/': typeof OrgOrgSlugFrontDeskIndexRoute
+  '/org/$orgSlug/front-desk/patients/$patientId': typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -94,6 +118,9 @@ export interface FileRoutesByTo {
   '/org/$orgSlug/files': typeof OrgOrgSlugFilesRoute
   '/org/$orgSlug/members': typeof OrgOrgSlugMembersRoute
   '/org/$orgSlug/admin/settings': typeof OrgOrgSlugAdminSettingsRoute
+  '/org/$orgSlug/front-desk/register': typeof OrgOrgSlugFrontDeskRegisterRoute
+  '/org/$orgSlug/front-desk': typeof OrgOrgSlugFrontDeskIndexRoute
+  '/org/$orgSlug/front-desk/patients/$patientId': typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -107,6 +134,9 @@ export interface FileRoutesById {
   '/org/$orgSlug/files': typeof OrgOrgSlugFilesRoute
   '/org/$orgSlug/members': typeof OrgOrgSlugMembersRoute
   '/org/$orgSlug/admin/settings': typeof OrgOrgSlugAdminSettingsRoute
+  '/org/$orgSlug/front-desk/register': typeof OrgOrgSlugFrontDeskRegisterRoute
+  '/org/$orgSlug/front-desk/': typeof OrgOrgSlugFrontDeskIndexRoute
+  '/org/$orgSlug/front-desk/patients/$patientId': typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -121,6 +151,9 @@ export interface FileRouteTypes {
     | '/org/$orgSlug/files'
     | '/org/$orgSlug/members'
     | '/org/$orgSlug/admin/settings'
+    | '/org/$orgSlug/front-desk/register'
+    | '/org/$orgSlug/front-desk/'
+    | '/org/$orgSlug/front-desk/patients/$patientId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -133,6 +166,9 @@ export interface FileRouteTypes {
     | '/org/$orgSlug/files'
     | '/org/$orgSlug/members'
     | '/org/$orgSlug/admin/settings'
+    | '/org/$orgSlug/front-desk/register'
+    | '/org/$orgSlug/front-desk'
+    | '/org/$orgSlug/front-desk/patients/$patientId'
   id:
     | '__root__'
     | '/'
@@ -145,6 +181,9 @@ export interface FileRouteTypes {
     | '/org/$orgSlug/files'
     | '/org/$orgSlug/members'
     | '/org/$orgSlug/admin/settings'
+    | '/org/$orgSlug/front-desk/register'
+    | '/org/$orgSlug/front-desk/'
+    | '/org/$orgSlug/front-desk/patients/$patientId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -226,6 +265,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgSlugAdminSettingsRouteImport
       parentRoute: typeof OrgOrgSlugRouteRoute
     }
+    '/org/$orgSlug/front-desk/': {
+      id: '/org/$orgSlug/front-desk/'
+      path: '/front-desk'
+      fullPath: '/org/$orgSlug/front-desk/'
+      preLoaderRoute: typeof OrgOrgSlugFrontDeskIndexRouteImport
+      parentRoute: typeof OrgOrgSlugRouteRoute
+    }
+    '/org/$orgSlug/front-desk/register': {
+      id: '/org/$orgSlug/front-desk/register'
+      path: '/front-desk/register'
+      fullPath: '/org/$orgSlug/front-desk/register'
+      preLoaderRoute: typeof OrgOrgSlugFrontDeskRegisterRouteImport
+      parentRoute: typeof OrgOrgSlugRouteRoute
+    }
+    '/org/$orgSlug/front-desk/patients/$patientId': {
+      id: '/org/$orgSlug/front-desk/patients/$patientId'
+      path: '/front-desk/patients/$patientId'
+      fullPath: '/org/$orgSlug/front-desk/patients/$patientId'
+      preLoaderRoute: typeof OrgOrgSlugFrontDeskPatientsPatientIdRouteImport
+      parentRoute: typeof OrgOrgSlugRouteRoute
+    }
   }
 }
 
@@ -236,6 +296,9 @@ interface OrgOrgSlugRouteRouteChildren {
   OrgOrgSlugFilesRoute: typeof OrgOrgSlugFilesRoute
   OrgOrgSlugMembersRoute: typeof OrgOrgSlugMembersRoute
   OrgOrgSlugAdminSettingsRoute: typeof OrgOrgSlugAdminSettingsRoute
+  OrgOrgSlugFrontDeskRegisterRoute: typeof OrgOrgSlugFrontDeskRegisterRoute
+  OrgOrgSlugFrontDeskIndexRoute: typeof OrgOrgSlugFrontDeskIndexRoute
+  OrgOrgSlugFrontDeskPatientsPatientIdRoute: typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
 }
 
 const OrgOrgSlugRouteRouteChildren: OrgOrgSlugRouteRouteChildren = {
@@ -245,6 +308,10 @@ const OrgOrgSlugRouteRouteChildren: OrgOrgSlugRouteRouteChildren = {
   OrgOrgSlugFilesRoute: OrgOrgSlugFilesRoute,
   OrgOrgSlugMembersRoute: OrgOrgSlugMembersRoute,
   OrgOrgSlugAdminSettingsRoute: OrgOrgSlugAdminSettingsRoute,
+  OrgOrgSlugFrontDeskRegisterRoute: OrgOrgSlugFrontDeskRegisterRoute,
+  OrgOrgSlugFrontDeskIndexRoute: OrgOrgSlugFrontDeskIndexRoute,
+  OrgOrgSlugFrontDeskPatientsPatientIdRoute:
+    OrgOrgSlugFrontDeskPatientsPatientIdRoute,
 }
 
 const OrgOrgSlugRouteRouteWithChildren = OrgOrgSlugRouteRoute._addFileChildren(

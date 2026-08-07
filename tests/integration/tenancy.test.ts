@@ -1,4 +1,4 @@
-import { beforeAll, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 
 import { drainAuditWrites } from "@better-stack/api/audit";
 import { appRouter, type AppRouterClient } from "@better-stack/api/routers/index";
@@ -351,6 +351,25 @@ const GUARDED_CALLS = {
   "files.finalizeUpload": (api, claim) => api.files.finalizeUpload({ ...claim, key: "k" }),
   "files.getReadUrl": (api, claim) => api.files.getReadUrl({ ...claim, key: "k" }),
   "files.delete": (api, claim) => api.files.delete({ ...claim, key: "k" }),
+  "patient.register": (api, claim) =>
+    api.patient.register({
+      ...claim,
+      name: "Intrusion",
+      phone: "5550000",
+      sex: "other",
+      ageYears: 30,
+    }),
+  "patient.search": (api, claim) => api.patient.search({ ...claim, query: "intrusion" }),
+  "patient.get": (api, claim) => api.patient.get({ ...claim, patientId: crypto.randomUUID() }),
+  "patient.update": (api, claim) =>
+    api.patient.update({
+      ...claim,
+      patientId: crypto.randomUUID(),
+      name: "Intrusion",
+      phone: "5550000",
+      sex: "other",
+      ageYears: 30,
+    }),
   "members.me": (api, claim) => api.members.me({ ...claim }),
   "members.list": (api, claim) => api.members.list({ ...claim }),
   "members.invite": (api, claim) => api.members.invite({ ...claim, email: "x@example.com" }),
@@ -471,4 +490,84 @@ test("an invitation id from another tenant cannot be revoked", async () => {
 
   const stillPending = await clientFor(alice).members.list({ orgSlug: alpha.slug });
   expect(stillPending.invitations.map((row) => row.id)).toContain(invited.id);
+});
+
+describe("patient tenancy four questions", () => {
+  test("org B cannot see org A patients through search or get", async () => {
+    const alice = await createTestUser("patient-scope-alice");
+    const alpha = await createOrganization(alice, "patient-scope-alpha");
+    const bob = await createTestUser("patient-scope-bob");
+    const beta = await createOrganization(bob, "patient-scope-beta");
+    const phone = "5551000";
+    const patient = await clientFor(alice).patient.register({
+      orgSlug: alpha.slug,
+      name: "Alpha Patient",
+      phone,
+      sex: "female",
+      ageYears: 42,
+    });
+
+    const bobClient = clientFor(bob);
+    expect((await bobClient.patient.search({ orgSlug: beta.slug, phone })).items).toHaveLength(0);
+    await expectORPCCode(
+      bobClient.patient.get({ orgSlug: beta.slug, patientId: patient.id }),
+      "NOT_FOUND",
+    );
+  });
+
+  test("one client concurrently scopes patient calls to two organizations", async () => {
+    const user = await createTestUser("patient-scope-multi");
+    const one = await createOrganization(user, "patient-scope-one");
+    const two = await createOrganization(user, "patient-scope-two");
+    const api = clientFor(user);
+
+    const [inOne, inTwo] = await Promise.all([
+      api.patient.register({
+        orgSlug: one.slug,
+        name: "Patient In One",
+        phone: "5551101",
+        sex: "male",
+        ageYears: 20,
+      }),
+      api.patient.register({
+        orgSlug: two.slug,
+        name: "Patient In Two",
+        phone: "5551102",
+        sex: "female",
+        ageYears: 21,
+      }),
+    ]);
+    const [seenInOne, seenInTwo] = await Promise.all([
+      api.patient.search({ orgSlug: one.slug }),
+      api.patient.search({ orgSlug: two.slug }),
+    ]);
+
+    expect(seenInOne.items.map((patient) => patient.id)).toEqual([inOne.id]);
+    expect(seenInTwo.items.map((patient) => patient.id)).toEqual([inTwo.id]);
+  });
+
+  test("a patient request naming a foreign organization is FORBIDDEN", async () => {
+    const owner = await createTestUser("patient-scope-owner");
+    const organization = await createOrganization(owner, "patient-scope-foreign");
+    const outsider = await createTestUser("patient-scope-outsider");
+
+    await expectORPCCode(
+      clientFor(outsider).patient.search({ orgSlug: organization.slug }),
+      "FORBIDDEN",
+    );
+  });
+
+  test("a removed member is FORBIDDEN on the very next patient call", async () => {
+    const owner = await createTestUser("patient-scope-revoke-owner");
+    const organization = await createOrganization(owner, "patient-scope-revoke");
+    const member = await createTestUser("patient-scope-revoke-member");
+    await joinOrganization(member, organization.id);
+    const memberClient = clientFor(member);
+
+    expect((await memberClient.patient.search({ orgSlug: organization.slug })).items).toHaveLength(
+      0,
+    );
+    await removeFromOrganization(owner, member.user.email, organization.id);
+    await expectORPCCode(memberClient.patient.search({ orgSlug: organization.slug }), "FORBIDDEN");
+  });
 });

@@ -15,6 +15,13 @@
       "when": 1786111497091,
       "tag": "0001_graceful_moon_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786113123376,
+      "tag": "0002_thick_roxanne_simpson",
+      "breakpoints": true
     }
   ]
 }

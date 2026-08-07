@@ -18,6 +18,7 @@ export const ac = createAccessControl({
   // `member` is Better Auth's own statement; "read" is ours, so that everyone
   // in an org can see who else is in it while only admins can change it.
   member: ["create", "read", "update", "delete"],
+  patient: ["create", "read", "update"],
   settings: ["read", "update"],
   audit: ["read"],
   storage: ["upload", "read", "delete"],
@@ -30,6 +31,7 @@ export const ac = createAccessControl({
 export const member = ac.newRole({
   ...memberAc.statements,
   member: ["read"],
+  patient: ["create", "read", "update"],
   settings: ["read"],
   storage: ["upload", "read"],
   ai: ["use"],
@@ -38,6 +40,7 @@ export const member = ac.newRole({
 export const admin = ac.newRole({
   ...adminAc.statements,
   member: ["create", "read", "update", "delete"],
+  patient: ["create", "read", "update"],
   settings: ["read", "update"],
   audit: ["read"],
   storage: ["upload", "read", "delete"],
@@ -47,6 +50,7 @@ export const admin = ac.newRole({
 export const owner = ac.newRole({
   ...ownerAc.statements,
   member: ["create", "read", "update", "delete"],
+  patient: ["create", "read", "update"],
   settings: ["read", "update"],
   audit: ["read"],
   storage: ["upload", "read", "delete"],

@@ -308,19 +308,27 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     `settings.get/update({ orgSlug, … }) → SettingsFields`; `SETTINGS_DEFAULTS` in
     `@better-stack/db/schema/organization-settings`; settings read used by every print view
     and numbering call.
-- [ ] Slice 3: Patients — register, dedupe, search
-  - Acceptance: registration form assigns MRN via counter; entering a phone number surfaces
-    existing matches before save; keyset-paginated patient search (MRN, name, phone); edit
-    demographics; register and demographic-edit audited via `audit()`.
-  - Verify: integration test registers, detects duplicate phone, searches; tenancy
-    four-questions for `patient`.
-  - Depends on: Slice 2
-  - Owns/Touches: `packages/db/src/schema/patients.ts`,
-    `packages/api/src/routers/patient.ts`, `apps/web/src/routes/org/$orgSlug/front-desk/*`;
-    adds `patient` statement/grants in `packages/auth/src/access.ts` (coordinator-owned).
-  - Interfaces: `patient.register/search/get/update` contracts (all inputs extend `orgInput`);
-    Patient row shape consumed by visit + billing slices (id, mrn, name, phone,
-    ageYears/dateOfBirth, sex).
+- [x] Slice 3: Patients — register, dedupe, search — **done** (2026-08-07, this session).
+  - Delivered: `patients` table (org-scoped, unique (org, mrn), (org, phone) dedupe index,
+    (org, createdAt desc, id desc) keyset index, sex/age/dob check constraints) + generated
+    migration `0002_thick_roxanne_simpson.sql`; `patient` router
+    (`register`/`search`/`get`/`update`) — register allocates MRN
+    `{mrnPrefix}{seq padStart 6}` from counter key `mrn` inside one transaction, search is
+    keyset-paginated with exact-phone dedupe filter and name/MRN/phone substring query,
+    update is a single scoped `UPDATE … RETURNING`; `patient: ["create","read","update"]`
+    granted to all three roles in `access.ts`; `patient.register`/`patient.update` audited
+    fire-and-forget; front-desk pages (search index, register with live duplicate-phone
+    warning panel, patient detail/edit) on the RHF form stack plus a permission-gated
+    "Front desk" nav entry.
+  - Verified: `bun run check-types && bun run check && bun run test` → 56/56 (MRN
+    sequencing per org and with prefix; phone dedupe; substring search; keyset pagination
+    walk without gaps/duplicates; NOT_FOUND on foreign/unknown ids; dob-or-age validation;
+    audit rows via `eventually`; tenancy four-questions for `patient` incl. the
+    guarded-call sweep); browser smoke — register → MRN `000001` toast + detail page,
+    duplicate-phone warning lists the existing patient, search by name returns the row.
+  - Interfaces delivered: `patient.register/search/get/update({ orgSlug, … })`; Patient row
+    shape for visit + billing slices (id, mrn, name, phone, sex ("male"|"female"|"other"),
+    dateOfBirth `YYYY-MM-DD`|null, ageYears|null, address).
 - [ ] Slice 4: Catalog, departments, practitioners (admin CRUD)
   - Acceptance: CRUD for all three, writes guarded by admin/owner-only grants
     (`catalog`/`staff` statements); catalog items carry price/taxRate/taxCode/category;
