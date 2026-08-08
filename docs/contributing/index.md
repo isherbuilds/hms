@@ -41,6 +41,8 @@ style, tests, and runtime architecture.
   - [File storage](./architecture/file-storage.md)
   - [HMS domain layer](./architecture/domain-layer.md) — live relationships and
     front-desk boundary
+  - [Accounting ledger](./architecture/accounting.md) — double-entry posting and
+    statutory handover boundary
 
 ## Research
 

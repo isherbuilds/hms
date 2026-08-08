@@ -23,6 +23,11 @@ Date: 2026-08-03. Product brainstorm output. Terms per `CONTEXT.md`; evidence pe
    accumulating on Visits, on-the-spot Invoice/Receipt printing, payment capture (cash/UPI/card
    as recorded methods, no gateway), daily collection reports. **General ledger stays external
    (Tally)**; HMS ships a Tally XML day-book export. We never build accounting.
+   *(Amended 2026-08-08 by ADR 0020: billing documents post balanced double-entry journals into
+   a minimal, code-owned Billing Ledger for statutory handover — trial balance, billing-ledger
+   balance sheet, GST register. Handover is neutral XLSX/PDF, replacing the promised Tally XML
+   export unless the pilot's accountant proves an adapter necessary. Full bookkeeping, opening
+   balances, reconciliation, and final accounts remain external — that boundary is unchanged.)*
 7. **v0 scope (first live at pilot)**:
    - Patient registration: per-org MRN, phone+name dedupe.
    - Department / Practitioner setup, consult fees, OPD ticket + queue.
@@ -33,6 +38,10 @@ Date: 2026-08-03. Product brainstorm output. Terms per `CONTEXT.md`; evidence pe
      front-office-only.
    - Explicit non-goals for v0: pharmacy POS/stock, lab result entry, IPD/beds, surgery/OT,
      insurance/TPA, ABDM, payment gateways, offline mode, general ledger.
+   *(Amended for the delivered v0, per `docs/specs/accly-hms-v0.md`: the consult screen was
+   replaced by signed paper-prescription capture — the pilot's doctors prescribe on paper and
+   hold no logins; daily collection / OPD reports and the exception worklists moved to
+   `docs/specs/accly-hms-go-live.md`; Tally export per the decision 6 amendment above.)*
 8. **AI-native architecture from day one** (costs little, enables the wedge):
    - **Per-aggregate state machines, shared AI provenance envelope** (amended 2026-08-03 on
      advisory: a universal Draft→Approve lifecycle would conflate transition/reversal rules).
@@ -51,6 +60,9 @@ Date: 2026-08-03. Product brainstorm output. Terms per `CONTEXT.md`; evidence pe
 10. **Module sequence after v0**: pharmacy POS + stock → lab (orders already exist; add result
     entry + report print) → IPD/ADT (beds, Service Unit tree) → surgery/OT → ABDM integration →
     insurance/TPA. Each increment sold to the live pilot before build.
+    *(Amended 2026-08-08 by `docs/02-roadmap-decisions.md`: the fixed order is replaced by a
+    per-module trigger table — depth-first go-live precedes every department module. The
+    "sold to the live pilot before build" rule stands.)*
 11. **Stack**: post-dash-stack as-is — Bun, TanStack Start web + Hono/oRPC API (SSR in-process),
     Better Auth organizations, Drizzle/Postgres, presigned S3 files, no realtime (mutation →
     query-key refresh), Coolify deployment. App-level clinical roles (receptionist, doctor,

@@ -24,6 +24,9 @@ The corresponding organization routes are:
 - `/org/$orgSlug/billing`, `/billing/visits/$visitId`, and the print views
   under `/billing/invoices/$invoiceId` (invoice, receipt, credit note, and
   refund voucher)
+- `/org/$orgSlug/reports` and the statutory report pages beneath it
+  (`/reports/trial-balance`, `/reports/balance-sheet`, `/reports/gst`), each with
+  XLSX export and a print view
 
 Appointments, results, and beds are not live.
 
@@ -43,6 +46,11 @@ payments: { id, orgId, invoiceId, receiptNumber, method, amount }
 refunds: { id, orgId, invoiceId, creditNoteId, refundNumber, method, amount }
 attachments: { id, orgId, targetType, targetId, fileId, createdBy, createdAt }
 ```
+
+Billing documents also post balanced double-entry journals into the organization's
+Billing Ledger (`accounts`, `journal_entries`, `journal_lines`) inside the same
+transaction; that boundary, the seeded chart, and the posting rules live in
+[accounting](./accounting.md).
 
 ### Patient MRN
 
@@ -150,6 +158,7 @@ fiscal-year series from the counter keys `invoice:<fy>`, `receipt:<fy>`,
 | Billing       | `billing.addCharge`, `billing.voidCharge`                                                            | `billing:write`      |
 | Billing       | `billing.issueInvoice`, `billing.recordPayment`                                                      | `billing:write`      |
 | Billing       | `billing.issueCreditNote`, `billing.recordRefund`                                                    | `billing:creditNote` |
+| Report        | `report.trialBalance`, `report.balanceSheet`, `report.gst`                                          | `report:read`        |
 
 These are all `orgProcedure(...)` calls. Permission checks establish what the
 member may do; they do not replace the `orgId` predicate on every select,

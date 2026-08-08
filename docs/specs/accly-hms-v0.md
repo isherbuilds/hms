@@ -1,6 +1,8 @@
 # Spec: accly-hms v0 — OPD front office, billing, and paper prescription capture
 
-Status: ready
+Status: implemented — all 8 slices delivered (2026-08-08). Forward work is governed by
+`docs/02-roadmap-decisions.md` and `docs/specs/accly-hms-go-live.md`; this file is the
+implementation record of v0.
 Authority: brainstorm decision record `docs/01-mvp-decisions.md` (2026-08-03) + user selections
 in-session; advisory amendment on per-aggregate lifecycles applied.
 Amended 2026-08-07: reconciled to the bootstrapped repo. The spec was written against
@@ -564,9 +566,10 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
   - Interfaces: billing mutations post journals; `report.trialBalance`,
     `report.balanceSheet`, and `report.gst` provide accountant handover data. UI and exports
     state that the ledger covers HMS-posted billing activity only.
-  - Remaining work moves to the following slice: daily collections by method, OPD register,
-    unbilled-activity list, refund-due list, and Tally XML export. These operational reports and
-    the ERP-specific export are not part of Slice 8.
+  - Remaining work is not part of Slice 8: daily collections by method, OPD register,
+    unbilled-activity list, and refund-due list are Slices 11–12 of
+    `docs/specs/accly-hms-go-live.md`; a Tally-formatted export is conditional on the
+    accountant acceptance test (`docs/02-roadmap-decisions.md`, decision 6).
   - Delivered: an organization-scoped system chart and atomic journals for invoices, payments,
     credit notes, and refunds; immutable revenue-category snapshots; trial balance,
     billing-ledger balance sheet, and GST reports; and XLSX plus print-PDF handover views with an
@@ -595,8 +598,9 @@ boundary.
 
 ## Explicitly Deferred
 
-- Tally XML export and voucher/ledger mapping refinement with the pilot's accountant move to the
-  slice following Slice 8; Slice 8 ships neutral XLSX and print-PDF handover files instead.
+- Accountant handover boundary: Slice 8 ships neutral XLSX and print-PDF handover files. A
+  Tally-formatted export is conditional on the accountant acceptance test in
+  `docs/02-roadmap-decisions.md` (decision 6), not a scheduled slice.
 - GST rate table per service class from an accountant (v0 ships rates as org-editable catalog
   fields; engineering does not hard-code tax law).
 - Fine-grained API-level role permissions (v0 uses the coarse `access.ts` grants above).
