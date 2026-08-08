@@ -26,6 +26,7 @@
     "better-auth": "catalog:",
     "dotenv": "catalog:",
     "evlog": "catalog:",
+    "exceljs": "^4.4.0",
     "lucide-react": "catalog:",
     "next-themes": "catalog:",
     "nitro": "^3.0.260610-beta",

@@ -1,3 +1,16 @@
+CREATE TABLE "accounts" (
+	"id" text PRIMARY KEY NOT NULL,
+	"org_id" text NOT NULL,
+	"code" text NOT NULL,
+	"name" text NOT NULL,
+	"type" text NOT NULL,
+	"system_key" text,
+	"active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "accounts_type_check" CHECK ("accounts"."type" in ('asset', 'liability', 'equity', 'income', 'expense'))
+);
+--> statement-breakpoint
 CREATE TABLE "attachments" (
 	"id" text PRIMARY KEY NOT NULL,
 	"org_id" text NOT NULL,
@@ -123,6 +136,7 @@ CREATE TABLE "charges" (
 	"unit_price" numeric(12, 2) NOT NULL,
 	"tax_rate_percent" numeric(4, 2) NOT NULL,
 	"tax_code" text,
+	"revenue_category" text NOT NULL,
 	"qty" integer DEFAULT 1 NOT NULL,
 	"source_type" text NOT NULL,
 	"source_id" text,
@@ -139,6 +153,7 @@ CREATE TABLE "charges" (
 	CONSTRAINT "charges_qty_check" CHECK ("charges"."qty" > 0),
 	CONSTRAINT "charges_source_type_check" CHECK ("charges"."source_type" in ('consult_fee', 'manual')),
 	CONSTRAINT "charges_status_check" CHECK ("charges"."status" in ('pending', 'invoiced', 'voided')),
+	CONSTRAINT "charges_revenue_category_check" CHECK ("charges"."revenue_category" in ('consultation', 'procedure', 'lab', 'radiology', 'other')),
 	CONSTRAINT "charges_generated_by_check" CHECK ("charges"."generated_by" in ('member', 'ai'))
 );
 --> statement-breakpoint
@@ -309,7 +324,9 @@ CREATE TABLE "invoice_lines" (
 	"tax_amount" numeric(12, 2) NOT NULL,
 	"gross" numeric(12, 2) NOT NULL,
 	"tax_rate_percent" numeric(4, 2) NOT NULL,
-	"tax_code" text
+	"tax_code" text,
+	"revenue_category" text NOT NULL,
+	CONSTRAINT "invoice_lines_revenue_category_check" CHECK ("invoice_lines"."revenue_category" in ('consultation', 'procedure', 'lab', 'radiology', 'other'))
 );
 --> statement-breakpoint
 CREATE TABLE "payments" (
@@ -343,6 +360,30 @@ CREATE TABLE "refunds" (
 	CONSTRAINT "refunds_amount_check" CHECK ("refunds"."amount" > 0)
 );
 --> statement-breakpoint
+CREATE TABLE "journal_entries" (
+	"id" text PRIMARY KEY NOT NULL,
+	"org_id" text NOT NULL,
+	"entry_date" date NOT NULL,
+	"source_type" text NOT NULL,
+	"source_id" text NOT NULL,
+	"narration" text NOT NULL,
+	"created_by" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "journal_lines" (
+	"id" text PRIMARY KEY NOT NULL,
+	"org_id" text NOT NULL,
+	"entry_id" text NOT NULL,
+	"account_id" text NOT NULL,
+	"debit" numeric(12, 2) DEFAULT '0' NOT NULL,
+	"credit" numeric(12, 2) DEFAULT '0' NOT NULL,
+	CONSTRAINT "journal_lines_debit_check" CHECK ("journal_lines"."debit" >= 0),
+	CONSTRAINT "journal_lines_credit_check" CHECK ("journal_lines"."credit" >= 0),
+	CONSTRAINT "journal_lines_one_side_check" CHECK (("journal_lines"."debit" = 0) <> ("journal_lines"."credit" = 0))
+);
+--> statement-breakpoint
+ALTER TABLE "accounts" ADD CONSTRAINT "accounts_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "attachments" ADD CONSTRAINT "attachments_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "attachments" ADD CONSTRAINT "attachments_file_id_file_id_fk" FOREIGN KEY ("file_id") REFERENCES "public"."file"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "attachments" ADD CONSTRAINT "attachments_created_by_user_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -397,6 +438,13 @@ ALTER TABLE "refunds" ADD CONSTRAINT "refunds_org_id_organization_id_fk" FOREIGN
 ALTER TABLE "refunds" ADD CONSTRAINT "refunds_invoice_id_invoices_id_fk" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "refunds" ADD CONSTRAINT "refunds_credit_note_id_credit_notes_id_fk" FOREIGN KEY ("credit_note_id") REFERENCES "public"."credit_notes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "refunds" ADD CONSTRAINT "refunds_refunded_by_user_id_fk" FOREIGN KEY ("refunded_by") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "journal_entries" ADD CONSTRAINT "journal_entries_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "journal_entries" ADD CONSTRAINT "journal_entries_created_by_user_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "journal_lines" ADD CONSTRAINT "journal_lines_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "journal_lines" ADD CONSTRAINT "journal_lines_entry_id_journal_entries_id_fk" FOREIGN KEY ("entry_id") REFERENCES "public"."journal_entries"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "journal_lines" ADD CONSTRAINT "journal_lines_account_id_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."accounts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "accounts_org_code_idx" ON "accounts" USING btree ("org_id","code");--> statement-breakpoint
+CREATE UNIQUE INDEX "accounts_org_system_key_idx" ON "accounts" USING btree ("org_id","system_key") WHERE "accounts"."system_key" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "attachments_org_target_file_uq" ON "attachments" USING btree ("org_id","target_type","target_id","file_id");--> statement-breakpoint
 CREATE INDEX "attachments_org_target_idx" ON "attachments" USING btree ("org_id","target_type","target_id","created_at");--> statement-breakpoint
 CREATE INDEX "attachments_org_file_idx" ON "attachments" USING btree ("org_id","file_id");--> statement-breakpoint
@@ -440,4 +488,8 @@ CREATE INDEX "payments_org_created_idx" ON "payments" USING btree ("org_id","cre
 CREATE UNIQUE INDEX "refunds_org_number_idx" ON "refunds" USING btree ("org_id","refund_number");--> statement-breakpoint
 CREATE INDEX "refunds_org_invoice_idx" ON "refunds" USING btree ("org_id","invoice_id");--> statement-breakpoint
 CREATE INDEX "refunds_org_credit_note_idx" ON "refunds" USING btree ("org_id","credit_note_id");--> statement-breakpoint
-CREATE INDEX "refunds_org_created_idx" ON "refunds" USING btree ("org_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);
+CREATE INDEX "refunds_org_created_idx" ON "refunds" USING btree ("org_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
+CREATE UNIQUE INDEX "journal_entries_org_source_idx" ON "journal_entries" USING btree ("org_id","source_type","source_id");--> statement-breakpoint
+CREATE INDEX "journal_entries_org_date_idx" ON "journal_entries" USING btree ("org_id","entry_date");--> statement-breakpoint
+CREATE INDEX "journal_lines_org_account_idx" ON "journal_lines" USING btree ("org_id","account_id");--> statement-breakpoint
+CREATE INDEX "journal_lines_org_entry_idx" ON "journal_lines" USING btree ("org_id","entry_id");

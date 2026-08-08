@@ -20,7 +20,7 @@ const VISIT_STATUSES = ["waiting", "in_consult", "completed", "cancelled"] as co
 const DAY_MS = 86_400_000;
 type FeeItemSnapshot = Pick<
   typeof catalogItems.$inferSelect,
-  "id" | "name" | "unitPrice" | "taxRatePercent" | "taxCode"
+  "id" | "name" | "category" | "unitPrice" | "taxRatePercent" | "taxCode"
 >;
 
 async function findActiveCatalogItem(catalogItemId: string | null, orgId: string) {
@@ -32,6 +32,7 @@ async function findActiveCatalogItem(catalogItemId: string | null, orgId: string
     .select({
       id: catalogItems.id,
       name: catalogItems.name,
+      category: catalogItems.category,
       unitPrice: catalogItems.unitPrice,
       taxRatePercent: catalogItems.taxRatePercent,
       taxCode: catalogItems.taxCode,
@@ -170,6 +171,7 @@ export const visitRouter = {
           unitPrice: feeItem.unitPrice,
           taxRatePercent: feeItem.taxRatePercent,
           taxCode: feeItem.taxCode,
+          revenueCategory: feeItem.category,
           qty: 1,
           sourceType: "consult_fee",
           sourceId: null,

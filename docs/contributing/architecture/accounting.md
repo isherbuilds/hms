@@ -1,0 +1,88 @@
+# Accounting ledger
+
+The accounting boundary is a minimal, organization-scoped double-entry ledger.
+Its job is to give the hospital's chartered accountant a Tally-agnostic statutory
+data set: trial balance, billing-ledger balance sheet, GST document register, and XLSX or
+print-PDF handover files. It is not an ERP, a bookkeeping UI, or a replacement
+for the accountant's system of record.
+
+The ledger starts with the first financial document recorded in the HMS. It has
+no opening-balance workflow and does not contain payroll, procurement, banking,
+or other external-book activity. Every balance-sheet view and handover identifies
+itself as a billing-ledger report; the accountant combines it with the hospital's
+complete books outside the HMS.
+
+## Seeded chart of accounts
+
+Each organization receives the following system accounts on first posting.
+`systemKey` is the stable programmatic target; display codes and names are the
+seeded chart used in reports.
+
+| Code | Name                 | Type      | `systemKey`            |
+| ---- | -------------------- | --------- | ---------------------- |
+| 1000 | Cash in Hand         | asset     | `cash`                 |
+| 1100 | Bank                 | asset     | `bank`                 |
+| 1200 | Patient Receivables  | asset     | `patient_receivables`  |
+| 2100 | GST Output Payable   | liability | `gst_output`           |
+| 4100 | Consultation Revenue | income    | `revenue_consultation` |
+| 4200 | Procedure Revenue    | income    | `revenue_procedure`    |
+| 4300 | Lab Revenue          | income    | `revenue_lab`          |
+| 4400 | Radiology Revenue    | income    | `revenue_radiology`    |
+| 4900 | Other Revenue        | income    | `revenue_other`        |
+
+Codes and system keys are unique within an organization. Posting resolves an
+account by `systemKey`, never by a user-facing name.
+
+## Posting rules
+
+Billing documents post these entries in the same database transaction that
+creates the document. Revenue lines are grouped by the catalog category carried
+by the billed charge's immutable category snapshot; manual charges use Other Revenue.
+
+| Document    | Debit                                                                              | Credit                                                                    |
+| ----------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Invoice     | Patient Receivables for the grand total                                            | Revenue by catalog category for taxable value; GST Output Payable for tax |
+| Payment     | Cash in Hand for cash, otherwise Bank, for the receipt amount                      | Patient Receivables for the receipt amount                                |
+| Credit note | Revenue by catalog category for taxable value; GST Output Payable for reversed tax | Patient Receivables for the credit-note total                             |
+| Refund      | Patient Receivables for the refund amount                                          | Cash in Hand for cash, otherwise Bank, for the refund amount              |
+
+A zero-value invoice does not post. All aggregation and balance checks use
+integer paise; stored amounts remain two-decimal strings.
+
+## Invariants and transaction boundary
+
+`postJournalEntry` rejects a journal with no non-zero lines, a line with both or
+neither side set, or unequal debit and credit totals. The database additionally
+allows only one journal entry for each `(orgId, sourceType, sourceId)`, so the
+same document cannot post twice.
+
+Posting is atomic with the billing mutation: either both the document and its
+journal commit, or neither does. This deliberately differs from the ordinary
+audit trail in [ADR 0005](../decisions/0005-fire-and-forget-audit.md), where an
+operational audit insert may fail without failing the mutation. Accounting
+cannot accept that trade-off because money must not drift from its source
+document. See [ADR 0020](../decisions/0020-double-entry-posting-in-billing-transactions.md).
+
+Every row and query remains organization-scoped. `createdBy` is attribution,
+not tenant scope.
+
+## Reports and dates
+
+Journal dates are bucketed in `Asia/Kolkata`. Document timestamps used by the
+GST register are converted to the same zone before taking their calendar date.
+This is a v0 assumption until organizations gain an explicit timezone setting.
+
+Trial balance and billing-ledger balance sheet read the ledger. The GST report instead reads
+invoice and credit-note documents and their snapshotted lines, because tax
+reporting requires document numbers, patient snapshots, rates, and tax codes
+that do not belong on journal lines.
+
+## Extension path
+
+Pharmacy, inventory, lab, and radiology do not require a second reporting
+system. Each future module adds the accounts and posting rules its transactions
+need, then posts through the same ledger. `journal_entries.sourceType` is an
+open text set so new source documents are additive rather than a schema-wide
+enum change. Revenue is already split by catalog category, including dedicated
+lab and radiology accounts, so those modules can preserve statutory continuity
+while adding their operational detail.

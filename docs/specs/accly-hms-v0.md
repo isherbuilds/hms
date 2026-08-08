@@ -13,6 +13,10 @@ Amended 2026-08-07 (later, user decisions): forms use **React Hook Form in the m
 shape** (`useZodForm`, shared `Form*` primitives and `SubmitButton` in `packages/ui`); the
 audit trail stays **fire-and-forget `audit()` for sensitive actions only** — in-transaction
 audit is explicitly deferred, not built. Slice 2 is complete.
+Amended 2026-08-08 (user decision): v0 includes a minimal double-entry Billing Ledger and
+statutory handover reports. Full bookkeeping and final accounts remain external. The app is
+pre-production, so migration history is rebased to one fresh-schema baseline rather than
+preserving upgrade compatibility.
 Supersedes: the 2026-08-03 revision of this file.
 
 Vocabulary: `docs/CONTEXT.md`. Terms Organization, Member, Patient, Visit, Charge, Invoice,
@@ -24,7 +28,8 @@ A committed pilot hospital runs OPD on a legacy HMS plus Tally: patient register
 desk, pays on the spot, doctor writes on paper. Billing and the day-book are the hospital's
 lifeline; the current software is dated, and no system in this segment is AI-ready. We need a
 deployable v0 that replaces the front office + billing path outright, is architecturally ready
-for the ambient-AI wedge, and leaves accounting in Tally.
+for the ambient-AI wedge, and gives the accountant a traceable billing-ledger handover while
+leaving the hospital's complete books and final accounts in Tally.
 
 ## Solution
 
@@ -32,7 +37,8 @@ Multi-tenant web HMS on the better-stack architecture. One hospital = one Organi
 delivers: patient registration with per-org MRN and phone dedupe; departments/practitioners;
 priced Service Catalog with tax classes; OPD Visit creation with queue and token; charges
 accumulating on the Visit; immutable GST-capable Invoices with on-the-spot Receipt printing;
-Credit Notes for corrections; daily reports and Tally day-book export; and visit-level capture
+Credit Notes for corrections; a balanced Billing Ledger with trial balance, bounded
+billing-ledger balance sheet, GST register, XLSX/print handover; and visit-level capture
 of the doctor's signed paper prescription. AI ships later; v0 keeps the original document as
 the clinical source of truth and an audit trail on sensitive actions.
 
@@ -64,9 +70,10 @@ broader demand remain open business questions deliberately excluded here.
 6. As a **hospital administrator**, I manage the Service Catalog, departments, practitioners,
    and organization settings (legal name, GSTIN/tax id, invoice/receipt/MRN prefixes, fiscal
    year start, currency).
-7. As an **owner/accountant**, I get the daily collection report (by payment method), the OPD
-   register, an unbilled-activity list (Visits with pending Charges), and a Tally-importable
-   day-book export for a date range.
+7. As an **owner/accountant**, I get a trial balance, a billing-ledger balance sheet, and GST
+   outward register covering financial documents recorded in the HMS, with XLSX and printable
+   handover files. Opening balances, non-billing activity, and final accounts remain in the
+   accountant's books.
 
 ## Implementation Decisions
 
@@ -99,7 +106,7 @@ granted explicitly per role (no inheritance). New statements and grants:
 - All roles (`member`, `admin`, `owner`): `patient: ["create","read","update"]`,
   `visit: ["create","read","update"]`, `billing: ["read","write"]` (charges, invoices,
   payments), `catalog: ["read"]`, `staff: ["read"]`,
-  `settings: ["read"]`, `report: ["read"]` (includes Tally export).
+  `settings: ["read"]`, `report: ["read"]` (billing-ledger and statutory handover reports).
 - `admin` + `owner` additionally: `settings: ["update"]`, `catalog: ["create","update"]`,
   `staff: ["create","update"]`, `billing: ["creditNote"]` (credit-note issuance and refund
   recording).
@@ -241,15 +248,15 @@ invoice print groups by rate and, when org country is India, displays the CGST/S
 prescription opens from its private source image/PDF for viewing or reprinting. No printer
 drivers/integrations.
 
-**Tally export**: date-range export of invoices, payments, credit notes, and refunds as (a)
-Tally XML with generic Sales/Receipt/Credit Note/Payment (refund) vouchers carrying the
-credit-note tax breakup, and (b) CSV day-book fallback. Ledger-name mapping is
-a fixed convention documented in the export screen; refinement with the pilot's accountant is an
-explicitly deferred iteration.
+**Accounting boundary**: invoice, payment, credit-note, and refund mutations post balanced
+journals atomically to the organization-scoped Billing Ledger. The ledger starts with the first
+document recorded in the HMS; it has no opening-balance or general-bookkeeping workflow. Trial
+balance, billing-ledger balance sheet, and GST outward register download as XLSX and print/PDF
+handover files for combination with the accountant's complete books.
 
 **Routers** (`packages/api/src/routers/`): `settings`, `patient`, `staff` (departments +
 practitioners), `catalog`, `visit`, `billing` (charges, invoices, payments, credit notes,
-refunds), and `report` (collections, OPD register, unbilled, refund-due, Tally export).
+refunds), and `report` (trial balance, billing-ledger balance sheet, GST outward register).
 The `visit` router also attaches and detaches paper prescriptions.
 Registered in `appRouter` (`packages/api/src/routers/index.ts`) beside existing
 `dashboard/audit/files/members`.
@@ -296,7 +303,7 @@ from `tests/support/`; assert oRPC codes, not message text):
    math — pro-rata discount allocation whose lines sum exactly to header totals (incl. rounding
    remainder on the largest line), multi-rate tax; credit-note math — full credit of every line
    reproduces invoice totals exactly, partial-credit gross→taxable derivation; CGST/SGST
-   display split; Tally XML builder output shape.
+   display split; report date-range and GST aggregation behavior.
 
 Verify commands are the repo's real ones: `bun run check-types`, `bun run check`,
 `bun run test` (Postgres up via `bun run db:up`; the suite uses and wipes `better_stack_test`).
@@ -304,13 +311,13 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
 ## Task Plan
 
 - [x] Slice 1: Bootstrap — **done**. This repository (`accly-ai/hms`, better-stack base) is the
-      workspace: fresh history, migrations regenerated (`0000_fine_starbolt.sql`), spec lives at
+      workspace: fresh history, schema represented by the current baseline migration, spec lives at
       `docs/specs/accly-hms-v0.md`, and the full gate passes (verified 2026-08-07:
       `bun run check-types && bun run check && bun run test` → 40/40).
 - [x] Slice 2: Foundation — settings, counter; RHF form stack; `todo`
       deleted — **done** (2026-08-07, this session).
-  - Delivered: `organization_settings` and `counter` tables + generated
-    migration `0001_graceful_moon_knight.sql`; `nextCounter(tx, orgId, key)` exported from
+  - Delivered: `organization_settings` and `counter` tables in the current baseline;
+    `nextCounter(tx, orgId, key)` exported from
     `@better-stack/db/counter`; `settings` router get/update declared with
     `orgProcedure({ settings: [...] }, orgInput.extend(...))` and per-role grants
     in `access.ts` (read: all roles; update: admin/owner); `settings.update`
@@ -318,7 +325,7 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     settings page under `org/$orgSlug/admin/settings` built on the new RHF primitives
     (`packages/ui` `form.tsx` + `submit-button.tsx`, `useZodForm` hook); `todo` domain fully
     removed (schema, router, route, nav, dashboard tile, seed, grants, tests) with its drop
-    migration; seed now writes Mercy's settings row.
+    schema; seed now writes Mercy's settings row.
   - Verified: `bun run check-types && bun run check && bun run test` → 45/45 (counter
     concurrency gapless under 25 parallel transactions, rollback leaves no gap; tenancy
     four-questions for `settings`; admin-gating; audit-trail keyset paging); browser
@@ -330,8 +337,8 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     and numbering call.
 - [x] Slice 3: Patients — register, dedupe, search — **done** (2026-08-07, this session).
   - Delivered: `patients` table (org-scoped, unique (org, mrn), (org, phone) dedupe index,
-    (org, createdAt desc, id desc) keyset index, sex/age/dob check constraints) + generated
-    migration `0002_thick_roxanne_simpson.sql`; `patient` router
+    (org, createdAt desc, id desc) keyset index, sex/age/dob check constraints) in the current
+    baseline; `patient` router
     (`register`/`search`/`get`/`update`) — register allocates MRN
     `{mrnPrefix}{seq padStart 6}` from counter key `mrn` inside one transaction, search is
     keyset-paginated with exact-phone dedupe filter and name/MRN/phone substring query,
@@ -356,7 +363,7 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
   - Delivered: `departments` (unique (org, name)), `catalog_items` (unique (org, code),
     category/price/tax checks, `active` soft-deactivation flag, name-ordered tenant indexes),
     and `practitioners` (nullable `memberUserId`/`consultFeeItemId`, org+name and
-    org+department indexes) tables + generated migration `0003_sudden_living_lightning.sql`;
+    org+department indexes) tables in the current baseline;
     `catalog` router (`list` with category/activeOnly filters as an unpaginated picker feed,
     `create`, `update` — deactivation is `update { active: false }`, duplicate code →
     `CONFLICT`) and `staff` router
@@ -388,7 +395,7 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     `invoiceId` without FK until Slice 6, provenance columns written as `member`) tables plus
     additive columns `practitioners.followUpFeeItemId`/`followUpValidityDays`,
     `departments.defaultConsultFeeItemId`, `organization_settings.followUpValidityDays`
-    (default 14) — generated migration `0001_typical_mole_man.sql`; `visit` router
+    (default 14), all represented in the current baseline; `visit` router
     (`create`/`transition`/`queue`/`get`) — create resolves the four-rung fee ladder
     (follow-up window → practitioner override → department default → no charge, inactive or
     missing items falling through) and allocates the per-practitioner per-UTC-day token from
@@ -448,8 +455,8 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     patient print snapshots and totals as sums of line values), `invoice_lines` (per-charge
     snapshot-of-record: unitPrice/lineSubtotal/allocatedDiscount/taxableValue/taxAmount/gross),
     `credit_notes` + `credit_note_lines` (lines reference invoice lines), `payments`, and
-    `refunds` tables plus the real `charges.invoiceId` FK — generated migration
-    `0002_burly_cargill.sql`; pure money math in `packages/api/src/lib/invoice-math.ts`
+    `refunds` tables plus the real `charges.invoiceId` FK in the current baseline; pure money
+    math in `packages/api/src/lib/invoice-math.ts`
     (integer-paise arithmetic, half-up rounding: `computeInvoiceLines` with pro-rata discount
     allocation and remainder-to-largest-line, `derivePartialCredit`, `splitGst`,
     `fiscalYearLabel`, `documentNumber`); `billing` router (`listPendingCharges`, `addCharge`
@@ -538,23 +545,36 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
   - Verified: `bun run check-types`, `bun run check`, and the full 110-test suite pass. Browser
     verification on a completed Visit confirmed the compact empty state, direct upload through
     private storage, attached-file metadata, presigned opening in a new tab, detach, and cleanup.
-- [ ] Slice 8: Reports + Tally export
-  - Acceptance: daily collections by method (payments minus refunds, credit notes listed
-    separately), OPD register (visits + invoice totals per day), unbilled-activity list shows
-    Visits with pending Charges older than N hours, refund-due list (invoices with negative
-    outstanding); date-range
-    Tally XML + CSV export downloads containing every invoice,
-    payment, credit note, and refund exactly once; export documents ledger-name convention on
-    screen.
-  - Verify: integration test seeds a day of activity and asserts report totals equal the sum of
-    issued documents; unit test validates Tally XML structure; tenancy four-questions for
-    `report`.
+- [x] Slice 8: Billing ledger + statutory reports — **done** (2026-08-08)
+  - Amended 2026-08-08 by user decision: deliver a minimal organization-scoped double-entry
+    ledger, not an ERP. Invoice, payment, credit-note, and refund journals post atomically inside
+    their billing transactions against a seeded system chart of accounts.
+  - Acceptance: trial balance by date range, billing-ledger balance sheet as of a date, and a GST invoice and
+    credit-note register with rate and HSN/SAC summaries. Reports download as XLSX workbooks and
+    render as print views suitable for saving to PDF and handing to the hospital's accountant.
+  - Verify: integration coverage proves all four document posting recipes are balanced and
+    organization-scoped, duplicate source posting is rejected, rollback cannot leave a document
+    without its journal, and report totals reconcile to the source activity; tenancy
+    four-questions for `report`.
   - Depends on: Slice 6
-  - Owns/Touches: `packages/api/src/routers/report.ts`,
-    `apps/web/src/routes/org/$orgSlug/reports/*`; Tally XML builder in
-    `packages/api/src/lib/tally.ts`; adds `report` statement/grants in `access.ts`
-    (coordinator-owned).
-  - Interfaces: consumes billing shapes from Slice 6; produces nothing downstream.
+  - Owns/Touches: `packages/db/src/schema/{accounts,journal-entries,journal-lines}.ts`,
+    `packages/api/src/lib/ledger.ts`, `packages/api/src/routers/{billing,report}.ts`,
+    `apps/web/src/routes/org/$orgSlug/reports/*`, and the report XLSX export helper; adds the
+    `report` statement/grants in `access.ts` (coordinator-owned).
+  - Interfaces: billing mutations post journals; `report.trialBalance`,
+    `report.balanceSheet`, and `report.gst` provide accountant handover data. UI and exports
+    state that the ledger covers HMS-posted billing activity only.
+  - Remaining work moves to the following slice: daily collections by method, OPD register,
+    unbilled-activity list, refund-due list, and Tally XML export. These operational reports and
+    the ERP-specific export are not part of Slice 8.
+  - Delivered: an organization-scoped system chart and atomic journals for invoices, payments,
+    credit notes, and refunds; immutable revenue-category snapshots; trial balance,
+    billing-ledger balance sheet, and GST reports; and XLSX plus print-PDF handover views with an
+    explicit coverage boundary. The pre-production database now starts from one fresh baseline
+    migration rather than preserving obsolete migration history.
+  - Verified: `bun run check`, `bun run check-types`, and the full 127-test suite pass. Browser
+    verification at desktop and mobile widths confirmed the report navigation, coverage copy,
+    empty-state balance sheet, and successful report RPC response.
 
 Parallelism: Slices 3 and 4 have disjoint write sets and may run concurrently after Slice 2.
 Shared files touched by every slice — `packages/auth/src/access.ts`,
@@ -565,13 +585,18 @@ statements/exports/cases only.
 ## Out of Scope
 
 Pharmacy POS/stock, lab result entry, IPD/beds/ADT, surgery/OT, insurance/TPA, ABDM integration,
-payment gateways, offline mode, general ledger/accounting, appointments/scheduling (walk-in
-queue only in v0), SMS/WhatsApp messaging, patient portal, multi-branch organizations, any AI
-feature (including the ambient scribe — separate spec after the speech feasibility spike).
+payment gateways, offline mode, appointments/scheduling (walk-in queue only in v0), SMS/WhatsApp
+messaging, patient portal, multi-branch organizations, any AI feature (including the ambient
+scribe — separate spec after the speech feasibility spike).
+
+**Amendment (2026-08-08):** A minimal Billing Ledger is in scope for statutory handover. A full
+accounting module, opening-balance workflow, bookkeeping UI, or ERP remains outside the product
+boundary.
 
 ## Explicitly Deferred
 
-- Tally voucher/ledger mapping refinement with the pilot's accountant (generic mapping ships).
+- Tally XML export and voucher/ledger mapping refinement with the pilot's accountant move to the
+  slice following Slice 8; Slice 8 ships neutral XLSX and print-PDF handover files instead.
 - GST rate table per service class from an accountant (v0 ships rates as org-editable catalog
   fields; engineering does not hard-code tax law).
 - Fine-grained API-level role permissions (v0 uses the coarse `access.ts` grants above).

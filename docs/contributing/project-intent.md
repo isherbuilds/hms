@@ -10,8 +10,8 @@ protected by tests that fail when isolation breaks.
 The live HMS domains are patient registration and search, priced catalog setup,
 department and practitioner setup, OPD visits with a daily token queue and signed paper
 prescription capture, charging
-and billing through to invoices, payments, credit notes and refunds, dashboard
-reporting, and AI chat. Organization settings and the platform surfaces for
+and billing through to invoices, payments, credit notes and refunds, the minimal Billing Ledger
+and statutory handover reports, dashboard reporting, and AI chat. Organization settings and the platform surfaces for
 members, audit, and files support them. Appointments and encounters, orders,
 results, and beds are product direction, not shipped scope. See the
 [HMS domain layer](./architecture/domain-layer.md) for the boundary in detail.

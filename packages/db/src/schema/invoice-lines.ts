@@ -1,6 +1,8 @@
-import { index, integer, numeric, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { check, index, integer, numeric, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { organization } from "./auth";
+import { CATALOG_CATEGORIES } from "./catalog-items";
 import { charges } from "./charges";
 import { invoices } from "./invoices";
 
@@ -32,8 +34,13 @@ export const invoiceLines = pgTable(
     gross: numeric("gross", { precision: 12, scale: 2 }).notNull(),
     taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull(),
     taxCode: text("tax_code"),
+    revenueCategory: text("revenue_category", { enum: CATALOG_CATEGORIES }).notNull(),
   },
   (table) => [
+    check(
+      "invoice_lines_revenue_category_check",
+      sql`${table.revenueCategory} in ('consultation', 'procedure', 'lab', 'radiology', 'other')`,
+    ),
     uniqueIndex("invoice_lines_charge_idx").on(table.chargeId),
     index("invoice_lines_org_invoice_idx").on(table.orgId, table.invoiceId),
   ],

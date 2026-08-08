@@ -2,13 +2,13 @@ import { sql } from "drizzle-orm";
 import { check, index, integer, numeric, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
-import { catalogItems } from "./catalog-items";
+import { CATALOG_CATEGORIES, catalogItems } from "./catalog-items";
 import { invoices } from "./invoices";
 import { visits } from "./visits";
 
 /**
- * Billable visit line items. Description, unit price, tax rate, and tax code are
- * snapshotted at creation so later catalog changes never reprice existing care.
+ * Billable visit line items. Description, price, tax, and revenue category are
+ * snapshotted at creation so later catalog changes never alter existing care.
  * Provenance is written as `member` in v0; the AI fields make later drafting additive.
  */
 export const charges = pgTable(
@@ -26,6 +26,7 @@ export const charges = pgTable(
     unitPrice: numeric("unit_price", { precision: 12, scale: 2 }).notNull(),
     taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull(),
     taxCode: text("tax_code"),
+    revenueCategory: text("revenue_category", { enum: CATALOG_CATEGORIES }).notNull(),
     qty: integer("qty").notNull().default(1),
     sourceType: text("source_type").notNull(),
     sourceId: text("source_id"),
@@ -50,6 +51,10 @@ export const charges = pgTable(
     // in-house fulfillment is billed as a `manual` charge by the desk.
     check("charges_source_type_check", sql`${table.sourceType} in ('consult_fee', 'manual')`),
     check("charges_status_check", sql`${table.status} in ('pending', 'invoiced', 'voided')`),
+    check(
+      "charges_revenue_category_check",
+      sql`${table.revenueCategory} in ('consultation', 'procedure', 'lab', 'radiology', 'other')`,
+    ),
     check("charges_generated_by_check", sql`${table.generatedBy} in ('member', 'ai')`),
     index("charges_org_visit_idx").on(table.orgId, table.visitId, table.status),
     index("charges_org_status_idx").on(table.orgId, table.status),

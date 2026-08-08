@@ -14,6 +14,7 @@ import { cn } from "@better-stack/ui/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
+  ChartColumnIcon,
   CheckIcon,
   ChevronsUpDownIcon,
   ClipboardPlusIcon,
@@ -47,6 +48,7 @@ const NAV: readonly {
     | "/org/$orgSlug/front-desk"
     | "/org/$orgSlug/front-desk/queue"
     | "/org/$orgSlug/billing"
+    | "/org/$orgSlug/reports"
     | "/org/$orgSlug/ai"
     | "/org/$orgSlug/members"
     | "/org/$orgSlug/audit";
@@ -77,6 +79,12 @@ const NAV: readonly {
     label: "Billing",
     icon: ReceiptTextIcon,
     permission: { billing: ["read"] },
+  },
+  {
+    to: "/org/$orgSlug/reports",
+    label: "Reports",
+    icon: ChartColumnIcon,
+    permission: { report: ["read"] },
   },
   {
     to: "/org/$orgSlug/files",
@@ -276,7 +284,7 @@ export function AppShell({ orgSlug, children }: { orgSlug: string; children: Rea
   }, [mobileNavOpen]);
 
   return (
-    <div className="flex h-svh overflow-hidden">
+    <div className="flex h-svh overflow-hidden print:h-auto print:overflow-visible">
       {/* One sidebar instance: a drawer below md, a static rail from md up.
           The drawer stays translated off-screen until opened; the backdrop is
           rendered only while it is open. */}
@@ -315,7 +323,7 @@ export function AppShell({ orgSlug, children }: { orgSlug: string; children: Rea
           </Button>
         </header>
 
-        <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
+        <main className="min-w-0 flex-1 overflow-y-auto print:overflow-visible">{children}</main>
       </div>
     </div>
   );

@@ -23,6 +23,12 @@ import {
   fromPaise,
   toPaise,
 } from "../lib/invoice-math";
+import {
+  postJournalEntry,
+  revenueAccountFor,
+  settlementAccountFor,
+  type SystemAccountKey,
+} from "../lib/ledger";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
 
@@ -164,6 +170,7 @@ export const billingRouter = {
               .select({
                 id: catalogItems.id,
                 name: catalogItems.name,
+                category: catalogItems.category,
                 unitPrice: catalogItems.unitPrice,
                 taxRatePercent: catalogItems.taxRatePercent,
                 taxCode: catalogItems.taxCode,
@@ -200,6 +207,7 @@ export const billingRouter = {
           taxRatePercent:
             catalogItem?.taxRatePercent ?? ("taxRatePercent" in input ? input.taxRatePercent : "0"),
           taxCode: catalogItem?.taxCode ?? ("taxCode" in input ? (input.taxCode ?? null) : null),
+          revenueCategory: catalogItem?.category ?? "other",
           sourceType: "manual",
           sourceId: null,
           status: "pending",
@@ -288,6 +296,7 @@ export const billingRouter = {
       const pendingCharges = await tx
         .select({
           chargeId: charges.id,
+          revenueCategory: charges.revenueCategory,
           description: charges.description,
           qty: charges.qty,
           unitPrice: charges.unitPrice,
@@ -318,6 +327,16 @@ export const billingRouter = {
       }
 
       const computed = computeInvoiceLines(pendingCharges, input.discountAmount);
+      const categoryByChargeId = new Map(
+        pendingCharges.map((charge) => [charge.chargeId, charge.revenueCategory]),
+      );
+      const computedWithRevenue = computed.lines.map((line) => {
+        const revenueCategory = categoryByChargeId.get(line.chargeId);
+        if (revenueCategory === undefined) {
+          throw new Error(`Revenue category missing for charge ${line.chargeId}`);
+        }
+        return { ...line, revenueCategory };
+      });
       const sequence = await nextCounter(tx, scope.orgId, `invoice:${fiscalYear}`);
       const invoiceNumber = documentNumber(settings.invoicePrefix, fiscalYear, sequence);
       const [invoice] = await tx
@@ -354,7 +373,7 @@ export const billingRouter = {
       const insertedLines = await tx
         .insert(invoiceLines)
         .values(
-          computed.lines.map((line) => ({
+          computedWithRevenue.map((line) => ({
             id: crypto.randomUUID(),
             orgId: scope.orgId,
             invoiceId,
@@ -372,15 +391,46 @@ export const billingRouter = {
             eq(charges.visitId, input.visitId),
             inArray(
               charges.id,
-              computed.lines.map((line) => line.chargeId),
+              computedWithRevenue.map((line) => line.chargeId),
             ),
             eq(charges.status, "pending"),
           ),
         )
         .returning({ id: charges.id });
 
-      if (flippedCharges.length !== computed.lines.length) {
+      if (flippedCharges.length !== computedWithRevenue.length) {
         throw new ORPCError("CONFLICT");
+      }
+      const revenueByAccount = new Map<SystemAccountKey, number>();
+      for (const line of computedWithRevenue) {
+        const account = revenueAccountFor(line.revenueCategory);
+        revenueByAccount.set(
+          account,
+          (revenueByAccount.get(account) ?? 0) + toPaise(line.taxableValue),
+        );
+      }
+
+      const grandTotalPaise = toPaise(computed.grandTotal);
+      if (grandTotalPaise > 0) {
+        const taxTotalPaise = toPaise(computed.taxTotal);
+        await postJournalEntry(tx, {
+          orgId: scope.orgId,
+          sourceType: "invoice",
+          sourceId: invoiceId,
+          narration: `Invoice ${invoiceNumber}`,
+          createdBy: scope.userId,
+          now,
+          lines: [
+            { account: "patient_receivables", debit: fromPaise(grandTotalPaise) },
+            ...[...revenueByAccount].map(([account, amount]) => ({
+              account,
+              credit: fromPaise(amount),
+            })),
+            ...(taxTotalPaise > 0
+              ? [{ account: "gst_output" as const, credit: fromPaise(taxTotalPaise) }]
+              : []),
+          ],
+        });
       }
 
       return { invoice, lines: insertedLines };
@@ -413,7 +463,7 @@ export const billingRouter = {
 
     const payment = await db.transaction(async (tx) => {
       const [invoice] = await tx
-        .select({ id: invoices.id })
+        .select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber })
         .from(invoices)
         .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.id, input.invoiceId)))
         .limit(1)
@@ -452,6 +502,18 @@ export const billingRouter = {
       if (!inserted) {
         throw new ORPCError("INTERNAL_SERVER_ERROR");
       }
+      await postJournalEntry(tx, {
+        orgId: scope.orgId,
+        sourceType: "payment",
+        sourceId: paymentId,
+        narration: `Receipt ${receiptNumber} · Invoice ${invoice.invoiceNumber}`,
+        createdBy: scope.userId,
+        now,
+        lines: [
+          { account: settlementAccountFor(input.method), debit: inserted.amount },
+          { account: "patient_receivables", credit: inserted.amount },
+        ],
+      });
       return inserted;
     });
 
@@ -486,7 +548,11 @@ export const billingRouter = {
 
     const result = await db.transaction(async (tx) => {
       const [invoice] = await tx
-        .select({ id: invoices.id, grandTotal: invoices.grandTotal })
+        .select({
+          id: invoices.id,
+          invoiceNumber: invoices.invoiceNumber,
+          grandTotal: invoices.grandTotal,
+        })
         .from(invoices)
         .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.id, input.invoiceId)))
         .limit(1)
@@ -590,7 +656,7 @@ export const billingRouter = {
           throw new ORPCError("CONFLICT");
         }
 
-        return { invoiceLineId: source.id, ...values };
+        return { invoiceLineId: source.id, revenueCategory: source.revenueCategory, ...values };
       });
 
       const subtotalPaise = computedLines.reduce(
@@ -630,7 +696,7 @@ export const billingRouter = {
       const insertedLines = await tx
         .insert(creditNoteLines)
         .values(
-          computedLines.map((line) => ({
+          computedLines.map(({ revenueCategory: _revenueCategory, ...line }) => ({
             id: crypto.randomUUID(),
             orgId: scope.orgId,
             creditNoteId,
@@ -638,6 +704,32 @@ export const billingRouter = {
           })),
         )
         .returning();
+      const revenueByAccount = new Map<SystemAccountKey, number>();
+      for (const line of computedLines) {
+        const account = revenueAccountFor(line.revenueCategory);
+        revenueByAccount.set(
+          account,
+          (revenueByAccount.get(account) ?? 0) + toPaise(line.taxableValue),
+        );
+      }
+      await postJournalEntry(tx, {
+        orgId: scope.orgId,
+        sourceType: "credit_note",
+        sourceId: creditNoteId,
+        narration: `Credit note ${creditNoteNumber} · Invoice ${invoice.invoiceNumber}`,
+        createdBy: scope.userId,
+        now,
+        lines: [
+          ...[...revenueByAccount].map(([account, amount]) => ({
+            account,
+            debit: fromPaise(amount),
+          })),
+          ...(taxTotalPaise > 0
+            ? [{ account: "gst_output" as const, debit: fromPaise(taxTotalPaise) }]
+            : []),
+          { account: "patient_receivables", credit: fromPaise(totalPaise) },
+        ],
+      });
 
       return { creditNote, lines: insertedLines };
     });
@@ -686,7 +778,7 @@ export const billingRouter = {
       }
 
       const [invoice] = await tx
-        .select({ id: invoices.id })
+        .select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber })
         .from(invoices)
         .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.id, creditNote.invoiceId)))
         .limit(1)
@@ -735,6 +827,18 @@ export const billingRouter = {
       if (!inserted) {
         throw new ORPCError("INTERNAL_SERVER_ERROR");
       }
+      await postJournalEntry(tx, {
+        orgId: scope.orgId,
+        sourceType: "refund",
+        sourceId: refundId,
+        narration: `Refund ${refundNumber} · Invoice ${invoice.invoiceNumber}`,
+        createdBy: scope.userId,
+        now,
+        lines: [
+          { account: "patient_receivables", debit: inserted.amount },
+          { account: settlementAccountFor(input.method), credit: inserted.amount },
+        ],
+      });
       return inserted;
     });
 

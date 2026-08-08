@@ -1,0 +1,735 @@
+import { beforeAll, expect, test } from "bun:test";
+
+import { postJournalEntry } from "@better-stack/api/lib/ledger";
+import type { AppRouterClient } from "@better-stack/api/routers/index";
+
+import { db } from "@better-stack/db";
+import { accounts } from "@better-stack/db/schema/accounts";
+import { charges } from "@better-stack/db/schema/charges";
+import { invoices } from "@better-stack/db/schema/invoices";
+import { journalEntries } from "@better-stack/db/schema/journal-entries";
+import { journalLines } from "@better-stack/db/schema/journal-lines";
+import { and, eq } from "drizzle-orm";
+
+import { createOrganization, createTestUser } from "../support/auth";
+import { clientFor, expectORPCCode } from "../support/client";
+import { resetTestDatabase } from "../support/database";
+
+beforeAll(async () => {
+  await resetTestDatabase();
+});
+
+const REPORT_TIME_ZONE = "Asia/Kolkata";
+
+function reportDate(date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: REPORT_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function addDays(date: string, days: number): string {
+  const instant = new Date(`${date}T12:00:00+05:30`);
+  return reportDate(new Date(instant.getTime() + days * 86_400_000));
+}
+
+function toPaise(value: string): bigint {
+  const match = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(value);
+  if (!match) {
+    throw new Error(`invalid money value: ${value}`);
+  }
+  const amount = BigInt(match[2]!) * 100n + BigInt((match[3] ?? "").padEnd(2, "0"));
+  return match[1] === "-" ? -amount : amount;
+}
+
+function fromPaise(value: bigint): string {
+  const negative = value < 0n;
+  const absolute = negative ? -value : value;
+  return `${negative ? "-" : ""}${absolute / 100n}.${String(absolute % 100n).padStart(2, "0")}`;
+}
+
+function sumMoney(values: string[]): string {
+  return fromPaise(values.reduce((total, value) => total + toPaise(value), 0n));
+}
+
+type AccountingFixture = {
+  organization: { id: string; slug: string };
+  api: AppRouterClient;
+  patient: { name: string; mrn: string };
+  createVisit: () => Promise<{ id: string }>;
+  addManualCharge: (
+    visitId: string,
+    unitPrice: string,
+    taxRatePercent?: string,
+    description?: string,
+    taxCode?: string,
+  ) => Promise<unknown>;
+  addCatalogCharge: (
+    visitId: string,
+    options: {
+      name: string;
+      category: "consultation" | "procedure" | "lab" | "radiology" | "other";
+      unitPrice: string;
+      taxRatePercent: string;
+      taxCode?: string;
+    },
+  ) => Promise<unknown>;
+};
+
+async function createAccountingFixture(seed: string) {
+  const owner = await createTestUser(`${seed}-owner`);
+  const organization = await createOrganization(owner, seed);
+  const api = clientFor(owner);
+  await api.settings.update({
+    orgSlug: organization.slug,
+    legalName: `${seed} Hospital`,
+    address: `${seed} Address`,
+    taxId: "GSTIN-TEST",
+    currency: "INR",
+    mrnPrefix: "MRN",
+    invoicePrefix: "INV",
+    receiptPrefix: "RCT",
+    creditNotePrefix: "CN",
+    fiscalYearStartMonth: 4,
+    followUpValidityDays: 14,
+  });
+  const patient = await api.patient.register({
+    orgSlug: organization.slug,
+    name: `${seed} Patient`,
+    phone: "5553800",
+    sex: "other",
+    ageYears: 30,
+    address: `${seed} Patient Address`,
+  });
+  const department = await api.staff.createDepartment({
+    orgSlug: organization.slug,
+    name: `${seed} Department`,
+  });
+  const practitioner = await api.staff.createPractitioner({
+    orgSlug: organization.slug,
+    name: `Dr. ${seed}`,
+    departmentId: department.id,
+  });
+
+  async function createVisit() {
+    const created = await api.visit.create({
+      orgSlug: organization.slug,
+      patientId: patient.id,
+      practitionerId: practitioner.id,
+      departmentId: department.id,
+    });
+    return created.visit;
+  }
+
+  async function addManualCharge(
+    visitId: string,
+    unitPrice: string,
+    taxRatePercent = "0",
+    description = `${seed} Manual Charge`,
+    taxCode?: string,
+  ) {
+    return api.billing.addCharge({
+      orgSlug: organization.slug,
+      visitId,
+      description,
+      unitPrice,
+      taxRatePercent,
+      ...(taxCode === undefined ? {} : { taxCode }),
+    });
+  }
+
+  async function addCatalogCharge(
+    visitId: string,
+    options: {
+      name: string;
+      category: "consultation" | "procedure" | "lab" | "radiology" | "other";
+      unitPrice: string;
+      taxRatePercent: string;
+      taxCode?: string;
+    },
+  ) {
+    const item = await api.catalog.create({
+      orgSlug: organization.slug,
+      name: options.name,
+      code: `${seed.slice(0, 8).toUpperCase()}-${crypto.randomUUID().slice(0, 8)}`,
+      category: options.category,
+      unitPrice: options.unitPrice,
+      taxRatePercent: options.taxRatePercent,
+      taxCode: options.taxCode,
+    });
+    const charge = await api.billing.addCharge({
+      orgSlug: organization.slug,
+      visitId,
+      catalogItemId: item.id,
+    });
+    return { item, charge };
+  }
+
+  return {
+    owner,
+    organization,
+    api,
+    patient,
+    createVisit,
+    addManualCharge,
+    addCatalogCharge,
+  };
+}
+
+async function journalFor(fixture: AccountingFixture, sourceType: string, sourceId: string) {
+  const entries = await db
+    .select()
+    .from(journalEntries)
+    .where(
+      and(
+        eq(journalEntries.orgId, fixture.organization.id),
+        eq(journalEntries.sourceType, sourceType),
+        eq(journalEntries.sourceId, sourceId),
+      ),
+    );
+  if (entries.length !== 1) {
+    return { entries, lines: [] };
+  }
+  const lines = await db
+    .select({
+      code: accounts.code,
+      name: accounts.name,
+      debit: journalLines.debit,
+      credit: journalLines.credit,
+    })
+    .from(journalLines)
+    .innerJoin(
+      accounts,
+      and(eq(accounts.id, journalLines.accountId), eq(accounts.orgId, fixture.organization.id)),
+    )
+    .where(
+      and(
+        eq(journalLines.orgId, fixture.organization.id),
+        eq(journalLines.entryId, entries[0]!.id),
+      ),
+    );
+  return { entries, lines };
+}
+
+function expectBalanced(lines: Array<{ debit: string; credit: string }>) {
+  expect(sumMoney(lines.map((line) => line.debit))).toBe(
+    sumMoney(lines.map((line) => line.credit)),
+  );
+}
+
+function lineByCode(lines: Array<{ code: string; debit: string; credit: string }>, code: string) {
+  const line = lines.find((candidate) => candidate.code === code);
+  if (!line) {
+    throw new Error(`expected journal line for account ${code}`);
+  }
+  return line;
+}
+
+async function issueConsultationInvoice(fixture: AccountingFixture, seed: string) {
+  const visit = await fixture.createVisit();
+  await fixture.addCatalogCharge(visit.id, {
+    name: `${seed} Consultation`,
+    category: "consultation",
+    unitPrice: "100.00",
+    taxRatePercent: "18.00",
+    taxCode: "SVC18",
+  });
+  const issued = await fixture.api.billing.issueInvoice({
+    orgSlug: fixture.organization.slug,
+    visitId: visit.id,
+  });
+  return { visit, ...issued };
+}
+
+test("issuing an invoice posts one balanced entry split across receivables, revenue, and GST", async () => {
+  const fixture = await createAccountingFixture("accounting-invoice");
+  const visit = await fixture.createVisit();
+  await fixture.addCatalogCharge(visit.id, {
+    name: "Taxable Consultation",
+    category: "consultation",
+    unitPrice: "100.00",
+    taxRatePercent: "18.00",
+    taxCode: "SVC18",
+  });
+  await fixture.addManualCharge(visit.id, "50.00", "0", "Manual Other Service");
+
+  const issued = await fixture.api.billing.issueInvoice({
+    orgSlug: fixture.organization.slug,
+    visitId: visit.id,
+  });
+  expect(issued.invoice).toMatchObject({
+    subtotal: "150.00",
+    taxTotal: "18.00",
+    grandTotal: "168.00",
+  });
+
+  const journal = await journalFor(fixture, "invoice", issued.invoice.id);
+  expect(journal.entries).toHaveLength(1);
+  expect(journal.lines).toHaveLength(4);
+  expectBalanced(journal.lines);
+  expect(lineByCode(journal.lines, "1200")).toMatchObject({
+    debit: issued.invoice.grandTotal,
+    credit: "0.00",
+  });
+  expect(lineByCode(journal.lines, "4100")).toMatchObject({
+    debit: "0.00",
+    credit: "100.00",
+  });
+  expect(lineByCode(journal.lines, "4900")).toMatchObject({
+    debit: "0.00",
+    credit: "50.00",
+  });
+  expect(lineByCode(journal.lines, "2100")).toMatchObject({
+    debit: "0.00",
+    credit: issued.invoice.taxTotal,
+  });
+});
+
+test("zero-rated invoices omit GST and zero-total invoices do not post", async () => {
+  const fixture = await createAccountingFixture("accounting-zero");
+  const zeroRateVisit = await fixture.createVisit();
+  await fixture.addManualCharge(zeroRateVisit.id, "25.00", "0", "Zero-rated Service");
+  const zeroRate = await fixture.api.billing.issueInvoice({
+    orgSlug: fixture.organization.slug,
+    visitId: zeroRateVisit.id,
+  });
+  const zeroRateJournal = await journalFor(fixture, "invoice", zeroRate.invoice.id);
+  expect(zeroRateJournal.entries).toHaveLength(1);
+  expect(zeroRateJournal.lines.map((line) => line.code)).not.toContain("2100");
+  expect(lineByCode(zeroRateJournal.lines, "1200").debit).toBe("25.00");
+  expect(lineByCode(zeroRateJournal.lines, "4900").credit).toBe("25.00");
+  expectBalanced(zeroRateJournal.lines);
+
+  const zeroTotalVisit = await fixture.createVisit();
+  await fixture.addManualCharge(zeroTotalVisit.id, "0.00", "0", "No-charge Service");
+  const zeroTotal = await fixture.api.billing.issueInvoice({
+    orgSlug: fixture.organization.slug,
+    visitId: zeroTotalVisit.id,
+  });
+  expect(zeroTotal.invoice.grandTotal).toBe("0.00");
+  expect((await journalFor(fixture, "invoice", zeroTotal.invoice.id)).entries).toHaveLength(0);
+});
+
+test("payments, credit notes, and refunds post to their exact settlement accounts", async () => {
+  const fixture = await createAccountingFixture("accounting-settlement");
+  const issued = await issueConsultationInvoice(fixture, "Settlement");
+  const cash = await fixture.api.billing.recordPayment({
+    orgSlug: fixture.organization.slug,
+    invoiceId: issued.invoice.id,
+    method: "cash",
+    amount: "100.00",
+  });
+  const upi = await fixture.api.billing.recordPayment({
+    orgSlug: fixture.organization.slug,
+    invoiceId: issued.invoice.id,
+    method: "upi",
+    amount: "18.00",
+    reference: "UPI-LEDGER",
+  });
+
+  const cashJournal = await journalFor(fixture, "payment", cash.id);
+  expect(cashJournal.entries).toHaveLength(1);
+  expect(lineByCode(cashJournal.lines, "1000")).toMatchObject({ debit: "100.00", credit: "0.00" });
+  expect(lineByCode(cashJournal.lines, "1200")).toMatchObject({ debit: "0.00", credit: "100.00" });
+  expectBalanced(cashJournal.lines);
+
+  const upiJournal = await journalFor(fixture, "payment", upi.id);
+  expect(upiJournal.entries).toHaveLength(1);
+  expect(lineByCode(upiJournal.lines, "1100")).toMatchObject({ debit: "18.00", credit: "0.00" });
+  expect(lineByCode(upiJournal.lines, "1200")).toMatchObject({ debit: "0.00", credit: "18.00" });
+  expectBalanced(upiJournal.lines);
+
+  const [invoiceLine] = issued.lines;
+  if (!invoiceLine) {
+    throw new Error("expected an invoice line");
+  }
+  const credited = await fixture.api.billing.issueCreditNote({
+    orgSlug: fixture.organization.slug,
+    invoiceId: issued.invoice.id,
+    reason: "Partial reversal",
+    lines: [{ invoiceLineId: invoiceLine.id, gross: "59.00" }],
+  });
+  const creditJournal = await journalFor(fixture, "credit_note", credited.creditNote.id);
+  expect(creditJournal.entries).toHaveLength(1);
+  expect(lineByCode(creditJournal.lines, "4100")).toMatchObject({ debit: "50.00", credit: "0.00" });
+  expect(lineByCode(creditJournal.lines, "2100")).toMatchObject({ debit: "9.00", credit: "0.00" });
+  expect(lineByCode(creditJournal.lines, "1200")).toMatchObject({ debit: "0.00", credit: "59.00" });
+  expectBalanced(creditJournal.lines);
+
+  const refund = await fixture.api.billing.recordRefund({
+    orgSlug: fixture.organization.slug,
+    creditNoteId: credited.creditNote.id,
+    method: "upi",
+    amount: "59.00",
+  });
+  const refundJournal = await journalFor(fixture, "refund", refund.id);
+  expect(refundJournal.entries).toHaveLength(1);
+  expect(lineByCode(refundJournal.lines, "1200")).toMatchObject({ debit: "59.00", credit: "0.00" });
+  expect(lineByCode(refundJournal.lines, "1100")).toMatchObject({ debit: "0.00", credit: "59.00" });
+  expectBalanced(refundJournal.lines);
+});
+
+test("trial balance is balanced, agrees with invoice outstanding, and carries prior activity into opening", async () => {
+  const fixture = await createAccountingFixture("accounting-trial");
+  const issued = await issueConsultationInvoice(fixture, "Trial");
+  const today = reportDate();
+  const balance = await fixture.api.billing.invoiceBalance({
+    orgSlug: fixture.organization.slug,
+    invoiceId: issued.invoice.id,
+  });
+
+  const active = await fixture.api.report.trialBalance({
+    orgSlug: fixture.organization.slug,
+    from: today,
+    to: today,
+  });
+  expect(active.totals.debit).toBe(active.totals.credit);
+  expect(active.totals.debit).toBe("118.00");
+  expect(active.totals.openingDebit).toBe(active.totals.openingCredit);
+  expect(active.totals.closingDebit).toBe(active.totals.closingCredit);
+  expect(active.totals.closingDebit).toBe("118.00");
+  const receivables = active.rows.find((row) => row.code === "1200");
+  const revenue = active.rows.find((row) => row.code === "4100");
+  expect(receivables?.openingDebit).toBe("0.00");
+  expect(receivables?.openingCredit).toBe("0.00");
+  expect(receivables?.debit).toBe("118.00");
+  expect(receivables?.closingDebit).toBe(balance.outstanding);
+  expect(receivables?.closingCredit).toBe("0.00");
+  expect(revenue?.closingDebit).toBe("0.00");
+  expect(revenue?.closingCredit).toBe("100.00");
+
+  await db
+    .update(journalEntries)
+    .set({ entryDate: addDays(today, -1) })
+    .where(
+      and(
+        eq(journalEntries.orgId, fixture.organization.id),
+        eq(journalEntries.sourceType, "invoice"),
+        eq(journalEntries.sourceId, issued.invoice.id),
+      ),
+    );
+  const afterRange = await fixture.api.report.trialBalance({
+    orgSlug: fixture.organization.slug,
+    from: today,
+    to: today,
+  });
+  expect(afterRange.totals.debit).toBe("0.00");
+  expect(afterRange.totals.credit).toBe("0.00");
+  expect(afterRange.totals.openingDebit).toBe(afterRange.totals.openingCredit);
+  expect(afterRange.totals.closingDebit).toBe(afterRange.totals.closingCredit);
+  const carriedReceivables = afterRange.rows.find((row) => row.code === "1200");
+  expect(carriedReceivables?.openingDebit).toBe(balance.outstanding);
+  expect(carriedReceivables?.openingCredit).toBe("0.00");
+  expect(carriedReceivables?.debit).toBe("0.00");
+  expect(carriedReceivables?.closingDebit).toBe(balance.outstanding);
+  expect(carriedReceivables?.closingCredit).toBe("0.00");
+});
+
+test("balance sheet balances GST output and current surplus against assets", async () => {
+  const fixture = await createAccountingFixture("accounting-balance-sheet");
+  await issueConsultationInvoice(fixture, "Balance Sheet");
+
+  const report = await fixture.api.report.balanceSheet({
+    orgSlug: fixture.organization.slug,
+    asOf: reportDate(),
+  });
+  expect(report.totals.assets).toBe("118.00");
+  expect(report.totals.assets).toBe(report.totals.liabilitiesAndEquity);
+  expect(report.liabilities).toContainEqual({
+    code: "2100",
+    name: "GST Output Payable",
+    balance: "18.00",
+  });
+  expect(report.equity).toContainEqual({
+    code: "3900",
+    name: "Current surplus",
+    balance: "100.00",
+  });
+});
+
+test("GST register reconciles invoice and credit-note documents, rates, HSN, and date filters", async () => {
+  const fixture = await createAccountingFixture("accounting-gst");
+  const visit = await fixture.createVisit();
+  await fixture.addCatalogCharge(visit.id, {
+    name: "GST Consultation",
+    category: "consultation",
+    unitPrice: "100.00",
+    taxRatePercent: "18.00",
+    taxCode: "SVC18",
+  });
+  await fixture.addManualCharge(visit.id, "50.00", "0", "Nil-rated Service", "NIL");
+  const issued = await fixture.api.billing.issueInvoice({
+    orgSlug: fixture.organization.slug,
+    visitId: visit.id,
+    discountAmount: "15.00",
+    discountReason: "Package discount",
+  });
+  const taxableLine = issued.lines.find((line) => line.taxRatePercent === "18.00");
+  if (!taxableLine) {
+    throw new Error("expected a taxable invoice line");
+  }
+  const credited = await fixture.api.billing.issueCreditNote({
+    orgSlug: fixture.organization.slug,
+    invoiceId: issued.invoice.id,
+    reason: "Consultation reversal",
+    lines: [{ invoiceLineId: taxableLine.id, full: true }],
+  });
+
+  const outsideVisit = await fixture.createVisit();
+  await fixture.addManualCharge(outsideVisit.id, "25.00", "0", "Outside-range Service");
+  const outside = await fixture.api.billing.issueInvoice({
+    orgSlug: fixture.organization.slug,
+    visitId: outsideVisit.id,
+  });
+  const today = reportDate();
+  const yesterday = addDays(today, -1);
+  await db
+    .update(invoices)
+    .set({ createdAt: new Date(`${yesterday}T12:00:00+05:30`) })
+    .where(and(eq(invoices.orgId, fixture.organization.id), eq(invoices.id, outside.invoice.id)));
+
+  const report = await fixture.api.report.gst({
+    orgSlug: fixture.organization.slug,
+    from: today,
+    to: today,
+  });
+  expect(report.documents).toHaveLength(2);
+  expect(report.documents.map((document) => document.number)).not.toContain(
+    outside.invoice.invoiceNumber,
+  );
+
+  const invoiceDocument = report.documents.find((document) => document.docType === "invoice");
+  expect(invoiceDocument).toMatchObject({
+    number: issued.invoice.invoiceNumber,
+    date: today,
+    patientName: fixture.patient.name,
+    patientMrn: fixture.patient.mrn,
+    taxableValue: fromPaise(
+      toPaise(issued.invoice.subtotal) - toPaise(issued.invoice.discountAmount),
+    ),
+    taxAmount: issued.invoice.taxTotal,
+    gross: issued.invoice.grandTotal,
+  });
+  expect(sumMoney([invoiceDocument!.cgst, invoiceDocument!.sgst])).toBe(issued.invoice.taxTotal);
+
+  const creditDocument = report.documents.find((document) => document.docType === "credit_note");
+  expect(creditDocument).toMatchObject({
+    number: credited.creditNote.creditNoteNumber,
+    date: today,
+    taxableValue: `-${credited.creditNote.subtotal}`,
+    taxAmount: `-${credited.creditNote.taxTotal}`,
+    gross: `-${credited.creditNote.total}`,
+  });
+  expect(sumMoney([creditDocument!.cgst, creditDocument!.sgst])).toBe(
+    `-${credited.creditNote.taxTotal}`,
+  );
+
+  expect(sumMoney(report.documents.map((document) => document.taxableValue))).toBe(
+    report.totals.taxableValue,
+  );
+  expect(sumMoney(report.documents.map((document) => document.cgst))).toBe(report.totals.cgst);
+  expect(sumMoney(report.documents.map((document) => document.sgst))).toBe(report.totals.sgst);
+  expect(sumMoney(report.documents.map((document) => document.taxAmount))).toBe(
+    report.totals.taxAmount,
+  );
+  expect(sumMoney(report.documents.map((document) => document.gross))).toBe(report.totals.gross);
+  expect(sumMoney(report.rateSummary.map((row) => row.taxableValue))).toBe(
+    report.totals.taxableValue,
+  );
+  expect(sumMoney(report.rateSummary.map((row) => row.cgst))).toBe(report.totals.cgst);
+  expect(sumMoney(report.rateSummary.map((row) => row.sgst))).toBe(report.totals.sgst);
+  expect(sumMoney(report.rateSummary.map((row) => row.taxAmount))).toBe(report.totals.taxAmount);
+  expect(sumMoney(report.hsnSummary.map((row) => row.taxableValue))).toBe(
+    report.totals.taxableValue,
+  );
+  expect(sumMoney(report.hsnSummary.map((row) => row.taxAmount))).toBe(report.totals.taxAmount);
+});
+
+test("trial balance rejects an inverted date range", async () => {
+  const fixture = await createAccountingFixture("accounting-validation");
+  const today = reportDate();
+  await expectORPCCode(
+    fixture.api.report.trialBalance({
+      orgSlug: fixture.organization.slug,
+      from: today,
+      to: addDays(today, -1),
+    }),
+    "BAD_REQUEST",
+  );
+});
+
+test("invoice and credit note keep the revenue category captured when the charge was created", async () => {
+  const fixture = await createAccountingFixture("accounting-category-snapshot");
+  const visit = await fixture.createVisit();
+  const { item } = await fixture.addCatalogCharge(visit.id, {
+    name: "Snapshot Consultation",
+    category: "consultation",
+    unitPrice: "100.00",
+    taxRatePercent: "18.00",
+    taxCode: "SVC18",
+  });
+
+  await fixture.api.catalog.update({
+    orgSlug: fixture.organization.slug,
+    itemId: item.id,
+    name: item.name,
+    code: item.code,
+    category: "lab",
+    unitPrice: item.unitPrice,
+    taxRatePercent: item.taxRatePercent,
+    taxCode: item.taxCode,
+    active: item.active,
+  });
+  const issued = await fixture.api.billing.issueInvoice({
+    orgSlug: fixture.organization.slug,
+    visitId: visit.id,
+  });
+  const invoiceJournal = await journalFor(fixture, "invoice", issued.invoice.id);
+  expect(lineByCode(invoiceJournal.lines, "4100").credit).toBe("100.00");
+  expect(invoiceJournal.lines.some((line) => line.code === "4300")).toBe(false);
+
+  const [invoiceLine] = issued.lines;
+  if (!invoiceLine) {
+    throw new Error("expected an invoice line");
+  }
+  const credited = await fixture.api.billing.issueCreditNote({
+    orgSlug: fixture.organization.slug,
+    invoiceId: issued.invoice.id,
+    reason: "Category changed after charge creation",
+    lines: [{ invoiceLineId: invoiceLine.id, full: true }],
+  });
+
+  const creditJournal = await journalFor(fixture, "credit_note", credited.creditNote.id);
+  expect(lineByCode(creditJournal.lines, "4100")).toMatchObject({
+    debit: "100.00",
+    credit: "0.00",
+  });
+  expect(creditJournal.lines.some((line) => line.code === "4300")).toBe(false);
+  expectBalanced(creditJournal.lines);
+});
+
+test("concurrent first invoices seed one complete chart and both post", async () => {
+  const fixture = await createAccountingFixture("accounting-concurrent-chart");
+  const firstVisit = await fixture.createVisit();
+  const secondVisit = await fixture.createVisit();
+  await fixture.addManualCharge(firstVisit.id, "10.00");
+  await fixture.addManualCharge(secondVisit.id, "20.00");
+
+  const [first, second] = await Promise.all([
+    fixture.api.billing.issueInvoice({
+      orgSlug: fixture.organization.slug,
+      visitId: firstVisit.id,
+    }),
+    fixture.api.billing.issueInvoice({
+      orgSlug: fixture.organization.slug,
+      visitId: secondVisit.id,
+    }),
+  ]);
+
+  expect((await journalFor(fixture, "invoice", first.invoice.id)).entries).toHaveLength(1);
+  expect((await journalFor(fixture, "invoice", second.invoice.id)).entries).toHaveLength(1);
+  const chart = await db
+    .select({ systemKey: accounts.systemKey })
+    .from(accounts)
+    .where(eq(accounts.orgId, fixture.organization.id));
+  expect(chart).toHaveLength(9);
+  expect(new Set(chart.map((row) => row.systemKey)).size).toBe(9);
+});
+
+test("duplicate source posting is rejected", async () => {
+  const fixture = await createAccountingFixture("accounting-duplicate-source");
+  const issued = await issueConsultationInvoice(fixture, "Duplicate source");
+
+  await expect(
+    db.transaction((tx) =>
+      postJournalEntry(tx, {
+        orgId: fixture.organization.id,
+        sourceType: "invoice",
+        sourceId: issued.invoice.id,
+        narration: "Duplicate",
+        createdBy: fixture.owner.user.id,
+        lines: [
+          { account: "patient_receivables", debit: "1.00" },
+          { account: "revenue_other", credit: "1.00" },
+        ],
+      }),
+    ),
+  ).rejects.toThrow();
+  expect((await journalFor(fixture, "invoice", issued.invoice.id)).entries).toHaveLength(1);
+});
+
+test("posting failure rolls back the invoice and charge transition", async () => {
+  const fixture = await createAccountingFixture("accounting-posting-rollback");
+  const visit = await fixture.createVisit();
+  await fixture.addManualCharge(visit.id, "25.00");
+  await db.insert(accounts).values({
+    id: crypto.randomUUID(),
+    orgId: fixture.organization.id,
+    code: "1000",
+    name: "Conflicting custom account",
+    type: "asset",
+  });
+
+  await expect(
+    fixture.api.billing.issueInvoice({
+      orgSlug: fixture.organization.slug,
+      visitId: visit.id,
+    }),
+  ).rejects.toThrow();
+
+  expect(
+    await fixture.api.billing.listInvoices({
+      orgSlug: fixture.organization.slug,
+      visitId: visit.id,
+    }),
+  ).toHaveLength(0);
+  const pending = await db
+    .select({ status: charges.status, invoiceId: charges.invoiceId })
+    .from(charges)
+    .where(and(eq(charges.orgId, fixture.organization.id), eq(charges.visitId, visit.id)));
+  expect(pending).toEqual([{ status: "pending", invoiceId: null }]);
+});
+
+test("GST summaries reconcile odd-paise tax buckets", async () => {
+  const fixture = await createAccountingFixture("accounting-gst-rounding");
+
+  for (const suffix of ["first", "second"]) {
+    const visit = await fixture.createVisit();
+    await fixture.addManualCharge(visit.id, "1.00", "5.00", `${suffix} odd-paise tax service`);
+    await fixture.api.billing.issueInvoice({
+      orgSlug: fixture.organization.slug,
+      visitId: visit.id,
+    });
+  }
+
+  const today = reportDate();
+  const report = await fixture.api.report.gst({
+    orgSlug: fixture.organization.slug,
+    from: today,
+    to: today,
+  });
+  const invoiceDocuments = report.documents.filter((document) => document.docType === "invoice");
+
+  expect(invoiceDocuments).toHaveLength(2);
+  expect(invoiceDocuments.map((document) => document.taxAmount)).toEqual(["0.05", "0.05"]);
+  expect(toPaise(report.totals.cgst)).toBe(
+    invoiceDocuments.reduce((sum, document) => sum + toPaise(document.cgst), 0n),
+  );
+  expect(toPaise(report.totals.sgst)).toBe(
+    invoiceDocuments.reduce((sum, document) => sum + toPaise(document.sgst), 0n),
+  );
+  expect(report.rateSummary.reduce((sum, row) => sum + toPaise(row.cgst), 0n)).toBe(
+    toPaise(report.totals.cgst),
+  );
+  expect(report.rateSummary.reduce((sum, row) => sum + toPaise(row.sgst), 0n)).toBe(
+    toPaise(report.totals.sgst),
+  );
+  for (const document of invoiceDocuments) {
+    expect(toPaise(document.cgst) + toPaise(document.sgst)).toBe(toPaise(document.taxAmount));
+  }
+  expect(toPaise(report.totals.cgst) + toPaise(report.totals.sgst)).toBe(
+    toPaise(report.totals.taxAmount),
+  );
+});

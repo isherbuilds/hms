@@ -25,6 +25,10 @@ import { Route as OrgOrgSlugBillingIndexRouteImport } from "./routes/org/$orgSlu
 import { Route as OrgOrgSlugFrontDeskIndexRouteImport } from "./routes/org/$orgSlug/front-desk/index";
 import { Route as OrgOrgSlugFrontDeskQueueRouteImport } from "./routes/org/$orgSlug/front-desk/queue";
 import { Route as OrgOrgSlugFrontDeskRegisterRouteImport } from "./routes/org/$orgSlug/front-desk/register";
+import { Route as OrgOrgSlugReportsIndexRouteImport } from "./routes/org/$orgSlug/reports/index";
+import { Route as OrgOrgSlugReportsBalanceSheetRouteImport } from "./routes/org/$orgSlug/reports/balance-sheet";
+import { Route as OrgOrgSlugReportsGstRouteImport } from "./routes/org/$orgSlug/reports/gst";
+import { Route as OrgOrgSlugReportsTrialBalanceRouteImport } from "./routes/org/$orgSlug/reports/trial-balance";
 import { Route as OrgOrgSlugBillingInvoicesInvoiceIdRouteImport } from "./routes/org/$orgSlug/billing/invoices.$invoiceId";
 import { Route as OrgOrgSlugBillingVisitsVisitIdRouteImport } from "./routes/org/$orgSlug/billing/visits.$visitId";
 import { Route as OrgOrgSlugFrontDeskPatientsPatientIdRouteImport } from "./routes/org/$orgSlug/front-desk/patients.$patientId";
@@ -113,6 +117,26 @@ const OrgOrgSlugFrontDeskRegisterRoute = OrgOrgSlugFrontDeskRegisterRouteImport.
   path: "/front-desk/register",
   getParentRoute: () => OrgOrgSlugRouteRoute,
 } as any);
+const OrgOrgSlugReportsIndexRoute = OrgOrgSlugReportsIndexRouteImport.update({
+  id: "/reports/",
+  path: "/reports/",
+  getParentRoute: () => OrgOrgSlugRouteRoute,
+} as any);
+const OrgOrgSlugReportsBalanceSheetRoute = OrgOrgSlugReportsBalanceSheetRouteImport.update({
+  id: "/reports/balance-sheet",
+  path: "/reports/balance-sheet",
+  getParentRoute: () => OrgOrgSlugRouteRoute,
+} as any);
+const OrgOrgSlugReportsGstRoute = OrgOrgSlugReportsGstRouteImport.update({
+  id: "/reports/gst",
+  path: "/reports/gst",
+  getParentRoute: () => OrgOrgSlugRouteRoute,
+} as any);
+const OrgOrgSlugReportsTrialBalanceRoute = OrgOrgSlugReportsTrialBalanceRouteImport.update({
+  id: "/reports/trial-balance",
+  path: "/reports/trial-balance",
+  getParentRoute: () => OrgOrgSlugRouteRoute,
+} as any);
 const OrgOrgSlugBillingInvoicesInvoiceIdRoute =
   OrgOrgSlugBillingInvoicesInvoiceIdRouteImport.update({
     id: "/billing/invoices/$invoiceId",
@@ -169,8 +193,12 @@ export interface FileRoutesByFullPath {
   "/org/$orgSlug/admin/staff": typeof OrgOrgSlugAdminStaffRoute;
   "/org/$orgSlug/front-desk/queue": typeof OrgOrgSlugFrontDeskQueueRoute;
   "/org/$orgSlug/front-desk/register": typeof OrgOrgSlugFrontDeskRegisterRoute;
+  "/org/$orgSlug/reports/balance-sheet": typeof OrgOrgSlugReportsBalanceSheetRoute;
+  "/org/$orgSlug/reports/gst": typeof OrgOrgSlugReportsGstRoute;
+  "/org/$orgSlug/reports/trial-balance": typeof OrgOrgSlugReportsTrialBalanceRoute;
   "/org/$orgSlug/billing/": typeof OrgOrgSlugBillingIndexRoute;
   "/org/$orgSlug/front-desk/": typeof OrgOrgSlugFrontDeskIndexRoute;
+  "/org/$orgSlug/reports/": typeof OrgOrgSlugReportsIndexRoute;
   "/org/$orgSlug/billing/invoices/$invoiceId": typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren;
   "/org/$orgSlug/billing/visits/$visitId": typeof OrgOrgSlugBillingVisitsVisitIdRoute;
   "/org/$orgSlug/front-desk/patients/$patientId": typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute;
@@ -194,8 +222,12 @@ export interface FileRoutesByTo {
   "/org/$orgSlug/admin/staff": typeof OrgOrgSlugAdminStaffRoute;
   "/org/$orgSlug/front-desk/queue": typeof OrgOrgSlugFrontDeskQueueRoute;
   "/org/$orgSlug/front-desk/register": typeof OrgOrgSlugFrontDeskRegisterRoute;
+  "/org/$orgSlug/reports/balance-sheet": typeof OrgOrgSlugReportsBalanceSheetRoute;
+  "/org/$orgSlug/reports/gst": typeof OrgOrgSlugReportsGstRoute;
+  "/org/$orgSlug/reports/trial-balance": typeof OrgOrgSlugReportsTrialBalanceRoute;
   "/org/$orgSlug/billing": typeof OrgOrgSlugBillingIndexRoute;
   "/org/$orgSlug/front-desk": typeof OrgOrgSlugFrontDeskIndexRoute;
+  "/org/$orgSlug/reports": typeof OrgOrgSlugReportsIndexRoute;
   "/org/$orgSlug/billing/invoices/$invoiceId": typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren;
   "/org/$orgSlug/billing/visits/$visitId": typeof OrgOrgSlugBillingVisitsVisitIdRoute;
   "/org/$orgSlug/front-desk/patients/$patientId": typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute;
@@ -220,8 +252,12 @@ export interface FileRoutesById {
   "/org/$orgSlug/admin/staff": typeof OrgOrgSlugAdminStaffRoute;
   "/org/$orgSlug/front-desk/queue": typeof OrgOrgSlugFrontDeskQueueRoute;
   "/org/$orgSlug/front-desk/register": typeof OrgOrgSlugFrontDeskRegisterRoute;
+  "/org/$orgSlug/reports/balance-sheet": typeof OrgOrgSlugReportsBalanceSheetRoute;
+  "/org/$orgSlug/reports/gst": typeof OrgOrgSlugReportsGstRoute;
+  "/org/$orgSlug/reports/trial-balance": typeof OrgOrgSlugReportsTrialBalanceRoute;
   "/org/$orgSlug/billing/": typeof OrgOrgSlugBillingIndexRoute;
   "/org/$orgSlug/front-desk/": typeof OrgOrgSlugFrontDeskIndexRoute;
+  "/org/$orgSlug/reports/": typeof OrgOrgSlugReportsIndexRoute;
   "/org/$orgSlug/billing/invoices/$invoiceId": typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren;
   "/org/$orgSlug/billing/visits/$visitId": typeof OrgOrgSlugBillingVisitsVisitIdRoute;
   "/org/$orgSlug/front-desk/patients/$patientId": typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute;
@@ -247,8 +283,12 @@ export interface FileRouteTypes {
     | "/org/$orgSlug/admin/staff"
     | "/org/$orgSlug/front-desk/queue"
     | "/org/$orgSlug/front-desk/register"
+    | "/org/$orgSlug/reports/balance-sheet"
+    | "/org/$orgSlug/reports/gst"
+    | "/org/$orgSlug/reports/trial-balance"
     | "/org/$orgSlug/billing/"
     | "/org/$orgSlug/front-desk/"
+    | "/org/$orgSlug/reports/"
     | "/org/$orgSlug/billing/invoices/$invoiceId"
     | "/org/$orgSlug/billing/visits/$visitId"
     | "/org/$orgSlug/front-desk/patients/$patientId"
@@ -272,8 +312,12 @@ export interface FileRouteTypes {
     | "/org/$orgSlug/admin/staff"
     | "/org/$orgSlug/front-desk/queue"
     | "/org/$orgSlug/front-desk/register"
+    | "/org/$orgSlug/reports/balance-sheet"
+    | "/org/$orgSlug/reports/gst"
+    | "/org/$orgSlug/reports/trial-balance"
     | "/org/$orgSlug/billing"
     | "/org/$orgSlug/front-desk"
+    | "/org/$orgSlug/reports"
     | "/org/$orgSlug/billing/invoices/$invoiceId"
     | "/org/$orgSlug/billing/visits/$visitId"
     | "/org/$orgSlug/front-desk/patients/$patientId"
@@ -297,8 +341,12 @@ export interface FileRouteTypes {
     | "/org/$orgSlug/admin/staff"
     | "/org/$orgSlug/front-desk/queue"
     | "/org/$orgSlug/front-desk/register"
+    | "/org/$orgSlug/reports/balance-sheet"
+    | "/org/$orgSlug/reports/gst"
+    | "/org/$orgSlug/reports/trial-balance"
     | "/org/$orgSlug/billing/"
     | "/org/$orgSlug/front-desk/"
+    | "/org/$orgSlug/reports/"
     | "/org/$orgSlug/billing/invoices/$invoiceId"
     | "/org/$orgSlug/billing/visits/$visitId"
     | "/org/$orgSlug/front-desk/patients/$patientId"
@@ -429,6 +477,34 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof OrgOrgSlugFrontDeskRegisterRouteImport;
       parentRoute: typeof OrgOrgSlugRouteRoute;
     };
+    "/org/$orgSlug/reports/": {
+      id: "/org/$orgSlug/reports/";
+      path: "/reports";
+      fullPath: "/org/$orgSlug/reports/";
+      preLoaderRoute: typeof OrgOrgSlugReportsIndexRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/reports/balance-sheet": {
+      id: "/org/$orgSlug/reports/balance-sheet";
+      path: "/reports/balance-sheet";
+      fullPath: "/org/$orgSlug/reports/balance-sheet";
+      preLoaderRoute: typeof OrgOrgSlugReportsBalanceSheetRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/reports/gst": {
+      id: "/org/$orgSlug/reports/gst";
+      path: "/reports/gst";
+      fullPath: "/org/$orgSlug/reports/gst";
+      preLoaderRoute: typeof OrgOrgSlugReportsGstRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/reports/trial-balance": {
+      id: "/org/$orgSlug/reports/trial-balance";
+      path: "/reports/trial-balance";
+      fullPath: "/org/$orgSlug/reports/trial-balance";
+      preLoaderRoute: typeof OrgOrgSlugReportsTrialBalanceRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
     "/org/$orgSlug/billing/invoices/$invoiceId": {
       id: "/org/$orgSlug/billing/invoices/$invoiceId";
       path: "/billing/invoices/$invoiceId";
@@ -513,8 +589,12 @@ interface OrgOrgSlugRouteRouteChildren {
   OrgOrgSlugAdminStaffRoute: typeof OrgOrgSlugAdminStaffRoute;
   OrgOrgSlugFrontDeskQueueRoute: typeof OrgOrgSlugFrontDeskQueueRoute;
   OrgOrgSlugFrontDeskRegisterRoute: typeof OrgOrgSlugFrontDeskRegisterRoute;
+  OrgOrgSlugReportsBalanceSheetRoute: typeof OrgOrgSlugReportsBalanceSheetRoute;
+  OrgOrgSlugReportsGstRoute: typeof OrgOrgSlugReportsGstRoute;
+  OrgOrgSlugReportsTrialBalanceRoute: typeof OrgOrgSlugReportsTrialBalanceRoute;
   OrgOrgSlugBillingIndexRoute: typeof OrgOrgSlugBillingIndexRoute;
   OrgOrgSlugFrontDeskIndexRoute: typeof OrgOrgSlugFrontDeskIndexRoute;
+  OrgOrgSlugReportsIndexRoute: typeof OrgOrgSlugReportsIndexRoute;
   OrgOrgSlugBillingInvoicesInvoiceIdRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren;
   OrgOrgSlugBillingVisitsVisitIdRoute: typeof OrgOrgSlugBillingVisitsVisitIdRoute;
   OrgOrgSlugFrontDeskPatientsPatientIdRoute: typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute;
@@ -532,8 +612,12 @@ const OrgOrgSlugRouteRouteChildren: OrgOrgSlugRouteRouteChildren = {
   OrgOrgSlugAdminStaffRoute: OrgOrgSlugAdminStaffRoute,
   OrgOrgSlugFrontDeskQueueRoute: OrgOrgSlugFrontDeskQueueRoute,
   OrgOrgSlugFrontDeskRegisterRoute: OrgOrgSlugFrontDeskRegisterRoute,
+  OrgOrgSlugReportsBalanceSheetRoute: OrgOrgSlugReportsBalanceSheetRoute,
+  OrgOrgSlugReportsGstRoute: OrgOrgSlugReportsGstRoute,
+  OrgOrgSlugReportsTrialBalanceRoute: OrgOrgSlugReportsTrialBalanceRoute,
   OrgOrgSlugBillingIndexRoute: OrgOrgSlugBillingIndexRoute,
   OrgOrgSlugFrontDeskIndexRoute: OrgOrgSlugFrontDeskIndexRoute,
+  OrgOrgSlugReportsIndexRoute: OrgOrgSlugReportsIndexRoute,
   OrgOrgSlugBillingInvoicesInvoiceIdRoute: OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren,
   OrgOrgSlugBillingVisitsVisitIdRoute: OrgOrgSlugBillingVisitsVisitIdRoute,
   OrgOrgSlugFrontDeskPatientsPatientIdRoute: OrgOrgSlugFrontDeskPatientsPatientIdRoute,

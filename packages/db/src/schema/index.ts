@@ -16,3 +16,6 @@ export * from "./credit-notes";
 export * from "./credit-note-lines";
 export * from "./payments";
 export * from "./refunds";
+export * from "./accounts";
+export * from "./journal-entries";
+export * from "./journal-lines";

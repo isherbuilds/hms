@@ -486,6 +486,10 @@ const GUARDED_CALLS = {
     api.billing.listInvoices({ ...claim, visitId: crypto.randomUUID() }),
   "billing.getInvoice": (api, claim) =>
     api.billing.getInvoice({ ...claim, invoiceId: crypto.randomUUID() }),
+  "report.trialBalance": (api, claim) =>
+    api.report.trialBalance({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
+  "report.balanceSheet": (api, claim) => api.report.balanceSheet({ ...claim, asOf: "2024-01-31" }),
+  "report.gst": (api, claim) => api.report.gst({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
   "members.me": (api, claim) => api.members.me({ ...claim }),
   "members.list": (api, claim) => api.members.list({ ...claim }),
   "members.invite": (api, claim) => api.members.invite({ ...claim, email: "x@example.com" }),
@@ -962,4 +966,99 @@ test("one client concurrently scopes billing calls to two organizations", async 
 
   expect(seenInOne.map((invoice) => invoice.id)).toEqual([inOne.invoice.id]);
   expect(seenInTwo.map((invoice) => invoice.id)).toEqual([inTwo.invoice.id]);
+});
+
+test("reports reject a foreign org claim and expose none of that org's figures in a member's own org", async () => {
+  const alice = await createTestUser("report-scope-alice");
+  const alpha = await createOrganization(alice, "report-scope-alpha");
+  await createScopedInvoice(clientFor(alice), alpha, "Report Alpha");
+
+  const betaOwner = await createTestUser("report-scope-beta-owner");
+  const beta = await createOrganization(betaOwner, "report-scope-beta");
+  const bob = await createTestUser("report-scope-beta-member");
+  await joinOrganization(bob, beta.id);
+  const bobClient = clientFor(bob);
+  const range = { from: "2000-01-01", to: "2100-01-01" };
+
+  await expectORPCCode(
+    bobClient.report.trialBalance({ orgSlug: alpha.slug, ...range }),
+    "FORBIDDEN",
+  );
+  await expectORPCCode(
+    bobClient.report.balanceSheet({ orgSlug: alpha.slug, asOf: range.to }),
+    "FORBIDDEN",
+  );
+  await expectORPCCode(bobClient.report.gst({ orgSlug: alpha.slug, ...range }), "FORBIDDEN");
+
+  const [trialBalance, balanceSheet, gst] = await Promise.all([
+    bobClient.report.trialBalance({ orgSlug: beta.slug, ...range }),
+    bobClient.report.balanceSheet({ orgSlug: beta.slug, asOf: range.to }),
+    bobClient.report.gst({ orgSlug: beta.slug, ...range }),
+  ]);
+  expect(trialBalance.rows).toEqual([]);
+  expect(trialBalance.totals).toEqual({
+    openingDebit: "0.00",
+    openingCredit: "0.00",
+    debit: "0.00",
+    credit: "0.00",
+    closingDebit: "0.00",
+    closingCredit: "0.00",
+  });
+  expect(balanceSheet.assets).toEqual([]);
+  expect(balanceSheet.liabilities).toEqual([]);
+  expect(balanceSheet.equity).toEqual([]);
+  expect(balanceSheet.totals).toEqual({
+    assets: "0.00",
+    liabilitiesAndEquity: "0.00",
+  });
+  expect(gst.documents).toEqual([]);
+  expect(gst.rateSummary).toEqual([]);
+  expect(gst.hsnSummary).toEqual([]);
+  expect(gst.totals).toEqual({
+    taxableValue: "0.00",
+    cgst: "0.00",
+    sgst: "0.00",
+    taxAmount: "0.00",
+    gross: "0.00",
+  });
+});
+
+test("one client concurrently scopes report calls to two organizations", async () => {
+  const user = await createTestUser("report-scope-multi");
+  const one = await createOrganization(user, "report-scope-one");
+  const two = await createOrganization(user, "report-scope-two");
+  const api = clientFor(user);
+  const [inOne, inTwo] = await Promise.all([
+    createScopedInvoice(api, one, "Report One"),
+    createScopedInvoice(api, two, "Report Two"),
+  ]);
+  await api.billing.recordPayment({
+    orgSlug: one.slug,
+    invoiceId: inOne.invoice.id,
+    method: "cash",
+    amount: "40.00",
+  });
+
+  const range = { from: "2000-01-01", to: "2100-01-01" };
+  const [trialOne, trialTwo, balanceOne, balanceTwo, gstOne, gstTwo] = await Promise.all([
+    api.report.trialBalance({ orgSlug: one.slug, ...range }),
+    api.report.trialBalance({ orgSlug: two.slug, ...range }),
+    api.report.balanceSheet({ orgSlug: one.slug, asOf: range.to }),
+    api.report.balanceSheet({ orgSlug: two.slug, asOf: range.to }),
+    api.report.gst({ orgSlug: one.slug, ...range }),
+    api.report.gst({ orgSlug: two.slug, ...range }),
+  ]);
+
+  expect(trialOne.rows.find((row) => row.code === "1200")?.closingDebit).toBe("60.00");
+  expect(trialTwo.rows.find((row) => row.code === "1200")?.closingDebit).toBe("100.00");
+  expect(balanceOne.assets.find((row) => row.code === "1000")?.balance).toBe("40.00");
+  expect(balanceTwo.assets.some((row) => row.code === "1000")).toBe(false);
+  expect(gstOne.documents.map((document) => document.patientName)).toEqual(["Report One Patient"]);
+  expect(gstTwo.documents.map((document) => document.patientName)).toEqual(["Report Two Patient"]);
+  expect(gstOne.documents.map((document) => document.number)).toEqual([
+    inOne.invoice.invoiceNumber,
+  ]);
+  expect(gstTwo.documents.map((document) => document.number)).toEqual([
+    inTwo.invoice.invoiceNumber,
+  ]);
 });

@@ -38,3 +38,4 @@ Decision records are point-in-time documents by design; everything else in
 - [0017 — Keep AI streaming as a narrow HTTP exception](./0017-ai-streaming-http-surface.md)
 - [0018 — Allocate display MRNs with an organization-scoped counter](./0018-org-scoped-mrn-counter.md)
 - [0019 — Client input is a claim: references and prices are server-verified](./0019-server-verified-references-and-prices.md)
+- [0020 — Post double-entry journals inside billing transactions](./0020-double-entry-posting-in-billing-transactions.md)

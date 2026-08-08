@@ -37,6 +37,7 @@ Everything else in this folder is downstream of those two.
 - [Audit](./audit.md) — what to record and how
 - [File storage](./file-storage.md) — presigned-only object storage
 - [HMS domain layer](./domain-layer.md) — live relationships and front-desk boundary
+- [Accounting ledger](./accounting.md) — double-entry posting and statutory handover boundary
 
 ## Source of truth in code
 

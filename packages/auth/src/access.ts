@@ -25,6 +25,7 @@ export const ac = createAccessControl({
   staff: ["create", "read", "update"],
   settings: ["read", "update"],
   audit: ["read"],
+  report: ["read"],
   storage: ["upload", "read", "delete"],
   ai: ["use"],
 } as const);
@@ -41,6 +42,7 @@ export const member = ac.newRole({
   catalog: ["read"],
   staff: ["read"],
   settings: ["read"],
+  report: ["read"],
   storage: ["upload", "read"],
   ai: ["use"],
 });
@@ -55,6 +57,7 @@ export const admin = ac.newRole({
   staff: ["create", "read", "update"],
   settings: ["read", "update"],
   audit: ["read"],
+  report: ["read"],
   storage: ["upload", "read", "delete"],
   ai: ["use"],
 });
@@ -69,6 +72,7 @@ export const owner = ac.newRole({
   staff: ["create", "read", "update"],
   settings: ["read", "update"],
   audit: ["read"],
+  report: ["read"],
   storage: ["upload", "read", "delete"],
   ai: ["use"],
 });
