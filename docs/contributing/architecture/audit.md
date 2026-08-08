@@ -58,4 +58,6 @@ Deferred list): every domain, including patients, uses fire-and-forget
 ## Testing it
 
 Because the write is not awaited, an assertion immediately after the call races
-it. Use `eventually` from `tests/support/client.ts`.
+it. Use `eventually` from `tests/support/client.ts` to assert an entry exists,
+and `drainAuditWrites()` from `@better-stack/api/audit` before asserting one
+does not — polling cannot prove an absence.

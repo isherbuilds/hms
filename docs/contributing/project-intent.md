@@ -8,10 +8,12 @@ private file storage, and a closed account model are implemented once and
 protected by tests that fail when isolation breaks.
 
 The live HMS domains are patient registration and search, priced catalog setup,
-department and practitioner setup, dashboard reporting, and AI chat. Organization
-settings and the platform surfaces for members, audit, and files support them.
-Appointments and encounters, orders, results, charging, and beds are product
-direction, not shipped scope.
+department and practitioner setup, OPD visits with a daily token queue, charging
+and billing through to invoices, payments, credit notes and refunds, dashboard
+reporting, and AI chat. Organization settings and the platform surfaces for
+members, audit, and files support them. Appointments and encounters, orders,
+results, and beds are product direction, not shipped scope. See the
+[HMS domain layer](./architecture/domain-layer.md) for the boundary in detail.
 
 Stack: Bun + Turborepo; TanStack Start (`apps/web`) and Hono/oRPC
 (`apps/server`) over a shared `packages/api` router; Drizzle + PostgreSQL;
@@ -21,11 +23,12 @@ Better Auth with the organization plugin.
 
 - **Not a framework.** Every package is ordinary application code meant to be
   read and edited, not configured from the outside.
-- **Not a demo.** `settings`, `patient`, `catalog`, `staff`, `dashboard`, and AI
-  are live product domains. `files`, `members`, and `audit` are platform
-  capabilities, not examples.
-- **Not a claim that the whole hospital workflow is built.** The product has a
-  front-desk foundation; later clinical and charging workflows are not live.
+- **Not a demo.** `settings`, `patient`, `catalog`, `staff`, `visit`, `billing`,
+  `dashboard`, and AI are live product domains. `files`, `members`, and `audit`
+  are platform capabilities, not examples.
+- **Not a claim that the whole hospital workflow is built.** The product covers
+  the OPD front office and its billing path; clinical documentation, orders,
+  results, and inpatient workflows are not live.
 
 ## Who it is for
 

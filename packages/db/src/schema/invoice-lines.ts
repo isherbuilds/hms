@@ -1,0 +1,40 @@
+import { index, integer, numeric, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+
+import { organization } from "./auth";
+import { charges } from "./charges";
+import { invoices } from "./invoices";
+
+/**
+ * Immutable snapshot-of-record for every issued invoice line. Description,
+ * quantity, price, discount allocation, taxable value, tax, and gross are fixed
+ * at issuance; invoice header totals are sums of these stored line values.
+ */
+export const invoiceLines = pgTable(
+  "invoice_lines",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    invoiceId: text("invoice_id")
+      .notNull()
+      .references(() => invoices.id),
+    chargeId: text("charge_id")
+      .notNull()
+      .references(() => charges.id),
+    description: text("description").notNull(),
+    qty: integer("qty").notNull(),
+    unitPrice: numeric("unit_price", { precision: 12, scale: 2 }).notNull(),
+    lineSubtotal: numeric("line_subtotal", { precision: 12, scale: 2 }).notNull(),
+    allocatedDiscount: numeric("allocated_discount", { precision: 12, scale: 2 }).notNull(),
+    taxableValue: numeric("taxable_value", { precision: 12, scale: 2 }).notNull(),
+    taxAmount: numeric("tax_amount", { precision: 12, scale: 2 }).notNull(),
+    gross: numeric("gross", { precision: 12, scale: 2 }).notNull(),
+    taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull(),
+    taxCode: text("tax_code"),
+  },
+  (table) => [
+    uniqueIndex("invoice_lines_charge_idx").on(table.chargeId),
+    index("invoice_lines_org_invoice_idx").on(table.orgId, table.invoiceId),
+  ],
+);

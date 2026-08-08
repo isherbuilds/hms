@@ -119,6 +119,15 @@ const MATRIX: Array<{
     admin: false,
     member: false,
   },
+
+  { permission: { billing: ["read"] }, owner: true, admin: true, member: true },
+  { permission: { billing: ["write"] }, owner: true, admin: true, member: true },
+  {
+    permission: { billing: ["creditNote"] },
+    owner: true,
+    admin: true,
+    member: false,
+  },
 ];
 
 test("each role grants exactly the permissions the matrix declares", () => {

@@ -21,6 +21,7 @@ import {
   LayoutDashboardIcon,
   ListOrderedIcon,
   LogOutIcon,
+  ReceiptTextIcon,
   MenuIcon,
   PlusIcon,
   ScrollTextIcon,
@@ -45,6 +46,7 @@ const NAV: readonly {
     | "/org/$orgSlug/files"
     | "/org/$orgSlug/front-desk"
     | "/org/$orgSlug/front-desk/queue"
+    | "/org/$orgSlug/billing"
     | "/org/$orgSlug/ai"
     | "/org/$orgSlug/members"
     | "/org/$orgSlug/audit";
@@ -69,6 +71,12 @@ const NAV: readonly {
     label: "Queue",
     icon: ListOrderedIcon,
     permission: { visit: ["read"] },
+  },
+  {
+    to: "/org/$orgSlug/billing",
+    label: "Billing",
+    icon: ReceiptTextIcon,
+    permission: { billing: ["read"] },
   },
   {
     to: "/org/$orgSlug/files",

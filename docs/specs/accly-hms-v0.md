@@ -439,7 +439,46 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     (queue routes); adds `visit` statement/grants in `access.ts` (coordinator-owned).
   - Interfaces: Charge row shape + `billing.listPendingCharges({ orgSlug, visitId })` consumed
     by billing; visit status consumed by consult slice; `visit.create/transition` contracts.
-- [ ] Slice 6: Billing — invoice, payment, receipt, credit note, refund (riskiest domain logic)
+- [x] Slice 6: Billing — invoice, payment, receipt, credit note, refund — **done** (2026-08-08,
+      this session).
+  - Delivered: `invoices` (immutable header — no status column, no update path — with org +
+    patient print snapshots and totals as sums of line values), `invoice_lines` (per-charge
+    snapshot-of-record: unitPrice/lineSubtotal/allocatedDiscount/taxableValue/taxAmount/gross),
+    `credit_notes` + `credit_note_lines` (lines reference invoice lines), `payments`, and
+    `refunds` tables plus the real `charges.invoiceId` FK — generated migration
+    `0002_burly_cargill.sql`; pure money math in `packages/api/src/lib/invoice-math.ts`
+    (integer-paise arithmetic, half-up rounding: `computeInvoiceLines` with pro-rata discount
+    allocation and remainder-to-largest-line, `derivePartialCredit`, `splitGst`,
+    `fiscalYearLabel`, `documentNumber`); `billing` router (`listPendingCharges`, `addCharge`
+    catalog XOR manual, `voidCharge`, `issueInvoice`, `recordPayment`, `issueCreditNote`,
+    `recordRefund`, `invoiceBalance`, `listInvoices`, `getInvoice`) — issuance locks the
+    visit's pending charges `FOR UPDATE` and flips them in the same transaction with a count
+    assertion; payment/credit/refund mutations lock the invoice row and enforce the money
+    invariants (payment ≤ current positive outstanding; per-invoice-line cumulative credit
+    caps on all three snapshot values; creditTotal ≤ grandTotal; refund ≤ current refund-due
+    AND cumulative per credit note ≤ its total); numbers from per-fiscal-year counter keys
+    (`invoice:/receipt:/creditNote:/refund:<fy>`, refund prefix literal `RF`), all five
+    sensitive actions audited fire-and-forget; `billing: ["read","write","creditNote"]`
+    statement with member read+write and admin/owner creditNote in `access.ts`; billing pages
+    (today's-visits index, per-visit workspace with add/void charge, discount + issue,
+    payment/credit-note/refund dialogs — the latter two permission-gated) and four print
+    routes (invoice A5 + `?layout=thermal`, receipt, credit note, refund voucher) rendering
+    from snapshot data only, CGST/SGST half-split shown when the invoice currency is INR;
+    permission-gated Billing nav entry.
+  - Verified: `bun run check-types && bun run check && bun run test` → 119/119 (invoice-math
+    unit suite: pro-rata allocation sums exact with remainder on largest line, multi-rate
+    half-up tax, partial-credit gross→taxable derivation, full credit reproduces totals, GST
+    split, fiscal-year rollover; integration: happy path through routers, double-invoice race
+    one-winner, zero-pending and voided-charge exclusion, partial payments with gapless
+    receipt series, payment-after-credit cap, per-line and total credit over-issue rejected,
+    discounted multi-rate credit breakup, G=100/P=50/CN=80 → refund capped at 30, per-note
+    refund cap, 20 concurrent issuances gapless 1..20, member creditNote/refund FORBIDDEN,
+    audit rows via `eventually`, tenancy four-questions for `billing` incl. the guarded-call
+    sweep). Browser smoke not performed this session.
+  - Interfaces delivered: exactly the contracted `billing.*` signatures below;
+    invoice/payment/credit-note/refund row shapes (money as 2-decimal strings; balance
+    `outstanding = grandTotal − creditTotal − paymentsTotal + refundsTotal`, negative =
+    refund due) ready for the reports slice.
   - Acceptance: billing screen shows pending Charges per Visit; add manual/catalog Charge; void
     pending Charge with reason; issue Invoice in one transaction (number from fiscal series,
     invoice-lines materialized with allocated discount/taxableValue/taxAmount/gross, header

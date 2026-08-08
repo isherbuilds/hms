@@ -3,6 +3,7 @@ import { check, index, integer, numeric, pgTable, text, timestamp } from "drizzl
 
 import { organization, user } from "./auth";
 import { catalogItems } from "./catalog-items";
+import { invoices } from "./invoices";
 import { visits } from "./visits";
 
 /**
@@ -29,8 +30,8 @@ export const charges = pgTable(
     sourceType: text("source_type").notNull(),
     sourceId: text("source_id"),
     status: text("status").notNull().default("pending"),
-    /** Plain id until the invoices table arrives in Slice 6; intentionally no foreign key. */
-    invoiceId: text("invoice_id"),
+    /** Set exactly once when a pending charge becomes part of an issued invoice. */
+    invoiceId: text("invoice_id").references(() => invoices.id),
     voidReason: text("void_reason"),
     generatedBy: text("generated_by").notNull().default("member"),
     modelName: text("model_name"),

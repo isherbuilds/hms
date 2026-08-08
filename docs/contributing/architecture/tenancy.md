@@ -92,5 +92,10 @@ faster first paint.
 6. Put the page under `routes/org/$orgSlug/`, import `orpc`, and include
    `orgSlug` in every query, mutation, direct call, and tenant-specific
    invalidation key.
-7. Extend `tests/integration/tenancy.test.ts` for foreign membership, cross-org
-   IDs, same-client concurrent orgs, and immediate revocation.
+7. Add every new procedure to `GUARDED_CALLS` in
+   `tests/integration/tenancy.test.ts` — that table is compared against
+   `appRouter`, and three sweeps reuse it to prove a missing claim, a foreign
+   claim, and a revoked membership. Then write the one case the sweeps cannot:
+   that the domain's own rows are invisible from another org. Do not restate the
+   swept questions per domain; see
+   [testing principles](../testing-principles.md).

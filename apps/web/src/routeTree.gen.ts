@@ -21,11 +21,17 @@ import { Route as OrgOrgSlugMembersRouteImport } from './routes/org/$orgSlug/mem
 import { Route as OrgOrgSlugAdminCatalogRouteImport } from './routes/org/$orgSlug/admin/catalog'
 import { Route as OrgOrgSlugAdminSettingsRouteImport } from './routes/org/$orgSlug/admin/settings'
 import { Route as OrgOrgSlugAdminStaffRouteImport } from './routes/org/$orgSlug/admin/staff'
+import { Route as OrgOrgSlugBillingIndexRouteImport } from './routes/org/$orgSlug/billing/index'
 import { Route as OrgOrgSlugFrontDeskIndexRouteImport } from './routes/org/$orgSlug/front-desk/index'
 import { Route as OrgOrgSlugFrontDeskQueueRouteImport } from './routes/org/$orgSlug/front-desk/queue'
 import { Route as OrgOrgSlugFrontDeskRegisterRouteImport } from './routes/org/$orgSlug/front-desk/register'
+import { Route as OrgOrgSlugBillingInvoicesInvoiceIdRouteImport } from './routes/org/$orgSlug/billing/invoices.$invoiceId'
+import { Route as OrgOrgSlugBillingVisitsVisitIdRouteImport } from './routes/org/$orgSlug/billing/visits.$visitId'
 import { Route as OrgOrgSlugFrontDeskPatientsPatientIdRouteImport } from './routes/org/$orgSlug/front-desk/patients.$patientId'
 import { Route as OrgOrgSlugFrontDeskVisitsVisitIdRouteImport } from './routes/org/$orgSlug/front-desk/visits.$visitId'
+import { Route as OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRouteImport } from './routes/org/$orgSlug/billing/invoices.$invoiceId.credit-note.$creditNoteId'
+import { Route as OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRouteImport } from './routes/org/$orgSlug/billing/invoices.$invoiceId.receipt.$paymentId'
+import { Route as OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRouteImport } from './routes/org/$orgSlug/billing/invoices.$invoiceId.refund.$refundId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -87,6 +93,11 @@ const OrgOrgSlugAdminStaffRoute = OrgOrgSlugAdminStaffRouteImport.update({
   path: '/admin/staff',
   getParentRoute: () => OrgOrgSlugRouteRoute,
 } as any)
+const OrgOrgSlugBillingIndexRoute = OrgOrgSlugBillingIndexRouteImport.update({
+  id: '/billing/',
+  path: '/billing/',
+  getParentRoute: () => OrgOrgSlugRouteRoute,
+} as any)
 const OrgOrgSlugFrontDeskIndexRoute =
   OrgOrgSlugFrontDeskIndexRouteImport.update({
     id: '/front-desk/',
@@ -105,6 +116,18 @@ const OrgOrgSlugFrontDeskRegisterRoute =
     path: '/front-desk/register',
     getParentRoute: () => OrgOrgSlugRouteRoute,
   } as any)
+const OrgOrgSlugBillingInvoicesInvoiceIdRoute =
+  OrgOrgSlugBillingInvoicesInvoiceIdRouteImport.update({
+    id: '/billing/invoices/$invoiceId',
+    path: '/billing/invoices/$invoiceId',
+    getParentRoute: () => OrgOrgSlugRouteRoute,
+  } as any)
+const OrgOrgSlugBillingVisitsVisitIdRoute =
+  OrgOrgSlugBillingVisitsVisitIdRouteImport.update({
+    id: '/billing/visits/$visitId',
+    path: '/billing/visits/$visitId',
+    getParentRoute: () => OrgOrgSlugRouteRoute,
+  } as any)
 const OrgOrgSlugFrontDeskPatientsPatientIdRoute =
   OrgOrgSlugFrontDeskPatientsPatientIdRouteImport.update({
     id: '/front-desk/patients/$patientId',
@@ -116,6 +139,24 @@ const OrgOrgSlugFrontDeskVisitsVisitIdRoute =
     id: '/front-desk/visits/$visitId',
     path: '/front-desk/visits/$visitId',
     getParentRoute: () => OrgOrgSlugRouteRoute,
+  } as any)
+const OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute =
+  OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRouteImport.update({
+    id: '/credit-note/$creditNoteId',
+    path: '/credit-note/$creditNoteId',
+    getParentRoute: () => OrgOrgSlugBillingInvoicesInvoiceIdRoute,
+  } as any)
+const OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute =
+  OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRouteImport.update({
+    id: '/receipt/$paymentId',
+    path: '/receipt/$paymentId',
+    getParentRoute: () => OrgOrgSlugBillingInvoicesInvoiceIdRoute,
+  } as any)
+const OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute =
+  OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRouteImport.update({
+    id: '/refund/$refundId',
+    path: '/refund/$refundId',
+    getParentRoute: () => OrgOrgSlugBillingInvoicesInvoiceIdRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -133,9 +174,15 @@ export interface FileRoutesByFullPath {
   '/org/$orgSlug/admin/staff': typeof OrgOrgSlugAdminStaffRoute
   '/org/$orgSlug/front-desk/queue': typeof OrgOrgSlugFrontDeskQueueRoute
   '/org/$orgSlug/front-desk/register': typeof OrgOrgSlugFrontDeskRegisterRoute
+  '/org/$orgSlug/billing/': typeof OrgOrgSlugBillingIndexRoute
   '/org/$orgSlug/front-desk/': typeof OrgOrgSlugFrontDeskIndexRoute
+  '/org/$orgSlug/billing/invoices/$invoiceId': typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren
+  '/org/$orgSlug/billing/visits/$visitId': typeof OrgOrgSlugBillingVisitsVisitIdRoute
   '/org/$orgSlug/front-desk/patients/$patientId': typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
   '/org/$orgSlug/front-desk/visits/$visitId': typeof OrgOrgSlugFrontDeskVisitsVisitIdRoute
+  '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId': typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute
+  '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId': typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute
+  '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId': typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -152,9 +199,15 @@ export interface FileRoutesByTo {
   '/org/$orgSlug/admin/staff': typeof OrgOrgSlugAdminStaffRoute
   '/org/$orgSlug/front-desk/queue': typeof OrgOrgSlugFrontDeskQueueRoute
   '/org/$orgSlug/front-desk/register': typeof OrgOrgSlugFrontDeskRegisterRoute
+  '/org/$orgSlug/billing': typeof OrgOrgSlugBillingIndexRoute
   '/org/$orgSlug/front-desk': typeof OrgOrgSlugFrontDeskIndexRoute
+  '/org/$orgSlug/billing/invoices/$invoiceId': typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren
+  '/org/$orgSlug/billing/visits/$visitId': typeof OrgOrgSlugBillingVisitsVisitIdRoute
   '/org/$orgSlug/front-desk/patients/$patientId': typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
   '/org/$orgSlug/front-desk/visits/$visitId': typeof OrgOrgSlugFrontDeskVisitsVisitIdRoute
+  '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId': typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute
+  '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId': typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute
+  '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId': typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -172,9 +225,15 @@ export interface FileRoutesById {
   '/org/$orgSlug/admin/staff': typeof OrgOrgSlugAdminStaffRoute
   '/org/$orgSlug/front-desk/queue': typeof OrgOrgSlugFrontDeskQueueRoute
   '/org/$orgSlug/front-desk/register': typeof OrgOrgSlugFrontDeskRegisterRoute
+  '/org/$orgSlug/billing/': typeof OrgOrgSlugBillingIndexRoute
   '/org/$orgSlug/front-desk/': typeof OrgOrgSlugFrontDeskIndexRoute
+  '/org/$orgSlug/billing/invoices/$invoiceId': typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren
+  '/org/$orgSlug/billing/visits/$visitId': typeof OrgOrgSlugBillingVisitsVisitIdRoute
   '/org/$orgSlug/front-desk/patients/$patientId': typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
   '/org/$orgSlug/front-desk/visits/$visitId': typeof OrgOrgSlugFrontDeskVisitsVisitIdRoute
+  '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId': typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute
+  '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId': typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute
+  '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId': typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -193,9 +252,15 @@ export interface FileRouteTypes {
     | '/org/$orgSlug/admin/staff'
     | '/org/$orgSlug/front-desk/queue'
     | '/org/$orgSlug/front-desk/register'
+    | '/org/$orgSlug/billing/'
     | '/org/$orgSlug/front-desk/'
+    | '/org/$orgSlug/billing/invoices/$invoiceId'
+    | '/org/$orgSlug/billing/visits/$visitId'
     | '/org/$orgSlug/front-desk/patients/$patientId'
     | '/org/$orgSlug/front-desk/visits/$visitId'
+    | '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId'
+    | '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId'
+    | '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -212,9 +277,15 @@ export interface FileRouteTypes {
     | '/org/$orgSlug/admin/staff'
     | '/org/$orgSlug/front-desk/queue'
     | '/org/$orgSlug/front-desk/register'
+    | '/org/$orgSlug/billing'
     | '/org/$orgSlug/front-desk'
+    | '/org/$orgSlug/billing/invoices/$invoiceId'
+    | '/org/$orgSlug/billing/visits/$visitId'
     | '/org/$orgSlug/front-desk/patients/$patientId'
     | '/org/$orgSlug/front-desk/visits/$visitId'
+    | '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId'
+    | '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId'
+    | '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
   id:
     | '__root__'
     | '/'
@@ -231,9 +302,15 @@ export interface FileRouteTypes {
     | '/org/$orgSlug/admin/staff'
     | '/org/$orgSlug/front-desk/queue'
     | '/org/$orgSlug/front-desk/register'
+    | '/org/$orgSlug/billing/'
     | '/org/$orgSlug/front-desk/'
+    | '/org/$orgSlug/billing/invoices/$invoiceId'
+    | '/org/$orgSlug/billing/visits/$visitId'
     | '/org/$orgSlug/front-desk/patients/$patientId'
     | '/org/$orgSlug/front-desk/visits/$visitId'
+    | '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId'
+    | '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId'
+    | '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -329,6 +406,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgSlugAdminStaffRouteImport
       parentRoute: typeof OrgOrgSlugRouteRoute
     }
+    '/org/$orgSlug/billing/': {
+      id: '/org/$orgSlug/billing/'
+      path: '/billing'
+      fullPath: '/org/$orgSlug/billing/'
+      preLoaderRoute: typeof OrgOrgSlugBillingIndexRouteImport
+      parentRoute: typeof OrgOrgSlugRouteRoute
+    }
     '/org/$orgSlug/front-desk/': {
       id: '/org/$orgSlug/front-desk/'
       path: '/front-desk'
@@ -350,6 +434,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgSlugFrontDeskRegisterRouteImport
       parentRoute: typeof OrgOrgSlugRouteRoute
     }
+    '/org/$orgSlug/billing/invoices/$invoiceId': {
+      id: '/org/$orgSlug/billing/invoices/$invoiceId'
+      path: '/billing/invoices/$invoiceId'
+      fullPath: '/org/$orgSlug/billing/invoices/$invoiceId'
+      preLoaderRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteImport
+      parentRoute: typeof OrgOrgSlugRouteRoute
+    }
+    '/org/$orgSlug/billing/visits/$visitId': {
+      id: '/org/$orgSlug/billing/visits/$visitId'
+      path: '/billing/visits/$visitId'
+      fullPath: '/org/$orgSlug/billing/visits/$visitId'
+      preLoaderRoute: typeof OrgOrgSlugBillingVisitsVisitIdRouteImport
+      parentRoute: typeof OrgOrgSlugRouteRoute
+    }
     '/org/$orgSlug/front-desk/patients/$patientId': {
       id: '/org/$orgSlug/front-desk/patients/$patientId'
       path: '/front-desk/patients/$patientId'
@@ -364,8 +462,50 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgSlugFrontDeskVisitsVisitIdRouteImport
       parentRoute: typeof OrgOrgSlugRouteRoute
     }
+    '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId': {
+      id: '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId'
+      path: '/credit-note/$creditNoteId'
+      fullPath: '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId'
+      preLoaderRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRouteImport
+      parentRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRoute
+    }
+    '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId': {
+      id: '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId'
+      path: '/receipt/$paymentId'
+      fullPath: '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId'
+      preLoaderRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRouteImport
+      parentRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRoute
+    }
+    '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId': {
+      id: '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
+      path: '/refund/$refundId'
+      fullPath: '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
+      preLoaderRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRouteImport
+      parentRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRoute
+    }
   }
 }
+
+interface OrgOrgSlugBillingInvoicesInvoiceIdRouteChildren {
+  OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute
+  OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute
+  OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
+}
+
+const OrgOrgSlugBillingInvoicesInvoiceIdRouteChildren: OrgOrgSlugBillingInvoicesInvoiceIdRouteChildren =
+  {
+    OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute:
+      OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute,
+    OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute:
+      OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute,
+    OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute:
+      OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute,
+  }
+
+const OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren =
+  OrgOrgSlugBillingInvoicesInvoiceIdRoute._addFileChildren(
+    OrgOrgSlugBillingInvoicesInvoiceIdRouteChildren,
+  )
 
 interface OrgOrgSlugRouteRouteChildren {
   OrgOrgSlugAiRoute: typeof OrgOrgSlugAiRoute
@@ -378,7 +518,10 @@ interface OrgOrgSlugRouteRouteChildren {
   OrgOrgSlugAdminStaffRoute: typeof OrgOrgSlugAdminStaffRoute
   OrgOrgSlugFrontDeskQueueRoute: typeof OrgOrgSlugFrontDeskQueueRoute
   OrgOrgSlugFrontDeskRegisterRoute: typeof OrgOrgSlugFrontDeskRegisterRoute
+  OrgOrgSlugBillingIndexRoute: typeof OrgOrgSlugBillingIndexRoute
   OrgOrgSlugFrontDeskIndexRoute: typeof OrgOrgSlugFrontDeskIndexRoute
+  OrgOrgSlugBillingInvoicesInvoiceIdRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren
+  OrgOrgSlugBillingVisitsVisitIdRoute: typeof OrgOrgSlugBillingVisitsVisitIdRoute
   OrgOrgSlugFrontDeskPatientsPatientIdRoute: typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
   OrgOrgSlugFrontDeskVisitsVisitIdRoute: typeof OrgOrgSlugFrontDeskVisitsVisitIdRoute
 }
@@ -394,7 +537,11 @@ const OrgOrgSlugRouteRouteChildren: OrgOrgSlugRouteRouteChildren = {
   OrgOrgSlugAdminStaffRoute: OrgOrgSlugAdminStaffRoute,
   OrgOrgSlugFrontDeskQueueRoute: OrgOrgSlugFrontDeskQueueRoute,
   OrgOrgSlugFrontDeskRegisterRoute: OrgOrgSlugFrontDeskRegisterRoute,
+  OrgOrgSlugBillingIndexRoute: OrgOrgSlugBillingIndexRoute,
   OrgOrgSlugFrontDeskIndexRoute: OrgOrgSlugFrontDeskIndexRoute,
+  OrgOrgSlugBillingInvoicesInvoiceIdRoute:
+    OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren,
+  OrgOrgSlugBillingVisitsVisitIdRoute: OrgOrgSlugBillingVisitsVisitIdRoute,
   OrgOrgSlugFrontDeskPatientsPatientIdRoute:
     OrgOrgSlugFrontDeskPatientsPatientIdRoute,
   OrgOrgSlugFrontDeskVisitsVisitIdRoute: OrgOrgSlugFrontDeskVisitsVisitIdRoute,

@@ -1,6 +1,7 @@
 import type { RouterClient } from "@orpc/server";
 
 import { auditRouter } from "./audit";
+import { billingRouter } from "./billing";
 import { catalogRouter } from "./catalog";
 import { dashboardRouter } from "./dashboard";
 import { filesRouter } from "./files";
@@ -14,6 +15,7 @@ export const appRouter = {
   dashboard: dashboardRouter,
   settings: settingsRouter,
   audit: auditRouter,
+  billing: billingRouter,
   files: filesRouter,
   members: membersRouter,
   patient: patientRouter,

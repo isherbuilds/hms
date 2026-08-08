@@ -9,19 +9,15 @@ A **statement** is a resource with a list of actions. A **role** is a set of
 grants over those statements. A **member** holds one or more roles within one
 organization, and their effective permissions are the **union** of those roles.
 
-```ts
-export const ac = createAccessControl({
-  ...defaultStatements,
-  member: ["create", "read", "update", "delete"],
-  settings: ["read", "update"],
-  audit: ["read"],
-  storage: ["upload", "read", "delete"],
-  ai: ["use"],
-} as const);
-```
+The statement list lives in the `createAccessControl({ ... })` call in
+`packages/auth/src/access.ts` and is not copied here: a second listing of the
+grant matrix is a second thing to keep in step with the first. Read the module
+for the current surface.
 
 `member` is Better Auth's own statement, extended with a `read` action of ours
 so everyone in an org can see who else is in it while only admins can change it.
+The rest — `patient`, `visit`, `billing`, `catalog`, `staff`, `settings`,
+`audit`, `storage`, `ai` — are this application's.
 
 ## Roles state their grants explicitly
 
