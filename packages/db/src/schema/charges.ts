@@ -46,10 +46,9 @@ export const charges = pgTable(
   },
   (table) => [
     check("charges_qty_check", sql`${table.qty} > 0`),
-    check(
-      "charges_source_type_check",
-      sql`${table.sourceType} in ('consult_fee', 'order', 'manual')`,
-    ),
+    // No `order`: orders left the consult domain before it shipped, and
+    // in-house fulfillment is billed as a `manual` charge by the desk.
+    check("charges_source_type_check", sql`${table.sourceType} in ('consult_fee', 'manual')`),
     check("charges_status_check", sql`${table.status} in ('pending', 'invoiced', 'voided')`),
     check("charges_generated_by_check", sql`${table.generatedBy} in ('member', 'ai')`),
     index("charges_org_visit_idx").on(table.orgId, table.visitId, table.status),

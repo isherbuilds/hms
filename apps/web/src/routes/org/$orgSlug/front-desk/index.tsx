@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 
 import { PageHeader } from "@/components/app-shell";
 import { orpc } from "@/lib/orpc";
+import { patientAgeYears } from "@/lib/patient-age";
 
 const patientSearchQuery = (orgSlug: string, query: string) =>
   orpc.patient.search.infiniteOptions({
@@ -47,19 +48,8 @@ function useDebouncedValue(value: string, delay: number): string {
 }
 
 function patientAge(dateOfBirth: string | null, ageYears: number | null): string {
-  if (ageYears !== null) return String(ageYears);
-  if (!dateOfBirth) return "—";
-
-  const today = new Date();
-  const birthDate = new Date(`${dateOfBirth}T00:00:00`);
-  let age = today.getFullYear() - birthDate.getFullYear();
-  if (
-    today.getMonth() < birthDate.getMonth() ||
-    (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate())
-  ) {
-    age -= 1;
-  }
-  return String(age);
+  const age = patientAgeYears(dateOfBirth, ageYears);
+  return age === null ? "—" : String(age);
 }
 
 function FrontDeskRoute() {

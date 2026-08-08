@@ -29,14 +29,16 @@ import {
 import { Textarea } from "@better-stack/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { PrinterIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { FileTextIcon, PrinterIcon, Trash2Icon, UploadIcon } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { PageHeader } from "@/components/app-shell";
 import { useZodForm } from "@/hooks/use-zod-form";
+import { formatFileSize, openOrgFile, uploadOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
+import { patientAgeYears } from "@/lib/patient-age";
 
 const VISIT_STATUSES = ["waiting", "in_consult", "completed", "cancelled"] as const;
 type VisitStatus = (typeof VISIT_STATUSES)[number];
@@ -57,6 +59,37 @@ const cancelSchema = z.object({
   cancelReason: z.string().trim().min(1, "Enter a cancellation reason").max(500),
 });
 
+/** Extensions worth trusting when the browser reports an empty File.type. */
+const SCAN_EXTENSION_TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  heic: "image/heic",
+  heif: "image/heif",
+  gif: "image/gif",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+  bmp: "image/bmp",
+};
+
+/**
+ * Resolves the MIME type `visit.attachPrescription` will accept, or null.
+ * Browsers report an empty `File.type` for some valid scans; uploading those
+ * unresolved would finalize an orphan file that attach then rejects.
+ */
+function prescriptionMimeType(file: File): string | null {
+  if (file.type === "application/pdf" || file.type.startsWith("image/")) {
+    return file.type;
+  }
+  if (file.type !== "") {
+    return null;
+  }
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  return SCAN_EXTENSION_TYPES[extension] ?? null;
+}
+
 export const Route = createFileRoute("/org/$orgSlug/front-desk/visits/$visitId")({
   loader: ({ context: { queryClient }, params: { orgSlug, visitId } }) => {
     void Promise.all([
@@ -68,19 +101,8 @@ export const Route = createFileRoute("/org/$orgSlug/front-desk/visits/$visitId")
 });
 
 function patientAge(dateOfBirth: string | null, ageYears: number | null): string {
-  if (ageYears !== null) return `${ageYears} years`;
-  if (!dateOfBirth) return "Age not recorded";
-
-  const today = new Date();
-  const birthDate = new Date(`${dateOfBirth}T00:00:00`);
-  let age = today.getFullYear() - birthDate.getFullYear();
-  if (
-    today.getMonth() < birthDate.getMonth() ||
-    (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate())
-  ) {
-    age -= 1;
-  }
-  return `${age} years`;
+  const age = patientAgeYears(dateOfBirth, ageYears);
+  return age === null ? "Age not recorded" : `${age} years`;
 }
 
 function formatMoney(amount: string, currency: string): string {
@@ -136,7 +158,7 @@ function VisitDetailRoute() {
     );
   }
 
-  const { visit, patient, practitioner, department, charges } = detail.data;
+  const { visit, patient, practitioner, department, charges, prescriptions } = detail.data;
   const consultCharge = charges.find((charge) => charge.sourceType === "consult_fee");
   const age = patientAge(patient.dateOfBirth, patient.ageYears);
 
@@ -215,6 +237,13 @@ function VisitDetailRoute() {
               <p className="text-muted-foreground">{department.name}</p>
             </DetailCell>
           </section>
+
+          <PrescriptionDocuments
+            orgSlug={orgSlug}
+            visitId={visitId}
+            prescriptions={prescriptions}
+            disabled={visit.status === "cancelled"}
+          />
 
           <section className="flex flex-col gap-2">
             <h2 className="text-sm font-medium">Charges</h2>
@@ -305,6 +334,179 @@ function VisitDetailRoute() {
         />
       ) : null}
     </>
+  );
+}
+
+function PrescriptionDocuments({
+  orgSlug,
+  visitId,
+  prescriptions,
+  disabled,
+}: {
+  orgSlug: string;
+  visitId: string;
+  prescriptions: Array<{
+    id: string;
+    fileId: string;
+    name: string;
+    mimeType: string | null;
+    size: number;
+    createdAt: Date | string;
+  }>;
+  disabled: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: orpc.visit.get.key({ input: { orgSlug, visitId } }),
+      }),
+      // Uploads create a ready file and attach/detach write audit rows, so the
+      // file-domain views must not keep serving their 60s-stale caches.
+      queryClient.invalidateQueries({
+        queryKey: orpc.files.list.key({ input: { orgSlug } }),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: orpc.dashboard.summary.key({ input: { orgSlug } }),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: orpc.audit.list.key({ input: { orgSlug } }),
+      }),
+    ]);
+
+  const upload = async (file: File) => {
+    const mimeType = prescriptionMimeType(file);
+    if (!mimeType) {
+      toast.error("Only image or PDF scans can be attached");
+      return;
+    }
+    setUploading(true);
+    try {
+      const fileId = await uploadOrgFile(orgSlug, file, mimeType);
+      await orpc.visit.attachPrescription.call({ orgSlug, visitId, fileId });
+      await refresh();
+      toast.success("Prescription scan attached");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not attach prescription scan");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const open = async (fileId: string) => {
+    try {
+      await openOrgFile(orgSlug, fileId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not open prescription scan");
+    }
+  };
+
+  const remove = async (attachmentId: string) => {
+    setRemovingId(attachmentId);
+    try {
+      await orpc.visit.detachPrescription.call({ orgSlug, attachmentId });
+      await refresh();
+      toast.success("Prescription scan removed; the private file was kept");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove prescription scan");
+    } finally {
+      setRemovingId(null);
+    }
+  };
+
+  return (
+    <section className="ring-1 ring-border">
+      <div className="flex items-start justify-between gap-3 border-b p-3">
+        <div>
+          <h2 className="text-sm font-medium">Paper prescription</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Keep the doctor's signed image or PDF as the source record.
+          </p>
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*,application/pdf"
+          className="sr-only"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void upload(file);
+            event.target.value = "";
+          }}
+        />
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          disabled={disabled || uploading}
+          onClick={() => inputRef.current?.click()}
+        >
+          <UploadIcon data-icon="inline-start" />
+          {uploading ? "Uploading…" : "Attach scan"}
+        </Button>
+      </div>
+
+      {prescriptions.length === 0 ? (
+        <div className="flex items-center gap-2 p-3 text-xs text-muted-foreground">
+          <FileTextIcon className="size-4" />
+          No prescription scan attached.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>File</TableHead>
+                <TableHead className="w-24">Size</TableHead>
+                <TableHead className="w-44">Captured</TableHead>
+                <TableHead className="w-32 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {prescriptions.map((prescription) => (
+                <TableRow key={prescription.id}>
+                  <TableCell>
+                    <p className="font-medium">{prescription.name}</p>
+                    <p className="text-muted-foreground">{prescription.mimeType}</p>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">
+                    {formatFileSize(prescription.size)}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">
+                    {dateTimeFormatter.format(new Date(prescription.createdAt))}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => void open(prescription.fileId)}
+                      >
+                        Open
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="ghost"
+                        aria-label={`Remove ${prescription.name}`}
+                        disabled={removingId !== null}
+                        onClick={() => void remove(prescription.id)}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </section>
   );
 }
 

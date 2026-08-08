@@ -8,6 +8,7 @@ export * from "./departments";
 export * from "./catalog-items";
 export * from "./practitioners";
 export * from "./visits";
+export * from "./attachments";
 export * from "./charges";
 export * from "./invoices";
 export * from "./invoice-lines";

@@ -17,6 +17,7 @@ import { toast } from "sonner";
 
 import { PageHeader } from "@/components/app-shell";
 import { useConfirm } from "@/components/confirm-dialog";
+import { formatFileSize, openOrgFile, uploadOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
 
 const filesQuery = (orgSlug: string) =>
@@ -42,17 +43,6 @@ const timestamp = new Intl.DateTimeFormat(undefined, {
   timeStyle: "short",
 });
 
-function formatSize(bytes: number): string {
-  const units = ["B", "KB", "MB", "GB"];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`;
-}
-
 function FilesRoute() {
   const { orgSlug } = Route.useParams();
   const queryClient = useQueryClient();
@@ -76,31 +66,10 @@ function FilesRoute() {
       }),
     ]);
 
-  /**
-   * Three steps, and the bytes never touch the app server: ask for a presigned
-   * PUT, stream straight to SeaweedFS, then flip the row to `ready`. If the
-   * PUT fails the row simply stays `pending` and never appears in the list.
-   */
   const upload = async (file: File) => {
     setUploading(file.name);
     try {
-      const { key, uploadUrl } = await orpc.files.createUpload.call({
-        orgSlug,
-        name: file.name,
-        mimeType: file.type || undefined,
-        size: file.size,
-      });
-
-      const response = await fetch(uploadUrl, {
-        method: "PUT",
-        body: file,
-        headers: file.type ? { "Content-Type": file.type } : undefined,
-      });
-      if (!response.ok) {
-        throw new Error(`Storage rejected the upload (${response.status})`);
-      }
-
-      await orpc.files.finalizeUpload.call({ orgSlug, key });
+      await uploadOrgFile(orgSlug, file);
       await refresh();
       toast.success(`Uploaded ${file.name}`);
     } catch (error) {
@@ -110,12 +79,9 @@ function FilesRoute() {
     }
   };
 
-  // Presigned URLs are cross-origin, where `download` is ignored — an anchor
-  // would navigate this tab away from the app instead of downloading.
   const download = async (key: string) => {
     try {
-      const { url } = await orpc.files.getReadUrl.call({ orgSlug, key });
-      window.open(url, "_blank", "noopener,noreferrer");
+      await openOrgFile(orgSlug, key);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not open that file");
     }
@@ -217,7 +183,7 @@ function FilesRoute() {
                         </div>
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {formatSize(file.size)}
+                        {formatFileSize(file.size)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-muted-foreground">
                         {timestamp.format(new Date(file.createdAt))}

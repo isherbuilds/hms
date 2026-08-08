@@ -1,13 +1,15 @@
 import { db } from "@better-stack/db";
 import { nextCounter } from "@better-stack/db/counter";
+import { attachments } from "@better-stack/db/schema/attachments";
 import { catalogItems } from "@better-stack/db/schema/catalog-items";
 import { charges } from "@better-stack/db/schema/charges";
 import { departments } from "@better-stack/db/schema/departments";
+import { file } from "@better-stack/db/schema/file";
 import { patients } from "@better-stack/db/schema/patients";
 import { practitioners } from "@better-stack/db/schema/practitioners";
 import { visits } from "@better-stack/db/schema/visits";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq, getTableColumns, gte, inArray, lt, ne } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, gte, inArray, like, lt, ne, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
@@ -357,36 +359,154 @@ export const visitRouter = {
         throw new ORPCError("NOT_FOUND");
       }
 
-      const [[patient], [practitioner], [department], visitCharges] = await Promise.all([
-        db
-          .select()
-          .from(patients)
-          .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, visit.patientId)))
-          .limit(1),
-        db
-          .select({ id: practitioners.id, name: practitioners.name })
-          .from(practitioners)
-          .where(
-            and(eq(practitioners.orgId, scope.orgId), eq(practitioners.id, visit.practitionerId)),
-          )
-          .limit(1),
-        db
-          .select({ id: departments.id, name: departments.name })
-          .from(departments)
-          .where(and(eq(departments.orgId, scope.orgId), eq(departments.id, visit.departmentId)))
-          .limit(1),
-        db
-          .select()
-          .from(charges)
-          .where(and(eq(charges.orgId, scope.orgId), eq(charges.visitId, visit.id)))
-          .orderBy(asc(charges.createdAt)),
-      ]);
+      const [[patient], [practitioner], [department], visitCharges, prescriptions] =
+        await Promise.all([
+          db
+            .select()
+            .from(patients)
+            .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, visit.patientId)))
+            .limit(1),
+          db
+            .select({ id: practitioners.id, name: practitioners.name })
+            .from(practitioners)
+            .where(
+              and(eq(practitioners.orgId, scope.orgId), eq(practitioners.id, visit.practitionerId)),
+            )
+            .limit(1),
+          db
+            .select({ id: departments.id, name: departments.name })
+            .from(departments)
+            .where(and(eq(departments.orgId, scope.orgId), eq(departments.id, visit.departmentId)))
+            .limit(1),
+          db
+            .select()
+            .from(charges)
+            .where(and(eq(charges.orgId, scope.orgId), eq(charges.visitId, visit.id)))
+            .orderBy(asc(charges.createdAt)),
+          db
+            .select({
+              id: attachments.id,
+              fileId: attachments.fileId,
+              name: file.name,
+              mimeType: file.mimeType,
+              size: file.size,
+              createdAt: attachments.createdAt,
+            })
+            .from(attachments)
+            .innerJoin(file, and(eq(file.orgId, scope.orgId), eq(file.id, attachments.fileId)))
+            .where(
+              and(
+                eq(attachments.orgId, scope.orgId),
+                eq(attachments.targetType, "visit_prescription"),
+                eq(attachments.targetId, visit.id),
+              ),
+            )
+            .orderBy(asc(attachments.createdAt)),
+        ]);
 
       if (!patient || !practitioner || !department) {
         throw new ORPCError("NOT_FOUND");
       }
 
-      return { visit, patient, practitioner, department, charges: visitCharges };
+      return { visit, patient, practitioner, department, charges: visitCharges, prescriptions };
     },
   ),
+
+  attachPrescription: orgProcedure(
+    { visit: ["update"] },
+    orgInput.extend({ visitId: z.string(), fileId: z.string() }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+    const attachment = await db.transaction(async (tx) => {
+      const [visit] = await tx
+        .select({ id: visits.id })
+        .from(visits)
+        .where(
+          and(
+            eq(visits.orgId, scope.orgId),
+            eq(visits.id, input.visitId),
+            ne(visits.status, "cancelled"),
+          ),
+        )
+        .limit(1);
+
+      const [readyFile] = await tx
+        .select({ id: file.id })
+        .from(file)
+        .where(
+          and(
+            eq(file.orgId, scope.orgId),
+            eq(file.id, input.fileId),
+            eq(file.status, "ready"),
+            or(eq(file.mimeType, "application/pdf"), like(file.mimeType, "image/%")),
+          ),
+        )
+        .limit(1)
+        .for("key share");
+
+      if (!visit || !readyFile) {
+        throw new ORPCError("NOT_FOUND");
+      }
+
+      const [created] = await tx
+        .insert(attachments)
+        .values({
+          id: crypto.randomUUID(),
+          orgId: scope.orgId,
+          targetType: "visit_prescription",
+          targetId: visit.id,
+          fileId: readyFile.id,
+          createdBy: scope.userId,
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      if (!created) {
+        throw new ORPCError("CONFLICT");
+      }
+
+      return created;
+    });
+
+    audit({
+      action: "visit.prescription.attach",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `visit:${input.visitId}`,
+      meta: { attachmentId: attachment.id, fileId: attachment.fileId },
+    });
+
+    return attachment;
+  }),
+
+  detachPrescription: orgProcedure(
+    { visit: ["update"] },
+    orgInput.extend({ attachmentId: z.string() }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+    const [attachment] = await db
+      .delete(attachments)
+      .where(
+        and(
+          eq(attachments.orgId, scope.orgId),
+          eq(attachments.targetType, "visit_prescription"),
+          eq(attachments.id, input.attachmentId),
+        ),
+      )
+      .returning();
+
+    if (!attachment) {
+      throw new ORPCError("NOT_FOUND");
+    }
+
+    audit({
+      action: "visit.prescription.detach",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `visit:${attachment.targetId}`,
+      meta: { attachmentId: attachment.id, fileId: attachment.fileId },
+    });
+
+    return attachment;
+  }),
 };

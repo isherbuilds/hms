@@ -10,9 +10,9 @@ predicate, and every organization procedure is declared through
 
 The live boundary covers organization setup and settings, patient registration
 and search, the priced service catalog, department and practitioner setup, OPD
-visits with a per-practitioner daily token queue, charges accumulating on the
-visit, and billing: immutable invoices, payments with printable receipts,
-credit notes, and refunds.
+visits with a per-practitioner daily token queue and private captures of the doctor's
+signed paper prescription, and billing: immutable invoices,
+payments with printable receipts, credit notes, and refunds.
 The corresponding organization routes are:
 
 - `/org/$orgSlug/admin/settings`
@@ -25,9 +25,7 @@ The corresponding organization routes are:
   under `/billing/invoices/$invoiceId` (invoice, receipt, credit note, and
   refund voucher)
 
-Appointments, consult notes, orders, results, and beds are not live.
-
-## Existing relationships
+Appointments, results, and beds are not live.
 
 ```ts
 // Existing shape, simplified for architecture documentation.
@@ -43,6 +41,7 @@ creditNotes: { id, orgId, invoiceId, creditNoteNumber, total }
 creditNoteLines: { id, orgId, creditNoteId, invoiceLineId, taxableValue, taxAmount, gross }
 payments: { id, orgId, invoiceId, receiptNumber, method, amount }
 refunds: { id, orgId, invoiceId, creditNoteId, refundNumber, method, amount }
+attachments: { id, orgId, targetType, targetId, fileId, createdBy, createdAt }
 ```
 
 ### Patient MRN
@@ -89,6 +88,31 @@ Charges accumulate on the visit as `pending` rows with snapshotted money
 fields and flip to `invoiced` only through invoice issuance, or to `voided`
 with a reason.
 
+### Paper prescriptions and attachments
+
+The doctor's signed paper prescription is the clinical source of truth. Staff
+capture its image or PDF on the existing Visit; the application does not
+transcribe, regenerate, or sign it on the practitioner's behalf. A doctor login
+is therefore not required for this workflow.
+
+`attachments` is the single polymorphic file-link table for domain documents:
+`(orgId, targetType, targetId, fileId)` is unique, and `targetId` deliberately
+carries no foreign key. The v0 target type is `visit_prescription`. The attach
+procedure proves both the Visit and ready File exist in the caller's organization
+and accepts only images or PDFs. Later domains add a constrained target type and
+a guarded procedure, not another link table. Detaching removes only the link,
+never the File row or stored object. Reads use short-lived presigned URLs.
+
+`attachments.file_id` is the only foreign key pointing into the files domain,
+so `files.delete` refuses with `CONFLICT` while a file is still attached to any
+record: the prescription has to be detached deliberately, by someone who can see
+what they are removing it from, rather than the delete failing on a raw
+constraint violation.
+
+Attach and detach successes emit fire-and-forget `visit.prescription.attach`
+and `visit.prescription.detach` audit records. AI extraction is a separately
+reviewed future derived-data workflow; it cannot replace or alter the source.
+
 ### Billing
 
 Issuing an invoice is one transaction: the visit's pending charges are locked,
@@ -120,19 +144,23 @@ fiscal-year series from the counter keys `invoice:<fy>`, `receipt:<fy>`,
 | Practitioners | `staff.createPractitioner`                                                                           | `staff:create`       |
 | Practitioners | `staff.updatePractitioner`                                                                           | `staff:update`       |
 | Visit         | `visit.create`                                                                                       | `visit:create`       |
-| Visit         | `visit.transition`                                                                                   | `visit:update`       |
+| Visit         | `visit.transition`, `visit.attachPrescription`, `visit.detachPrescription`                           | `visit:update`       |
 | Visit         | `visit.queue`, `visit.get`                                                                           | `visit:read`         |
 | Billing       | `billing.listPendingCharges`, `billing.invoiceBalance`, `billing.listInvoices`, `billing.getInvoice` | `billing:read`       |
-| Billing       | `billing.addCharge`, `billing.voidCharge`, `billing.issueInvoice`, `billing.recordPayment`           | `billing:write`      |
+| Billing       | `billing.addCharge`, `billing.voidCharge`                                                            | `billing:write`      |
+| Billing       | `billing.issueInvoice`, `billing.recordPayment`                                                      | `billing:write`      |
 | Billing       | `billing.issueCreditNote`, `billing.recordRefund`                                                    | `billing:creditNote` |
 
 These are all `orgProcedure(...)` calls. Permission checks establish what the
 member may do; they do not replace the `orgId` predicate on every select,
-insert, and update. Optional member linkage likewise never authorizes a row.
+insert, and update. Optional practitioner/member linkage is attribution only;
+it never authorizes a row.
 
-Patient registration and update, visit creation and transitions, and the
-billing mutations (`charge.void`, `invoice.issue`, `payment.record`,
-`creditNote.issue`, `refund.record`) call the ordinary fire-and-forget
-`audit()` after their database writes; the audit write is never part of the
-domain transaction. Follow the [audit architecture](./audit.md) rather than
+Patient registration and update, visit creation and transitions, billing mutations
+(`charge.void`, `invoice.issue`, `payment.record`, `creditNote.issue`,
+`refund.record`), and paper-prescription mutations (`visit.prescription.attach`,
+`visit.prescription.detach`) call
+the ordinary fire-and-forget `audit()` after their database writes; the audit
+write is never part of the domain transaction.
+Follow the [audit architecture](./audit.md) rather than
 inventing events or assuming atomic audit behavior.

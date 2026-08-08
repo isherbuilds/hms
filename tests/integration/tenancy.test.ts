@@ -430,6 +430,17 @@ const GUARDED_CALLS = {
     }),
   "visit.queue": (api, claim) => api.visit.queue({ ...claim }),
   "visit.get": (api, claim) => api.visit.get({ ...claim, visitId: crypto.randomUUID() }),
+  "visit.attachPrescription": (api, claim) =>
+    api.visit.attachPrescription({
+      ...claim,
+      visitId: crypto.randomUUID(),
+      fileId: crypto.randomUUID(),
+    }),
+  "visit.detachPrescription": (api, claim) =>
+    api.visit.detachPrescription({
+      ...claim,
+      attachmentId: crypto.randomUUID(),
+    }),
   "billing.listPendingCharges": (api, claim) =>
     api.billing.listPendingCharges({ ...claim, visitId: crypto.randomUUID() }),
   "billing.addCharge": (api, claim) =>

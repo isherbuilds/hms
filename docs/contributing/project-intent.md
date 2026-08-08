@@ -8,7 +8,8 @@ private file storage, and a closed account model are implemented once and
 protected by tests that fail when isolation breaks.
 
 The live HMS domains are patient registration and search, priced catalog setup,
-department and practitioner setup, OPD visits with a daily token queue, charging
+department and practitioner setup, OPD visits with a daily token queue and signed paper
+prescription capture, charging
 and billing through to invoices, payments, credit notes and refunds, dashboard
 reporting, and AI chat. Organization settings and the platform surfaces for
 members, audit, and files support them. Appointments and encounters, orders,
@@ -27,7 +28,8 @@ Better Auth with the organization plugin.
   `dashboard`, and AI are live product domains. `files`, `members`, and `audit`
   are platform capabilities, not examples.
 - **Not a claim that the whole hospital workflow is built.** The product covers
-  the OPD front office and its billing path; clinical documentation, orders,
+  the OPD front office and its billing path, including storage of the doctor's paper
+  prescription; structured clinical documentation, orders,
   results, and inpatient workflows are not live.
 
 ## Who it is for

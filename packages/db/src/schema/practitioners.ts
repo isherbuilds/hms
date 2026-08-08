@@ -7,8 +7,8 @@ import { departments } from "./departments";
 
 /**
  * Practitioners are staff records, not accounts: doctors without logins exist,
- * so `memberUserId` is optional attribution linking a practitioner to a member
- * for the consult queue and note signing. FKs alone never prove tenancy —
+ * so `memberUserId` is optional attribution linking a practitioner to a member.
+ * FKs alone never prove tenancy —
  * handlers must verify department and fee catalog item ids belong to the same
  * org before writing them.
  */

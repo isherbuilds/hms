@@ -8,488 +8,483 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as OnboardingRouteImport } from './routes/onboarding'
-import { Route as OrgOrgSlugRouteRouteImport } from './routes/org/$orgSlug/route'
-import { Route as OrgOrgSlugAiRouteImport } from './routes/org/$orgSlug/ai'
-import { Route as OrgOrgSlugAuditRouteImport } from './routes/org/$orgSlug/audit'
-import { Route as OrgOrgSlugDashboardRouteImport } from './routes/org/$orgSlug/dashboard'
-import { Route as OrgOrgSlugFilesRouteImport } from './routes/org/$orgSlug/files'
-import { Route as OrgOrgSlugMembersRouteImport } from './routes/org/$orgSlug/members'
-import { Route as OrgOrgSlugAdminCatalogRouteImport } from './routes/org/$orgSlug/admin/catalog'
-import { Route as OrgOrgSlugAdminSettingsRouteImport } from './routes/org/$orgSlug/admin/settings'
-import { Route as OrgOrgSlugAdminStaffRouteImport } from './routes/org/$orgSlug/admin/staff'
-import { Route as OrgOrgSlugBillingIndexRouteImport } from './routes/org/$orgSlug/billing/index'
-import { Route as OrgOrgSlugFrontDeskIndexRouteImport } from './routes/org/$orgSlug/front-desk/index'
-import { Route as OrgOrgSlugFrontDeskQueueRouteImport } from './routes/org/$orgSlug/front-desk/queue'
-import { Route as OrgOrgSlugFrontDeskRegisterRouteImport } from './routes/org/$orgSlug/front-desk/register'
-import { Route as OrgOrgSlugBillingInvoicesInvoiceIdRouteImport } from './routes/org/$orgSlug/billing/invoices.$invoiceId'
-import { Route as OrgOrgSlugBillingVisitsVisitIdRouteImport } from './routes/org/$orgSlug/billing/visits.$visitId'
-import { Route as OrgOrgSlugFrontDeskPatientsPatientIdRouteImport } from './routes/org/$orgSlug/front-desk/patients.$patientId'
-import { Route as OrgOrgSlugFrontDeskVisitsVisitIdRouteImport } from './routes/org/$orgSlug/front-desk/visits.$visitId'
-import { Route as OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRouteImport } from './routes/org/$orgSlug/billing/invoices.$invoiceId.credit-note.$creditNoteId'
-import { Route as OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRouteImport } from './routes/org/$orgSlug/billing/invoices.$invoiceId.receipt.$paymentId'
-import { Route as OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRouteImport } from './routes/org/$orgSlug/billing/invoices.$invoiceId.refund.$refundId'
+import { Route as rootRouteImport } from "./routes/__root";
+import { Route as IndexRouteImport } from "./routes/index";
+import { Route as LoginRouteImport } from "./routes/login";
+import { Route as OnboardingRouteImport } from "./routes/onboarding";
+import { Route as OrgOrgSlugRouteRouteImport } from "./routes/org/$orgSlug/route";
+import { Route as OrgOrgSlugAiRouteImport } from "./routes/org/$orgSlug/ai";
+import { Route as OrgOrgSlugAuditRouteImport } from "./routes/org/$orgSlug/audit";
+import { Route as OrgOrgSlugDashboardRouteImport } from "./routes/org/$orgSlug/dashboard";
+import { Route as OrgOrgSlugFilesRouteImport } from "./routes/org/$orgSlug/files";
+import { Route as OrgOrgSlugMembersRouteImport } from "./routes/org/$orgSlug/members";
+import { Route as OrgOrgSlugAdminCatalogRouteImport } from "./routes/org/$orgSlug/admin/catalog";
+import { Route as OrgOrgSlugAdminSettingsRouteImport } from "./routes/org/$orgSlug/admin/settings";
+import { Route as OrgOrgSlugAdminStaffRouteImport } from "./routes/org/$orgSlug/admin/staff";
+import { Route as OrgOrgSlugBillingIndexRouteImport } from "./routes/org/$orgSlug/billing/index";
+import { Route as OrgOrgSlugFrontDeskIndexRouteImport } from "./routes/org/$orgSlug/front-desk/index";
+import { Route as OrgOrgSlugFrontDeskQueueRouteImport } from "./routes/org/$orgSlug/front-desk/queue";
+import { Route as OrgOrgSlugFrontDeskRegisterRouteImport } from "./routes/org/$orgSlug/front-desk/register";
+import { Route as OrgOrgSlugBillingInvoicesInvoiceIdRouteImport } from "./routes/org/$orgSlug/billing/invoices.$invoiceId";
+import { Route as OrgOrgSlugBillingVisitsVisitIdRouteImport } from "./routes/org/$orgSlug/billing/visits.$visitId";
+import { Route as OrgOrgSlugFrontDeskPatientsPatientIdRouteImport } from "./routes/org/$orgSlug/front-desk/patients.$patientId";
+import { Route as OrgOrgSlugFrontDeskVisitsVisitIdRouteImport } from "./routes/org/$orgSlug/front-desk/visits.$visitId";
+import { Route as OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRouteImport } from "./routes/org/$orgSlug/billing/invoices.$invoiceId.credit-note.$creditNoteId";
+import { Route as OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRouteImport } from "./routes/org/$orgSlug/billing/invoices.$invoiceId.receipt.$paymentId";
+import { Route as OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRouteImport } from "./routes/org/$orgSlug/billing/invoices.$invoiceId.refund.$refundId";
 
 const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+  id: "/login",
+  path: "/login",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const OnboardingRoute = OnboardingRouteImport.update({
-  id: '/onboarding',
-  path: '/onboarding',
+  id: "/onboarding",
+  path: "/onboarding",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const OrgOrgSlugRouteRoute = OrgOrgSlugRouteRouteImport.update({
-  id: '/org/$orgSlug',
-  path: '/org/$orgSlug',
+  id: "/org/$orgSlug",
+  path: "/org/$orgSlug",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const OrgOrgSlugAiRoute = OrgOrgSlugAiRouteImport.update({
-  id: '/ai',
-  path: '/ai',
+  id: "/ai",
+  path: "/ai",
   getParentRoute: () => OrgOrgSlugRouteRoute,
-} as any)
+} as any);
 const OrgOrgSlugAuditRoute = OrgOrgSlugAuditRouteImport.update({
-  id: '/audit',
-  path: '/audit',
+  id: "/audit",
+  path: "/audit",
   getParentRoute: () => OrgOrgSlugRouteRoute,
-} as any)
+} as any);
 const OrgOrgSlugDashboardRoute = OrgOrgSlugDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
+  id: "/dashboard",
+  path: "/dashboard",
   getParentRoute: () => OrgOrgSlugRouteRoute,
-} as any)
+} as any);
 const OrgOrgSlugFilesRoute = OrgOrgSlugFilesRouteImport.update({
-  id: '/files',
-  path: '/files',
+  id: "/files",
+  path: "/files",
   getParentRoute: () => OrgOrgSlugRouteRoute,
-} as any)
+} as any);
 const OrgOrgSlugMembersRoute = OrgOrgSlugMembersRouteImport.update({
-  id: '/members',
-  path: '/members',
+  id: "/members",
+  path: "/members",
   getParentRoute: () => OrgOrgSlugRouteRoute,
-} as any)
+} as any);
 const OrgOrgSlugAdminCatalogRoute = OrgOrgSlugAdminCatalogRouteImport.update({
-  id: '/admin/catalog',
-  path: '/admin/catalog',
+  id: "/admin/catalog",
+  path: "/admin/catalog",
   getParentRoute: () => OrgOrgSlugRouteRoute,
-} as any)
+} as any);
 const OrgOrgSlugAdminSettingsRoute = OrgOrgSlugAdminSettingsRouteImport.update({
-  id: '/admin/settings',
-  path: '/admin/settings',
+  id: "/admin/settings",
+  path: "/admin/settings",
   getParentRoute: () => OrgOrgSlugRouteRoute,
-} as any)
+} as any);
 const OrgOrgSlugAdminStaffRoute = OrgOrgSlugAdminStaffRouteImport.update({
-  id: '/admin/staff',
-  path: '/admin/staff',
+  id: "/admin/staff",
+  path: "/admin/staff",
   getParentRoute: () => OrgOrgSlugRouteRoute,
-} as any)
+} as any);
 const OrgOrgSlugBillingIndexRoute = OrgOrgSlugBillingIndexRouteImport.update({
-  id: '/billing/',
-  path: '/billing/',
+  id: "/billing/",
+  path: "/billing/",
   getParentRoute: () => OrgOrgSlugRouteRoute,
-} as any)
-const OrgOrgSlugFrontDeskIndexRoute =
-  OrgOrgSlugFrontDeskIndexRouteImport.update({
-    id: '/front-desk/',
-    path: '/front-desk/',
-    getParentRoute: () => OrgOrgSlugRouteRoute,
-  } as any)
-const OrgOrgSlugFrontDeskQueueRoute =
-  OrgOrgSlugFrontDeskQueueRouteImport.update({
-    id: '/front-desk/queue',
-    path: '/front-desk/queue',
-    getParentRoute: () => OrgOrgSlugRouteRoute,
-  } as any)
-const OrgOrgSlugFrontDeskRegisterRoute =
-  OrgOrgSlugFrontDeskRegisterRouteImport.update({
-    id: '/front-desk/register',
-    path: '/front-desk/register',
-    getParentRoute: () => OrgOrgSlugRouteRoute,
-  } as any)
+} as any);
+const OrgOrgSlugFrontDeskIndexRoute = OrgOrgSlugFrontDeskIndexRouteImport.update({
+  id: "/front-desk/",
+  path: "/front-desk/",
+  getParentRoute: () => OrgOrgSlugRouteRoute,
+} as any);
+const OrgOrgSlugFrontDeskQueueRoute = OrgOrgSlugFrontDeskQueueRouteImport.update({
+  id: "/front-desk/queue",
+  path: "/front-desk/queue",
+  getParentRoute: () => OrgOrgSlugRouteRoute,
+} as any);
+const OrgOrgSlugFrontDeskRegisterRoute = OrgOrgSlugFrontDeskRegisterRouteImport.update({
+  id: "/front-desk/register",
+  path: "/front-desk/register",
+  getParentRoute: () => OrgOrgSlugRouteRoute,
+} as any);
 const OrgOrgSlugBillingInvoicesInvoiceIdRoute =
   OrgOrgSlugBillingInvoicesInvoiceIdRouteImport.update({
-    id: '/billing/invoices/$invoiceId',
-    path: '/billing/invoices/$invoiceId',
+    id: "/billing/invoices/$invoiceId",
+    path: "/billing/invoices/$invoiceId",
     getParentRoute: () => OrgOrgSlugRouteRoute,
-  } as any)
-const OrgOrgSlugBillingVisitsVisitIdRoute =
-  OrgOrgSlugBillingVisitsVisitIdRouteImport.update({
-    id: '/billing/visits/$visitId',
-    path: '/billing/visits/$visitId',
-    getParentRoute: () => OrgOrgSlugRouteRoute,
-  } as any)
+  } as any);
+const OrgOrgSlugBillingVisitsVisitIdRoute = OrgOrgSlugBillingVisitsVisitIdRouteImport.update({
+  id: "/billing/visits/$visitId",
+  path: "/billing/visits/$visitId",
+  getParentRoute: () => OrgOrgSlugRouteRoute,
+} as any);
 const OrgOrgSlugFrontDeskPatientsPatientIdRoute =
   OrgOrgSlugFrontDeskPatientsPatientIdRouteImport.update({
-    id: '/front-desk/patients/$patientId',
-    path: '/front-desk/patients/$patientId',
+    id: "/front-desk/patients/$patientId",
+    path: "/front-desk/patients/$patientId",
     getParentRoute: () => OrgOrgSlugRouteRoute,
-  } as any)
-const OrgOrgSlugFrontDeskVisitsVisitIdRoute =
-  OrgOrgSlugFrontDeskVisitsVisitIdRouteImport.update({
-    id: '/front-desk/visits/$visitId',
-    path: '/front-desk/visits/$visitId',
-    getParentRoute: () => OrgOrgSlugRouteRoute,
-  } as any)
+  } as any);
+const OrgOrgSlugFrontDeskVisitsVisitIdRoute = OrgOrgSlugFrontDeskVisitsVisitIdRouteImport.update({
+  id: "/front-desk/visits/$visitId",
+  path: "/front-desk/visits/$visitId",
+  getParentRoute: () => OrgOrgSlugRouteRoute,
+} as any);
 const OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute =
   OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRouteImport.update({
-    id: '/credit-note/$creditNoteId',
-    path: '/credit-note/$creditNoteId',
+    id: "/credit-note/$creditNoteId",
+    path: "/credit-note/$creditNoteId",
     getParentRoute: () => OrgOrgSlugBillingInvoicesInvoiceIdRoute,
-  } as any)
+  } as any);
 const OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute =
   OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRouteImport.update({
-    id: '/receipt/$paymentId',
-    path: '/receipt/$paymentId',
+    id: "/receipt/$paymentId",
+    path: "/receipt/$paymentId",
     getParentRoute: () => OrgOrgSlugBillingInvoicesInvoiceIdRoute,
-  } as any)
+  } as any);
 const OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute =
   OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRouteImport.update({
-    id: '/refund/$refundId',
-    path: '/refund/$refundId',
+    id: "/refund/$refundId",
+    path: "/refund/$refundId",
     getParentRoute: () => OrgOrgSlugBillingInvoicesInvoiceIdRoute,
-  } as any)
+  } as any);
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/login': typeof LoginRoute
-  '/onboarding': typeof OnboardingRoute
-  '/org/$orgSlug': typeof OrgOrgSlugRouteRouteWithChildren
-  '/org/$orgSlug/ai': typeof OrgOrgSlugAiRoute
-  '/org/$orgSlug/audit': typeof OrgOrgSlugAuditRoute
-  '/org/$orgSlug/dashboard': typeof OrgOrgSlugDashboardRoute
-  '/org/$orgSlug/files': typeof OrgOrgSlugFilesRoute
-  '/org/$orgSlug/members': typeof OrgOrgSlugMembersRoute
-  '/org/$orgSlug/admin/catalog': typeof OrgOrgSlugAdminCatalogRoute
-  '/org/$orgSlug/admin/settings': typeof OrgOrgSlugAdminSettingsRoute
-  '/org/$orgSlug/admin/staff': typeof OrgOrgSlugAdminStaffRoute
-  '/org/$orgSlug/front-desk/queue': typeof OrgOrgSlugFrontDeskQueueRoute
-  '/org/$orgSlug/front-desk/register': typeof OrgOrgSlugFrontDeskRegisterRoute
-  '/org/$orgSlug/billing/': typeof OrgOrgSlugBillingIndexRoute
-  '/org/$orgSlug/front-desk/': typeof OrgOrgSlugFrontDeskIndexRoute
-  '/org/$orgSlug/billing/invoices/$invoiceId': typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren
-  '/org/$orgSlug/billing/visits/$visitId': typeof OrgOrgSlugBillingVisitsVisitIdRoute
-  '/org/$orgSlug/front-desk/patients/$patientId': typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
-  '/org/$orgSlug/front-desk/visits/$visitId': typeof OrgOrgSlugFrontDeskVisitsVisitIdRoute
-  '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId': typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute
-  '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId': typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute
-  '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId': typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
+  "/": typeof IndexRoute;
+  "/login": typeof LoginRoute;
+  "/onboarding": typeof OnboardingRoute;
+  "/org/$orgSlug": typeof OrgOrgSlugRouteRouteWithChildren;
+  "/org/$orgSlug/ai": typeof OrgOrgSlugAiRoute;
+  "/org/$orgSlug/audit": typeof OrgOrgSlugAuditRoute;
+  "/org/$orgSlug/dashboard": typeof OrgOrgSlugDashboardRoute;
+  "/org/$orgSlug/files": typeof OrgOrgSlugFilesRoute;
+  "/org/$orgSlug/members": typeof OrgOrgSlugMembersRoute;
+  "/org/$orgSlug/admin/catalog": typeof OrgOrgSlugAdminCatalogRoute;
+  "/org/$orgSlug/admin/settings": typeof OrgOrgSlugAdminSettingsRoute;
+  "/org/$orgSlug/admin/staff": typeof OrgOrgSlugAdminStaffRoute;
+  "/org/$orgSlug/front-desk/queue": typeof OrgOrgSlugFrontDeskQueueRoute;
+  "/org/$orgSlug/front-desk/register": typeof OrgOrgSlugFrontDeskRegisterRoute;
+  "/org/$orgSlug/billing/": typeof OrgOrgSlugBillingIndexRoute;
+  "/org/$orgSlug/front-desk/": typeof OrgOrgSlugFrontDeskIndexRoute;
+  "/org/$orgSlug/billing/invoices/$invoiceId": typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren;
+  "/org/$orgSlug/billing/visits/$visitId": typeof OrgOrgSlugBillingVisitsVisitIdRoute;
+  "/org/$orgSlug/front-desk/patients/$patientId": typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute;
+  "/org/$orgSlug/front-desk/visits/$visitId": typeof OrgOrgSlugFrontDeskVisitsVisitIdRoute;
+  "/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId": typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute;
+  "/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId": typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute;
+  "/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId": typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute;
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/login': typeof LoginRoute
-  '/onboarding': typeof OnboardingRoute
-  '/org/$orgSlug': typeof OrgOrgSlugRouteRouteWithChildren
-  '/org/$orgSlug/ai': typeof OrgOrgSlugAiRoute
-  '/org/$orgSlug/audit': typeof OrgOrgSlugAuditRoute
-  '/org/$orgSlug/dashboard': typeof OrgOrgSlugDashboardRoute
-  '/org/$orgSlug/files': typeof OrgOrgSlugFilesRoute
-  '/org/$orgSlug/members': typeof OrgOrgSlugMembersRoute
-  '/org/$orgSlug/admin/catalog': typeof OrgOrgSlugAdminCatalogRoute
-  '/org/$orgSlug/admin/settings': typeof OrgOrgSlugAdminSettingsRoute
-  '/org/$orgSlug/admin/staff': typeof OrgOrgSlugAdminStaffRoute
-  '/org/$orgSlug/front-desk/queue': typeof OrgOrgSlugFrontDeskQueueRoute
-  '/org/$orgSlug/front-desk/register': typeof OrgOrgSlugFrontDeskRegisterRoute
-  '/org/$orgSlug/billing': typeof OrgOrgSlugBillingIndexRoute
-  '/org/$orgSlug/front-desk': typeof OrgOrgSlugFrontDeskIndexRoute
-  '/org/$orgSlug/billing/invoices/$invoiceId': typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren
-  '/org/$orgSlug/billing/visits/$visitId': typeof OrgOrgSlugBillingVisitsVisitIdRoute
-  '/org/$orgSlug/front-desk/patients/$patientId': typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
-  '/org/$orgSlug/front-desk/visits/$visitId': typeof OrgOrgSlugFrontDeskVisitsVisitIdRoute
-  '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId': typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute
-  '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId': typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute
-  '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId': typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
+  "/": typeof IndexRoute;
+  "/login": typeof LoginRoute;
+  "/onboarding": typeof OnboardingRoute;
+  "/org/$orgSlug": typeof OrgOrgSlugRouteRouteWithChildren;
+  "/org/$orgSlug/ai": typeof OrgOrgSlugAiRoute;
+  "/org/$orgSlug/audit": typeof OrgOrgSlugAuditRoute;
+  "/org/$orgSlug/dashboard": typeof OrgOrgSlugDashboardRoute;
+  "/org/$orgSlug/files": typeof OrgOrgSlugFilesRoute;
+  "/org/$orgSlug/members": typeof OrgOrgSlugMembersRoute;
+  "/org/$orgSlug/admin/catalog": typeof OrgOrgSlugAdminCatalogRoute;
+  "/org/$orgSlug/admin/settings": typeof OrgOrgSlugAdminSettingsRoute;
+  "/org/$orgSlug/admin/staff": typeof OrgOrgSlugAdminStaffRoute;
+  "/org/$orgSlug/front-desk/queue": typeof OrgOrgSlugFrontDeskQueueRoute;
+  "/org/$orgSlug/front-desk/register": typeof OrgOrgSlugFrontDeskRegisterRoute;
+  "/org/$orgSlug/billing": typeof OrgOrgSlugBillingIndexRoute;
+  "/org/$orgSlug/front-desk": typeof OrgOrgSlugFrontDeskIndexRoute;
+  "/org/$orgSlug/billing/invoices/$invoiceId": typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren;
+  "/org/$orgSlug/billing/visits/$visitId": typeof OrgOrgSlugBillingVisitsVisitIdRoute;
+  "/org/$orgSlug/front-desk/patients/$patientId": typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute;
+  "/org/$orgSlug/front-desk/visits/$visitId": typeof OrgOrgSlugFrontDeskVisitsVisitIdRoute;
+  "/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId": typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute;
+  "/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId": typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute;
+  "/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId": typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute;
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/login': typeof LoginRoute
-  '/onboarding': typeof OnboardingRoute
-  '/org/$orgSlug': typeof OrgOrgSlugRouteRouteWithChildren
-  '/org/$orgSlug/ai': typeof OrgOrgSlugAiRoute
-  '/org/$orgSlug/audit': typeof OrgOrgSlugAuditRoute
-  '/org/$orgSlug/dashboard': typeof OrgOrgSlugDashboardRoute
-  '/org/$orgSlug/files': typeof OrgOrgSlugFilesRoute
-  '/org/$orgSlug/members': typeof OrgOrgSlugMembersRoute
-  '/org/$orgSlug/admin/catalog': typeof OrgOrgSlugAdminCatalogRoute
-  '/org/$orgSlug/admin/settings': typeof OrgOrgSlugAdminSettingsRoute
-  '/org/$orgSlug/admin/staff': typeof OrgOrgSlugAdminStaffRoute
-  '/org/$orgSlug/front-desk/queue': typeof OrgOrgSlugFrontDeskQueueRoute
-  '/org/$orgSlug/front-desk/register': typeof OrgOrgSlugFrontDeskRegisterRoute
-  '/org/$orgSlug/billing/': typeof OrgOrgSlugBillingIndexRoute
-  '/org/$orgSlug/front-desk/': typeof OrgOrgSlugFrontDeskIndexRoute
-  '/org/$orgSlug/billing/invoices/$invoiceId': typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren
-  '/org/$orgSlug/billing/visits/$visitId': typeof OrgOrgSlugBillingVisitsVisitIdRoute
-  '/org/$orgSlug/front-desk/patients/$patientId': typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
-  '/org/$orgSlug/front-desk/visits/$visitId': typeof OrgOrgSlugFrontDeskVisitsVisitIdRoute
-  '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId': typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute
-  '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId': typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute
-  '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId': typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
+  __root__: typeof rootRouteImport;
+  "/": typeof IndexRoute;
+  "/login": typeof LoginRoute;
+  "/onboarding": typeof OnboardingRoute;
+  "/org/$orgSlug": typeof OrgOrgSlugRouteRouteWithChildren;
+  "/org/$orgSlug/ai": typeof OrgOrgSlugAiRoute;
+  "/org/$orgSlug/audit": typeof OrgOrgSlugAuditRoute;
+  "/org/$orgSlug/dashboard": typeof OrgOrgSlugDashboardRoute;
+  "/org/$orgSlug/files": typeof OrgOrgSlugFilesRoute;
+  "/org/$orgSlug/members": typeof OrgOrgSlugMembersRoute;
+  "/org/$orgSlug/admin/catalog": typeof OrgOrgSlugAdminCatalogRoute;
+  "/org/$orgSlug/admin/settings": typeof OrgOrgSlugAdminSettingsRoute;
+  "/org/$orgSlug/admin/staff": typeof OrgOrgSlugAdminStaffRoute;
+  "/org/$orgSlug/front-desk/queue": typeof OrgOrgSlugFrontDeskQueueRoute;
+  "/org/$orgSlug/front-desk/register": typeof OrgOrgSlugFrontDeskRegisterRoute;
+  "/org/$orgSlug/billing/": typeof OrgOrgSlugBillingIndexRoute;
+  "/org/$orgSlug/front-desk/": typeof OrgOrgSlugFrontDeskIndexRoute;
+  "/org/$orgSlug/billing/invoices/$invoiceId": typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren;
+  "/org/$orgSlug/billing/visits/$visitId": typeof OrgOrgSlugBillingVisitsVisitIdRoute;
+  "/org/$orgSlug/front-desk/patients/$patientId": typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute;
+  "/org/$orgSlug/front-desk/visits/$visitId": typeof OrgOrgSlugFrontDeskVisitsVisitIdRoute;
+  "/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId": typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute;
+  "/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId": typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute;
+  "/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId": typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute;
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath
+  fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
-    | '/'
-    | '/login'
-    | '/onboarding'
-    | '/org/$orgSlug'
-    | '/org/$orgSlug/ai'
-    | '/org/$orgSlug/audit'
-    | '/org/$orgSlug/dashboard'
-    | '/org/$orgSlug/files'
-    | '/org/$orgSlug/members'
-    | '/org/$orgSlug/admin/catalog'
-    | '/org/$orgSlug/admin/settings'
-    | '/org/$orgSlug/admin/staff'
-    | '/org/$orgSlug/front-desk/queue'
-    | '/org/$orgSlug/front-desk/register'
-    | '/org/$orgSlug/billing/'
-    | '/org/$orgSlug/front-desk/'
-    | '/org/$orgSlug/billing/invoices/$invoiceId'
-    | '/org/$orgSlug/billing/visits/$visitId'
-    | '/org/$orgSlug/front-desk/patients/$patientId'
-    | '/org/$orgSlug/front-desk/visits/$visitId'
-    | '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId'
-    | '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId'
-    | '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
-  fileRoutesByTo: FileRoutesByTo
+    | "/"
+    | "/login"
+    | "/onboarding"
+    | "/org/$orgSlug"
+    | "/org/$orgSlug/ai"
+    | "/org/$orgSlug/audit"
+    | "/org/$orgSlug/dashboard"
+    | "/org/$orgSlug/files"
+    | "/org/$orgSlug/members"
+    | "/org/$orgSlug/admin/catalog"
+    | "/org/$orgSlug/admin/settings"
+    | "/org/$orgSlug/admin/staff"
+    | "/org/$orgSlug/front-desk/queue"
+    | "/org/$orgSlug/front-desk/register"
+    | "/org/$orgSlug/billing/"
+    | "/org/$orgSlug/front-desk/"
+    | "/org/$orgSlug/billing/invoices/$invoiceId"
+    | "/org/$orgSlug/billing/visits/$visitId"
+    | "/org/$orgSlug/front-desk/patients/$patientId"
+    | "/org/$orgSlug/front-desk/visits/$visitId"
+    | "/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId"
+    | "/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId"
+    | "/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId";
+  fileRoutesByTo: FileRoutesByTo;
   to:
-    | '/'
-    | '/login'
-    | '/onboarding'
-    | '/org/$orgSlug'
-    | '/org/$orgSlug/ai'
-    | '/org/$orgSlug/audit'
-    | '/org/$orgSlug/dashboard'
-    | '/org/$orgSlug/files'
-    | '/org/$orgSlug/members'
-    | '/org/$orgSlug/admin/catalog'
-    | '/org/$orgSlug/admin/settings'
-    | '/org/$orgSlug/admin/staff'
-    | '/org/$orgSlug/front-desk/queue'
-    | '/org/$orgSlug/front-desk/register'
-    | '/org/$orgSlug/billing'
-    | '/org/$orgSlug/front-desk'
-    | '/org/$orgSlug/billing/invoices/$invoiceId'
-    | '/org/$orgSlug/billing/visits/$visitId'
-    | '/org/$orgSlug/front-desk/patients/$patientId'
-    | '/org/$orgSlug/front-desk/visits/$visitId'
-    | '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId'
-    | '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId'
-    | '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
+    | "/"
+    | "/login"
+    | "/onboarding"
+    | "/org/$orgSlug"
+    | "/org/$orgSlug/ai"
+    | "/org/$orgSlug/audit"
+    | "/org/$orgSlug/dashboard"
+    | "/org/$orgSlug/files"
+    | "/org/$orgSlug/members"
+    | "/org/$orgSlug/admin/catalog"
+    | "/org/$orgSlug/admin/settings"
+    | "/org/$orgSlug/admin/staff"
+    | "/org/$orgSlug/front-desk/queue"
+    | "/org/$orgSlug/front-desk/register"
+    | "/org/$orgSlug/billing"
+    | "/org/$orgSlug/front-desk"
+    | "/org/$orgSlug/billing/invoices/$invoiceId"
+    | "/org/$orgSlug/billing/visits/$visitId"
+    | "/org/$orgSlug/front-desk/patients/$patientId"
+    | "/org/$orgSlug/front-desk/visits/$visitId"
+    | "/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId"
+    | "/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId"
+    | "/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId";
   id:
-    | '__root__'
-    | '/'
-    | '/login'
-    | '/onboarding'
-    | '/org/$orgSlug'
-    | '/org/$orgSlug/ai'
-    | '/org/$orgSlug/audit'
-    | '/org/$orgSlug/dashboard'
-    | '/org/$orgSlug/files'
-    | '/org/$orgSlug/members'
-    | '/org/$orgSlug/admin/catalog'
-    | '/org/$orgSlug/admin/settings'
-    | '/org/$orgSlug/admin/staff'
-    | '/org/$orgSlug/front-desk/queue'
-    | '/org/$orgSlug/front-desk/register'
-    | '/org/$orgSlug/billing/'
-    | '/org/$orgSlug/front-desk/'
-    | '/org/$orgSlug/billing/invoices/$invoiceId'
-    | '/org/$orgSlug/billing/visits/$visitId'
-    | '/org/$orgSlug/front-desk/patients/$patientId'
-    | '/org/$orgSlug/front-desk/visits/$visitId'
-    | '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId'
-    | '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId'
-    | '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
-  fileRoutesById: FileRoutesById
+    | "__root__"
+    | "/"
+    | "/login"
+    | "/onboarding"
+    | "/org/$orgSlug"
+    | "/org/$orgSlug/ai"
+    | "/org/$orgSlug/audit"
+    | "/org/$orgSlug/dashboard"
+    | "/org/$orgSlug/files"
+    | "/org/$orgSlug/members"
+    | "/org/$orgSlug/admin/catalog"
+    | "/org/$orgSlug/admin/settings"
+    | "/org/$orgSlug/admin/staff"
+    | "/org/$orgSlug/front-desk/queue"
+    | "/org/$orgSlug/front-desk/register"
+    | "/org/$orgSlug/billing/"
+    | "/org/$orgSlug/front-desk/"
+    | "/org/$orgSlug/billing/invoices/$invoiceId"
+    | "/org/$orgSlug/billing/visits/$visitId"
+    | "/org/$orgSlug/front-desk/patients/$patientId"
+    | "/org/$orgSlug/front-desk/visits/$visitId"
+    | "/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId"
+    | "/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId"
+    | "/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId";
+  fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  LoginRoute: typeof LoginRoute
-  OnboardingRoute: typeof OnboardingRoute
-  OrgOrgSlugRouteRoute: typeof OrgOrgSlugRouteRouteWithChildren
+  IndexRoute: typeof IndexRoute;
+  LoginRoute: typeof LoginRoute;
+  OnboardingRoute: typeof OnboardingRoute;
+  OrgOrgSlugRouteRoute: typeof OrgOrgSlugRouteRouteWithChildren;
 }
 
-declare module '@tanstack/react-router' {
+declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/onboarding': {
-      id: '/onboarding'
-      path: '/onboarding'
-      fullPath: '/onboarding'
-      preLoaderRoute: typeof OnboardingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/org/$orgSlug': {
-      id: '/org/$orgSlug'
-      path: '/org/$orgSlug'
-      fullPath: '/org/$orgSlug'
-      preLoaderRoute: typeof OrgOrgSlugRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/org/$orgSlug/ai': {
-      id: '/org/$orgSlug/ai'
-      path: '/ai'
-      fullPath: '/org/$orgSlug/ai'
-      preLoaderRoute: typeof OrgOrgSlugAiRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/audit': {
-      id: '/org/$orgSlug/audit'
-      path: '/audit'
-      fullPath: '/org/$orgSlug/audit'
-      preLoaderRoute: typeof OrgOrgSlugAuditRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/dashboard': {
-      id: '/org/$orgSlug/dashboard'
-      path: '/dashboard'
-      fullPath: '/org/$orgSlug/dashboard'
-      preLoaderRoute: typeof OrgOrgSlugDashboardRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/files': {
-      id: '/org/$orgSlug/files'
-      path: '/files'
-      fullPath: '/org/$orgSlug/files'
-      preLoaderRoute: typeof OrgOrgSlugFilesRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/members': {
-      id: '/org/$orgSlug/members'
-      path: '/members'
-      fullPath: '/org/$orgSlug/members'
-      preLoaderRoute: typeof OrgOrgSlugMembersRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/admin/catalog': {
-      id: '/org/$orgSlug/admin/catalog'
-      path: '/admin/catalog'
-      fullPath: '/org/$orgSlug/admin/catalog'
-      preLoaderRoute: typeof OrgOrgSlugAdminCatalogRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/admin/settings': {
-      id: '/org/$orgSlug/admin/settings'
-      path: '/admin/settings'
-      fullPath: '/org/$orgSlug/admin/settings'
-      preLoaderRoute: typeof OrgOrgSlugAdminSettingsRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/admin/staff': {
-      id: '/org/$orgSlug/admin/staff'
-      path: '/admin/staff'
-      fullPath: '/org/$orgSlug/admin/staff'
-      preLoaderRoute: typeof OrgOrgSlugAdminStaffRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/billing/': {
-      id: '/org/$orgSlug/billing/'
-      path: '/billing'
-      fullPath: '/org/$orgSlug/billing/'
-      preLoaderRoute: typeof OrgOrgSlugBillingIndexRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/front-desk/': {
-      id: '/org/$orgSlug/front-desk/'
-      path: '/front-desk'
-      fullPath: '/org/$orgSlug/front-desk/'
-      preLoaderRoute: typeof OrgOrgSlugFrontDeskIndexRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/front-desk/queue': {
-      id: '/org/$orgSlug/front-desk/queue'
-      path: '/front-desk/queue'
-      fullPath: '/org/$orgSlug/front-desk/queue'
-      preLoaderRoute: typeof OrgOrgSlugFrontDeskQueueRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/front-desk/register': {
-      id: '/org/$orgSlug/front-desk/register'
-      path: '/front-desk/register'
-      fullPath: '/org/$orgSlug/front-desk/register'
-      preLoaderRoute: typeof OrgOrgSlugFrontDeskRegisterRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/billing/invoices/$invoiceId': {
-      id: '/org/$orgSlug/billing/invoices/$invoiceId'
-      path: '/billing/invoices/$invoiceId'
-      fullPath: '/org/$orgSlug/billing/invoices/$invoiceId'
-      preLoaderRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/billing/visits/$visitId': {
-      id: '/org/$orgSlug/billing/visits/$visitId'
-      path: '/billing/visits/$visitId'
-      fullPath: '/org/$orgSlug/billing/visits/$visitId'
-      preLoaderRoute: typeof OrgOrgSlugBillingVisitsVisitIdRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/front-desk/patients/$patientId': {
-      id: '/org/$orgSlug/front-desk/patients/$patientId'
-      path: '/front-desk/patients/$patientId'
-      fullPath: '/org/$orgSlug/front-desk/patients/$patientId'
-      preLoaderRoute: typeof OrgOrgSlugFrontDeskPatientsPatientIdRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/front-desk/visits/$visitId': {
-      id: '/org/$orgSlug/front-desk/visits/$visitId'
-      path: '/front-desk/visits/$visitId'
-      fullPath: '/org/$orgSlug/front-desk/visits/$visitId'
-      preLoaderRoute: typeof OrgOrgSlugFrontDeskVisitsVisitIdRouteImport
-      parentRoute: typeof OrgOrgSlugRouteRoute
-    }
-    '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId': {
-      id: '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId'
-      path: '/credit-note/$creditNoteId'
-      fullPath: '/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId'
-      preLoaderRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRouteImport
-      parentRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRoute
-    }
-    '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId': {
-      id: '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId'
-      path: '/receipt/$paymentId'
-      fullPath: '/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId'
-      preLoaderRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRouteImport
-      parentRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRoute
-    }
-    '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId': {
-      id: '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
-      path: '/refund/$refundId'
-      fullPath: '/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
-      preLoaderRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRouteImport
-      parentRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRoute
-    }
+    "/": {
+      id: "/";
+      path: "/";
+      fullPath: "/";
+      preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/login": {
+      id: "/login";
+      path: "/login";
+      fullPath: "/login";
+      preLoaderRoute: typeof LoginRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/onboarding": {
+      id: "/onboarding";
+      path: "/onboarding";
+      fullPath: "/onboarding";
+      preLoaderRoute: typeof OnboardingRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/org/$orgSlug": {
+      id: "/org/$orgSlug";
+      path: "/org/$orgSlug";
+      fullPath: "/org/$orgSlug";
+      preLoaderRoute: typeof OrgOrgSlugRouteRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/org/$orgSlug/ai": {
+      id: "/org/$orgSlug/ai";
+      path: "/ai";
+      fullPath: "/org/$orgSlug/ai";
+      preLoaderRoute: typeof OrgOrgSlugAiRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/audit": {
+      id: "/org/$orgSlug/audit";
+      path: "/audit";
+      fullPath: "/org/$orgSlug/audit";
+      preLoaderRoute: typeof OrgOrgSlugAuditRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/dashboard": {
+      id: "/org/$orgSlug/dashboard";
+      path: "/dashboard";
+      fullPath: "/org/$orgSlug/dashboard";
+      preLoaderRoute: typeof OrgOrgSlugDashboardRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/files": {
+      id: "/org/$orgSlug/files";
+      path: "/files";
+      fullPath: "/org/$orgSlug/files";
+      preLoaderRoute: typeof OrgOrgSlugFilesRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/members": {
+      id: "/org/$orgSlug/members";
+      path: "/members";
+      fullPath: "/org/$orgSlug/members";
+      preLoaderRoute: typeof OrgOrgSlugMembersRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/admin/catalog": {
+      id: "/org/$orgSlug/admin/catalog";
+      path: "/admin/catalog";
+      fullPath: "/org/$orgSlug/admin/catalog";
+      preLoaderRoute: typeof OrgOrgSlugAdminCatalogRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/admin/settings": {
+      id: "/org/$orgSlug/admin/settings";
+      path: "/admin/settings";
+      fullPath: "/org/$orgSlug/admin/settings";
+      preLoaderRoute: typeof OrgOrgSlugAdminSettingsRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/admin/staff": {
+      id: "/org/$orgSlug/admin/staff";
+      path: "/admin/staff";
+      fullPath: "/org/$orgSlug/admin/staff";
+      preLoaderRoute: typeof OrgOrgSlugAdminStaffRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/billing/": {
+      id: "/org/$orgSlug/billing/";
+      path: "/billing";
+      fullPath: "/org/$orgSlug/billing/";
+      preLoaderRoute: typeof OrgOrgSlugBillingIndexRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/front-desk/": {
+      id: "/org/$orgSlug/front-desk/";
+      path: "/front-desk";
+      fullPath: "/org/$orgSlug/front-desk/";
+      preLoaderRoute: typeof OrgOrgSlugFrontDeskIndexRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/front-desk/queue": {
+      id: "/org/$orgSlug/front-desk/queue";
+      path: "/front-desk/queue";
+      fullPath: "/org/$orgSlug/front-desk/queue";
+      preLoaderRoute: typeof OrgOrgSlugFrontDeskQueueRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/front-desk/register": {
+      id: "/org/$orgSlug/front-desk/register";
+      path: "/front-desk/register";
+      fullPath: "/org/$orgSlug/front-desk/register";
+      preLoaderRoute: typeof OrgOrgSlugFrontDeskRegisterRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/billing/invoices/$invoiceId": {
+      id: "/org/$orgSlug/billing/invoices/$invoiceId";
+      path: "/billing/invoices/$invoiceId";
+      fullPath: "/org/$orgSlug/billing/invoices/$invoiceId";
+      preLoaderRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/billing/visits/$visitId": {
+      id: "/org/$orgSlug/billing/visits/$visitId";
+      path: "/billing/visits/$visitId";
+      fullPath: "/org/$orgSlug/billing/visits/$visitId";
+      preLoaderRoute: typeof OrgOrgSlugBillingVisitsVisitIdRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/front-desk/patients/$patientId": {
+      id: "/org/$orgSlug/front-desk/patients/$patientId";
+      path: "/front-desk/patients/$patientId";
+      fullPath: "/org/$orgSlug/front-desk/patients/$patientId";
+      preLoaderRoute: typeof OrgOrgSlugFrontDeskPatientsPatientIdRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/front-desk/visits/$visitId": {
+      id: "/org/$orgSlug/front-desk/visits/$visitId";
+      path: "/front-desk/visits/$visitId";
+      fullPath: "/org/$orgSlug/front-desk/visits/$visitId";
+      preLoaderRoute: typeof OrgOrgSlugFrontDeskVisitsVisitIdRouteImport;
+      parentRoute: typeof OrgOrgSlugRouteRoute;
+    };
+    "/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId": {
+      id: "/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId";
+      path: "/credit-note/$creditNoteId";
+      fullPath: "/org/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId";
+      preLoaderRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRouteImport;
+      parentRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRoute;
+    };
+    "/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId": {
+      id: "/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId";
+      path: "/receipt/$paymentId";
+      fullPath: "/org/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId";
+      preLoaderRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRouteImport;
+      parentRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRoute;
+    };
+    "/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId": {
+      id: "/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId";
+      path: "/refund/$refundId";
+      fullPath: "/org/$orgSlug/billing/invoices/$invoiceId/refund/$refundId";
+      preLoaderRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRouteImport;
+      parentRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRoute;
+    };
   }
 }
 
 interface OrgOrgSlugBillingInvoicesInvoiceIdRouteChildren {
-  OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute
-  OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute
-  OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
+  OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute;
+  OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute;
+  OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute;
 }
 
 const OrgOrgSlugBillingInvoicesInvoiceIdRouteChildren: OrgOrgSlugBillingInvoicesInvoiceIdRouteChildren =
@@ -500,30 +495,30 @@ const OrgOrgSlugBillingInvoicesInvoiceIdRouteChildren: OrgOrgSlugBillingInvoices
       OrgOrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute,
     OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute:
       OrgOrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute,
-  }
+  };
 
 const OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren =
   OrgOrgSlugBillingInvoicesInvoiceIdRoute._addFileChildren(
     OrgOrgSlugBillingInvoicesInvoiceIdRouteChildren,
-  )
+  );
 
 interface OrgOrgSlugRouteRouteChildren {
-  OrgOrgSlugAiRoute: typeof OrgOrgSlugAiRoute
-  OrgOrgSlugAuditRoute: typeof OrgOrgSlugAuditRoute
-  OrgOrgSlugDashboardRoute: typeof OrgOrgSlugDashboardRoute
-  OrgOrgSlugFilesRoute: typeof OrgOrgSlugFilesRoute
-  OrgOrgSlugMembersRoute: typeof OrgOrgSlugMembersRoute
-  OrgOrgSlugAdminCatalogRoute: typeof OrgOrgSlugAdminCatalogRoute
-  OrgOrgSlugAdminSettingsRoute: typeof OrgOrgSlugAdminSettingsRoute
-  OrgOrgSlugAdminStaffRoute: typeof OrgOrgSlugAdminStaffRoute
-  OrgOrgSlugFrontDeskQueueRoute: typeof OrgOrgSlugFrontDeskQueueRoute
-  OrgOrgSlugFrontDeskRegisterRoute: typeof OrgOrgSlugFrontDeskRegisterRoute
-  OrgOrgSlugBillingIndexRoute: typeof OrgOrgSlugBillingIndexRoute
-  OrgOrgSlugFrontDeskIndexRoute: typeof OrgOrgSlugFrontDeskIndexRoute
-  OrgOrgSlugBillingInvoicesInvoiceIdRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren
-  OrgOrgSlugBillingVisitsVisitIdRoute: typeof OrgOrgSlugBillingVisitsVisitIdRoute
-  OrgOrgSlugFrontDeskPatientsPatientIdRoute: typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute
-  OrgOrgSlugFrontDeskVisitsVisitIdRoute: typeof OrgOrgSlugFrontDeskVisitsVisitIdRoute
+  OrgOrgSlugAiRoute: typeof OrgOrgSlugAiRoute;
+  OrgOrgSlugAuditRoute: typeof OrgOrgSlugAuditRoute;
+  OrgOrgSlugDashboardRoute: typeof OrgOrgSlugDashboardRoute;
+  OrgOrgSlugFilesRoute: typeof OrgOrgSlugFilesRoute;
+  OrgOrgSlugMembersRoute: typeof OrgOrgSlugMembersRoute;
+  OrgOrgSlugAdminCatalogRoute: typeof OrgOrgSlugAdminCatalogRoute;
+  OrgOrgSlugAdminSettingsRoute: typeof OrgOrgSlugAdminSettingsRoute;
+  OrgOrgSlugAdminStaffRoute: typeof OrgOrgSlugAdminStaffRoute;
+  OrgOrgSlugFrontDeskQueueRoute: typeof OrgOrgSlugFrontDeskQueueRoute;
+  OrgOrgSlugFrontDeskRegisterRoute: typeof OrgOrgSlugFrontDeskRegisterRoute;
+  OrgOrgSlugBillingIndexRoute: typeof OrgOrgSlugBillingIndexRoute;
+  OrgOrgSlugFrontDeskIndexRoute: typeof OrgOrgSlugFrontDeskIndexRoute;
+  OrgOrgSlugBillingInvoicesInvoiceIdRoute: typeof OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren;
+  OrgOrgSlugBillingVisitsVisitIdRoute: typeof OrgOrgSlugBillingVisitsVisitIdRoute;
+  OrgOrgSlugFrontDeskPatientsPatientIdRoute: typeof OrgOrgSlugFrontDeskPatientsPatientIdRoute;
+  OrgOrgSlugFrontDeskVisitsVisitIdRoute: typeof OrgOrgSlugFrontDeskVisitsVisitIdRoute;
 }
 
 const OrgOrgSlugRouteRouteChildren: OrgOrgSlugRouteRouteChildren = {
@@ -539,33 +534,31 @@ const OrgOrgSlugRouteRouteChildren: OrgOrgSlugRouteRouteChildren = {
   OrgOrgSlugFrontDeskRegisterRoute: OrgOrgSlugFrontDeskRegisterRoute,
   OrgOrgSlugBillingIndexRoute: OrgOrgSlugBillingIndexRoute,
   OrgOrgSlugFrontDeskIndexRoute: OrgOrgSlugFrontDeskIndexRoute,
-  OrgOrgSlugBillingInvoicesInvoiceIdRoute:
-    OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren,
+  OrgOrgSlugBillingInvoicesInvoiceIdRoute: OrgOrgSlugBillingInvoicesInvoiceIdRouteWithChildren,
   OrgOrgSlugBillingVisitsVisitIdRoute: OrgOrgSlugBillingVisitsVisitIdRoute,
-  OrgOrgSlugFrontDeskPatientsPatientIdRoute:
-    OrgOrgSlugFrontDeskPatientsPatientIdRoute,
+  OrgOrgSlugFrontDeskPatientsPatientIdRoute: OrgOrgSlugFrontDeskPatientsPatientIdRoute,
   OrgOrgSlugFrontDeskVisitsVisitIdRoute: OrgOrgSlugFrontDeskVisitsVisitIdRoute,
-}
+};
 
 const OrgOrgSlugRouteRouteWithChildren = OrgOrgSlugRouteRoute._addFileChildren(
   OrgOrgSlugRouteRouteChildren,
-)
+);
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   OrgOrgSlugRouteRoute: OrgOrgSlugRouteRouteWithChildren,
-}
+};
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>()
+  ._addFileTypes<FileRouteTypes>();
 
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
+import type { getRouter } from "./router.tsx";
+import type { createStart } from "@tanstack/react-start";
+declare module "@tanstack/react-start" {
   interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
+    ssr: true;
+    router: Awaited<ReturnType<typeof getRouter>>;
   }
 }

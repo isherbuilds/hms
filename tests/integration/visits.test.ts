@@ -439,6 +439,128 @@ test("visit transitions enforce the state machine and required cancel reason", a
   );
 });
 
+test("staff attach and detach the doctor's paper prescription from a visit", async () => {
+  const { owner, organization, api, patient, department } =
+    await createVisitSetup("visit-prescription");
+  const practitioner = await createPractitioner(
+    api,
+    organization.slug,
+    department.id,
+    "Dr. Paper Prescription",
+  );
+  const created = await api.visit.create({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    departmentId: department.id,
+  });
+  const upload = await api.files.createUpload({
+    orgSlug: organization.slug,
+    name: "signed-prescription.jpg",
+    mimeType: "image/jpeg",
+    size: 1_024,
+  });
+  await api.files.finalizeUpload({ orgSlug: organization.slug, key: upload.key });
+
+  const attached = await api.visit.attachPrescription({
+    orgSlug: organization.slug,
+    visitId: created.visit.id,
+    fileId: upload.key,
+  });
+  expect(attached).toMatchObject({
+    targetType: "visit_prescription",
+    targetId: created.visit.id,
+    fileId: upload.key,
+    createdBy: owner.user.id,
+  });
+
+  const detail = await api.visit.get({
+    orgSlug: organization.slug,
+    visitId: created.visit.id,
+  });
+  expect(detail.prescriptions).toEqual([
+    expect.objectContaining({
+      id: attached.id,
+      fileId: upload.key,
+      name: "signed-prescription.jpg",
+      mimeType: "image/jpeg",
+      size: 1_024,
+      createdAt: expect.any(Date),
+    }),
+  ]);
+
+  await expectORPCCode(
+    api.visit.attachPrescription({
+      orgSlug: organization.slug,
+      visitId: created.visit.id,
+      fileId: upload.key,
+    }),
+    "CONFLICT",
+  );
+  await expectORPCCode(
+    api.files.delete({ orgSlug: organization.slug, key: upload.key }),
+    "CONFLICT",
+  );
+
+  const textUpload = await api.files.createUpload({
+    orgSlug: organization.slug,
+    name: "not-a-prescription.txt",
+    mimeType: "text/plain",
+    size: 32,
+  });
+  await api.files.finalizeUpload({ orgSlug: organization.slug, key: textUpload.key });
+  await expectORPCCode(
+    api.visit.attachPrescription({
+      orgSlug: organization.slug,
+      visitId: created.visit.id,
+      fileId: textUpload.key,
+    }),
+    "NOT_FOUND",
+  );
+
+  const foreignOwner = await createTestUser("visit-prescription-foreign-owner");
+  const foreignOrganization = await createOrganization(foreignOwner, "visit-prescription-foreign");
+  const foreignApi = clientFor(foreignOwner);
+  const foreignUpload = await foreignApi.files.createUpload({
+    orgSlug: foreignOrganization.slug,
+    name: "foreign-prescription.jpg",
+    mimeType: "image/jpeg",
+    size: 512,
+  });
+  await foreignApi.files.finalizeUpload({
+    orgSlug: foreignOrganization.slug,
+    key: foreignUpload.key,
+  });
+  await expectORPCCode(
+    api.visit.attachPrescription({
+      orgSlug: organization.slug,
+      visitId: created.visit.id,
+      fileId: foreignUpload.key,
+    }),
+    "NOT_FOUND",
+  );
+
+  await api.visit.detachPrescription({
+    orgSlug: organization.slug,
+    attachmentId: attached.id,
+  });
+  expect(
+    (await api.visit.get({ orgSlug: organization.slug, visitId: created.visit.id })).prescriptions,
+  ).toEqual([]);
+  expect(
+    (await api.files.getReadUrl({ orgSlug: organization.slug, key: upload.key })).url,
+  ).toContain("X-Amz-Signature");
+
+  for (const action of ["visit.prescription.attach", "visit.prescription.detach"]) {
+    const entry = await eventually(async () => {
+      const audit = await api.audit.list({ orgSlug: organization.slug });
+      return audit.items.find((item) => item.action === action);
+    });
+    expect(entry.target).toBe(`visit:${created.visit.id}`);
+    expect(entry.meta).toMatchObject({ attachmentId: attached.id, fileId: upload.key });
+  }
+});
+
 test("cancelling a waiting visit voids its pending consult charge", async () => {
   const { organization, api, patient, department } = await createVisitSetup("visit-cancel");
   const fee = await api.catalog.create(

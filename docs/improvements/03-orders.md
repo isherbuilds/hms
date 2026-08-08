@@ -1,8 +1,8 @@
 # 03 — Generic clinical orders
 
-Status: DEFERRED — revisit after v0 (2026-08-07: Slice 7 keeps orders as consult-note
-children activated+charged atomically at signing; carrying over from this doc into Slice 7:
-denormalized `category` on the order row, expected-current-state predicate on cancel)
+Status: DEFERRED — revisit after v0. Orders are not part of paper prescription capture; if a
+future workflow adopts this proposal, retain the denormalized `category` and the
+expected-current-state predicate on cancellation.
 Depends on: 02
 Blocks: 04
 

@@ -1,4 +1,5 @@
 import { db } from "@better-stack/db";
+import { attachments } from "@better-stack/db/schema/attachments";
 import { file as fileTable } from "@better-stack/db/schema/file";
 import {
   createReadUrl,
@@ -221,14 +222,44 @@ export const filesRouter = {
   delete: orgProcedure({ storage: ["delete"] }, keyInput).handler(async ({ context, input }) => {
     assertKeyInScope(input.key, context.scope, "file.delete");
 
-    const [row] = await db
-      .delete(fileTable)
-      .where(and(eq(fileTable.id, input.key), eq(fileTable.orgId, context.scope.orgId)))
-      .returning({ id: fileTable.id });
+    // Lock the file before checking dependants. `visit.attachPrescription`
+    // takes a compatible key-share lock before inserting the FK, so attach and
+    // delete serialize without a raw constraint error escaping to the caller.
+    await db.transaction(async (tx) => {
+      const [lockedFile] = await tx
+        .select({ id: fileTable.id })
+        .from(fileTable)
+        .where(and(eq(fileTable.id, input.key), eq(fileTable.orgId, context.scope.orgId)))
+        .limit(1)
+        .for("update");
 
-    if (!row) {
-      throw new ORPCError("NOT_FOUND", { message: "File not found" });
-    }
+      if (!lockedFile) {
+        throw new ORPCError("NOT_FOUND", { message: "File not found" });
+      }
+
+      const [attached] = await tx
+        .select({ id: attachments.id })
+        .from(attachments)
+        .where(and(eq(attachments.orgId, context.scope.orgId), eq(attachments.fileId, input.key)))
+        .limit(1);
+
+      if (attached) {
+        throw new ORPCError("CONFLICT", {
+          message: "This file is attached to a record. Detach it there before deleting it.",
+        });
+      }
+
+      const [deleted] = await tx
+        .delete(fileTable)
+        .where(and(eq(fileTable.id, input.key), eq(fileTable.orgId, context.scope.orgId)))
+        .returning({ id: fileTable.id });
+
+      if (!deleted) {
+        throw new ORPCError("NOT_FOUND", { message: "File not found" });
+      }
+
+      return deleted;
+    });
 
     // Fire-and-forget (ADR 0005) and issued right after the committed
     // delete, so no storage failure can sit between the delete and its

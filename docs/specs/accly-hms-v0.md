@@ -1,4 +1,4 @@
-# Spec: accly-hms v0 — OPD front office + billing (+ optional consult screen)
+# Spec: accly-hms v0 — OPD front office, billing, and paper prescription capture
 
 Status: ready
 Authority: brainstorm decision record `docs/01-mvp-decisions.md` (2026-08-03) + user selections
@@ -32,10 +32,9 @@ Multi-tenant web HMS on the better-stack architecture. One hospital = one Organi
 delivers: patient registration with per-org MRN and phone dedupe; departments/practitioners;
 priced Service Catalog with tax classes; OPD Visit creation with queue and token; charges
 accumulating on the Visit; immutable GST-capable Invoices with on-the-spot Receipt printing;
-Credit Notes for corrections; daily reports and Tally day-book export; an optional per-doctor
-consult screen (diagnosis, Rx print, orders that create Charges). AI ships later; v0 carries the
-Provenance Envelope, per-aggregate state machines, and an audit trail on sensitive actions so AI
-drafting slots in without rework.
+Credit Notes for corrections; daily reports and Tally day-book export; and visit-level capture
+of the doctor's signed paper prescription. AI ships later; v0 keeps the original document as
+the clinical source of truth and an audit trail on sensitive actions.
 
 ## Validation / Evidence
 
@@ -57,10 +56,11 @@ broader demand remain open business questions deliberately excluded here.
    and line-level tax breakup); the original Invoice never changes. If the invoice was already
    paid, the screen shows **refund due** and I record the Refund (cash/UPI/card) against the
    Credit Note, printing a refund voucher.
-5. As a **doctor** (opt-in), I open my queue, see the waiting Visit, record diagnosis and Rx
-   lines, order lab/radiology items from the catalog (which become pending Charges), sign the
-   note, and print an A5 prescription on hospital letterhead. After signing, the note is
-   immutable; corrections are addenda.
+5. As **desk staff at a hospital whose doctors prescribe on paper and have no logins** (the
+   pilot's actual shape, amended 2026-08-08), I upload the doctor's signed prescription image or
+   PDF to the Visit, verify the scan is readable, and can later open or reprint that source
+   document. The HMS does not transcribe, regenerate, or sign a prescription on the doctor's
+   behalf.
 6. As a **hospital administrator**, I manage the Service Catalog, departments, practitioners,
    and organization settings (legal name, GSTIN/tax id, invoice/receipt/MRN prefixes, fiscal
    year start, currency).
@@ -87,7 +87,7 @@ bootstrap is done. Package scope is `@better-stack/*`. `files`, `members`, `audi
   verified `context.scope`.
 - Every query — including PK lookups — carries `eq(table.orgId, context.scope.orgId)`.
   Mutations are single scoped `UPDATE`/`DELETE ... RETURNING`, never select-then-write, except
-  where a multi-statement transaction is the point (invoice issuance, note signing) — those
+  where a multi-statement transaction is the point (invoice issuance) — those
   re-assert the tenant predicate on every statement inside the transaction.
 - Keyset pagination only; tenant-leading indexes matching query order. Pattern files:
   `packages/api/src/routers/files.ts` (keyset-paginated list),
@@ -98,19 +98,19 @@ granted explicitly per role (no inheritance). New statements and grants:
 
 - All roles (`member`, `admin`, `owner`): `patient: ["create","read","update"]`,
   `visit: ["create","read","update"]`, `billing: ["read","write"]` (charges, invoices,
-  payments), `consult: ["read","write"]`, `catalog: ["read"]`, `staff: ["read"]`,
+  payments), `catalog: ["read"]`, `staff: ["read"]`,
   `settings: ["read"]`, `report: ["read"]` (includes Tally export).
 - `admin` + `owner` additionally: `settings: ["update"]`, `catalog: ["create","update"]`,
   `staff: ["create","update"]`, `billing: ["creditNote"]` (credit-note issuance and refund
   recording).
-- Signing a consult note requires `consult: ["write"]` **and** the domain check that the
-  session user is the Visit practitioner's linked `practitioners.memberUserId`.
+- Prescription capture uses `visit: ["read","update"]`. The doctor-authored paper image is the
+  source record; no application role may digitally sign, regenerate, or claim authorship of it.
 - No stored "app role" (amended 2026-08-07): the earlier `member-profiles` table was dropped
   before it gained a writer — its values are derivable (doctor = linked
   `practitioners.memberUserId`; admin = the Better Auth role) and reception-vs-billing has no
-  permission or navigation consumer in v0. Console routing derives at login: admin/owner →
-  Admin area, linked practitioner → doctor queue, everyone else → front desk/billing (which
-  are permission-open by design). A stored routing preference returns only if Slice 5/6 nav
+  permission or navigation consumer in v0. Console routing derives at login: admin/owner may
+  access the Admin area, while every member can use the front desk/billing path (which is
+  permission-open by design). A stored routing preference returns only if later navigation
   needs a value this derivation cannot supply. Clinical roles enter `access.ts` as real
   Better Auth roles only when their grants actually diverge (fine-grained roles explicitly
   deferred, to be decided with the pilot).
@@ -160,8 +160,8 @@ key)` helper (exported from `@better-stack/db/counter`) increments with a single
   timestamps per transition. State machine: waiting → in_consult → completed; waiting →
   cancelled. No other transitions.
 - `charges`: visitId, nullable `catalogItemId`, description/unitPrice/taxRatePercent/taxCode
-  **snapshotted**, qty, `sourceType` enum `consult_fee|order|manual`, nullable
-  `sourceId`, status enum `pending|invoiced|voided`, nullable `invoiceId`. State machine:
+  **snapshotted**, qty, `sourceType` enum `consult_fee|manual`, nullable `sourceId`, status enum
+  `pending|invoiced|voided`, nullable `invoiceId`. State machine:
   pending → invoiced (only by invoice issuance, sets invoiceId) | pending → voided (with
   reason). Invoiced charges are immutable.
 - `invoices` + `invoice-lines`: issuance materializes the bill as immutable line snapshots —
@@ -212,23 +212,23 @@ key)` helper (exported from `@better-stack/db/counter`) increments with a single
 refundsTotal`; a negative value renders as **"refund due"** on the billing screen and in
     reports until a Refund is recorded. Crediting a fully paid invoice is legal and simply
     surfaces refund-due; the correction flow is credit note → refund, never invoice mutation.
-- `consult-notes`: visitId, practitionerId, status `draft|signed`, chiefComplaint, `signedAt`.
-  Child tables: `diagnosis-lines` (text + nullable ICD code field, unused in v0),
-  `prescription-lines` (drug free-text, dose, frequency, duration, instructions), `orders`
-  (catalogItemId restricted to lab/radiology/procedure categories, status
-  `draft|active|completed|cancelled`). Signing (single transaction): note → signed, orders →
-  active, one pending Charge per order created. Signed note and children immutable;
-  `note-addenda` table for corrections.
-- **Provenance Envelope columns** on consult-notes, prescription-lines, orders, charges:
-  `generatedBy` enum `member|ai` (default member), nullable `modelName`, `modelVersion`,
-  `reviewedBy`. v0 writes `member`; columns exist so AI drafting is additive.
+- `attachments`: one organization-scoped polymorphic file-link table with `targetType`,
+  `targetId`, `fileId`, `createdBy`, and timestamps. v0 admits only
+  `targetType = 'visit_prescription'`; each attach procedure proves the Visit and ready File
+  belong to the caller's organization before inserting. The source must be an image or PDF.
+  `targetId` deliberately has no foreign key so later domains can add a guarded target type
+  without another link table. Reads use only short-lived presigned URLs. Detaching removes the
+  link, not the file; `files.delete` returns `CONFLICT` while a file remains attached.
+- Charges retain their existing provenance envelope for their own future automation seam.
+  Prescription scans are doctor-authored source records, never AI-generated clinical content.
 
 **Audit trail** (replaces the earlier `events` table — the base already ships one; amended
 2026-08-07): sensitive and destructive successes are recorded in the append-only `auditLog`
 via the existing **fire-and-forget `audit()`** (`packages/api/src/audit.ts`) — never awaited,
 never able to fail a mutation. Mapping: `action` is the dotted verb (`settings.update`,
 `patient.register`, `visit.transition`, `invoice.issue`, `payment.record`, `creditNote.issue`,
-`refund.record`, `consultNote.sign`, `charge.void`), `target` is `"<entityType>:<id>"`, `meta`
+`refund.record`, `visit.prescription.attach`, `visit.prescription.detach`, `charge.void`), `target` is
+`"<entityType>:<id>"`, `meta`
 carries the payload. Reads and list calls are never audited. In-transaction audit (the
 repo-documented option for compliance-critical domains) is **deliberately not built now** —
 see Explicitly Deferred. `audit.list` (admin/owner) is the read path; no new events router.
@@ -237,8 +237,9 @@ see Explicitly Deferred. `audit.list` (admin/owner) is the read path; no new eve
 invoice print groups by rate and, when org country is India, displays the CGST/SGST half-split
 (display-time only; storage is the single rate).
 
-**Printing**: browser print CSS. Invoice/receipt in A5 and 80mm-thermal layouts; prescription A5
-with org letterhead block. No printer drivers/integrations.
+**Printing**: browser print CSS. Invoice/receipt in A5 and 80mm-thermal layouts. A captured
+prescription opens from its private source image/PDF for viewing or reprinting. No printer
+drivers/integrations.
 
 **Tally export**: date-range export of invoices, payments, credit notes, and refunds as (a)
 Tally XML with generic Sales/Receipt/Credit Note/Payment (refund) vouchers carrying the
@@ -248,14 +249,15 @@ explicitly deferred iteration.
 
 **Routers** (`packages/api/src/routers/`): `settings`, `patient`, `staff` (departments +
 practitioners), `catalog`, `visit`, `billing` (charges, invoices, payments, credit notes,
-refunds), `consult`, `report` (collections, OPD register, unbilled, refund-due, Tally export).
+refunds), and `report` (collections, OPD register, unbilled, refund-due, Tally export).
+The `visit` router also attaches and detaches paper prescriptions.
 Registered in `appRouter` (`packages/api/src/routers/index.ts`) beside existing
 `dashboard/audit/files/members`.
 
 **Web** (`apps/web/src/routes/org/$orgSlug/`): route group per area — `front-desk/`
 (register/search, new visit, queue), `billing/` (visit charges → invoice → payment → print),
-`consult/` (doctor queue, note editor, Rx print), `admin/` (catalog, staff, settings),
-`reports/`. Pages import the singleton `orpc` from `@/lib/orpc` and pass the route `orgSlug` in
+`admin/` (catalog, staff, settings), and `reports/`. Visit detail contains the paper
+prescription capture tray. Pages import the singleton `orpc` from `@/lib/orpc` and pass the route `orgSlug` in
 every call and tenant-specific invalidation key; mutations refresh explicit query keys (no
 realtime). Forms follow the midday-ai React Hook Form pattern: `useZodForm`
 (`apps/web/src/hooks/use-zod-form.ts`, `react-hook-form` + `@hookform/resolvers`) with a local
@@ -283,11 +285,12 @@ from `tests/support/`; assert oRPC codes, not message text):
    on the very next request.
 2. **Domain integration** (new files under `tests/integration/`): counter concurrency (parallel
    `nextCounter` yields gapless unique sequence); charge/invoice state transitions
-   (double-invoice attempt fails; voiding an invoiced charge fails); signed note immutability;
+   (double-invoice attempt fails; voiding an invoiced charge fails); prescription attachment
+   lifecycle and file-delete conflict;
    register→visit→bill→pay happy path through routers; credit-note over-issue rejected;
    crediting a partially and a fully paid invoice surfaces the correct refund-due balance;
-   refund exceeding credited or paid amount rejected; sign-consult authorization (non-linked
-   member rejected); every sensitive mutation records its `audit()` row (asserted with
+   refund exceeding credited or paid amount rejected; every sensitive mutation records its
+   `audit()` row (asserted with
    `eventually`, per the repo's audit testing guidance — the write is fire-and-forget).
 3. **Unit** (`tests/unit/`): document-number formatting (fiscal year rollover); invoice-line
    math — pro-rata discount allocation whose lines sum exactly to header totals (incl. rounding
@@ -375,7 +378,7 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     Inactive badge + hidden under Active-only, reactivate, create department, create
     practitioner linked to department + member + consult-fee item, row resolves all three.
   - Interfaces delivered: `catalog.list({ orgSlug, category?, activeOnly? })` →
-    name-ordered rows for visit/consult/billing pickers; practitioner shape (id, name,
+    name-ordered rows for visit and billing pickers; practitioner shape (id, name,
     departmentId, registrationNumber, memberUserId, consultFeeItemId) for Slice 5;
     `catalog.update` audits new price/tax/active values in `meta` (price-change history,
     added 2026-08-07 after the catalog-flexibility review).
@@ -409,7 +412,7 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     line; settings page exposes follow-up validity with pristine-disabled save.
   - Interfaces delivered: `visit.create({ orgSlug, patientId, departmentId, practitionerId })
 → { visit, charge|null }`; `visit.transition({ orgSlug, visitId, to, cancelReason? })`;
-    `visit.queue`/`visit.get` for consult (Slice 7); Charge row shape (visitId, catalogItemId,
+    `visit.queue`/`visit.get` for front-desk and prescription capture; Charge row shape (visitId, catalogItemId,
     description/unitPrice/taxRatePercent/taxCode snapshots, qty, sourceType, status,
     invoiceId) for billing (Slice 6).
   - Acceptance: create Visit (patient + department + practitioner) → daily token from counter +
@@ -438,7 +441,7 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     columns), `apps/web/src/routes/org/$orgSlug/front-desk/*`
     (queue routes); adds `visit` statement/grants in `access.ts` (coordinator-owned).
   - Interfaces: Charge row shape + `billing.listPendingCharges({ orgSlug, visitId })` consumed
-    by billing; visit status consumed by consult slice; `visit.create/transition` contracts.
+    by billing; visit record consumed by paper prescription capture; `visit.create/transition` contracts.
 - [x] Slice 6: Billing — invoice, payment, receipt, credit note, refund — **done** (2026-08-08,
       this session).
   - Delivered: `invoices` (immutable header — no status column, no update path — with org +
@@ -513,32 +516,34 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     `billing.recordRefund({ orgSlug, creditNoteId, method, amount, reference? })`, and a
     `billing.invoiceBalance` read (grandTotal, creditTotal, paymentsTotal, refundsTotal,
     outstanding); invoice/payment/credit-note/refund shapes consumed by the reports slice.
-- [ ] Slice 7: Consult screen — note, Rx, orders, signing
-  - Acceptance: doctor queue lists own waiting/in_consult Visits; note editor (chief complaint,
-    diagnosis lines, prescription lines, orders from lab/radiology/procedure catalog); sign is
-    one transaction: note→signed, orders→active, one pending Charge per order,
-    `consultNote.sign` audited; signed content immutable — edits rejected, addenda
-    appendable; A5 prescription
-    print; signing rejected unless session user is the visit practitioner's linked member;
-    provenance columns written as `member`. Carried over from `docs/improvements/03-orders.md`
-    (decision log 2026-08-07): order rows store `category` denormalized from the catalog item
-    at creation (order semantics must not change if the item is later re-categorized), and
-    order cancellation takes the expected current status as input, rejecting with `CONFLICT`
-    on mismatch (no lost-update races between doctor and desk).
-  - Verify: integration tests for sign transaction effects, immutability, and authorization;
-    cancel with a stale expected status rejected `CONFLICT`; tenancy four-questions for
-    `consult`; manual print check.
-  - Depends on: Slice 5 (and Slice 4 catalog categories)
-  - Owns/Touches: `packages/db/src/schema/{consult-notes,diagnosis-lines,prescription-lines,orders,note-addenda}.ts`,
-    `packages/api/src/routers/consult.ts`, `apps/web/src/routes/org/$orgSlug/consult/*`; adds
-    `consult` statement/grants in `access.ts` (coordinator-owned).
-  - Interfaces: order→Charge creation reuses Slice 5 Charge shape with `sourceType='order'`;
-    no other slice consumes consult internals.
+- [x] Slice 7: Paper prescription capture — **done** (2026-08-08)
+  - Acceptance: from an existing Visit, staff uploads a private image or PDF through the files
+    domain and attaches the ready file as `targetType = 'visit_prescription'`. `visit.get`
+    returns prescription metadata in capture order. Staff can open it through a fresh presigned
+    URL and detach a bad scan without deleting the underlying file. Attached files cannot be
+    deleted through the files screen. Attach, detach, and blocked file deletion are audited.
+  - The doctor's signed paper artifact is the source of truth. There is no consult-note schema,
+    doctor queue, transcription editor, proxy signature, generated prescription, addendum, or AI
+    writer in v0. AI extraction remains a later, separately reviewed derived-data experiment.
+  - Verify: integration coverage for ready-file attach/read/detach, duplicate and foreign-file
+    rejection, file-delete conflict, audit emission, and the tenancy guard sweeps; browser check
+    of upload, open, empty, error, and remove states on the Visit detail page.
+  - Depends on: Slice 5 and the existing files domain.
+  - Owns/Touches:
+    `packages/db/src/schema/attachments.ts`, `packages/api/src/routers/visit.ts`,
+    `packages/api/src/routers/files.ts`, and
+    `apps/web/src/routes/org/$orgSlug/front-desk/visits.$visitId.tsx`.
+  - Interfaces: `visit.attachPrescription({ orgSlug, visitId, fileId })`,
+    `visit.detachPrescription({ orgSlug, attachmentId })`; `visit.get` returns `prescriptions`.
+  - Verified: `bun run check-types`, `bun run check`, and the full 110-test suite pass. Browser
+    verification on a completed Visit confirmed the compact empty state, direct upload through
+    private storage, attached-file metadata, presigned opening in a new tab, detach, and cleanup.
 - [ ] Slice 8: Reports + Tally export
   - Acceptance: daily collections by method (payments minus refunds, credit notes listed
-    separately), OPD register (visits + invoice totals per day), unbilled-activity list (visits
-    with pending Charges older than N hours), refund-due list (invoices with negative
-    outstanding); date-range Tally XML + CSV export downloads containing every invoice,
+    separately), OPD register (visits + invoice totals per day), unbilled-activity list shows
+    Visits with pending Charges older than N hours, refund-due list (invoices with negative
+    outstanding); date-range
+    Tally XML + CSV export downloads containing every invoice,
     payment, credit note, and refund exactly once; export documents ledger-name convention on
     screen.
   - Verify: integration test seeds a day of activity and asserts report totals equal the sum of
@@ -552,8 +557,7 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
   - Interfaces: consumes billing shapes from Slice 6; produces nothing downstream.
 
 Parallelism: Slices 3 and 4 have disjoint write sets and may run concurrently after Slice 2.
-Slices 6 and 7 both write charge state — run sequentially or coordinate on the charge
-transition queries. Shared files touched by every slice — `packages/auth/src/access.ts`,
+Shared files touched by every slice — `packages/auth/src/access.ts`,
 `packages/db/src/schema/index.ts`, `packages/api/src/routers/index.ts`,
 `tests/integration/tenancy.test.ts` — are coordinator-owned: each slice appends its own
 statements/exports/cases only.
@@ -570,9 +574,11 @@ feature (including the ambient scribe — separate spec after the speech feasibi
 - Tally voucher/ledger mapping refinement with the pilot's accountant (generic mapping ships).
 - GST rate table per service class from an accountant (v0 ships rates as org-editable catalog
   fields; engineering does not hard-code tax law).
-- Fine-grained API-level role permissions (v0: coarse `access.ts` grants above + linked
-  practitioner-only signing).
-- ICD coding on diagnosis lines (column exists, unused).
+- Fine-grained API-level role permissions (v0 uses the coarse `access.ts` grants above).
+- AI transcription or structured clinical notes: any experiment must remain derived from the
+  immutable paper source and requires a separately validated clinician-review workflow.
+- Dedicated in-house lab, radiology, and pharmacy fulfillment modules; until then the desk bills
+  fulfilled items separately through existing `billing.addCharge`.
 - Thermal-printer format tuning against the pilot's actual hardware.
 - Formal family/guardian relations on patients (2026-08-07): v0 derives the household from
   the shared phone number — searching a phone lists every family member on it, which is how
@@ -585,8 +591,7 @@ feature (including the ambient scribe — separate spec after the speech feasibi
   `(priceCategoryId, catalogItemId) → price` map when insurance/TPA enters the roadmap),
   packages/panels (bundle master + member items), per-line performer attribution for
   doctor-share payouts, billing-department linkage on catalog items, and an org-editable
-  category master (the closed enum is load-bearing for Slice 7 order restrictions and Tally
-  mapping; new values are one additive enum migration).
+  category master (new values are an additive enum migration).
 - In-transaction audit for clinical/financial mutations (user decision 2026-08-07: keep
   fire-and-forget `audit()` for now; revisit when a compliance requirement demands
   commit-atomic entries).
