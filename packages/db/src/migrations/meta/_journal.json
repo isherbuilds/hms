@@ -5,29 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1786125418226,
-      "tag": "0000_quiet_prima",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1786126191306,
-      "tag": "0001_typical_mole_man",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1786128577038,
-      "tag": "0002_burly_cargill",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1786184643029,
-      "tag": "0003_harsh_multiple_man",
+      "when": 1786186291944,
+      "tag": "0000_sweet_human_robot",
       "breakpoints": true
     }
   ]
