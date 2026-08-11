@@ -1,5 +1,5 @@
 {
-  "name": "@better-stack/api",
+  "name": "@hms/api",
   "type": "module",
   "exports": {
     "./*": {
@@ -10,10 +10,10 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@better-stack/auth": "workspace:*",
-    "@better-stack/db": "workspace:*",
-    "@better-stack/env": "workspace:*",
-    "@better-stack/storage": "workspace:*",
+    "@hms/auth": "workspace:*",
+    "@hms/db": "workspace:*",
+    "@hms/env": "workspace:*",
+    "@hms/storage": "workspace:*",
     "@orpc/openapi": "catalog:",
     "@orpc/server": "catalog:",
     "@orpc/zod": "catalog:",
@@ -23,7 +23,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@better-stack/config": "workspace:*",
+    "@hms/config": "workspace:*",
     "hono": "catalog:",
     "typescript": "catalog:"
   }

@@ -1,4 +1,4 @@
-# better-stack
+# HMS
 
 This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines React, TanStack Start, Hono, ORPC, and more.
 
@@ -66,7 +66,7 @@ npx shadcn@latest add accordion dialog popover sheet table -c packages/ui
 Import shared components like this:
 
 ```tsx
-import { Button } from "@better-stack/ui/components/button";
+import { Button } from "@hms/ui/components/button";
 ```
 
 ### Add app-specific blocks
@@ -91,7 +91,7 @@ full topology, environment variables, and constraints.
 ## Project Structure
 
 ```
-better-stack/
+hms/
 ├── apps/
 │   ├── web/         # Frontend application (React + TanStack Start)
 │   └── server/      # Backend API (Hono, ORPC)

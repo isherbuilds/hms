@@ -1,7 +1,7 @@
 import { beforeAll, expect, spyOn, test } from "bun:test";
 
 import { app } from "../../apps/server/src/index";
-import { auth } from "@better-stack/auth";
+import { auth } from "@hms/auth";
 
 import { resetTestDatabase } from "../support/database";
 

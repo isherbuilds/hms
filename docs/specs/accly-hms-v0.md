@@ -6,7 +6,7 @@ implementation record of v0.
 Authority: brainstorm decision record `docs/01-mvp-decisions.md` (2026-08-03) + user selections
 in-session; advisory amendment on per-aggregate lifecycles applied.
 Amended 2026-08-07: reconciled to the bootstrapped repo. The spec was written against
-`post-dash-stack`; the actual base is **better-stack** (this repo, `accly-ai/hms`), whose
+`post-dash-stack`; the actual base is **HMS** (this repo, `accly-ai/hms`), whose
 tenancy/authorization architecture differs materially. Domain decisions (schema shapes, state
 machines, money invariants) are unchanged; every stack-integration decision (guards, paths,
 roles, event log, verify commands) is restated in this repo's real conventions. Slice 1
@@ -35,7 +35,7 @@ leaving the hospital's complete books and final accounts in Tally.
 
 ## Solution
 
-Multi-tenant web HMS on the better-stack architecture. One hospital = one Organization. v0
+Multi-tenant web HMS on the HMS architecture. One hospital = one Organization. v0
 delivers: patient registration with per-org MRN and phone dedupe; departments/practitioners;
 priced Service Catalog with tax classes; OPD Visit creation with queue and token; charges
 accumulating on the Visit; immutable GST-capable Invoices with on-the-spot Receipt printing;
@@ -79,8 +79,8 @@ broader demand remain open business questions deliberately excluded here.
 
 ## Implementation Decisions
 
-**Repo**: this repository (`accly-ai/hms`, better-stack base) is the workspace — Slice 1's
-bootstrap is done. Package scope is `@better-stack/*`. `files`, `members`, `audit`, and
+**Repo**: this repository (`accly-ai/hms`, HMS base) is the workspace — Slice 1's
+bootstrap is done. Package scope is `@hms/*`. `files`, `members`, `audit`, and
 `dashboard` are product, not examples. The `todo` worked example was deleted in Slice 2
 (schema, router, route, tests, `access.ts` grants, drop migration), per
 `docs/contributing/project-intent.md`.
@@ -133,7 +133,7 @@ constraints in-schema):
   `fiscalYearStartMonth` (default 4). Slice 5 adds `followUpValidityDays` (default 14,
   org-editable) for follow-up consult pricing.
 - `counter`: (`orgId`, `key`, `value`) with composite PK (org, key); `nextCounter(tx, orgId,
-key)` helper (exported from `@better-stack/db/counter`) increments with a single
+key)` helper (exported from `@hms/db/counter`) increments with a single
   conflict-target upsert whose row lock is held until the caller's transaction ends. Keys: `mrn`,
   `token:<practitionerId>:<yyyy-mm-dd>` (tokens are per doctor queue per day, matching real OPD
   practice), `invoice:<fiscalYear>`, `receipt:<fiscalYear>`, `creditNote:<fiscalYear>`,
@@ -308,11 +308,11 @@ from `tests/support/`; assert oRPC codes, not message text):
    display split; report date-range and GST aggregation behavior.
 
 Verify commands are the repo's real ones: `bun run check-types`, `bun run check`,
-`bun run test` (Postgres up via `bun run db:up`; the suite uses and wipes `better_stack_test`).
+`bun run test` (Postgres up via `bun run db:up`; the suite uses and wipes `hms_test`).
 
 ## Task Plan
 
-- [x] Slice 1: Bootstrap — **done**. This repository (`accly-ai/hms`, better-stack base) is the
+- [x] Slice 1: Bootstrap — **done**. This repository (`accly-ai/hms`, HMS base) is the
       workspace: fresh history, schema represented by the current baseline migration, spec lives at
       `docs/specs/accly-hms-v0.md`, and the full gate passes (verified 2026-08-07:
       `bun run check-types && bun run check && bun run test` → 40/40).
@@ -320,7 +320,7 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
       deleted — **done** (2026-08-07, this session).
   - Delivered: `organization_settings` and `counter` tables in the current baseline;
     `nextCounter(tx, orgId, key)` exported from
-    `@better-stack/db/counter`; `settings` router get/update declared with
+    `@hms/db/counter`; `settings` router get/update declared with
     `orgProcedure({ settings: [...] }, orgInput.extend(...))` and per-role grants
     in `access.ts` (read: all roles; update: admin/owner); `settings.update`
     audited fire-and-forget;
@@ -335,7 +335,7 @@ Verify commands are the repo's real ones: `bun run check-types`, `bun run check`
     exact value round-trip after reload.
   - Interfaces delivered: `nextCounter(tx, orgId: string, key: string): Promise<number>`;
     `settings.get/update({ orgSlug, … }) → SettingsFields`; `SETTINGS_DEFAULTS` in
-    `@better-stack/db/schema/organization-settings`; settings read used by every print view
+    `@hms/db/schema/organization-settings`; settings read used by every print view
     and numbering call.
 - [x] Slice 3: Patients — register, dedupe, search — **done** (2026-08-07, this session).
   - Delivered: `patients` table (org-scoped, unique (org, mrn), (org, phone) dedupe index,

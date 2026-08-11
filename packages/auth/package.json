@@ -1,5 +1,5 @@
 {
-  "name": "@better-stack/auth",
+  "name": "@hms/auth",
   "type": "module",
   "exports": {
     ".": {
@@ -13,15 +13,15 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@better-stack/db": "workspace:*",
-    "@better-stack/env": "workspace:*",
+    "@hms/db": "workspace:*",
+    "@hms/env": "workspace:*",
     "better-auth": "catalog:",
     "dotenv": "catalog:",
     "drizzle-orm": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@better-stack/config": "workspace:*",
+    "@hms/config": "workspace:*",
     "typescript": "catalog:"
   }
 }

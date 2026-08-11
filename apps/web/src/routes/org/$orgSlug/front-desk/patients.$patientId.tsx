@@ -1,4 +1,4 @@
-import { Button } from "@better-stack/ui/components/button";
+import { Button } from "@hms/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -6,7 +6,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@better-stack/ui/components/dialog";
+} from "@hms/ui/components/dialog";
 import {
   Form,
   FormControl,
@@ -14,11 +14,11 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@better-stack/ui/components/form";
-import { Input } from "@better-stack/ui/components/input";
-import { Skeleton } from "@better-stack/ui/components/skeleton";
-import { SubmitButton } from "@better-stack/ui/components/submit-button";
-import { Textarea } from "@better-stack/ui/components/textarea";
+} from "@hms/ui/components/form";
+import { Input } from "@hms/ui/components/input";
+import { Skeleton } from "@hms/ui/components/skeleton";
+import { SubmitButton } from "@hms/ui/components/submit-button";
+import { Textarea } from "@hms/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { PlusIcon } from "lucide-react";
@@ -26,7 +26,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { PageHeader } from "@/components/app-shell";
+import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 
@@ -88,7 +88,7 @@ function PatientDetailRoute() {
           ) : undefined
         }
       />
-      <div className="max-w-2xl p-4">
+      <PageBody className="max-w-2xl">
         {patient.isPending ? (
           <div className="flex flex-col gap-3" aria-busy>
             <Skeleton className="h-8 w-full" />
@@ -96,10 +96,7 @@ function PatientDetailRoute() {
             <Skeleton className="h-20 w-full" />
           </div>
         ) : patient.isError ? (
-          <div role="alert" className="border-l-2 border-destructive pl-3 text-xs">
-            <p className="font-medium">Could not load patient</p>
-            <p className="mt-0.5 text-muted-foreground">{patient.error.message}</p>
-          </div>
+          <ErrorNote title="Could not load patient" detail={patient.error.message} />
         ) : (
           <PatientForm
             key={`${orgSlug}:${patientId}`}
@@ -108,7 +105,7 @@ function PatientDetailRoute() {
             patient={patient.data}
           />
         )}
-      </div>
+      </PageBody>
       {visitDialogOpen ? (
         <NewVisitDialog
           orgSlug={orgSlug}

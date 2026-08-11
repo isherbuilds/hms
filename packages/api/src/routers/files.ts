@@ -1,13 +1,13 @@
-import { db } from "@better-stack/db";
-import { attachments } from "@better-stack/db/schema/attachments";
-import { file as fileTable } from "@better-stack/db/schema/file";
+import { db } from "@hms/db";
+import { attachments } from "@hms/db/schema/attachments";
+import { file as fileTable } from "@hms/db/schema/file";
 import {
   createReadUrl,
   createUploadUrl,
   deleteObject,
   maxUploadBytes,
   uploadExpiresIn,
-} from "@better-stack/storage";
+} from "@hms/storage";
 import { ORPCError } from "@orpc/server";
 import { createHash } from "node:crypto";
 import { and, desc, eq, lt, or } from "drizzle-orm";
@@ -189,7 +189,7 @@ export const filesRouter = {
 
   /**
    * Resolves a short-lived presigned read URL. Every object is private; there
-   * is no unsigned path (see `@better-stack/storage`). Pending uploads are not
+   * is no unsigned path (see `@hms/storage`). Pending uploads are not
    * readable.
    */
   getReadUrl: orgProcedure({ storage: ["read"] }, keyInput).handler(async ({ context, input }) => {

@@ -1,7 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 
-import { db } from "@better-stack/db";
-import { nextCounter } from "@better-stack/db/counter";
+import { db } from "@hms/db";
+import { nextCounter } from "@hms/db/counter";
 
 import { createOrganization, createTestUser } from "../support/auth";
 import { resetTestDatabase } from "../support/database";

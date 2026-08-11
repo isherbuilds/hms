@@ -1,5 +1,5 @@
-import { auth } from "@better-stack/auth";
-import { env } from "@better-stack/env/web";
+import { auth } from "@hms/auth";
+import { env } from "@hms/env/web";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { createRouterClient, type RouterClient } from "@orpc/server";
@@ -7,7 +7,7 @@ import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import { createIsomorphicFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 
-import { appRouter, type AppRouter } from "@better-stack/api/routers/index";
+import { appRouter, type AppRouter } from "@hms/api/routers/index";
 
 const getORPCClient = createIsomorphicFn()
   .server((): RouterClient<AppRouter> =>

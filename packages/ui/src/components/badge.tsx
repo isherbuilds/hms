@@ -1,9 +1,9 @@
-import { cn } from "@better-stack/ui/lib/utils";
+import { cn } from "@hms/ui/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
 const badgeVariants = cva(
-  "inline-flex w-fit shrink-0 items-center justify-center gap-1 rounded-none px-1.5 py-0.5 text-[0.6875rem] font-medium whitespace-nowrap [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3",
+  "inline-flex w-fit shrink-0 items-center justify-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium whitespace-nowrap [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3",
   {
     variants: {
       variant: {

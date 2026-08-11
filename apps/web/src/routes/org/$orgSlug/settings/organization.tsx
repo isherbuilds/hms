@@ -1,4 +1,4 @@
-import type { SettingsFields } from "@better-stack/api/routers/settings";
+import type { SettingsFields } from "@hms/api/routers/settings";
 import {
   Form,
   FormControl,
@@ -7,21 +7,21 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@better-stack/ui/components/form";
-import { Input } from "@better-stack/ui/components/input";
-import { Skeleton } from "@better-stack/ui/components/skeleton";
-import { SubmitButton } from "@better-stack/ui/components/submit-button";
-import { Textarea } from "@better-stack/ui/components/textarea";
+} from "@hms/ui/components/form";
+import { Input } from "@hms/ui/components/input";
+import { Skeleton } from "@hms/ui/components/skeleton";
+import { SubmitButton } from "@hms/ui/components/submit-button";
+import { Textarea } from "@hms/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { PageHeader } from "@/components/app-shell";
+import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 
-export const Route = createFileRoute("/org/$orgSlug/admin/settings")({
+export const Route = createFileRoute("/org/$orgSlug/settings/organization")({
   loader: ({ context: { queryClient }, params: { orgSlug } }) => {
     void queryClient.prefetchQuery(orpc.settings.get.queryOptions({ input: { orgSlug } }));
   },
@@ -74,12 +74,9 @@ function SettingsRoute() {
         title="Settings"
         description="Legal identity, currency, and document numbering for this organization"
       />
-      <div className="max-w-2xl p-4">
+      <PageBody className="max-w-2xl">
         {settings.isError && (
-          <div role="alert" className="border-l-2 border-destructive pl-3 text-xs">
-            <p className="font-medium">Could not load settings</p>
-            <p className="mt-0.5 text-muted-foreground">{settings.error.message}</p>
-          </div>
+          <ErrorNote title="Could not load settings" detail={settings.error.message} />
         )}
         {settings.isPending && (
           <div className="flex flex-col gap-3">
@@ -93,7 +90,7 @@ function SettingsRoute() {
           // that org's values instead of carrying dirty state across.
           <SettingsForm key={orgSlug} orgSlug={orgSlug} defaults={settings.data} />
         )}
-      </div>
+      </PageBody>
     </>
   );
 }

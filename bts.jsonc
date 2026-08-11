@@ -10,7 +10,7 @@
   "$schema": "https://r2.better-t-stack.dev/schema.json",
   "version": "3.38.1",
   "createdAt": "2026-08-04T07:38:26.702Z",
-  "reproducibleCommand": "bun create better-t-stack@latest better-stack --frontend tanstack-start --backend hono --runtime bun --database postgres --orm drizzle --api orpc --auth better-auth --payments none --addons evlog fumadocs mcp oxlint skills turborepo --examples ai todo --db-setup none --web-deploy docker --server-deploy docker --git --package-manager bun --no-install",
+  "reproducibleCommand": "bun create better-t-stack@latest hms --frontend tanstack-start --backend hono --runtime bun --database postgres --orm drizzle --api orpc --auth better-auth --payments none --addons evlog fumadocs mcp oxlint skills turborepo --examples ai todo --db-setup none --web-deploy docker --server-deploy docker --git --package-manager bun --no-install",
   "database": "postgres",
   "orm": "drizzle",
   "backend": "hono",

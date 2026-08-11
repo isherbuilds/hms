@@ -1,4 +1,4 @@
-import { Button, buttonVariants } from "@better-stack/ui/components/button";
+import { Button, buttonVariants } from "@hms/ui/components/button";
 import {
   Link,
   createRouter as createTanStackRouter,
@@ -34,11 +34,11 @@ export const getRouter = () => {
 
 function DefaultRouteError({ error, reset }: ErrorComponentProps) {
   return (
-    <main className="mx-auto flex min-h-svh w-full max-w-lg flex-col justify-center gap-4 p-6 text-xs">
-      <div role="alert" className="border-l-2 border-destructive pl-3">
-        <p className="font-mono text-[10px] tracking-widest text-destructive">REQUEST FAILED</p>
-        <h1 className="mt-1 text-sm font-medium">This page could not be loaded</h1>
-        <p className="mt-1 text-muted-foreground">
+    <main className="mx-auto flex min-h-svh w-full max-w-lg flex-col justify-center gap-4 p-4 text-xs">
+      <div role="alert" className="flex flex-col gap-1 border-l-2 border-destructive pl-3">
+        <p className="font-mono text-xs tracking-widest text-destructive">REQUEST FAILED</p>
+        <h1 className="text-sm font-medium">This page could not be loaded</h1>
+        <p className="text-muted-foreground">
           {error instanceof Error ? error.message : "An unexpected error interrupted the request."}
         </p>
       </div>
@@ -52,11 +52,11 @@ function DefaultRouteError({ error, reset }: ErrorComponentProps) {
 
 function NotFound() {
   return (
-    <main className="mx-auto flex min-h-svh w-full max-w-lg flex-col justify-center gap-4 p-6 text-xs">
-      <div className="border-l-2 border-border pl-3">
-        <p className="font-mono text-[10px] tracking-widest text-muted-foreground">404 · ROUTE</p>
-        <h1 className="mt-1 text-sm font-medium">Page not found</h1>
-        <p className="mt-1 text-muted-foreground">
+    <main className="mx-auto flex min-h-svh w-full max-w-lg flex-col justify-center gap-4 p-4 text-xs">
+      <div className="flex flex-col gap-1 border-l-2 border-border pl-3">
+        <p className="font-mono text-xs tracking-widest text-muted-foreground">404 · ROUTE</p>
+        <h1 className="text-sm font-medium">Page not found</h1>
+        <p className="text-muted-foreground">
           The address does not match a page in this workspace.
         </p>
       </div>

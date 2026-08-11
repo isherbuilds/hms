@@ -1,6 +1,6 @@
-import { Button } from "@better-stack/ui/components/button";
-import { Empty, EmptyHeader } from "@better-stack/ui/components/empty";
-import { Skeleton } from "@better-stack/ui/components/skeleton";
+import { Button } from "@hms/ui/components/button";
+import { Empty, EmptyHeader } from "@hms/ui/components/empty";
+import { Skeleton } from "@hms/ui/components/skeleton";
 import {
   Table,
   TableBody,
@@ -8,14 +8,14 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@better-stack/ui/components/table";
+} from "@hms/ui/components/table";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { DownloadIcon, FileIcon, Trash2, UploadIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/app-shell";
+import { PageBody, PageHeader } from "@/components/page";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatFileSize, openOrgFile, uploadOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
@@ -130,7 +130,7 @@ function FilesRoute() {
         }
       />
 
-      <div className="p-4">
+      <PageBody>
         {files.isPending ? (
           <div className="flex flex-col gap-2" aria-busy>
             {[0, 1, 2].map((row) => (
@@ -234,7 +234,7 @@ function FilesRoute() {
             )}
           </div>
         )}
-      </div>
+      </PageBody>
       {confirmDialog}
     </>
   );

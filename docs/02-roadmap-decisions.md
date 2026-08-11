@@ -28,6 +28,9 @@ decomposition of DanpheEMR (47 server modules) and Marley/Frappe Health (130 doc
    built: an additive `appointments` table whose check-in atomically creates a normal Visit
    (token, consult-fee charge) — walk-in `visit.create` unchanged. Improvement doc 02's
    deferral stands.
+   Patient-facing SMS (token/appointment reminders — the incumbent runs an SMS server, O12)
+   rides this same trigger: reminders are worthless without appointments, and token SMS is
+   marginal for a walk-in queue where the patient is standing in the room.
 5. **Accounting is frozen at ADR 0020.** The Billing Ledger stays a source-document
    projection: no manual journals, no chart-of-accounts editor, no opening balances, no
    reconciliation/expenses/period close, one-way boundary (never sync Tally back). New
@@ -53,7 +56,7 @@ build (decision 10's rule, kept).
 
 | Module | Trigger |
 | --- | --- |
-| Pharmacy POS + stock | Two stable live weeks; paid commitment; named pharmacy owner; clean opening stock (item/batch/expiry); sale/return/purchase/adjustment workflows signed off |
+| Pharmacy POS + stock | Two stable live weeks; paid commitment; named pharmacy owner; clean opening stock (item/batch/expiry); sale/return/purchase/adjustment workflows signed off. Spec must also decide the inbound side (supplier invoice/GRN, GSTR-2 input-tax-credit) in-product vs accountant-side, and include the Schedule-H register — drug law, not a report preference |
 | In-house lab results | Hospital confirms in-house lab; named lab owner + signing clinician; two weeks of logged test volume; approved test templates + reference ranges; generic order (ServiceRequest) boundary accepted |
 | Radiology | Named owner maps workflow; store-reports-only vs imaging-integration decided; live demand exceeds billing + private report attachments |
 | IPD/ADT + beds | ~Four stable live weeks; paid IPD scope; service-unit/bed master data ready; admission→discharge, deposits, nursing ownership documented |
@@ -66,7 +69,8 @@ build (decision 10's rule, kept).
 | Ambient AI consult | Speech feasibility spike on real consented consultations meets accuracy/time criteria; clinicians approve review workflow; paper source stays authoritative |
 
 Until a fulfillment module exists, in-house tests and pharmacy items are billed through
-ordinary Charges — that interim boundary is deliberate.
+ordinary Charges — that interim boundary is deliberate. Outsourced (send-out) tests need no
+module at all: bill through Charges and attach the received report via files.
 
 ## Go-live operational checklist (owner + engineering, not slices)
 
@@ -95,8 +99,70 @@ ordinary Charges — that interim boundary is deliberate.
 ## Open questions (deliberately deferred)
 
 - Accountant acceptance test outcome → Tally adapter yes/no (decision 6 here).
+- GST handover scope → source XLSX only, or filing-shaped output with recipient GSTIN,
+  place-of-supply/IGST, B2B/B2C HSN split, and documents-issued series. Session 2 evidence sharpens
+  this: the incumbent's GST register is **pharmacy/taxable-goods only** — a live GST R1 Summary states
+  it reports "Total Gst amount of Pharmacy sales and returns," and a ₹500 OPD consultation posted
+  ₹0 GST with no tax line on its receipt. **Clinical OPD is GST-exempt, so a pure-OPD product needs no
+  GSTR-1 at all**; our GST outward register only becomes load-bearing once we bill taxable goods
+  (pharmacy/consumables — the deferred Pharmacy module). When it does, the incumbent shows the target
+  shape: **multi-rate brackets (5/12/18%)**, **IGST columns** (inter-state/place-of-supply capable),
+  **returns as negative lines**, plus **GSTR-2 (inward/ITC)**, **HSN-wise**, **documents-issued
+  series**, and IPD **room-rent GST** reports. Our current register is explicitly intra-state,
+  CGST/SGST-only, single-bucket, and must not be represented as GSTR-1-ready; see
+  `docs/research/03-client-hms-production-sitemap.md` (O15–O16).
+- Cashier handover → the client's incumbent showed a first-class giver/receiver handover and four
+  pending handovers in one production snapshot. Validate whether this is a required shift-close SOP;
+  if yes, reopen Slice 11 before pilot cutover rather than adding a parallel report later.
+  Reference corroboration: DanpheEMR also models handover as a first-class acknowledged two-party
+  document with a mirrored employee cash ledger (`docs/research/04-danphe-marley-entity-deep-dive.md` E2).
+- Billing correction and approval → sample real payment-mode corrections, cancellations, and
+  post-discounts. If reception initiates but another role approves, specify an append-only
+  request/approval/reversal flow; never copy mutable receipt edits.
+- Sponsor/MOU/advance/split-tender usage → measure it from anonymized transaction counts before
+  changing the Insurance/TPA trigger or billing model. One schema fact raises the stakes:
+  `payments.method` and `refunds.method` are CHECK-constrained to `cash/upi/card`
+  (`packages/db/src/schema/payments.ts:30`, `refunds.ts:34`), and receipt numbers are
+  per-payment-row. These two differ in urgency: widening the CHECK is an appended
+  DROP/ADD CONSTRAINT — legal at any time under the append-only rule (which ends *rebasing*,
+  not migrating) — so do not widen it speculatively for tenders the pilot never takes. Receipt
+  granularity is the genuinely hard one: once receipts are printed and numbered per payment
+  row, switching to per-bill numbering breaks issued documents — settle it before the first
+  live receipt.
+  Split tender itself needs no schema: payments are already multiple rows per invoice.
+  Reference answer for the interview: DanpheEMR treats modes as configuration data, split tender
+  as child rows, and numbers one financial document per bill (research 04, E3).
+- Cross-role parity → the incumbent exposes named Admission, EMR, IP Billing, Laboratory, Nursing,
+  Pharmacy, Phlebotomy, Purchase, Radiology, Reception, and Administrator dashboards. Session 2 added
+  a second, role-broader account (identity redacted; see research 03) with functional login to **Reception, Pharmacy, and Nursing Station**
+  and validated the OPD write-through end to end (register → bill → "OPD Bill Cum Receipt", MR No 2039
+  / Bill No 5140 on UAT). Pharmacy and Nursing are now functionally reachable for a future supervised
+  workflow pass; before scoping any department module, run a supervised synthetic workflow with that
+  department's real role — do not infer capability or priority from dashboard names.
+  Administrator/reporting/user-management and doctor/consultant surfaces remain
+  confirmed-but-unmapped; see `docs/research/03-client-hms-production-sitemap.md`.
 - Report-permission split (decision 7 here) — pilot owner.
 - `unbilledAlertHours` seed value — observe real billing lag first.
+- Cash-drawer expenses → the incumbent's reception records petty payouts (voucher, payee,
+  authorization — O7), so the pilot's front desk may pay expenses from the drawer today. That
+  breaks the day-close identity "collections report matches the drawer". Two honest options
+  only: SOP — nothing leaves the drawer, separate petty float (zero code); or amend decision 5
+  to admit a real `expense` posting source (credit Cash in Hand, debit an expense account).
+  Never a non-posting memo field — ledger Cash in Hand would silently overstate the physical
+  drawer. Ask in the handover interview.
+  Reference corroboration: DanpheEMR keeps petty cash out of billing entirely — expenses are
+  accounting-owned manual vouchers (research 04, E1).
+- Doctor share → visiting-consultant revenue share is a named incumbent flow (IPD
+  "doctor-share", consultant-wise sales reports). Decide with the pilot: a consultant-wise
+  collections report with accountant-side payout (likely — one GROUP BY away from
+  dailyCollections, zero schema), or out of scope. Payroll itself stays outside the product.
+  DanpheEMR's in-product engine (profiles, per-item performer/prescriber/referrer %, TDS, payout
+  vouchers) shows how large the alternative is (research 04, E4).
+- Certificates and statutory registers → Leave/Fitness certificates and the Dead-on-Arrival /
+  Brought-Dead register exist at the incumbent's front desk (O10). Ask which the pilot actually
+  issues; printed certificates are cheap, the DOA register is medico-legal. Deferred by name —
+  neither shipped nor promised. Danphe additionally keeps fiscal-year-numbered birth and death
+  registers as dedicated entities (research 04, E6) — include both in the same pilot question.
 - Stage 2 spec details (timeline fields, vitals validation ranges) — after Stage 1 ships.
 
 ## Next step

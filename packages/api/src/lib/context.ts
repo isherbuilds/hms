@@ -1,5 +1,5 @@
-import { auth } from "@better-stack/auth";
-import type { AuthSession } from "@better-stack/auth";
+import { auth } from "@hms/auth";
+import type { AuthSession } from "@hms/auth";
 import type { Context as HonoContext } from "hono";
 
 /**

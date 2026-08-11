@@ -1,7 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { ChartNoAxesColumnIncreasingIcon, LandmarkIcon, ReceiptTextIcon } from "lucide-react";
 
-import { PageHeader } from "@/components/app-shell";
+import { PageBody, PageHeader } from "@/components/page";
 
 export const Route = createFileRoute("/org/$orgSlug/reports/")({
   component: ReportsIndexRoute,
@@ -34,7 +34,7 @@ function ReportsIndexRoute() {
   return (
     <>
       <PageHeader title="Reports" description="Billing ledger and statutory handover" />
-      <div className="flex flex-col gap-3 p-4 text-xs">
+      <PageBody>
         <p className="text-muted-foreground">
           These reports cover transactions recorded in this HMS. Opening balances, non-billing
           activity, and final accounts remain in the accountant's books.
@@ -55,7 +55,7 @@ function ReportsIndexRoute() {
             </Link>
           ))}
         </div>
-      </div>
+      </PageBody>
     </>
   );
 }

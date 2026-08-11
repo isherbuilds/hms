@@ -1,5 +1,5 @@
-import { appRouter, type AppRouterClient } from "@better-stack/api/routers/index";
-import { auth } from "@better-stack/auth";
+import { appRouter, type AppRouterClient } from "@hms/api/routers/index";
+import { auth } from "@hms/auth";
 import { createRouterClient } from "@orpc/server";
 import { expect } from "bun:test";
 

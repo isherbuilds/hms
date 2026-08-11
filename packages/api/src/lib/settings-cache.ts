@@ -1,8 +1,8 @@
-import { db } from "@better-stack/db";
+import { db } from "@hms/db";
 import {
   SETTINGS_DEFAULTS,
   organizationSettings,
-} from "@better-stack/db/schema/organization-settings";
+} from "@hms/db/schema/organization-settings";
 import { eq } from "drizzle-orm";
 
 export type OrgSettings = Omit<

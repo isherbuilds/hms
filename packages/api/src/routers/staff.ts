@@ -1,8 +1,8 @@
-import { db } from "@better-stack/db";
-import { member } from "@better-stack/db/schema/auth";
-import { catalogItems } from "@better-stack/db/schema/catalog-items";
-import { departments } from "@better-stack/db/schema/departments";
-import { practitioners } from "@better-stack/db/schema/practitioners";
+import { db } from "@hms/db";
+import { member } from "@hms/db/schema/auth";
+import { catalogItems } from "@hms/db/schema/catalog-items";
+import { departments } from "@hms/db/schema/departments";
+import { practitioners } from "@hms/db/schema/practitioners";
 import { ORPCError } from "@orpc/server";
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";

@@ -1,4 +1,4 @@
-import { Badge } from "@better-stack/ui/components/badge";
+import { Badge } from "@hms/ui/components/badge";
 import {
   Table,
   TableBody,
@@ -6,11 +6,11 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@better-stack/ui/components/table";
+} from "@hms/ui/components/table";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 
-import { PageHeader } from "@/components/app-shell";
+import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { orpc } from "@/lib/orpc";
 
 const ALL_STATUSES = ["waiting", "in_consult", "completed", "cancelled"] as const;
@@ -33,7 +33,7 @@ function BillingIndexRoute() {
   return (
     <>
       <PageHeader title="Billing" description="Today's visits and accounts" />
-      <div className="flex flex-col gap-3 p-4">
+      <PageBody>
         {visits.isPending ? (
           <div
             className="border border-dashed px-4 py-8 text-center text-xs text-muted-foreground"
@@ -42,10 +42,7 @@ function BillingIndexRoute() {
             Loading visits…
           </div>
         ) : visits.isError ? (
-          <div role="alert" className="border-l-2 border-destructive pl-3 text-xs">
-            <p className="font-medium">Could not load visits</p>
-            <p className="mt-0.5 text-muted-foreground">{visits.error.message}</p>
-          </div>
+          <ErrorNote title="Could not load visits" detail={visits.error.message} />
         ) : visits.data.length === 0 ? (
           <div className="border border-dashed px-4 py-8 text-center text-xs text-muted-foreground">
             No visits today.
@@ -95,7 +92,7 @@ function BillingIndexRoute() {
             </Table>
           </div>
         )}
-      </div>
+      </PageBody>
     </>
   );
 }

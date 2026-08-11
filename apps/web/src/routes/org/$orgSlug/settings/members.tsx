@@ -1,6 +1,6 @@
-import { ORG_ROLES, parseRoles, type RoleKey } from "@better-stack/auth/access";
-import { Badge } from "@better-stack/ui/components/badge";
-import { Button } from "@better-stack/ui/components/button";
+import { ORG_ROLES, parseRoles, type RoleKey } from "@hms/auth/access";
+import { Badge } from "@hms/ui/components/badge";
+import { Button } from "@hms/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -8,7 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@better-stack/ui/components/dialog";
+} from "@hms/ui/components/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,10 +17,10 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@better-stack/ui/components/dropdown-menu";
-import { Empty, EmptyHeader } from "@better-stack/ui/components/empty";
-import { Input } from "@better-stack/ui/components/input";
-import { Skeleton } from "@better-stack/ui/components/skeleton";
+} from "@hms/ui/components/dropdown-menu";
+import { Empty, EmptyHeader } from "@hms/ui/components/empty";
+import { Input } from "@hms/ui/components/input";
+import { Skeleton } from "@hms/ui/components/skeleton";
 import {
   Table,
   TableBody,
@@ -28,20 +28,20 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@better-stack/ui/components/table";
+} from "@hms/ui/components/table";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { CopyIcon, MoreHorizontalIcon, SearchIcon, UserPlusIcon, UsersIcon } from "lucide-react";
 import { useDeferredValue, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/app-shell";
+import { PageBody, PageHeader } from "@/components/page";
 import { useConfirm } from "@/components/confirm-dialog";
 import { orpc } from "@/lib/orpc";
 
 const MEMBER_PAGE_LIMIT = 100;
 
-export const Route = createFileRoute("/org/$orgSlug/members")({
+export const Route = createFileRoute("/org/$orgSlug/settings/members")({
   loader: ({ context: { queryClient }, params: { orgSlug } }) => {
     void queryClient.prefetchQuery(orpc.members.list.queryOptions({ input: { orgSlug } }));
   },
@@ -162,7 +162,7 @@ function InviteDialog({
 
           {lastLink && (
             <div className="flex min-w-0 items-center gap-2 bg-muted p-2">
-              <p className="min-w-0 flex-1 overflow-hidden font-mono text-[0.6875rem] text-ellipsis whitespace-nowrap text-muted-foreground">
+              <p className="min-w-0 flex-1 overflow-hidden font-mono text-xs text-ellipsis whitespace-nowrap text-muted-foreground">
                 {lastLink}
               </p>
               <Button
@@ -279,7 +279,7 @@ function MembersRoute() {
         }
       />
 
-      <div className="flex flex-col gap-3 p-4">
+      <PageBody>
         <div className="relative max-w-xs">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -448,7 +448,7 @@ function MembersRoute() {
             </Table>
           </div>
         )}
-      </div>
+      </PageBody>
 
       <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} orgSlug={orgSlug} />
       {confirmDialog}

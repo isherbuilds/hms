@@ -1,5 +1,5 @@
-import { Button } from "@better-stack/ui/components/button";
-import { env } from "@better-stack/env/web";
+import { Button } from "@hms/ui/components/button";
+import { env } from "@hms/env/web";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 
@@ -26,7 +26,7 @@ function HomeRoute() {
   return (
     <div className="mx-auto flex min-h-svh w-full max-w-sm flex-col justify-center gap-4 p-4">
       <div>
-        <h1 className="cn-font-heading text-sm font-medium">Better Stack</h1>
+        <h1 className="text-sm font-medium">HMS</h1>
         <p className="mt-0.5 text-xs text-muted-foreground">
           A multi-tenant base for data-intensive internal software. Every record belongs to exactly
           one organization, and every request proves membership.

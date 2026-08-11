@@ -1,5 +1,5 @@
-import { Badge } from "@better-stack/ui/components/badge";
-import { Button } from "@better-stack/ui/components/button";
+import { Badge } from "@hms/ui/components/badge";
+import { Button } from "@hms/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -7,7 +7,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@better-stack/ui/components/dialog";
+} from "@hms/ui/components/dialog";
 import {
   Form,
   FormControl,
@@ -15,9 +15,9 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@better-stack/ui/components/form";
-import { Skeleton } from "@better-stack/ui/components/skeleton";
-import { SubmitButton } from "@better-stack/ui/components/submit-button";
+} from "@hms/ui/components/form";
+import { Skeleton } from "@hms/ui/components/skeleton";
+import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
   Table,
   TableBody,
@@ -25,8 +25,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@better-stack/ui/components/table";
-import { Textarea } from "@better-stack/ui/components/textarea";
+} from "@hms/ui/components/table";
+import { Textarea } from "@hms/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { FileTextIcon, PrinterIcon, Trash2Icon, UploadIcon } from "lucide-react";
@@ -34,7 +34,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { PageHeader } from "@/components/app-shell";
+import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { formatFileSize, openOrgFile, uploadOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
@@ -137,10 +137,10 @@ function VisitDetailRoute() {
     return (
       <>
         <PageHeader title="Visit" description="Outpatient visit" />
-        <div className="flex max-w-4xl flex-col gap-3 p-4" aria-busy>
+        <PageBody className="max-w-4xl" aria-busy>
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-40 w-full" />
-        </div>
+        </PageBody>
       </>
     );
   }
@@ -150,10 +150,7 @@ function VisitDetailRoute() {
     return (
       <>
         <PageHeader title="Visit" description="Outpatient visit" />
-        <div role="alert" className="m-4 border-l-2 border-destructive pl-3 text-xs">
-          <p className="font-medium">Could not load visit</p>
-          <p className="mt-0.5 text-muted-foreground">{error?.message}</p>
-        </div>
+        <ErrorNote title="Could not load visit" detail={error?.message} inset />
       </>
     );
   }
@@ -176,7 +173,7 @@ function VisitDetailRoute() {
           }
         />
 
-        <div className="flex max-w-5xl flex-col gap-4 p-4">
+        <PageBody className="max-w-5xl">
           <section className="grid gap-px bg-border ring-1 ring-border sm:grid-cols-4">
             <DetailCell label="Token">
               <span className="text-2xl font-semibold tabular-nums">{visit.tokenNumber}</span>
@@ -280,12 +277,12 @@ function VisitDetailRoute() {
               </Table>
             </div>
           </section>
-        </div>
+        </PageBody>
       </div>
 
       <article
         data-visit-slip
-        className="hidden bg-white p-6 text-[11px] leading-tight text-black print:block print:p-0"
+        className="hidden bg-white p-6 text-xs leading-tight text-black print:block print:p-0"
       >
         <header className="border-b border-black pb-3 text-center">
           <h1 className="text-base font-bold">{settings.data.legalName}</h1>
@@ -513,7 +510,7 @@ function PrescriptionDocuments({
 function DetailCell({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-h-16 bg-background p-3 text-xs">
-      <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </p>
       {children}

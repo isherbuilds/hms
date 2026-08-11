@@ -1,5 +1,5 @@
 {
-  "name": "better-stack",
+  "name": "hms",
   "private": true,
   "workspaces": {
     "packages": [
@@ -42,26 +42,26 @@
     "dev:web": "turbo run dev -F web",
     "dev:server": "turbo run dev -F server",
     "db:up": "docker compose -f packages/db/docker-compose.dev.yaml up -d --wait",
-    "db:push": "turbo run db:push -F @better-stack/db",
-    "db:studio": "turbo run db:studio -F @better-stack/db",
-    "db:generate": "turbo run db:generate -F @better-stack/db",
-    "db:migrate": "turbo run db:migrate -F @better-stack/db",
+    "db:push": "turbo run db:push -F @hms/db",
+    "db:studio": "turbo run db:studio -F @hms/db",
+    "db:generate": "turbo run db:generate -F @hms/db",
+    "db:migrate": "turbo run db:migrate -F @hms/db",
     "db:seed": "bun --env-file=apps/server/.env scripts/seed.ts",
     "create-user": "bun --env-file=apps/server/.env scripts/create-user.ts",
     "create-founder": "bun --env-file=apps/server/.env scripts/create-founder.ts",
     "check": "oxlint && oxfmt --write"
   },
   "dependencies": {
-    "@better-stack/env": "workspace:*",
+    "@hms/env": "workspace:*",
     "dotenv": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@better-stack/api": "workspace:*",
-    "@better-stack/auth": "workspace:*",
-    "@better-stack/config": "workspace:*",
-    "@better-stack/db": "workspace:*",
-    "@better-stack/storage": "workspace:*",
+    "@hms/api": "workspace:*",
+    "@hms/auth": "workspace:*",
+    "@hms/config": "workspace:*",
+    "@hms/db": "workspace:*",
+    "@hms/storage": "workspace:*",
     "@orpc/server": "catalog:",
     "@types/bun": "catalog:",
     "@types/pg": "catalog:",

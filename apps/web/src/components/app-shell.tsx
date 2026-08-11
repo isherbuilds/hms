@@ -1,5 +1,4 @@
-import { authorize, type AppPermission } from "@better-stack/auth/access";
-import { Button } from "@better-stack/ui/components/button";
+import { authorize, type AppPermission } from "@hms/auth/access";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,9 +7,24 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@better-stack/ui/components/dropdown-menu";
-import { Skeleton } from "@better-stack/ui/components/skeleton";
-import { cn } from "@better-stack/ui/lib/utils";
+} from "@hms/ui/components/dropdown-menu";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@hms/ui/components/sidebar";
+import { Skeleton } from "@hms/ui/components/skeleton";
+import { TooltipProvider } from "@hms/ui/components/tooltip";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -23,128 +37,112 @@ import {
   ListOrderedIcon,
   LogOutIcon,
   ReceiptTextIcon,
-  MenuIcon,
   PlusIcon,
-  ScrollTextIcon,
   SettingsIcon,
   SparklesIcon,
-  StethoscopeIcon,
-  TagsIcon,
-  UsersIcon,
-  XIcon,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
+import { PageHeaderSlot } from "@/components/page";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { authClient } from "@/lib/auth-client";
 import { orpc } from "@/lib/orpc";
+
+/**
+ * Sections, in the order a front desk works through them. The group is part of
+ * the model rather than the markup so a new destination lands in the right
+ * block by declaring one field.
+ *
+ * Everything an operator *configures* rather than *works in* lives behind
+ * Settings, which owns its own sub-nav — see
+ * `routes/org/$orgSlug/settings/route.tsx`. Adding a configuration page means
+ * adding a tab there, not another line here.
+ */
+const GROUPS = ["Clinical", "Money", "Workspace"] as const;
+type NavGroup = (typeof GROUPS)[number];
 
 const NAV: readonly {
   to:
     | "/org/$orgSlug/dashboard"
-    | "/org/$orgSlug/admin/settings"
-    | "/org/$orgSlug/admin/catalog"
-    | "/org/$orgSlug/admin/staff"
     | "/org/$orgSlug/files"
     | "/org/$orgSlug/front-desk"
     | "/org/$orgSlug/front-desk/queue"
     | "/org/$orgSlug/billing"
     | "/org/$orgSlug/reports"
-    | "/org/$orgSlug/ai"
-    | "/org/$orgSlug/members"
-    | "/org/$orgSlug/audit";
+    | "/org/$orgSlug/ai";
   label: string;
   icon: typeof FileIcon;
+  group: NavGroup;
   permission: AppPermission;
 }[] = [
   {
     to: "/org/$orgSlug/dashboard",
     label: "Dashboard",
     icon: LayoutDashboardIcon,
+    group: "Clinical",
     permission: { member: ["read"] },
   },
   {
     to: "/org/$orgSlug/front-desk",
     label: "Front desk",
     icon: ClipboardPlusIcon,
+    group: "Clinical",
     permission: { patient: ["read"] },
   },
   {
     to: "/org/$orgSlug/front-desk/queue",
     label: "Queue",
     icon: ListOrderedIcon,
+    group: "Clinical",
     permission: { visit: ["read"] },
   },
   {
     to: "/org/$orgSlug/billing",
     label: "Billing",
     icon: ReceiptTextIcon,
+    group: "Money",
     permission: { billing: ["read"] },
   },
   {
     to: "/org/$orgSlug/reports",
     label: "Reports",
     icon: ChartColumnIcon,
+    group: "Money",
     permission: { report: ["read"] },
   },
   {
     to: "/org/$orgSlug/files",
     label: "Files",
     icon: FileIcon,
+    group: "Workspace",
     permission: { storage: ["read"] },
   },
   {
     to: "/org/$orgSlug/ai",
     label: "AI",
     icon: SparklesIcon,
+    group: "Workspace",
     permission: { ai: ["use"] },
-  },
-  {
-    to: "/org/$orgSlug/members",
-    label: "Members",
-    icon: UsersIcon,
-    permission: { member: ["read"] },
-  },
-  {
-    to: "/org/$orgSlug/audit",
-    label: "Audit",
-    icon: ScrollTextIcon,
-    permission: { audit: ["read"] },
-  },
-  {
-    to: "/org/$orgSlug/admin/catalog",
-    label: "Catalog",
-    icon: TagsIcon,
-    // Read is org-wide, but this page is admin CRUD — surface it only to
-    // the roles that can actually change the catalog.
-    permission: { catalog: ["update"] },
-  },
-  {
-    to: "/org/$orgSlug/admin/staff",
-    label: "Staff",
-    icon: StethoscopeIcon,
-    permission: { staff: ["update"] },
-  },
-  {
-    to: "/org/$orgSlug/admin/settings",
-    label: "Settings",
-    icon: SettingsIcon,
-    // Read is org-wide, but the page is a save form — surface it only to
-    // the roles that can actually save.
-    permission: { settings: ["update"] },
   },
 ];
 
-function OrgSwitcher({
-  activeOrgSlug,
-  onNavigate,
-}: {
-  activeOrgSlug: string;
-  onNavigate?: () => void;
-}) {
+/**
+ * Settings is reachable by anyone who can see at least one of its tabs, so the
+ * entry does not vanish for a role that can read members but not save settings.
+ */
+const SETTINGS_PERMISSIONS: readonly AppPermission[] = [
+  { settings: ["update"] },
+  { member: ["read"] },
+  { staff: ["update"] },
+  { catalog: ["update"] },
+  { audit: ["read"] },
+];
+
+function OrgSwitcher({ activeOrgSlug }: { activeOrgSlug: string }) {
   const { data: organizations, isPending } = authClient.useListOrganizations();
 
   if (isPending) {
-    return <Skeleton className="h-10 w-full" />;
+    return <Skeleton className="h-8 w-full" />;
   }
 
   const active = organizations?.find((org) => org.slug === activeOrgSlug);
@@ -153,10 +151,10 @@ function OrgSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={<Button variant="ghost" size="lg" />}
-        className="h-10 w-full justify-between gap-2 px-2"
+        render={<SidebarMenuButton tooltip={name} />}
+        className="justify-between gap-2"
       >
-        <span className="min-w-0 truncate text-xs font-medium">{name}</span>
+        <span className="min-w-0 truncate font-medium">{name}</span>
         <ChevronsUpDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-(--anchor-width) min-w-56">
@@ -165,18 +163,24 @@ function OrgSwitcher({
           {organizations?.map((org) => (
             <DropdownMenuItem
               key={org.id}
-              render={<Link to="/org/$orgSlug/dashboard" params={{ orgSlug: org.slug }} />}
+              render={
+                <Link
+                  to="/org/$orgSlug/dashboard"
+                  params={{ orgSlug: org.slug }}
+                />
+              }
               disabled={org.slug === activeOrgSlug}
-              onClick={onNavigate}
               className="gap-2"
             >
               <span className="min-w-0 flex-1 truncate">{org.name}</span>
-              {org.slug === activeOrgSlug && <CheckIcon className="size-3.5 shrink-0" />}
+              {org.slug === activeOrgSlug && (
+                <CheckIcon className="size-3.5 shrink-0" />
+              )}
             </DropdownMenuItem>
           ))}
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem render={<Link to="/onboarding" />} onClick={onNavigate} className="gap-2">
+        <DropdownMenuItem render={<Link to="/onboarding" />} className="gap-2">
           <PlusIcon className="size-3.5" />
           New organization
         </DropdownMenuItem>
@@ -191,16 +195,18 @@ function UserFooter() {
   const { data: session } = authClient.useSession();
 
   if (!session) {
-    return <Skeleton className="h-10 w-full" />;
+    return <Skeleton className="h-8 w-full" />;
   }
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={<Button variant="ghost" size="lg" />}
-        className="h-10 w-full justify-start gap-2 px-2"
+        render={<SidebarMenuButton tooltip={session.user.email} />}
+        className="justify-start"
       >
-        <span className="min-w-0 flex-1 truncate text-left text-xs">{session.user.email}</span>
+        <span className="min-w-0 flex-1 truncate text-left">
+          {session.user.email}
+        </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-(--anchor-width) min-w-56">
         <DropdownMenuGroup>
@@ -232,120 +238,123 @@ function UserFooter() {
   );
 }
 
-function SidebarBody({
-  activeOrgSlug,
-  onNavigate,
-}: {
-  activeOrgSlug: string;
-  onNavigate?: () => void;
-}) {
-  const membership = useQuery(orpc.members.me.queryOptions({ input: { orgSlug: activeOrgSlug } }));
+function OrgSidebar({ orgSlug }: { orgSlug: string }) {
+  const membership = useQuery(
+    orpc.members.me.queryOptions({ input: { orgSlug } }),
+  );
   const roles = membership.data?.roles;
   // Until the roles land, show only what every role can reach, so a link never
   // appears and then disappears.
-  const visible = NAV.filter(({ permission }) => (roles ? authorize(roles, permission) : true));
+  const visible = NAV.filter(({ permission }) =>
+    roles ? authorize(roles, permission) : true,
+  );
+  const showSettings = roles
+    ? SETTINGS_PERMISSIONS.some((permission) => authorize(roles, permission))
+    : true;
 
   return (
-    <div className="flex h-full flex-col gap-1 bg-sidebar p-2">
-      <OrgSwitcher activeOrgSlug={activeOrgSlug} onNavigate={onNavigate} />
-      <nav className="mt-2 flex flex-1 flex-col gap-0.5">
-        {visible.map(({ to, label, icon: Icon }) => (
-          <Link
-            key={to}
-            to={to}
-            params={{ orgSlug: activeOrgSlug }}
-            onClick={onNavigate}
-            className={cn(
-              "flex h-8 items-center gap-2 px-2 text-xs text-muted-foreground transition-colors",
-              "[@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted [@media(hover:hover)_and_(pointer:fine)]:hover:text-foreground",
-              "data-[status=active]:bg-muted data-[status=active]:font-medium data-[status=active]:text-foreground",
-            )}
-          >
-            <Icon className="size-3.5 shrink-0" />
-            {label}
-          </Link>
-        ))}
-      </nav>
-      <UserFooter />
-    </div>
+    <Sidebar>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <OrgSwitcher activeOrgSlug={orgSlug} />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+
+      <SidebarContent>
+        {GROUPS.map((group) => {
+          const items = visible.filter((item) => item.group === group);
+          if (items.length === 0) return null;
+          return (
+            <SidebarGroup key={group}>
+              <SidebarGroupLabel>{group}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {items.map(({ to, label, icon: Icon }) => (
+                    <SidebarMenuItem key={to}>
+                      {/* The router already stamps `data-status="active"` on the
+                          rendered link, so the active style keys off that rather
+                          than a second source of truth. */}
+                      <SidebarMenuButton
+                        tooltip={label}
+                        className="data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-sidebar-accent-foreground"
+                        render={<Link to={to} params={{ orgSlug }} />}
+                      >
+                        <Icon />
+                        <span>{label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })}
+      </SidebarContent>
+
+      <SidebarFooter>
+        <SidebarMenu>
+          {showSettings && (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Settings"
+                className="data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-sidebar-accent-foreground"
+                render={
+                  <Link to="/org/$orgSlug/settings" params={{ orgSlug }} />
+                }
+              >
+                <SettingsIcon />
+                <span>Settings</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
+          <SidebarMenuItem>
+            <ThemeToggle />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <UserFooter />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
   );
 }
 
-export function AppShell({ orgSlug, children }: { orgSlug: string; children: ReactNode }) {
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-
-  useEffect(() => {
-    if (!mobileNavOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileNavOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mobileNavOpen]);
-
-  return (
-    <div className="flex h-svh overflow-hidden print:h-auto print:overflow-visible">
-      {/* One sidebar instance: a drawer below md, a static rail from md up.
-          The drawer stays translated off-screen until opened; the backdrop is
-          rendered only while it is open. */}
-      <aside
-        id="mobile-nav"
-        className={cn(
-          "fixed inset-y-0 left-0 z-40 w-64 max-w-[85vw] border-r border-border",
-          "md:static md:z-auto md:w-56 md:max-w-none md:shrink-0",
-          mobileNavOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full max-md:invisible",
-        )}
-      >
-        <SidebarBody activeOrgSlug={orgSlug} onNavigate={() => setMobileNavOpen(false)} />
-      </aside>
-
-      {mobileNavOpen && (
-        <div
-          role="presentation"
-          className="fixed inset-0 z-30 bg-black/60 md:hidden"
-          onClick={() => setMobileNavOpen(false)}
-        />
-      )}
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* The one control both opens and closes the drawer, and stays above it
-            so it never doubles up with a second close affordance. */}
-        <header className="sticky top-0 z-50 flex h-11 shrink-0 items-center gap-2 border-b border-border bg-background px-2 md:hidden">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setMobileNavOpen((open) => !open)}
-            aria-label={mobileNavOpen ? "Close navigation" : "Open navigation"}
-            aria-expanded={mobileNavOpen}
-            aria-controls="mobile-nav"
-          >
-            {mobileNavOpen ? <XIcon /> : <MenuIcon />}
-          </Button>
-        </header>
-
-        <main className="min-w-0 flex-1 overflow-y-auto print:overflow-visible">{children}</main>
-      </div>
-    </div>
-  );
-}
-
-/** Consistent page chrome: title, optional count line, optional action. */
-export function PageHeader({
-  title,
-  description,
-  action,
+export function AppShell({
+  orgSlug,
+  children,
 }: {
-  title: string;
-  description?: ReactNode;
-  action?: ReactNode;
+  orgSlug: string;
+  children: ReactNode;
 }) {
+  // The page title portals into this node, so the app bar carries it instead of
+  // the page paying for a second band of chrome underneath.
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-3">
-      <div className="min-w-0">
-        <h1 className="cn-font-heading text-sm font-medium">{title}</h1>
-        {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
-      </div>
-      {action}
-    </div>
+    <TooltipProvider>
+      <SidebarProvider className="h-svh overflow-hidden print:h-auto print:overflow-visible">
+        <OrgSidebar orgSlug={orgSlug} />
+        <SidebarInset className="min-w-0 overflow-hidden print:overflow-visible">
+          {/* One control, all breakpoints: it collapses the rail on desktop and
+              opens the sheet on mobile, so there is never a second affordance
+              to keep in sync. */}
+          <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-2 print:hidden">
+            <SidebarTrigger />
+            <div
+              ref={setHeaderSlot}
+              className="flex min-w-0 flex-1 items-center"
+            />
+          </header>
+
+          <main className="min-w-0 flex-1 overflow-y-auto print:overflow-visible">
+            <PageHeaderSlot.Provider value={headerSlot}>
+              {children}
+            </PageHeaderSlot.Provider>
+          </main>
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }

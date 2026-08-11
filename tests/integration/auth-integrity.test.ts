@@ -1,13 +1,13 @@
 import { beforeAll, expect, test } from "bun:test";
 
-import { drainAuditWrites } from "@better-stack/api/audit";
-import { auth } from "@better-stack/auth";
-import { createUserWithPassword } from "@better-stack/auth/manual-user";
-import { db } from "@better-stack/db";
-import { auditLog } from "@better-stack/db/schema/audit";
-import { member, user } from "@better-stack/db/schema/auth";
-import { file } from "@better-stack/db/schema/file";
-import { env } from "@better-stack/env/server";
+import { drainAuditWrites } from "@hms/api/audit";
+import { auth } from "@hms/auth";
+import { createUserWithPassword } from "@hms/auth/manual-user";
+import { db } from "@hms/db";
+import { auditLog } from "@hms/db/schema/audit";
+import { member, user } from "@hms/db/schema/auth";
+import { file } from "@hms/db/schema/file";
+import { env } from "@hms/env/server";
 import { eq } from "drizzle-orm";
 
 import { app } from "../../apps/server/src/index";

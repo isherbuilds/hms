@@ -1,14 +1,14 @@
 import { beforeAll, expect, test } from "bun:test";
 
-import { postJournalEntry } from "@better-stack/api/lib/ledger";
-import type { AppRouterClient } from "@better-stack/api/routers/index";
+import { postJournalEntry } from "@hms/api/lib/ledger";
+import type { AppRouterClient } from "@hms/api/routers/index";
 
-import { db } from "@better-stack/db";
-import { accounts } from "@better-stack/db/schema/accounts";
-import { charges } from "@better-stack/db/schema/charges";
-import { invoices } from "@better-stack/db/schema/invoices";
-import { journalEntries } from "@better-stack/db/schema/journal-entries";
-import { journalLines } from "@better-stack/db/schema/journal-lines";
+import { db } from "@hms/db";
+import { accounts } from "@hms/db/schema/accounts";
+import { charges } from "@hms/db/schema/charges";
+import { invoices } from "@hms/db/schema/invoices";
+import { journalEntries } from "@hms/db/schema/journal-entries";
+import { journalLines } from "@hms/db/schema/journal-lines";
 import { and, eq } from "drizzle-orm";
 
 import { createOrganization, createTestUser } from "../support/auth";

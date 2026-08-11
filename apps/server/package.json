@@ -12,10 +12,10 @@
   "dependencies": {
     "@ai-sdk/devtools": "^1.0.11",
     "@ai-sdk/google": "^4.0.37",
-    "@better-stack/api": "workspace:*",
-    "@better-stack/auth": "workspace:*",
-    "@better-stack/db": "workspace:*",
-    "@better-stack/env": "workspace:*",
+    "@hms/api": "workspace:*",
+    "@hms/auth": "workspace:*",
+    "@hms/db": "workspace:*",
+    "@hms/env": "workspace:*",
     "@orpc/openapi": "catalog:",
     "@orpc/server": "catalog:",
     "@orpc/zod": "catalog:",
@@ -27,7 +27,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@better-stack/config": "workspace:*",
+    "@hms/config": "workspace:*",
     "@types/bun": "catalog:",
     "tsdown": "^0.22.14",
     "typescript": "catalog:"

@@ -1,4 +1,4 @@
-import { Button } from "@better-stack/ui/components/button";
+import { Button } from "@hms/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -6,7 +6,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@better-stack/ui/components/dialog";
+} from "@hms/ui/components/dialog";
 import { useState, type ReactNode } from "react";
 
 type Pending = { title: string; description: ReactNode; confirmLabel: string; run: () => void };

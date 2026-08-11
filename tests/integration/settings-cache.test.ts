@@ -4,9 +4,9 @@ import {
   SETTINGS_CACHE_TTL_MS,
   invalidateOrgSettings,
   readOrgSettings,
-} from "@better-stack/api/lib/settings-cache";
-import { db } from "@better-stack/db";
-import { organizationSettings } from "@better-stack/db/schema/organization-settings";
+} from "@hms/api/lib/settings-cache";
+import { db } from "@hms/db";
+import { organizationSettings } from "@hms/db/schema/organization-settings";
 import { eq } from "drizzle-orm";
 
 import { createOrganization, createTestUser } from "../support/auth";

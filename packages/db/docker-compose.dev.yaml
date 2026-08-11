@@ -1,9 +1,9 @@
-name: better-stack-db-dev
+name: hms-db-dev
 
 services:
   postgres:
     image: postgres:18.4-alpine
-    container_name: better-stack-db-dev-postgres
+    container_name: hms-db-dev-postgres
     environment:
       POSTGRES_DB: postgres
       POSTGRES_PASSWORD: postgres
@@ -16,11 +16,11 @@ services:
     ports:
       - "55432:5432"
     volumes:
-      - better-stack-db-dev-postgres:/var/lib/postgresql
+      - hms-db-dev-postgres:/var/lib/postgresql
 
   seaweedfs:
     image: chrislusf/seaweedfs:4.40
-    container_name: better-stack-db-dev-seaweedfs
+    container_name: hms-db-dev-seaweedfs
     command: >-
       mini -dir=/data -webdav=false -admin.ui=false
       -admin.password=better-stack-admin-secret -s3.port.iceberg=0
@@ -39,8 +39,8 @@ services:
     ports:
       - "55431:8333"
     volumes:
-      - better-stack-db-dev-seaweedfs:/data
+      - hms-db-dev-seaweedfs:/data
 
 volumes:
-  better-stack-db-dev-postgres:
-  better-stack-db-dev-seaweedfs:
+  hms-db-dev-postgres:
+  hms-db-dev-seaweedfs:

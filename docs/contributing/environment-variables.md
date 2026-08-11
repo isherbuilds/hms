@@ -51,9 +51,9 @@ needs the value.
 
 No secret and no server-only module may reach a client asset. The mechanical
 check is the import: if a module under `apps/web/src/` (outside `server/`)
-transitively _value_-imports `@better-stack/env/server`, that is the bug.
+transitively _value_-imports `@hms/env/server`, that is the bug.
 
-One deliberate exception: `apps/web/src/lib/orpc.ts` imports `@better-stack/auth`
+One deliberate exception: `apps/web/src/lib/orpc.ts` imports `@hms/auth`
 for the SSR half of its `createIsomorphicFn()` (ADR 0009). That branch is
 compiled out of the client bundle by the `tanstackStart()` Vite plugin, so the
 grep flags it but it is not a leak. Verify with a build rather than a grep:

@@ -19,7 +19,7 @@ available version-controlled pre-traffic boundary.
 
 ## Decision
 
-The production container runs the `@better-stack/db` migration command before
+The production container runs the `@hms/db` migration command before
 starting the server. The command uses the same application migrator as tests
 and the development seed, resolves the migrations from the database package,
 and retains its PostgreSQL advisory lock. The server bundle neither locates nor

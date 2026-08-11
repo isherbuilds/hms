@@ -1,4 +1,5 @@
-import { Toaster } from "@better-stack/ui/components/sonner";
+import { Toaster } from "@hms/ui/components/sonner";
+import { ThemeProvider } from "next-themes";
 import type { QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from "@tanstack/react-router";
@@ -26,7 +27,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: "Better Stack",
+        title: "HMS",
       },
     ],
     links: [
@@ -42,15 +43,25 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 
 function RootDocument() {
   return (
-    <html lang="en" className="dark">
+    // `suppressHydrationWarning`: the theme class is written onto <html> by
+    // next-themes before React hydrates, so the server markup deliberately
+    // differs by that one attribute.
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
       <body>
-        {/* App chrome belongs to the org shell (`AppShell`); public pages own
-            their own layout. */}
-        <Outlet />
-        <Toaster richColors />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {/* App chrome belongs to the org shell (`AppShell`); public pages own
+              their own layout. */}
+          <Outlet />
+          <Toaster richColors />
+        </ThemeProvider>
         {import.meta.env.DEV && (
           <>
             <TanStackRouterDevtools position="bottom-left" />

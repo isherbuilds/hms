@@ -1,4 +1,4 @@
-import { Button } from "@better-stack/ui/components/button";
+import { Button } from "@hms/ui/components/button";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PrinterIcon } from "lucide-react";

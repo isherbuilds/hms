@@ -1,6 +1,6 @@
-import { authorize, parseRoles, type AppPermission } from "@better-stack/auth/access";
-import { db } from "@better-stack/db";
-import { member, organization } from "@better-stack/db/schema/auth";
+import { authorize, parseRoles, type AppPermission } from "@hms/auth/access";
+import { db } from "@hms/db";
+import { member, organization } from "@hms/db/schema/auth";
 import { ORPCError, os } from "@orpc/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";

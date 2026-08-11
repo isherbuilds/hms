@@ -1,6 +1,6 @@
-import { Button, buttonVariants } from "@better-stack/ui/components/button";
-import { Input } from "@better-stack/ui/components/input";
-import { Skeleton } from "@better-stack/ui/components/skeleton";
+import { Button, buttonVariants } from "@hms/ui/components/button";
+import { Input } from "@hms/ui/components/input";
+import { Skeleton } from "@hms/ui/components/skeleton";
 import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -46,7 +46,7 @@ function Section({
   return (
     <section className="ring-1 ring-border">
       <header className="border-b border-border px-3 py-2">
-        <h2 className="cn-font-heading text-xs font-medium">{title}</h2>
+        <h2 className="text-xs font-medium">{title}</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
       </header>
       <div className="p-3">{children}</div>
@@ -115,7 +115,7 @@ function OnboardingRoute() {
   return (
     <div className="mx-auto flex min-h-svh w-full max-w-md flex-col justify-center gap-4 p-4">
       <div>
-        <h1 className="cn-font-heading text-sm font-medium">Choose an organization</h1>
+        <h1 className="text-sm font-medium">Choose an organization</h1>
         <p className="mt-0.5 text-xs text-muted-foreground">
           Every screen in this app belongs to exactly one organization. This tab will work in the
           one you pick — other tabs are unaffected.

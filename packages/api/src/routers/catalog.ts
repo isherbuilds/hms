@@ -1,5 +1,5 @@
-import { db } from "@better-stack/db";
-import { CATALOG_CATEGORIES, catalogItems } from "@better-stack/db/schema/catalog-items";
+import { db } from "@hms/db";
+import { CATALOG_CATEGORIES, catalogItems } from "@hms/db/schema/catalog-items";
 import { ORPCError } from "@orpc/server";
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";

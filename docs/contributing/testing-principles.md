@@ -35,7 +35,7 @@ real queries without an HTTP hop.
   deliberately not awaited. To assert a row **is** written, poll with
   `eventually` from `tests/support/client.ts` rather than sleeping a fixed
   interval. To assert one is **not**, await `drainAuditWrites()` from
-  `@better-stack/api/audit` first — a negative assertion behind a poll or a
+  `@hms/api/audit` first — a negative assertion behind a poll or a
   sleep passes wrongly the moment a reintroduced write lands just after it.
 - **Keep the bar high.** Integration tests are slow. Add one when it can falsify
   a real invariant, not to raise a coverage number.

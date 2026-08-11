@@ -5,10 +5,10 @@
  */
 import { and, eq, isNotNull } from "drizzle-orm";
 
-import type { DbTransaction } from "@better-stack/db/counter";
-import { accounts, type AccountType } from "@better-stack/db/schema/accounts";
-import { journalEntries } from "@better-stack/db/schema/journal-entries";
-import { journalLines } from "@better-stack/db/schema/journal-lines";
+import type { DbTransaction } from "@hms/db/counter";
+import { accounts, type AccountType } from "@hms/db/schema/accounts";
+import { journalEntries } from "@hms/db/schema/journal-entries";
+import { journalLines } from "@hms/db/schema/journal-lines";
 
 import { fromPaise, toPaise } from "./invoice-math";
 

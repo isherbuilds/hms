@@ -1,2 +1,8 @@
-@import "@better-stack/ui/globals.css";
+/* Self-hosted so the declared `--font-sans` is the font that actually renders:
+   no CDN request, no flash of fallback, and it works on a hospital LAN with no
+   outbound internet. Mono is loaded for the columns that need figure alignment
+   (MRN, invoice number, actor id). */
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@hms/ui/globals.css";
 @source "../node_modules/streamdown/dist/*.js";

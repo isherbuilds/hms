@@ -1,6 +1,6 @@
-import { db } from "@better-stack/db";
-import { nextCounter } from "@better-stack/db/counter";
-import { patients } from "@better-stack/db/schema/patients";
+import { db } from "@hms/db";
+import { nextCounter } from "@hms/db/counter";
+import { patients } from "@hms/db/schema/patients";
 import { ORPCError } from "@orpc/server";
 import { and, desc, eq, ilike, lt, or } from "drizzle-orm";
 import { z } from "zod";

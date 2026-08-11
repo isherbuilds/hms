@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { sanitizeKeyName } from "@better-stack/api/routers/files";
+import { sanitizeKeyName } from "@hms/api/routers/files";
 
 test("a sanitized name can never nest, traverse, or break a URL", () => {
   for (const name of [

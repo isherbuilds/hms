@@ -1,6 +1,6 @@
-import { Badge } from "@better-stack/ui/components/badge";
-import { Button } from "@better-stack/ui/components/button";
-import { Checkbox } from "@better-stack/ui/components/checkbox";
+import { Badge } from "@hms/ui/components/badge";
+import { Button } from "@hms/ui/components/button";
+import { Checkbox } from "@hms/ui/components/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -8,7 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@better-stack/ui/components/dialog";
+} from "@hms/ui/components/dialog";
 import {
   Form,
   FormControl,
@@ -16,10 +16,10 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@better-stack/ui/components/form";
-import { Input } from "@better-stack/ui/components/input";
-import { Skeleton } from "@better-stack/ui/components/skeleton";
-import { SubmitButton } from "@better-stack/ui/components/submit-button";
+} from "@hms/ui/components/form";
+import { Input } from "@hms/ui/components/input";
+import { Skeleton } from "@hms/ui/components/skeleton";
+import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
   Table,
   TableBody,
@@ -27,18 +27,18 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@better-stack/ui/components/table";
+} from "@hms/ui/components/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { PageHeader } from "@/components/app-shell";
+import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 
-export const Route = createFileRoute("/org/$orgSlug/admin/catalog")({
+export const Route = createFileRoute("/org/$orgSlug/settings/catalog")({
   loader: ({ context: { queryClient }, params: { orgSlug } }) => {
     void queryClient.prefetchQuery(orpc.catalog.list.queryOptions({ input: { orgSlug } }));
   },
@@ -48,7 +48,7 @@ export const Route = createFileRoute("/org/$orgSlug/admin/catalog")({
 const SELECT_CLASS =
   "h-8 w-full rounded-none border border-input bg-transparent px-2 text-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 dark:bg-input/30";
 
-// Mirrors CATALOG_CATEGORIES in @better-stack/db/schema/catalog-items, kept
+// Mirrors CATALOG_CATEGORIES in @hms/db/schema/catalog-items, kept
 // local so no server schema module reaches the client bundle (hard rule 6).
 const CATALOG_CATEGORIES = ["consultation", "procedure", "lab", "radiology", "other"] as const;
 
@@ -134,7 +134,7 @@ function CatalogRoute() {
         action={<Button onClick={() => setCreateOpen(true)}>New item</Button>}
       />
 
-      <div className="flex flex-col gap-3 p-4">
+      <PageBody>
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex w-48 flex-col gap-1.5 text-xs font-medium">
             Category
@@ -164,10 +164,7 @@ function CatalogRoute() {
             ))}
           </div>
         ) : catalog.isError ? (
-          <div role="alert" className="border-l-2 border-destructive pl-3 text-xs">
-            <p className="font-medium">Could not load service catalog</p>
-            <p className="mt-0.5 text-muted-foreground">{catalog.error.message}</p>
-          </div>
+          <ErrorNote title="Could not load service catalog" detail={catalog.error.message} />
         ) : catalog.data.length === 0 ? (
           <div className="border border-dashed px-4 py-8 text-center text-xs text-muted-foreground">
             {category || activeOnly
@@ -214,7 +211,7 @@ function CatalogRoute() {
             </Table>
           </div>
         )}
-      </div>
+      </PageBody>
 
       <CatalogItemDialog
         mode="create"

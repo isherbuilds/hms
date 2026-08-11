@@ -5,10 +5,10 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@better-stack/ui/components/form";
-import { Input } from "@better-stack/ui/components/input";
-import { SubmitButton } from "@better-stack/ui/components/submit-button";
-import { Textarea } from "@better-stack/ui/components/textarea";
+} from "@hms/ui/components/form";
+import { Input } from "@hms/ui/components/input";
+import { SubmitButton } from "@hms/ui/components/submit-button";
+import { Textarea } from "@hms/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AlertTriangleIcon } from "lucide-react";
@@ -16,7 +16,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { PageHeader } from "@/components/app-shell";
+import { PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 
@@ -127,7 +127,7 @@ function RegisterPatientRoute() {
         title="Register patient"
         description="Create a patient record and assign the next MRN"
       />
-      <div className="max-w-2xl p-4">
+      <PageBody className="max-w-2xl">
         <Form {...form}>
           <form onSubmit={onSubmit} className="flex flex-col gap-4">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -385,7 +385,7 @@ function RegisterPatientRoute() {
             </div>
           </form>
         </Form>
-      </div>
+      </PageBody>
     </>
   );
 }

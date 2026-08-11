@@ -1,11 +1,11 @@
 {
-  "extends": "@better-stack/config/tsconfig.base.json",
+  "extends": "@hms/config/tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-jsx",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": [],
     "paths": {
-      "@better-stack/ui/*": ["./src/*"]
+      "@hms/ui/*": ["./src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],

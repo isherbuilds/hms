@@ -18,7 +18,7 @@ the bucket serves.
 
 ## Decision
 
-`@better-stack/storage` issues only short-lived presigned URLs. There is no
+`@hms/storage` issues only short-lived presigned URLs. There is no
 unsigned read path, and the bucket must never be anonymously readable.
 
 Bytes never pass through the app server either: the browser uploads and

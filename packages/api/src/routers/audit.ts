@@ -1,6 +1,6 @@
-import { db } from "@better-stack/db";
-import { auditLog } from "@better-stack/db/schema/audit";
-import { user } from "@better-stack/db/schema/auth";
+import { db } from "@hms/db";
+import { auditLog } from "@hms/db/schema/audit";
+import { user } from "@hms/db/schema/auth";
 import { and, desc, eq, lt } from "drizzle-orm";
 import { z } from "zod";
 

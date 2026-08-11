@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@better-stack/ui/lib/utils";
+import { cn } from "@hms/ui/lib/utils";
 import * as React from "react";
 
 function Label({ className, ...props }: React.ComponentProps<"label">) {

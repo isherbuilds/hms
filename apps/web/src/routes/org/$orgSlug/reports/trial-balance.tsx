@@ -1,6 +1,6 @@
-import { Button } from "@better-stack/ui/components/button";
-import { Input } from "@better-stack/ui/components/input";
-import { Skeleton } from "@better-stack/ui/components/skeleton";
+import { Button } from "@hms/ui/components/button";
+import { Input } from "@hms/ui/components/input";
+import { Skeleton } from "@hms/ui/components/skeleton";
 import {
   Table,
   TableBody,
@@ -8,13 +8,13 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@better-stack/ui/components/table";
+} from "@hms/ui/components/table";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { DownloadIcon, PrinterIcon } from "lucide-react";
 import { useState } from "react";
 
-import { PageHeader } from "@/components/app-shell";
+import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { orpc } from "@/lib/orpc";
 import { downloadXlsx } from "@/lib/report-export";
 import {
@@ -90,7 +90,7 @@ function TrialBalanceRoute() {
   return (
     <>
       <PageHeader title="Trial balance" description="Account movement for a selected period" />
-      <div className="flex flex-col gap-3 p-4 text-xs">
+      <PageBody>
         <div className="flex flex-wrap items-end gap-2 print:hidden">
           <label className="grid gap-1">
             <span className="text-muted-foreground">From</span>
@@ -118,10 +118,7 @@ function TrialBalanceRoute() {
         {report.isPending ? (
           <Skeleton className="h-48 w-full" />
         ) : report.isError ? (
-          <div role="alert" className="border-l-2 border-destructive pl-3">
-            <p className="font-medium">Could not load the trial balance</p>
-            <p className="mt-0.5 text-muted-foreground">{report.error.message}</p>
-          </div>
+          <ErrorNote title="Could not load the trial balance" detail={report.error.message} />
         ) : (
           <section data-report-print className="space-y-3">
             <header className="border-b pb-2">
@@ -197,7 +194,7 @@ function TrialBalanceRoute() {
             </div>
           </section>
         )}
-      </div>
+      </PageBody>
       <style>{REPORT_PRINT_LANDSCAPE_CSS}</style>
     </>
   );

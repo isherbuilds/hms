@@ -1,6 +1,6 @@
-import { createDb } from "@better-stack/db";
-import * as schema from "@better-stack/db/schema/auth";
-import { env } from "@better-stack/env/server";
+import { createDb } from "@hms/db";
+import * as schema from "@hms/db/schema/auth";
+import { env } from "@hms/env/server";
 import { organization } from "better-auth/plugins/organization";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";

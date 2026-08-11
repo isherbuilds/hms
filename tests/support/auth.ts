@@ -1,5 +1,5 @@
-import { auth } from "@better-stack/auth";
-import { createUserWithPassword } from "@better-stack/auth/manual-user";
+import { auth } from "@hms/auth";
+import { createUserWithPassword } from "@hms/auth/manual-user";
 
 export type TestUser = {
   cookie: string;

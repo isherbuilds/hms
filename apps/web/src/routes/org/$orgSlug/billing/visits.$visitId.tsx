@@ -1,7 +1,7 @@
-import { authorize } from "@better-stack/auth/access";
-import { Badge } from "@better-stack/ui/components/badge";
-import { Button } from "@better-stack/ui/components/button";
-import { Checkbox } from "@better-stack/ui/components/checkbox";
+import { authorize } from "@hms/auth/access";
+import { Badge } from "@hms/ui/components/badge";
+import { Button } from "@hms/ui/components/button";
+import { Checkbox } from "@hms/ui/components/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +9,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@better-stack/ui/components/dialog";
+} from "@hms/ui/components/dialog";
 import {
   Form,
   FormControl,
@@ -17,9 +17,9 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@better-stack/ui/components/form";
-import { Input } from "@better-stack/ui/components/input";
-import { SubmitButton } from "@better-stack/ui/components/submit-button";
+} from "@hms/ui/components/form";
+import { Input } from "@hms/ui/components/input";
+import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
   Table,
   TableBody,
@@ -27,8 +27,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@better-stack/ui/components/table";
-import { Textarea } from "@better-stack/ui/components/textarea";
+} from "@hms/ui/components/table";
+import { Textarea } from "@hms/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import type { UseFormReturn } from "react-hook-form";
@@ -36,7 +36,7 @@ import { useState, type FormEventHandler, type ReactNode } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { PageHeader } from "@/components/app-shell";
+import { PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 
@@ -217,7 +217,7 @@ function BillingVisitRoute() {
           </div>
         }
       />
-      <div className="flex max-w-7xl flex-col gap-5 p-4 text-xs">
+      <PageBody className="max-w-7xl">
         <section className="grid gap-px bg-border ring-1 ring-border sm:grid-cols-4">
           <Detail label="Patient">
             <p className="font-medium">{patient.name}</p>
@@ -296,7 +296,7 @@ function BillingVisitRoute() {
             ))
           )}
         </section>
-      </div>
+      </PageBody>
       <AddChargeDialog
         open={addOpen}
         onOpenChange={setAddOpen}
@@ -324,7 +324,7 @@ function BillingVisitRoute() {
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="bg-background p-3">
-      <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </p>
       {children}

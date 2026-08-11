@@ -1,8 +1,8 @@
 import { beforeAll, expect, test } from "bun:test";
 
-import type { AppRouterClient } from "@better-stack/api/routers/index";
-import { db } from "@better-stack/db";
-import { visits } from "@better-stack/db/schema/visits";
+import type { AppRouterClient } from "@hms/api/routers/index";
+import { db } from "@hms/db";
+import { visits } from "@hms/db/schema/visits";
 import { and, eq } from "drizzle-orm";
 
 import { createOrganization, createTestUser } from "../support/auth";

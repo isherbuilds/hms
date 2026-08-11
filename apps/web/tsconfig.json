@@ -23,7 +23,7 @@
     "noUncheckedSideEffectImports": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@better-stack/ui/*": ["../../packages/ui/src/*"]
+      "@hms/ui/*": ["../../packages/ui/src/*"]
     }
   }
 }

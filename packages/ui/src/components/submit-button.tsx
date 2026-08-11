@@ -1,5 +1,5 @@
-import { Button } from "@better-stack/ui/components/button";
-import { cn } from "@better-stack/ui/lib/utils";
+import { Button } from "@hms/ui/components/button";
+import { cn } from "@hms/ui/lib/utils";
 import { LoaderCircleIcon } from "lucide-react";
 import type * as React from "react";
 

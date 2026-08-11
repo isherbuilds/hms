@@ -1,7 +1,7 @@
 import pg from "pg";
 
-import { drainAuditWrites } from "@better-stack/api/audit";
-import { runMigrations } from "@better-stack/db/migrate";
+import { drainAuditWrites } from "@hms/api/audit";
+import { runMigrations } from "@hms/db/migrate";
 
 /**
  * Drops and recreates the public schema of the test database, then applies

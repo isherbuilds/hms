@@ -1,5 +1,5 @@
-import { createDb } from "@better-stack/db";
-import { account, user } from "@better-stack/db/schema/auth";
+import { createDb } from "@hms/db";
+import { account, user } from "@hms/db/schema/auth";
 import { hashPassword } from "better-auth/crypto";
 
 /**

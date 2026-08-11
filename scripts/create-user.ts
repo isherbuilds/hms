@@ -1,5 +1,5 @@
-import { createUserWithPassword } from "@better-stack/auth/manual-user";
-import { runMigrations } from "@better-stack/db/migrate";
+import { createUserWithPassword } from "@hms/auth/manual-user";
+import { runMigrations } from "@hms/db/migrate";
 
 /**
  * Operator CLI: creates one account directly, bypassing the disabled public

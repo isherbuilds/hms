@@ -13,8 +13,8 @@
   "iconLibrary": "lucide",
   "aliases": {
     "components": "@/components",
-    "utils": "@better-stack/ui/lib/utils",
-    "ui": "@better-stack/ui/components",
+    "utils": "@hms/ui/lib/utils",
+    "ui": "@hms/ui/components",
     "lib": "@/lib",
     "hooks": "@/hooks"
   },

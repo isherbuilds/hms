@@ -1,4 +1,4 @@
-import { Button } from "@better-stack/ui/components/button";
+import { Button } from "@hms/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -6,7 +6,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@better-stack/ui/components/dialog";
+} from "@hms/ui/components/dialog";
 import {
   Form,
   FormControl,
@@ -14,10 +14,10 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@better-stack/ui/components/form";
-import { Input } from "@better-stack/ui/components/input";
-import { Skeleton } from "@better-stack/ui/components/skeleton";
-import { SubmitButton } from "@better-stack/ui/components/submit-button";
+} from "@hms/ui/components/form";
+import { Input } from "@hms/ui/components/input";
+import { Skeleton } from "@hms/ui/components/skeleton";
+import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
   Table,
   TableBody,
@@ -25,7 +25,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@better-stack/ui/components/table";
+} from "@hms/ui/components/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PlusIcon } from "lucide-react";
@@ -33,11 +33,11 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { PageHeader } from "@/components/app-shell";
+import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 
-export const Route = createFileRoute("/org/$orgSlug/admin/staff")({
+export const Route = createFileRoute("/org/$orgSlug/settings/staff")({
   loader: ({ context: { queryClient }, params: { orgSlug } }) => {
     void Promise.all([
       queryClient.prefetchQuery(orpc.staff.listDepartments.queryOptions({ input: { orgSlug } })),
@@ -150,7 +150,7 @@ function StaffRoute() {
         description="Manage clinical departments, practitioners, login links, and consultation fees"
       />
 
-      <div className="flex flex-col gap-8 p-4">
+      <PageBody>
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -170,10 +170,7 @@ function StaffRoute() {
               ))}
             </div>
           ) : departments.isError ? (
-            <div role="alert" className="border-l-2 border-destructive pl-3 text-xs">
-              <p className="font-medium">Could not load departments</p>
-              <p className="mt-0.5 text-muted-foreground">{departments.error.message}</p>
-            </div>
+            <ErrorNote title="Could not load departments" detail={departments.error.message} />
           ) : (
             <div className="ring-1 ring-border">
               <Table>
@@ -247,10 +244,7 @@ function StaffRoute() {
               ))}
             </div>
           ) : practitioners.isError ? (
-            <div role="alert" className="border-l-2 border-destructive pl-3 text-xs">
-              <p className="font-medium">Could not load practitioners</p>
-              <p className="mt-0.5 text-muted-foreground">{practitioners.error.message}</p>
-            </div>
+            <ErrorNote title="Could not load practitioners" detail={practitioners.error.message} />
           ) : (
             <div className="ring-1 ring-border">
               <Table>
@@ -326,7 +320,7 @@ function StaffRoute() {
             </div>
           )}
         </section>
-      </div>
+      </PageBody>
 
       {departmentDialog ? (
         <DepartmentDialog

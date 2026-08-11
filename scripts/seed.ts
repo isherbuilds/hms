@@ -1,13 +1,13 @@
-import { auth } from "@better-stack/auth";
-import { createUserWithPassword } from "@better-stack/auth/manual-user";
-import { db } from "@better-stack/db";
-import { runMigrations } from "@better-stack/db/migrate";
-import { member, user } from "@better-stack/db/schema/auth";
+import { auth } from "@hms/auth";
+import { createUserWithPassword } from "@hms/auth/manual-user";
+import { db } from "@hms/db";
+import { runMigrations } from "@hms/db/migrate";
+import { member, user } from "@hms/db/schema/auth";
 import {
   SETTINGS_DEFAULTS,
   organizationSettings,
-} from "@better-stack/db/schema/organization-settings";
-import { env } from "@better-stack/env/server";
+} from "@hms/db/schema/organization-settings";
+import { env } from "@hms/env/server";
 import { count, eq } from "drizzle-orm";
 import pg from "pg";
 

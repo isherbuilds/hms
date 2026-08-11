@@ -12,11 +12,11 @@
   },
   "iconLibrary": "lucide",
   "aliases": {
-    "components": "@better-stack/ui/components",
-    "utils": "@better-stack/ui/lib/utils",
-    "hooks": "@better-stack/ui/hooks",
-    "lib": "@better-stack/ui/lib",
-    "ui": "@better-stack/ui/components"
+    "components": "@hms/ui/components",
+    "utils": "@hms/ui/lib/utils",
+    "hooks": "@hms/ui/hooks",
+    "lib": "@hms/ui/lib",
+    "ui": "@hms/ui/components"
   },
   "menuColor": "default",
   "menuAccent": "subtle",

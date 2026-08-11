@@ -7,7 +7,7 @@ import {
   fiscalYearLabel,
   splitGst,
   toPaise,
-} from "@better-stack/api/lib/invoice-math";
+} from "@hms/api/lib/invoice-math";
 
 const charge = (chargeId: string, unitPrice: string, taxRatePercent = "0", qty = 1) => ({
   chargeId,

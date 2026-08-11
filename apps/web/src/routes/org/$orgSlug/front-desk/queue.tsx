@@ -1,6 +1,6 @@
-import { Badge } from "@better-stack/ui/components/badge";
-import { Button } from "@better-stack/ui/components/button";
-import { Checkbox } from "@better-stack/ui/components/checkbox";
+import { Badge } from "@hms/ui/components/badge";
+import { Button } from "@hms/ui/components/button";
+import { Checkbox } from "@hms/ui/components/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -8,7 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@better-stack/ui/components/dialog";
+} from "@hms/ui/components/dialog";
 import {
   Form,
   FormControl,
@@ -16,8 +16,8 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@better-stack/ui/components/form";
-import { SubmitButton } from "@better-stack/ui/components/submit-button";
+} from "@hms/ui/components/form";
+import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
   Table,
   TableBody,
@@ -25,15 +25,15 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@better-stack/ui/components/table";
-import { Textarea } from "@better-stack/ui/components/textarea";
+} from "@hms/ui/components/table";
+import { Textarea } from "@hms/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { PageHeader } from "@/components/app-shell";
+import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 
@@ -116,7 +116,7 @@ function QueueRoute() {
   return (
     <>
       <PageHeader title="Queue" description="Today's outpatient queue" />
-      <div className="flex flex-col gap-3 p-4">
+      <PageBody>
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex w-52 flex-col gap-1.5 text-xs font-medium">
             Department
@@ -173,10 +173,7 @@ function QueueRoute() {
             Loading queue…
           </div>
         ) : queue.isError ? (
-          <div role="alert" className="border-l-2 border-destructive pl-3 text-xs">
-            <p className="font-medium">Could not load queue</p>
-            <p className="mt-0.5 text-muted-foreground">{queue.error.message}</p>
-          </div>
+          <ErrorNote title="Could not load queue" detail={queue.error.message} />
         ) : queue.data.length === 0 ? (
           <div className="border border-dashed px-4 py-8 text-center text-xs text-muted-foreground">
             No visits match these filters.
@@ -266,7 +263,7 @@ function QueueRoute() {
             </Table>
           </div>
         )}
-      </div>
+      </PageBody>
 
       {cancellingVisitId ? (
         <CancelVisitDialog

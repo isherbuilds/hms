@@ -1,7 +1,7 @@
 "use client";
 
-import { Label } from "@better-stack/ui/components/label";
-import { cn } from "@better-stack/ui/lib/utils";
+import { Label } from "@hms/ui/components/label";
+import { cn } from "@hms/ui/lib/utils";
 import * as React from "react";
 import {
   Controller,

@@ -1,9 +1,9 @@
 import { google } from "@ai-sdk/google";
-import { createContext, type ORPCContext } from "@better-stack/api/lib/context";
-import { authorizeOrg } from "@better-stack/api/lib/procedures/factory";
-import { appRouter } from "@better-stack/api/routers/index";
-import { auth } from "@better-stack/auth";
-import { env } from "@better-stack/env/server";
+import { createContext, type ORPCContext } from "@hms/api/lib/context";
+import { authorizeOrg } from "@hms/api/lib/procedures/factory";
+import { appRouter } from "@hms/api/routers/index";
+import { auth } from "@hms/auth";
+import { env } from "@hms/env/server";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { OpenAPIReferencePlugin } from "@orpc/openapi/plugins";
 import { ORPCError, onError } from "@orpc/server";
@@ -25,7 +25,7 @@ import { Hono, type Context as HonoContext } from "hono";
 import { cors } from "hono/cors";
 
 initLogger({
-  env: { service: "better-stack-server" },
+  env: { service: "hms-server" },
 });
 
 const isProduction = env.NODE_ENV === "production";

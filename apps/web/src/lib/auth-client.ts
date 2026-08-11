@@ -1,5 +1,5 @@
-import { env } from "@better-stack/env/web";
-import { ac, roles } from "@better-stack/auth/access";
+import { env } from "@hms/env/web";
+import { ac, roles } from "@hms/auth/access";
 import { organizationClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 

@@ -56,7 +56,7 @@ way an operator would. See [ADR 0013](./decisions/0013-signup-disabled.md).
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bun run check-types`    | Typechecks every TypeScript package plus `tests/`. `packages/config` ships no TypeScript; `apps/fumadocs` is checked by its own build; `apps/web/server/` is resolved by Nitro. |
 | `bun run check`          | oxlint + oxfmt (writes).                                                                                                                                                        |
-| `bun run test`           | Integration tests against real PostgreSQL. Uses and **wipes** the `better_stack_test` database.                                                                                 |
+| `bun run test`           | Integration tests against real PostgreSQL. Uses and **wipes** the `hms_test` database.                                                                                 |
 | `bun run db:generate`    | Generates a drizzle-kit migration into `packages/db/src/migrations/`.                                                                                                           |
 | `bun run db:migrate`     | Applies migrations.                                                                                                                                                             |
 | `bun run db:up`          | Starts the dev Postgres + SeaweedFS stack (`packages/db/docker-compose.dev.yaml`), waiting for it to be healthy. No-op if already running.                                      |

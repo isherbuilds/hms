@@ -77,6 +77,28 @@ invoice and credit-note documents and their snapshotted lines, because tax
 reporting requires document numbers, patient snapshots, rates, and tax codes
 that do not belong on journal lines.
 
+### GST compliance boundary
+
+The current GST page is an **outward document register for intra-state supplies**, not a GSTR-1
+return or filing export. It splits tax into CGST and SGST and provides document, rate, and HSN/SAC
+summaries, but does not model recipient GSTIN, recipient state/place of supply, IGST, B2B/B2C
+classification, advances, or the documents-issued series. Do not describe it as filing-ready until
+the pilot's chartered accountant validates the required return tables against representative data.
+
+GSTN's current offline-return surface separately represents B2B/B2C and inter-state supplies,
+credit/debit notes, advances, HSN summaries, and documents issued. The source requirements are
+summarized in
+[research note 03](../../research/03-client-hms-production-sitemap.md#what-this-means-for-us).
+Adding filing-shaped output requires an approved extension to the immutable invoice snapshots and
+posting rules; it is not a report-only formatting change.
+
+Live evidence (research note 03, O15–O16) fixes the practical scope: clinical OPD is GST-exempt — a
+₹500 consultation on the incumbent posted zero GST with no tax line on its receipt — so this register
+only carries weight once taxable goods are billed (the deferred Pharmacy module). The incumbent's own
+live register is accordingly pharmacy-only, but it already models multi-rate brackets (5/12/18%), IGST
+columns, returns as negative lines, and separate GSTR-2 (inward/ITC), HSN-wise, and documents-issued
+reports — the shape to target if and when filing-shaped output is approved.
+
 ## Extension path
 
 Pharmacy, inventory, lab, and radiology do not require a second reporting

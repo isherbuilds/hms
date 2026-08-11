@@ -3,7 +3,7 @@ import { beforeAll, expect, mock, test } from "bun:test";
 // Storage is replaced *before* the routers import it, so `deleteObject` throws
 // like it would during a SeaweedFS outage. Bun runs each test file in its own
 // process, so the real round-trip suite (files.test.ts) is unaffected.
-mock.module("@better-stack/storage", () => ({
+mock.module("@hms/storage", () => ({
   createUploadUrl: async () => "http://storage.invalid/upload",
   createReadUrl: async () => "http://storage.invalid/read",
   deleteObject: async () => {
@@ -13,10 +13,10 @@ mock.module("@better-stack/storage", () => ({
   uploadExpiresIn: 900,
 }));
 
-const { drainAuditWrites } = await import("@better-stack/api/audit");
-const { db } = await import("@better-stack/db");
-const { auditLog } = await import("@better-stack/db/schema/audit");
-const { file } = await import("@better-stack/db/schema/file");
+const { drainAuditWrites } = await import("@hms/api/audit");
+const { db } = await import("@hms/db");
+const { auditLog } = await import("@hms/db/schema/audit");
+const { file } = await import("@hms/db/schema/file");
 const { eq } = await import("drizzle-orm");
 
 import { createOrganization, createTestUser } from "../support/auth";

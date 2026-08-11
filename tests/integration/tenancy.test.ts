@@ -1,10 +1,10 @@
 import { beforeAll, expect, test } from "bun:test";
 
-import { drainAuditWrites } from "@better-stack/api/audit";
-import { appRouter, type AppRouterClient } from "@better-stack/api/routers/index";
-import { auth } from "@better-stack/auth";
-import { db } from "@better-stack/db";
-import { file } from "@better-stack/db/schema/file";
+import { drainAuditWrites } from "@hms/api/audit";
+import { appRouter, type AppRouterClient } from "@hms/api/routers/index";
+import { auth } from "@hms/auth";
+import { db } from "@hms/db";
+import { file } from "@hms/db/schema/file";
 
 import {
   createOrganization,
@@ -175,6 +175,76 @@ test("dashboard summaries are scoped, concurrent, and immediately revoke removed
   await expectORPCCode(memberClient.dashboard.summary({ orgSlug: one.slug }), "FORBIDDEN");
 });
 
+test("today's queue and collections are scoped, concurrent, and revoke with membership", async () => {
+  const owner = await createTestUser("today-owner");
+  const one = await createOrganization(owner, "today-one");
+  const two = await createOrganization(owner, "today-two");
+  const outsider = await createTestUser("today-visitor");
+  const api = clientFor(owner);
+
+  // A visit and a pending charge in `one` only. `two` stays empty, which is
+  // what makes a leak visible rather than merely unlikely.
+  const patient = await api.patient.register({
+    orgSlug: one.slug,
+    name: "Today Patient",
+    phone: "5553100",
+    sex: "other",
+    ageYears: 41,
+    address: "Today Address",
+  });
+  const department = await api.staff.createDepartment({ orgSlug: one.slug, name: "Today Dept" });
+  const practitioner = await api.staff.createPractitioner({
+    orgSlug: one.slug,
+    name: "Dr. Today",
+    departmentId: department.id,
+  });
+  const { visit } = await api.visit.create({
+    orgSlug: one.slug,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    departmentId: department.id,
+  });
+  await api.billing.addCharge({
+    orgSlug: one.slug,
+    visitId: visit.id,
+    description: "Consultation",
+    unitPrice: "500.00",
+    taxRatePercent: "0",
+  });
+
+  // Same client, both orgs, concurrently: scope must come from the claim on
+  // each call and never from whichever request happened to run first.
+  const [todayOne, todayTwo, moneyOne, moneyTwo] = await Promise.all([
+    api.dashboard.today({ orgSlug: one.slug }),
+    api.dashboard.today({ orgSlug: two.slug }),
+    api.dashboard.collections({ orgSlug: one.slug }),
+    api.dashboard.collections({ orgSlug: two.slug }),
+  ]);
+
+  expect(todayOne.waiting).toBe(1);
+  expect(todayOne.mix).toEqual([{ department: "Today Dept", count: 1 }]);
+  expect(todayTwo.waiting).toBe(0);
+  expect(todayTwo.mix).toEqual([]);
+
+  expect(Number(moneyOne.unbilled)).toBe(500);
+  expect(moneyOne.unbilledVisits).toBe(1);
+  expect(Number(moneyTwo.unbilled)).toBe(0);
+  expect(moneyTwo.unbilledVisits).toBe(0);
+
+  // A non-member naming the org is FORBIDDEN, not an empty result.
+  const outsiderApi = clientFor(outsider);
+  await expectORPCCode(outsiderApi.dashboard.today({ orgSlug: one.slug }), "FORBIDDEN");
+  await expectORPCCode(outsiderApi.dashboard.collections({ orgSlug: one.slug }), "FORBIDDEN");
+
+  // And a member loses both on the very next request after removal.
+  const member = await createTestUser("today-member");
+  await joinOrganization(member, one.id);
+  const memberApi = clientFor(member);
+  expect((await memberApi.dashboard.today({ orgSlug: one.slug })).waiting).toBe(1);
+  await removeFromOrganization(owner, member.user.email, one.id);
+  await expectORPCCode(memberApi.dashboard.today({ orgSlug: one.slug }), "FORBIDDEN");
+});
+
 test("plain members are denied audit:read, the denial is recorded, and admins see only their org", async () => {
   const owner = await createTestUser("owner");
   const organization = await createOrganization(owner, "delta");
@@ -330,6 +400,8 @@ test("an unknown slug is FORBIDDEN, not NOT_FOUND — existence never leaks", as
  */
 const GUARDED_CALLS = {
   "dashboard.summary": (api, claim) => api.dashboard.summary({ ...claim }),
+  "dashboard.today": (api, claim) => api.dashboard.today({ ...claim }),
+  "dashboard.collections": (api, claim) => api.dashboard.collections({ ...claim }),
   "settings.get": (api, claim) => api.settings.get({ ...claim }),
   "settings.update": (api, claim) =>
     api.settings.update({

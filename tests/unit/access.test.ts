@@ -7,7 +7,7 @@ import {
   roles,
   type AppPermission,
   type RoleKey,
-} from "@better-stack/auth/access";
+} from "@hms/auth/access";
 
 /**
  * The role/permission matrix is the whole point of the authorization layer and

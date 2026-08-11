@@ -1,4 +1,4 @@
-import { cn } from "@better-stack/ui/lib/utils";
+import { cn } from "@hms/ui/lib/utils";
 import * as React from "react";
 
 function Table({ className, ...props }: React.ComponentProps<"table">) {

@@ -26,7 +26,7 @@ context.scope.orgId)` belongs in the `where` even when the query also filters
    constructor arguments, and the raw builder is not exported. Removal is
    effective on the next request; a TTL would reopen the revocation window.
 5. **Roles authorize as a union.** Use `parseRoles` / `authorize` from
-   `@better-stack/auth/access`. Never `role.split(",")[0]`, and never silently
+   `@hms/auth/access`. Never `role.split(",")[0]`, and never silently
    downgrade an unrecognized role — `parseRoles` throws on purpose.
 6. **Permissions live in `packages/auth/src/access.ts` only.** That module stays
    dependency-free (no db, no env) so the client and server share one definition.
@@ -41,7 +41,7 @@ context.scope.orgId)` belongs in the `where` even when the query also filters
    (`packages/auth/src/manual-user.ts`), which hashes with Better Auth's own
    algorithm. There is no bootstrap exemption, so there is nothing to race. Do
    not re-open sign-up; see [ADR 0013](./decisions/0013-signup-disabled.md).
-9. **Stored objects are always private.** `@better-stack/storage` issues only
+9. **Stored objects are always private.** `@hms/storage` issues only
    short-lived presigned URLs. There is no unsigned read path and the bucket
    must never be anonymously readable. A "visibility" flag in the database with
    no storage-side counterpart is decoration: any bucket policy broad enough to

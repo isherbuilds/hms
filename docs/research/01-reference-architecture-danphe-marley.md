@@ -131,11 +131,15 @@ Closed/Cancelled/No Show`; practitioner/department/service-unit targeting; `bill
 - **Does not prove**: anything about adoption, workflow fit, or operational quality of either
   reference; that Marley's shapes are FHIR-_conformant_ (its own API surface is one portal
   module, not a FHIR server — agent://MarleyOpsScout).
-- **Not verified (blocked)**: Danphe's field-level entity classes, its RBAC/audit tables, and
-  tenancy columns. Its entity project lives outside `Code/Websites/DanpheEMR/` (no
-  `ServerModel/` there — tree read 2026-08-07) and the repo's GitHub tree pages are too large
-  for web-read recon; two scouts exhausted context on it. Module/controller-level claims stand;
-  entity-level claims about Danphe in 00-synthesis remain [INFERENCE].
+- **Not verified (blocked)** *(at the time of this pass)*: Danphe's field-level entity classes,
+  its RBAC/audit tables, and tenancy columns. Its entity project lives outside
+  `Code/Websites/DanpheEMR/` (no `ServerModel/` there — tree read 2026-08-07) and the repo's
+  GitHub tree pages are too large for web-read recon; two scouts exhausted context on it.
+  **Closed 2026-08-10** by the offline-clone pass in
+  [04-danphe-marley-entity-deep-dive.md](./04-danphe-marley-entity-deep-dive.md): the entity
+  layer is `Code/Components/DanpheEMR.ServerModel/`; RBAC, tenancy-column, and billing-entity
+  claims are confirmed there (doc 04 E1–E8), superseding the [INFERENCE] markers here and in
+  00-synthesis.
 
 ## What this means for us
 
@@ -199,9 +203,10 @@ status, billingStatus, orderedBy practitionerId, orderedAt}`. Danphe's `VisitBL`
 
 ## Next falsification
 
-- Shallow-clone Danphe (`git clone --depth 1`) and read
-  `DanpheEMR.ServerModel`/DAL entities offline to confirm or kill the remaining [INFERENCE]
-  claims (billing entity shape, RBAC tables, HospitalId columns). Web reads are not viable.
+- ~~Shallow-clone Danphe (`git clone --depth 1`) and read `DanpheEMR.ServerModel`/DAL entities
+  offline to confirm or kill the remaining [INFERENCE] claims (billing entity shape, RBAC
+  tables, HospitalId columns). Web reads are not viable.~~ **Done 2026-08-10** — see
+  [04-danphe-marley-entity-deep-dive.md](./04-danphe-marley-entity-deep-dive.md).
 - Prototype the appointment+encounter slice (improvement 1) behind the org-scoped-feature
   skill and check whether the trimmed status machines survive contact with front-desk UX.
 - If ABDM becomes the regulatory target, verify Marley's ABDM code actually lives in a separate

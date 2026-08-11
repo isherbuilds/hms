@@ -1,5 +1,5 @@
-import { db } from "@better-stack/db";
-import { auditLog } from "@better-stack/db/schema/audit";
+import { db } from "@hms/db";
+import { auditLog } from "@hms/db/schema/audit";
 
 export type AuditEntry = Omit<typeof auditLog.$inferInsert, "id" | "createdAt">;
 

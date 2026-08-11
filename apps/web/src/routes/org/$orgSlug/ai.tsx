@@ -1,25 +1,25 @@
 import { useChat } from "@ai-sdk/react";
-import { env } from "@better-stack/env/web";
-import { Bubble, BubbleContent } from "@better-stack/ui/components/bubble";
-import { Button } from "@better-stack/ui/components/button";
+import { env } from "@hms/env/web";
+import { Bubble, BubbleContent } from "@hms/ui/components/bubble";
+import { Button } from "@hms/ui/components/button";
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@better-stack/ui/components/empty";
+} from "@hms/ui/components/empty";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupTextarea,
-} from "@better-stack/ui/components/input-group";
+} from "@hms/ui/components/input-group";
 import {
   Message,
   MessageContent as MessageBody,
   MessageHeader,
-} from "@better-stack/ui/components/message";
+} from "@hms/ui/components/message";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -27,13 +27,15 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
-} from "@better-stack/ui/components/message-scroller";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@better-stack/ui/components/tooltip";
+} from "@hms/ui/components/message-scroller";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@hms/ui/components/tooltip";
 import { createFileRoute } from "@tanstack/react-router";
 import { DefaultChatTransport } from "ai";
 import { ArrowUpIcon, Loader2, MessageCircleDashedIcon, RotateCwIcon } from "lucide-react";
 import { useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Streamdown } from "streamdown";
+
+import { ErrorNote } from "@/components/page";
 
 export const Route = createFileRoute("/org/$orgSlug/ai")({
   component: RouteComponent,
@@ -112,7 +114,7 @@ function RouteComponent() {
                 <EmptyMedia variant="icon">
                   <MessageCircleDashedIcon />
                 </EmptyMedia>
-                <EmptyTitle>Morning, better-stack!</EmptyTitle>
+                <EmptyTitle>Morning, HMS!</EmptyTitle>
                 <EmptyDescription>What are we working on today?</EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -174,10 +176,7 @@ function RouteComponent() {
                   )}
                   {error && (
                     <MessageScrollerItem>
-                      <div role="alert" className="border-l-2 border-destructive pl-3 text-xs">
-                        <p className="font-medium">The assistant could not reply</p>
-                        <p className="mt-0.5 text-muted-foreground">{error.message}</p>
-                      </div>
+                      <ErrorNote title="The assistant could not reply" detail={error.message} />
                     </MessageScrollerItem>
                   )}
                   <MessageScrollerItem scrollAnchor />

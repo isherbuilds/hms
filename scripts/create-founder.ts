@@ -1,8 +1,8 @@
-import { createDb } from "@better-stack/db";
-import * as schema from "@better-stack/db/schema/auth";
-import { env } from "@better-stack/env/server";
-import { createUserWithPassword } from "@better-stack/auth/manual-user";
-import { runMigrations } from "@better-stack/db/migrate";
+import { createDb } from "@hms/db";
+import * as schema from "@hms/db/schema/auth";
+import { env } from "@hms/env/server";
+import { createUserWithPassword } from "@hms/auth/manual-user";
+import { runMigrations } from "@hms/db/migrate";
 import { eq } from "drizzle-orm";
 
 /**

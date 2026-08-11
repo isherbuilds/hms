@@ -1,4 +1,4 @@
-import { Button } from "@better-stack/ui/components/button";
+import { Button } from "@hms/ui/components/button";
 import {
   Table,
   TableBody,
@@ -6,7 +6,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@better-stack/ui/components/table";
+} from "@hms/ui/components/table";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PrinterIcon } from "lucide-react";

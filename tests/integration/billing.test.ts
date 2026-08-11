@@ -1,6 +1,6 @@
 import { beforeAll, expect, test } from "bun:test";
 
-import type { AppRouterClient } from "@better-stack/api/routers/index";
+import type { AppRouterClient } from "@hms/api/routers/index";
 
 import { createOrganization, createTestUser, joinOrganization } from "../support/auth";
 import { clientFor, eventually, expectORPCCode } from "../support/client";

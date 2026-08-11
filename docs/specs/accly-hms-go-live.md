@@ -78,7 +78,8 @@ derivation:
 Consumers migrated in this slice: token counter key and queue window in `visit.ts`; the four
 `fiscalYearLabel` call sites in `billing.ts`; `ledgerEntryDate` in `ledger.ts` (drops the fixed
 `REPORT_TIME_ZONE`); the GST/date bucketing SQL in `report.ts` takes the org zone as a
-parameter. Settings arrive through the existing TTL-cached settings read — no new lookup path.
+parameter; `dayBounds()` in `dashboard.ts` (UTC today-window behind the queue and collections
+cards). Settings arrive through the existing TTL-cached settings read — no new lookup path.
 India has no DST, but the helper is zone-generic and tested at a DST boundary anyway so a
 future non-Indian tenant does not corrupt its day windows.
 
@@ -120,9 +121,13 @@ print view); OPD register rows link to the visit billing workspace.
 - `report.refundDue({ orgSlug })` — invoices with negative outstanding
   (`grandTotal − creditTotal − paymentsTotal + refundsTotal < 0`): invoice number, patient,
   the four components, refund due (`−outstanding`), age since the credit note that created it.
+- `report.duesOutstanding({ orgSlug })` — the mirror of refund due: invoices with positive
+  outstanding (`grandTotal − creditTotal − paymentsTotal + refundsTotal > 0`): invoice number,
+  patient, the four components, amount due, age since issuance. Pure read over existing rows —
+  no schema, no posting.
 
-Both return bounded lists (cap 200, oldest first) — worklists, not archives. One route
-`reports/exceptions.tsx` renders both sections with rows linking to
+All three return bounded lists (cap 200, oldest first) — worklists, not archives. One route
+`reports/exceptions.tsx` renders the sections with rows linking to
 `/org/$orgSlug/billing/visits/$visitId`.
 
 **Deliberately not here.** No new permission statements: statutory-vs-operational report
@@ -165,8 +170,8 @@ Existing seams only; prior art: `tests/support/database.ts` (real Postgres),
   - Depends on: none
   - Owns/Touches: `packages/db/src/schema/organization-settings.ts` + generated migration,
     `packages/api/src/lib/business-date.ts` (new), `packages/api/src/lib/ledger.ts`,
-    `packages/api/src/routers/{visit,billing,report,settings}.ts`,
-    `apps/web/src/routes/org/$orgSlug/admin/settings.tsx`, `tests/unit/business-date.test.ts`.
+    `packages/api/src/routers/{visit,billing,report,settings,dashboard}.ts`,
+    `apps/web/src/routes/org/$orgSlug/settings/organization.tsx`, `tests/unit/business-date.test.ts`.
   - Interfaces: exports `businessDate(instant, timeZone)`, `businessDayWindow(date, timeZone)`
     consumed by Slices 11–12; settings row gains `timeZone: string` (in `SETTINGS_DEFAULTS`
     and `settings.get/update`).
@@ -203,25 +208,27 @@ Existing seams only; prior art: `tests/support/database.ts` (real Postgres),
   - Interfaces: produces `report.dailyCollections({ orgSlug, from, to })` and
     `report.opdRegister({ orgSlug, from, to })` with money as 2-decimal strings, consumed by
     the day-close SOP; consumes Slice 9's window helper.
-- [ ] Slice 12: Unbilled-activity + refund-due worklists
+- [ ] Slice 12: Unbilled-activity + refund-due + dues worklists
   - Acceptance: `unbilledAlertHours` settings column (1–168, default 24) editable on the admin
     settings page; `report.unbilledActivity` lists non-cancelled visits whose oldest pending
     charge exceeds the threshold, with age and pending amount; `report.refundDue` lists
-    invoices with negative outstanding and its components; both capped at 200 oldest-first;
-    `reports/exceptions.tsx` renders both with links into the billing workspace.
+    invoices with negative outstanding and its components; `report.duesOutstanding` lists
+    invoices with positive outstanding and its components; all three capped at 200 oldest-first;
+    `reports/exceptions.tsx` renders the sections with links into the billing workspace.
   - Verify: `bun run check-types && bun run check && bun run test` — integration: backdated
     pending charge enters the list and invoicing/voiding removes it; cancelled visit excluded;
-    G=100/P=50/CN=80 yields refund due 30 and recording the refund clears the row; tenancy
-    four-questions for both procedures.
+    G=100/P=50/CN=80 yields refund due 30 and recording the refund clears the row; G=100/P=40
+    yields dues 60 and recording the balance payment clears the row; tenancy four-questions for
+    all three procedures.
   - Depends on: Slice 9 (dates), Slice 11 (shared `report.ts` and reports index — sequence,
     do not parallelize)
   - Owns/Touches: `packages/db/src/schema/organization-settings.ts` + generated migration,
     `packages/api/src/routers/{report,settings}.ts`,
-    `apps/web/src/routes/org/$orgSlug/admin/settings.tsx`,
+    `apps/web/src/routes/org/$orgSlug/settings/organization.tsx`,
     `apps/web/src/routes/org/$orgSlug/reports/{index,exceptions}.tsx`,
     `tests/integration/reports-operational.test.ts` (extends Slice 11's file).
-  - Interfaces: produces `report.unbilledActivity({ orgSlug })`, `report.refundDue({ orgSlug })`;
-    consumes the settings row and Slice 9's helper.
+  - Interfaces: produces `report.unbilledActivity({ orgSlug })`, `report.refundDue({ orgSlug })`,
+    and `report.duesOutstanding({ orgSlug })`; consumes the settings row and Slice 9's helper.
 
 Parallelism: Slice 10 may run alongside Slice 9 (disjoint write sets). Slices 11 and 12 share
 `report.ts`, the reports index, and the test file — run them in order. Shared files touched by
@@ -241,8 +248,34 @@ split, pharmacy/lab/radiology/IPD/emergency/OT, offline mode, payment gateways.
   statement is a one-file `access.ts` change when decided.
 - `unbilledAlertHours` tuning — ships at 24; re-seed after observing the pilot's real billing
   lag.
-- Cashier/shift-level collection reporting — only if the pilot's day-close SOP demands it.
+- Cashier/shift-level handover is not part of the current slice. Before Slice 11 starts, validate
+  whether the client's existing giver/receiver handover is a required day/shift-close control. If
+  it is, reopen Slice 11 to produce an acknowledged handover record (identity, shift/terminal,
+  method totals, variance, timestamp) rather than shipping a read-only report and discovering the
+  control gap at cutover; evidence is in `docs/research/03-client-hms-production-sitemap.md`.
+  DanpheEMR corroborates the control shape: an acknowledged two-party handover document
+  (giver/receiver/counter, amount, due, received-by/on, pending→received) with a mirrored employee
+  cash ledger — see `docs/research/04-danphe-marley-entity-deep-dive.md` E2 for the donor shape
+  and its flaws (dual receive paths, no variance state) to avoid.
+- Cash-drawer expenses (petty payouts from the reception drawer — incumbent evidence O7) are
+  not modelled, and must not be half-modelled: `Cash in Hand` (1100) is a real posted ledger
+  account, so a payout that posts nothing would make the ledger silently overstate the physical
+  drawer — the decoration failure mode applied to money. Pilot SOP: nothing leaves the drawer;
+  petty expenses come from a separate float outside the product. If the pilot proves drawer
+  payouts are non-negotiable, that is a decision-5 amendment (a real `expense` posting source
+  crediting Cash in Hand), never a memo field.
 
 ## Open Questions
 
-None.
+- Does the pilot require a persisted cashier/shift handover, or is the daily collections report plus
+  an external SOP sufficient? Resolve before Slice 11 implementation.
+- Does the pilot's front desk pay any expense from the cash drawer today? Determines whether
+  the day-close SOP needs a separate petty float, or decision 5 in the roadmap must be amended.
+  Ask in the same handover interview.
+- Which tender types does the pilot actually take (cheque? bank transfer? sponsor credit?), and
+  is the printed receipt per tender row or one per bill? `payments.method`/`refunds.method`
+  carry a `cash/upi/card` CHECK and receipt numbers are per-payment-row. The CHECK is cheap to
+  widen whenever the answer arrives (appended DROP/ADD CONSTRAINT — allowed even after the
+  migration history freezes, which ends rebasing, not migrating); do not widen it speculatively.
+  Receipt granularity is the real deadline: per-payment vs per-bill numbering is baked into
+  printed documents, so it must be settled before the first live receipt.

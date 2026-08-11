@@ -1,7 +1,7 @@
-import { Badge } from "@better-stack/ui/components/badge";
-import { Button } from "@better-stack/ui/components/button";
-import { Empty, EmptyHeader } from "@better-stack/ui/components/empty";
-import { Skeleton } from "@better-stack/ui/components/skeleton";
+import { Badge } from "@hms/ui/components/badge";
+import { Button } from "@hms/ui/components/button";
+import { Empty, EmptyHeader } from "@hms/ui/components/empty";
+import { Skeleton } from "@hms/ui/components/skeleton";
 import {
   Table,
   TableBody,
@@ -9,12 +9,12 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@better-stack/ui/components/table";
+} from "@hms/ui/components/table";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { ScrollTextIcon } from "lucide-react";
 
-import { PageHeader } from "@/components/app-shell";
+import { PageBody, PageHeader } from "@/components/page";
 import { orpc } from "@/lib/orpc";
 
 const auditQuery = (orgSlug: string) =>
@@ -24,7 +24,7 @@ const auditQuery = (orgSlug: string) =>
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
 
-export const Route = createFileRoute("/org/$orgSlug/audit")({
+export const Route = createFileRoute("/org/$orgSlug/settings/audit")({
   loader: ({ context: { queryClient }, params: { orgSlug } }) => {
     void queryClient.prefetchInfiniteQuery(auditQuery(orgSlug));
   },
@@ -49,7 +49,7 @@ function AuditRoute() {
         description="Sensitive actions and every permission denial in this organization."
       />
 
-      <div className="p-4">
+      <PageBody>
         {audit.isPending ? (
           <div className="flex flex-col gap-2" aria-busy>
             {[0, 1, 2, 3].map((row) => (
@@ -108,7 +108,7 @@ function AuditRoute() {
                           </>
                         ) : (
                           // The account is gone; the entry deliberately survives it.
-                          <span className="font-mono text-[0.6875rem]">{entry.actorId}</span>
+                          <span className="font-mono text-xs">{entry.actorId}</span>
                         )}
                       </TableCell>
                       <TableCell className="text-muted-foreground">{entry.target ?? "—"}</TableCell>
@@ -130,7 +130,7 @@ function AuditRoute() {
             )}
           </div>
         )}
-      </div>
+      </PageBody>
     </>
   );
 }

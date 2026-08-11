@@ -1,6 +1,6 @@
-import { Button } from "@better-stack/ui/components/button";
-import { Input } from "@better-stack/ui/components/input";
-import { Skeleton } from "@better-stack/ui/components/skeleton";
+import { Button } from "@hms/ui/components/button";
+import { Input } from "@hms/ui/components/input";
+import { Skeleton } from "@hms/ui/components/skeleton";
 import {
   Table,
   TableBody,
@@ -8,13 +8,13 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@better-stack/ui/components/table";
+} from "@hms/ui/components/table";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { PageHeader } from "@/components/app-shell";
+import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { orpc } from "@/lib/orpc";
 import { patientAgeYears } from "@/lib/patient-age";
 
@@ -72,7 +72,7 @@ function FrontDeskRoute() {
         }
       />
 
-      <div className="flex flex-col gap-3 p-4">
+      <PageBody>
         <div className="relative max-w-md">
           <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -91,10 +91,7 @@ function FrontDeskRoute() {
             ))}
           </div>
         ) : patients.isError ? (
-          <div role="alert" className="border-l-2 border-destructive pl-3 text-xs">
-            <p className="font-medium">Could not load patients</p>
-            <p className="mt-0.5 text-muted-foreground">{patients.error.message}</p>
-          </div>
+          <ErrorNote title="Could not load patients" detail={patients.error.message} />
         ) : items.length === 0 ? (
           <div className="border border-dashed px-4 py-8 text-center text-xs text-muted-foreground">
             {debouncedQuery ? "No patients match this search." : "No patients registered yet."}
@@ -148,7 +145,7 @@ function FrontDeskRoute() {
             ) : null}
           </div>
         )}
-      </div>
+      </PageBody>
     </>
   );
 }

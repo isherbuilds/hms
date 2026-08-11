@@ -1,5 +1,5 @@
 {
-  "name": "@better-stack/env",
+  "name": "@hms/env",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@better-stack/config": "workspace:*",
+    "@hms/config": "workspace:*",
     "@types/bun": "catalog:",
     "typescript": "catalog:"
   }

@@ -1,4 +1,4 @@
 {
-  "extends": "@better-stack/config/tsconfig.base.json",
+  "extends": "@hms/config/tsconfig.base.json",
   "include": ["**/*.ts"]
 }

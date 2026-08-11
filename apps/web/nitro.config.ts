@@ -7,7 +7,7 @@ export default defineConfig({
   },
   modules: [
     evlog({
-      env: { service: "better-stack-web" },
+      env: { service: "hms-web" },
     }),
   ],
 });

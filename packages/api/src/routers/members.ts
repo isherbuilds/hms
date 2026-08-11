@@ -1,7 +1,7 @@
-import { auth, invitationUrl } from "@better-stack/auth";
-import { ORG_ROLES, parseRoles } from "@better-stack/auth/access";
-import { db } from "@better-stack/db";
-import { invitation, member, user } from "@better-stack/db/schema/auth";
+import { auth, invitationUrl } from "@hms/auth";
+import { ORG_ROLES, parseRoles } from "@hms/auth/access";
+import { db } from "@hms/db";
+import { invitation, member, user } from "@hms/db/schema/auth";
 import { ORPCError } from "@orpc/server";
 import { and, asc, eq, gt, ilike, or } from "drizzle-orm";
 import { z } from "zod";

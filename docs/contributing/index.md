@@ -1,4 +1,4 @@
-# Contributing to better-stack
+# Contributing to HMS
 
 Documentation for people and agents **developing this repository**: setup, code
 style, tests, and runtime architecture.
