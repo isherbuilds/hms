@@ -1,7 +1,6 @@
 /**
  * Double-entry ledger primitives used by billing and statutory reports.
- * Journal dates are derived in Asia/Kolkata (IST) so postings and reports use
- * the same local accounting day; this is the v0 reporting-time-zone assumption.
+ * Journal dates follow the organization's configured time zone.
  */
 import { and, eq, isNotNull } from "drizzle-orm";
 
@@ -10,9 +9,8 @@ import { accounts, type AccountType } from "@hms/db/schema/accounts";
 import { journalEntries } from "@hms/db/schema/journal-entries";
 import { journalLines } from "@hms/db/schema/journal-lines";
 
+import { businessDate } from "./business-date";
 import { fromPaise, toPaise } from "./invoice-math";
-
-export const REPORT_TIME_ZONE = "Asia/Kolkata";
 
 export type SystemAccountKey =
   | "cash"
@@ -111,15 +109,6 @@ export function settlementAccountFor(method: string): SystemAccountKey {
   }
 }
 
-export function ledgerEntryDate(now: Date = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: REPORT_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-}
-
 export async function ensureChartOfAccounts(
   tx: DbTransaction,
   orgId: string,
@@ -189,7 +178,8 @@ export async function postJournalEntry(
     narration: string;
     createdBy: string;
     lines: JournalLineInput[];
-    now?: Date;
+    now: Date;
+    timeZone: string;
   },
 ): Promise<void> {
   const preparedLines: Array<{
@@ -235,7 +225,7 @@ export async function postJournalEntry(
   await tx.insert(journalEntries).values({
     id: entryId,
     orgId: args.orgId,
-    entryDate: ledgerEntryDate(args.now),
+    entryDate: businessDate(args.now, args.timeZone),
     sourceType: args.sourceType,
     sourceId: args.sourceId,
     narration: args.narration,

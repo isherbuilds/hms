@@ -1,9 +1,9 @@
 import { navigate } from "astro:transitions/client";
 import type { AstroProviderProps } from "fumadocs-core/framework/astro";
 import type { Root } from "fumadocs-core/page-tree";
-import { DocsLayout } from "fumadocs-ui/layouts/docs";
-import { DocsPage, type DocsPageProps } from "fumadocs-ui/layouts/docs/page";
-import { RootProvider } from "fumadocs-ui/provider/astro";
+import { DocsLayout } from "@fumadocs/base-ui/layouts/docs";
+import { DocsPage, type DocsPageProps } from "@fumadocs/base-ui/layouts/docs/page";
+import { RootProvider } from "@fumadocs/base-ui/provider/astro";
 import type { ReactNode } from "react";
 
 import SearchDialog from "./search";

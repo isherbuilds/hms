@@ -1,5 +1,6 @@
 import { beforeAll, expect, test } from "bun:test";
 
+import { businessDate } from "@hms/api/lib/business-date";
 import { postJournalEntry } from "@hms/api/lib/ledger";
 import type { AppRouterClient } from "@hms/api/routers/index";
 
@@ -78,7 +79,7 @@ type AccountingFixture = {
   ) => Promise<unknown>;
 };
 
-async function createAccountingFixture(seed: string) {
+async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") {
   const owner = await createTestUser(`${seed}-owner`);
   const organization = await createOrganization(owner, seed);
   const api = clientFor(owner);
@@ -88,6 +89,7 @@ async function createAccountingFixture(seed: string) {
     address: `${seed} Address`,
     taxId: "GSTIN-TEST",
     currency: "INR",
+    timeZone,
     mrnPrefix: "MRN",
     invoicePrefix: "INV",
     receiptPrefix: "RCT",
@@ -177,6 +179,25 @@ async function createAccountingFixture(seed: string) {
     addCatalogCharge,
   };
 }
+
+test("dashboard collection trend labels the organization's Business Dates", async () => {
+  const now = new Date();
+  const utcDate = now.toISOString().slice(0, 10);
+  const timeZone = ["Pacific/Kiritimati", "America/Adak"].find(
+    (candidate) => businessDate(now, candidate) !== utcDate,
+  );
+  if (!timeZone) {
+    throw new Error("Expected an extreme time zone to differ from the UTC date");
+  }
+  const fixture = await createAccountingFixture("dashboard-business-date", timeZone);
+
+  const collections = await fixture.api.dashboard.collections({
+    orgSlug: fixture.organization.slug,
+  });
+
+  expect(collections.trend).toHaveLength(14);
+  expect(collections.trend.at(-1)?.day).toBe(businessDate(new Date(), timeZone));
+});
 
 async function journalFor(fixture: AccountingFixture, sourceType: string, sourceId: string) {
   const entries = await db
@@ -650,6 +671,8 @@ test("duplicate source posting is rejected", async () => {
         sourceId: issued.invoice.id,
         narration: "Duplicate",
         createdBy: fixture.owner.user.id,
+        now: new Date(),
+        timeZone: "Asia/Kolkata",
         lines: [
           { account: "patient_receivables", debit: "1.00" },
           { account: "revenue_other", credit: "1.00" },

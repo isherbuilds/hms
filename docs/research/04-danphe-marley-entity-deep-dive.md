@@ -30,7 +30,7 @@ contain — at the entity level, not the module-name level?
    a document, not a report, raises the odds our Slice-11 "reopen" clause fires. Interview
    accordingly.
 3. **Payment modes are configuration data, not an enum.** Danphe drives tenders from lookup tables
-   with per-mode/per-page split flags; split tender is child rows; the *bill* carries the one
+   with per-mode/per-page split flags; split tender is child rows; the _bill_ carries the one
    fiscal-year `InvoiceNo` while tender rows do not get statutory numbers. Two consequences with
    different urgency: our `cash/upi/card` CHECK is cheap to widen by an appended migration at any
    time (wait for the interview; do not widen speculatively), while our per-payment receipt
@@ -71,7 +71,7 @@ contain — at the entity level, not the module-name level?
   deletes omitted lines, logging old lines as JSON (`AccountingController.cs:3101-3112, 5900+`).
   Reversal deletes original transactions at date+section scope after a JSON snapshot
   (`AccountingController.cs:5346-5385`).
-- Sync state is split across source flags (`IsTransferedToAcc`) updated *after* the accounting
+- Sync state is split across source flags (`IsTransferedToAcc`) updated _after_ the accounting
   commit via `SP_UpdateIsTransferToACC` — not atomic
   (`AccTransfer/Accounting/AccountingTransferData.cs:778-860`). No control totals/variance in the
   transfer history row (`AccountingModels/Logs/AccountingTransactionHistoryModel.cs:10-19`).
@@ -195,7 +195,7 @@ contain — at the entity level, not the module-name level?
   [verified read; whether this helper is on the active login path is not established].
 - Tenancy: `HospitalId` appears on accounting config models
   (`AccountingModels/Config/AccountingBillLedgerMappingModel.cs:18`); domain rows carry
-  `CounterId`/`StoreId`/`BranchId` (operational scopes) and `OrganizationId` means *payer*
+  `CounterId`/`StoreId`/`BranchId` (operational scopes) and `OrganizationId` means _payer_
   (`BillingModels/Config/CreditOrganizationModel.cs:9-10`). Verdict: single-hospital per
   deployment; our `orgId NOT NULL` + guard model is strictly ahead. Doc 01's blocked entity-level
   claims are now confirmed.

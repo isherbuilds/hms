@@ -9,14 +9,14 @@ Every doc has been owner-reviewed; outcomes are in the decision log below and ea
 The deferred docs are kept because they carry directional design (schema shapes, state
 machines) for modules the trigger table in the roadmap may later unlock:
 
-| Doc                                               | Proposal                                    | Revisit when                                             |
-| ------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------- |
-| [02](./02-appointments-encounters.md)             | Appointments + encounters, status machines  | Appointment trigger fires (roadmap decision 4)           |
-| [03](./03-orders.md)                              | One generic orders table                    | Lab/radiology fulfillment is sold to the pilot           |
-| [06](./06-observations-lab.md)                    | Template-driven typed observations          | Lab result entry is sold to the pilot                    |
-| [07](./07-service-units-beds.md)                  | Service-unit tree, beds, occupancy          | IPD trigger fires                                        |
-| [08](./08-encounter-finalization-immutability.md) | Finalization immutability + in-txn audit    | Revisit with 02; conflicts with the settled ADR 0005 call |
-| [05](./05-patient-master-additions.md)            | Patient master additions                    | Implemented (v0 Slice 3, amended)                        |
+| Doc                                               | Proposal                                   | Revisit when                                              |
+| ------------------------------------------------- | ------------------------------------------ | --------------------------------------------------------- |
+| [02](./02-appointments-encounters.md)             | Appointments + encounters, status machines | Appointment trigger fires (roadmap decision 4)            |
+| [03](./03-orders.md)                              | One generic orders table                   | Lab/radiology fulfillment is sold to the pilot            |
+| [06](./06-observations-lab.md)                    | Template-driven typed observations         | Lab result entry is sold to the pilot                     |
+| [07](./07-service-units-beds.md)                  | Service-unit tree, beds, occupancy         | IPD trigger fires                                         |
+| [08](./08-encounter-finalization-immutability.md) | Finalization immutability + in-txn audit   | Revisit with 02; conflicts with the settled ADR 0005 call |
+| [05](./05-patient-master-additions.md)            | Patient master additions                   | Implemented (v0 Slice 3, amended)                         |
 
 ## Decision log
 

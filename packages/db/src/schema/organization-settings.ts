@@ -6,14 +6,15 @@ import { organization } from "./auth";
 /**
  * Single source of truth for a fresh organization's settings: `settings.get`
  * returns these until the first save, and `settings.update` always writes a
- * full row. The follow-up-days DB default exists only to backfill existing
- * rows during migration; `SETTINGS_DEFAULTS` remains the application source.
+ * full row. Database defaults on selected columns only backfill rows during
+ * migration; `SETTINGS_DEFAULTS` remains the application source.
  */
 export const SETTINGS_DEFAULTS = {
   legalName: "",
   address: "",
   taxId: "",
   currency: "INR",
+  timeZone: "Asia/Kolkata",
   mrnPrefix: "",
   invoicePrefix: "INV",
   receiptPrefix: "RCT",
@@ -41,6 +42,11 @@ export const organizationSettings = pgTable(
     creditNotePrefix: text("credit_note_prefix").notNull(),
     /** 1–12; April (4) is the Indian fiscal year start. */
     fiscalYearStartMonth: integer("fiscal_year_start_month").notNull(),
+    /**
+     * The DB default exists solely to backfill existing rows in the migration;
+     * `SETTINGS_DEFAULTS` remains the application-level source.
+     */
+    timeZone: text("time_zone").notNull().default("Asia/Kolkata"),
     /**
      * The DB default exists solely to backfill existing rows in the migration;
      * `SETTINGS_DEFAULTS` remains the application-level source.

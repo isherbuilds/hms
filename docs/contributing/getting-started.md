@@ -56,7 +56,7 @@ way an operator would. See [ADR 0013](./decisions/0013-signup-disabled.md).
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bun run check-types`    | Typechecks every TypeScript package plus `tests/`. `packages/config` ships no TypeScript; `apps/fumadocs` is checked by its own build; `apps/web/server/` is resolved by Nitro. |
 | `bun run check`          | oxlint + oxfmt (writes).                                                                                                                                                        |
-| `bun run test`           | Integration tests against real PostgreSQL. Uses and **wipes** the `hms_test` database.                                                                                 |
+| `bun run test`           | Integration tests against real PostgreSQL. Uses and **wipes** the `hms_test` database.                                                                                          |
 | `bun run db:generate`    | Generates a drizzle-kit migration into `packages/db/src/migrations/`.                                                                                                           |
 | `bun run db:migrate`     | Applies migrations.                                                                                                                                                             |
 | `bun run db:up`          | Starts the dev Postgres + SeaweedFS stack (`packages/db/docker-compose.dev.yaml`), waiting for it to be healthy. No-op if already running.                                      |
@@ -64,6 +64,9 @@ way an operator would. See [ADR 0013](./decisions/0013-signup-disabled.md).
 | `bun run create-user`    | `create-user <email> <name> <password>` — creates one account directly (ADR 0013).                                                                                              |
 | `bun run create-founder` | `create-founder <name> <password>` — creates the `FOUNDING_EMAIL` account for the first org (ADR 0014). Idempotent.                                                             |
 | `bun run db:studio`      | Drizzle Studio.                                                                                                                                                                 |
+
+All TypeScript workspaces use TypeScript 7's native CLI. The Astro docs app is
+checked through `astro build` rather than the root `check-types` task.
 
 Run all three of `check-types`, `check`, and `test` before calling a change
 done.

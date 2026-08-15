@@ -74,6 +74,18 @@ and a fresh instance for each SSR router. Queries do not retry during SSR or
 after `401`/`403`; other browser failures retry at most twice. Stale queries
 retain TanStack Query's mount, focus, and reconnect revalidation.
 
+`apps/web/src/lib/operational-query.ts` owns the polling policy for the four screens
+several terminals share: the front-desk queue and visit detail, and the billing visits
+list and visit workspace. They refetch every 10 seconds and on window focus, with a
+5-second `staleTime` under the 60-second global default. TanStack suppresses the
+interval in background tabs, so an idle terminal costs nothing. There are no
+websockets or SSE.
+
+When a mutation loses a race, the server answers `CONFLICT` and
+`refreshVisitOnConflict` in `apps/web/src/lib/visit-operational-query.ts` invalidates
+the queue, the visit, its pending charges, and its invoices, then the caller toasts the
+cross-terminal cause. The loser sees the winner's state rather than an opaque error.
+
 Org pages take `orgSlug` from `/org/$orgSlug`, pass it in procedure input, and include
 it in tenant-specific invalidation keys. oRPC includes procedure input in query
 identity, so tenant cache separation requires no second client or custom header.

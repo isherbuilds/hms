@@ -1,8 +1,5 @@
 import { db } from "@hms/db";
-import {
-  SETTINGS_DEFAULTS,
-  organizationSettings,
-} from "@hms/db/schema/organization-settings";
+import { SETTINGS_DEFAULTS, organizationSettings } from "@hms/db/schema/organization-settings";
 import { eq } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { z } from "zod";
@@ -14,7 +11,22 @@ import { invalidateOrgSettings } from "../lib/settings-cache";
 /**
  * The full settings row is validated and written as one unit — there is no
  * partial update, so a saved row never mixes stored and default values.
+ *
+ * Time zones are validated by probing the formatter, not by membership in
+ * `Intl.supportedValuesOf("timeZone")`: Bun's JavaScriptCore lists only the
+ * legacy canonical ids (`Asia/Calcutta`), so a membership check would reject
+ * `Asia/Kolkata` — the very default the migration backfills. The probe accepts
+ * exactly the zones the runtime can compute business dates in.
  */
+function isSupportedTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const settingsFields = z.object({
   legalName: z.string().trim().max(200),
   address: z.string().trim().max(500),
@@ -24,6 +36,9 @@ const settingsFields = z.object({
     .trim()
     .toUpperCase()
     .regex(/^[A-Z]{3}$/, "Use a three-letter currency code"),
+  timeZone: z.string().refine(isSupportedTimeZone, {
+    message: "Use a valid IANA time zone like Asia/Kolkata",
+  }),
   mrnPrefix: z.string().trim().max(10),
   invoicePrefix: z.string().trim().max(10),
   receiptPrefix: z.string().trim().max(10),
@@ -57,6 +72,8 @@ export const settingsRouter = {
       const { scope } = context;
       const { orgSlug: _claim, ...fields } = input;
 
+      // A later time-zone change re-derives future dates only; rows already
+      // written keep the Business Date they were numbered under.
       const [row] = await db
         .insert(organizationSettings)
         .values({ ...fields, orgId: scope.orgId })

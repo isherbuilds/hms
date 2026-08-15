@@ -19,6 +19,7 @@ import {
   FormMessage,
 } from "@hms/ui/components/form";
 import { Input } from "@hms/ui/components/input";
+import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
   Table,
@@ -36,15 +37,15 @@ import { useState, type FormEventHandler, type ReactNode } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { LastUpdated } from "@/components/last-updated";
 import { PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
+import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
+import { refreshVisitOnConflict } from "@/lib/visit-operational-query";
 
 const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
 const RATE = /^\d{1,2}(\.\d{1,2})?$/;
-const SELECT_CLASS =
-  "h-8 w-full rounded-none border border-input bg-transparent px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:opacity-50 aria-invalid:border-destructive dark:bg-input/30";
-
 const addChargeSchema = z
   .object({
     mode: z.enum(["catalog", "manual"]),
@@ -158,13 +159,21 @@ function BillingVisitRoute() {
   const [addOpen, setAddOpen] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [voiding, setVoiding] = useState<{ id: string; description: string } | null>(null);
-  const detail = useQuery(orpc.visit.get.queryOptions({ input: { orgSlug, visitId } }));
-  const pending = useQuery(
-    orpc.billing.listPendingCharges.queryOptions({ input: { orgSlug, visitId } }),
-  );
-  const invoices = useQuery(
-    orpc.billing.listInvoices.queryOptions({ input: { orgSlug, visitId } }),
-  );
+  const detailQuery = {
+    ...orpc.visit.get.queryOptions({ input: { orgSlug, visitId } }),
+    ...OPERATIONAL_REFETCH,
+  };
+  const detail = useQuery(detailQuery);
+  const pendingQuery = {
+    ...orpc.billing.listPendingCharges.queryOptions({ input: { orgSlug, visitId } }),
+    ...OPERATIONAL_REFETCH,
+  };
+  const pending = useQuery(pendingQuery);
+  const invoicesQuery = {
+    ...orpc.billing.listInvoices.queryOptions({ input: { orgSlug, visitId } }),
+    ...OPERATIONAL_REFETCH,
+  };
+  const invoices = useQuery(invoicesQuery);
   const membership = useQuery(orpc.members.me.queryOptions({ input: { orgSlug } }));
   const canCredit = membership.data?.roles
     ? authorize(membership.data.roles, { billing: ["creditNote"] })
@@ -203,7 +212,10 @@ function BillingVisitRoute() {
         title={`Billing · Token ${visit.tokenNumber}`}
         description={`${patient.name} · ${patient.mrn}`}
         action={
-          <div className="flex gap-1">
+          <div className="flex flex-wrap items-center gap-1">
+            <LastUpdated
+              queryKeys={[detailQuery.queryKey, pendingQuery.queryKey, invoicesQuery.queryKey]}
+            />
             <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
               Add charge
             </Button>
@@ -426,10 +438,10 @@ function AddChargeDialog({
                 <FormItem>
                   <FormLabel>Charge type</FormLabel>
                   <FormControl>
-                    <select className={SELECT_CLASS} {...field} disabled={mutation.isPending}>
+                    <NativeSelect {...field} disabled={mutation.isPending}>
                       <option value="catalog">Catalog</option>
                       <option value="manual">Manual</option>
-                    </select>
+                    </NativeSelect>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -443,18 +455,14 @@ function AddChargeDialog({
                   <FormItem>
                     <FormLabel>Catalog item</FormLabel>
                     <FormControl>
-                      <select
-                        className={SELECT_CLASS}
-                        {...field}
-                        disabled={mutation.isPending || catalog.isPending}
-                      >
+                      <NativeSelect {...field} disabled={mutation.isPending || catalog.isPending}>
                         <option value="">Choose an item</option>
                         {(catalog.data ?? []).map((item) => (
                           <option key={item.id} value={item.id}>
                             {item.name} · {item.unitPrice}
                           </option>
                         ))}
-                      </select>
+                      </NativeSelect>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -647,6 +655,7 @@ function IssueInvoiceDialog({
   orgSlug: string;
   visitId: string;
 }) {
+  const queryClient = useQueryClient();
   const invalidate = useBillingInvalidation(orgSlug, visitId);
   const form = useZodForm(invoiceSchema, {
     defaultValues: { discountAmount: "0", discountReason: "" },
@@ -658,7 +667,15 @@ function IssueInvoiceDialog({
         toast.success(`Invoice ${invoice.invoiceNumber} issued`);
         onOpenChange(false);
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => {
+        if (refreshVisitOnConflict(queryClient, error, orgSlug, visitId)) {
+          toast.error(
+            "Another terminal already issued this invoice — refreshed to the current state.",
+          );
+          return;
+        }
+        toast.error(error.message);
+      },
     }),
   );
   return (
@@ -1103,14 +1120,14 @@ function RefundDialog({
                 <FormItem>
                   <FormLabel>Credit note</FormLabel>
                   <FormControl>
-                    <select className={SELECT_CLASS} {...field}>
+                    <NativeSelect {...field}>
                       <option value="">Choose a credit note</option>
                       {creditNotes.map((note) => (
                         <option key={note.id} value={note.id}>
                           {note.creditNoteNumber} · {note.total}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -1123,11 +1140,11 @@ function RefundDialog({
                 <FormItem>
                   <FormLabel>Method</FormLabel>
                   <FormControl>
-                    <select className={SELECT_CLASS} {...field} disabled={mutation.isPending}>
+                    <NativeSelect {...field} disabled={mutation.isPending}>
                       <option value="cash">Cash</option>
                       <option value="upi">UPI</option>
                       <option value="card">Card</option>
-                    </select>
+                    </NativeSelect>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -1223,11 +1240,11 @@ function MoneyActionFields({ form, pending }: { form: PaymentForm; pending: bool
           <FormItem>
             <FormLabel>Method</FormLabel>
             <FormControl>
-              <select className={SELECT_CLASS} {...field} disabled={pending}>
+              <NativeSelect {...field} disabled={pending}>
                 <option value="cash">Cash</option>
                 <option value="upi">UPI</option>
                 <option value="card">Card</option>
-              </select>
+              </NativeSelect>
             </FormControl>
             <FormMessage />
           </FormItem>

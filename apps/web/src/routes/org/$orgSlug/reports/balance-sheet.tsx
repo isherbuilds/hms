@@ -24,8 +24,11 @@ import {
 } from "@/lib/report-presentation";
 
 export const Route = createFileRoute("/org/$orgSlug/reports/balance-sheet")({
-  loader: ({ context: { queryClient }, params: { orgSlug } }) => {
-    const asOf = today();
+  loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
+    const { timeZone } = await queryClient.ensureQueryData(
+      orpc.settings.get.queryOptions({ input: { orgSlug } }),
+    );
+    const asOf = today(timeZone);
     void queryClient.prefetchQuery(
       orpc.report.balanceSheet.queryOptions({ input: { orgSlug, asOf } }),
     );

@@ -15,11 +15,7 @@ import {
   InputGroupButton,
   InputGroupTextarea,
 } from "@hms/ui/components/input-group";
-import {
-  Message,
-  MessageContent as MessageBody,
-  MessageHeader,
-} from "@hms/ui/components/message";
+import { Message, MessageContent as MessageBody, MessageHeader } from "@hms/ui/components/message";
 import {
   MessageScroller,
   MessageScrollerButton,

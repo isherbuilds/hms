@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { safeRedirect } from "../../apps/web/src/utils/safe-redirect";
+import { safeRedirect } from "../../apps/web/src/lib/safe-redirect";
 
 test("safeRedirect keeps same-app paths and rejects foreign origins", () => {
   expect(safeRedirect(" /org/acme/files?name=report..pdf#details ")).toBe(

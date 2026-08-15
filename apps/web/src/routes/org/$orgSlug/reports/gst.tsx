@@ -24,8 +24,11 @@ import {
 } from "@/lib/report-presentation";
 
 export const Route = createFileRoute("/org/$orgSlug/reports/gst")({
-  loader: ({ context: { queryClient }, params: { orgSlug } }) => {
-    const range = defaultRange();
+  loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
+    const { timeZone } = await queryClient.ensureQueryData(
+      orpc.settings.get.queryOptions({ input: { orgSlug } }),
+    );
+    const range = defaultRange(timeZone);
     void queryClient.prefetchQuery(orpc.report.gst.queryOptions({ input: { orgSlug, ...range } }));
     return range;
   },

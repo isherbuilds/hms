@@ -2,12 +2,10 @@
 
 This is an Astro application generated with [Create Fumadocs](https://github.com/fuma-nama/fumadocs).
 
-Run development server:
+Run the development server from the repository root:
 
 ```bash
-npm run dev
-# or
-pnpm dev
-# or
-yarn dev
+bun run --cwd apps/fumadocs dev
 ```
+
+Run `bun run --cwd apps/fumadocs build` for the production and type check.

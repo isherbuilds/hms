@@ -16,6 +16,7 @@ import {
   FormMessage,
 } from "@hms/ui/components/form";
 import { Input } from "@hms/ui/components/input";
+import { NativeSelect } from "@hms/ui/components/native-select";
 import { Skeleton } from "@hms/ui/components/skeleton";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
@@ -36,6 +37,7 @@ import { z } from "zod";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
+import { isConflictError } from "@/lib/orpc-error";
 
 export const Route = createFileRoute("/org/$orgSlug/settings/staff")({
   loader: ({ context: { queryClient }, params: { orgSlug } }) => {
@@ -46,9 +48,6 @@ export const Route = createFileRoute("/org/$orgSlug/settings/staff")({
   },
   component: StaffRoute,
 });
-
-const SELECT_CLASS =
-  "h-8 w-full rounded-none border border-input bg-transparent px-2 text-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 dark:bg-input/30";
 
 const departmentSchema = z.object({
   name: z
@@ -377,10 +376,8 @@ function DepartmentDialog({
     onClose();
   };
   const onError = (error: unknown) => {
-    const conflict =
-      typeof error === "object" && error !== null && "code" in error && error.code === "CONFLICT";
     toast.error(
-      conflict
+      isConflictError(error)
         ? "Department already exists"
         : error instanceof Error
           ? error.message
@@ -443,8 +440,7 @@ function DepartmentDialog({
                 <FormItem>
                   <FormLabel>Default consult fee (optional)</FormLabel>
                   <FormControl>
-                    <select
-                      className={SELECT_CLASS}
+                    <NativeSelect
                       name={field.name}
                       ref={field.ref}
                       onBlur={field.onBlur}
@@ -458,7 +454,7 @@ function DepartmentDialog({
                           {item.name} ({item.code})
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -585,7 +581,7 @@ function PractitionerDialog({
                   <FormItem>
                     <FormLabel>Department</FormLabel>
                     <FormControl>
-                      <select className={SELECT_CLASS} {...field} disabled={isSubmitting}>
+                      <NativeSelect {...field} disabled={isSubmitting}>
                         <option value="" disabled>
                           Choose a department
                         </option>
@@ -594,7 +590,7 @@ function PractitionerDialog({
                             {department.name}
                           </option>
                         ))}
-                      </select>
+                      </NativeSelect>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -623,8 +619,7 @@ function PractitionerDialog({
                 <FormItem>
                   <FormLabel>Linked member (optional)</FormLabel>
                   <FormControl>
-                    <select
-                      className={SELECT_CLASS}
+                    <NativeSelect
                       name={field.name}
                       ref={field.ref}
                       onBlur={field.onBlur}
@@ -638,7 +633,7 @@ function PractitionerDialog({
                           {member.name} — {member.email}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -652,8 +647,7 @@ function PractitionerDialog({
                 <FormItem>
                   <FormLabel>Consult fee item (optional)</FormLabel>
                   <FormControl>
-                    <select
-                      className={SELECT_CLASS}
+                    <NativeSelect
                       name={field.name}
                       ref={field.ref}
                       onBlur={field.onBlur}
@@ -667,7 +661,7 @@ function PractitionerDialog({
                           {item.name} ({item.code})
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -681,8 +675,7 @@ function PractitionerDialog({
                   <FormItem>
                     <FormLabel>Follow-up fee (optional)</FormLabel>
                     <FormControl>
-                      <select
-                        className={SELECT_CLASS}
+                      <NativeSelect
                         name={field.name}
                         ref={field.ref}
                         onBlur={field.onBlur}
@@ -696,7 +689,7 @@ function PractitionerDialog({
                             {item.name} ({item.code})
                           </option>
                         ))}
-                      </select>
+                      </NativeSelect>
                     </FormControl>
                     <FormMessage />
                   </FormItem>

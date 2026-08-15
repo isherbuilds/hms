@@ -68,14 +68,23 @@ not tenant scope.
 
 ## Reports and dates
 
-Journal dates are bucketed in `Asia/Kolkata`. Document timestamps used by the
-GST register are converted to the same zone before taking their calendar date.
-This is a v0 assumption until organizations gain an explicit timezone setting.
+Journal dates use the organization's configured Business Date. Document timestamps used by the
+GST register are converted to that same time zone before taking their calendar date. The time zone
+is captured at onboarding and stays editable. Changing it moves the day boundary for records
+written afterwards; token, document, journal, and report dates already on disk keep the calendar
+day they were numbered under.
 
 Trial balance and billing-ledger balance sheet read the ledger. The GST report instead reads
 invoice and credit-note documents and their snapshotted lines, because tax
 reporting requires document numbers, patient snapshots, rates, and tax codes
 that do not belong on journal lines.
+
+The routers own authorization, tenant-scoped SQL, transactions, and document
+orchestration. Integer-money calculations live in `invoice-math.ts`; report
+aggregation lives in `report-math.ts`. Balance collection from tenant-scoped billing documents
+lives in `invoice-balance.ts`. The math modules are pure: they receive
+already-scoped rows and return the finished financial view without reading the
+database or request context.
 
 ### GST compliance boundary
 

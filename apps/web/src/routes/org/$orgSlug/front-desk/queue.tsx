@@ -17,6 +17,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@hms/ui/components/form";
+import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
   Table,
@@ -33,16 +34,16 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { LastUpdated } from "@/components/last-updated";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
+import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
+import { refreshVisitOnConflict } from "@/lib/visit-operational-query";
 
 const ACTIVE_STATUSES = ["waiting", "in_consult"] as const;
 const ALL_STATUSES = ["waiting", "in_consult", "completed", "cancelled"] as const;
 type VisitStatus = (typeof ALL_STATUSES)[number];
-
-const SELECT_CLASS =
-  "h-8 w-full rounded-none border border-input bg-transparent px-2 text-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:bg-input/30";
 
 const STATUS_LABELS: Record<VisitStatus, string> = {
   waiting: "Waiting",
@@ -84,8 +85,8 @@ function QueueRoute() {
 
   const departments = useQuery(orpc.staff.listDepartments.queryOptions({ input: { orgSlug } }));
   const practitioners = useQuery(orpc.staff.listPractitioners.queryOptions({ input: { orgSlug } }));
-  const queue = useQuery(
-    orpc.visit.queue.queryOptions({
+  const queueQuery = {
+    ...orpc.visit.queue.queryOptions({
       input: {
         orgSlug,
         departmentId: departmentId || undefined,
@@ -93,7 +94,9 @@ function QueueRoute() {
         statuses,
       },
     }),
-  );
+    ...OPERATIONAL_REFETCH,
+  };
+  const queue = useQuery(queueQuery);
 
   const transition = useMutation(
     orpc.visit.transition.mutationOptions({
@@ -109,19 +112,30 @@ function QueueRoute() {
               : "Visit cancelled",
         );
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error, variables) => {
+        if (refreshVisitOnConflict(queryClient, error, orgSlug, variables.visitId)) {
+          toast.error(
+            "Another terminal already moved this visit — refreshed to the current state.",
+          );
+          return;
+        }
+        toast.error(error.message);
+      },
     }),
   );
 
   return (
     <>
-      <PageHeader title="Queue" description="Today's outpatient queue" />
+      <PageHeader
+        title="Queue"
+        description="Today's outpatient queue"
+        action={<LastUpdated queryKeys={[queueQuery.queryKey]} />}
+      />
       <PageBody>
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex w-52 flex-col gap-1.5 text-xs font-medium">
             Department
-            <select
-              className={SELECT_CLASS}
+            <NativeSelect
               value={departmentId}
               onChange={(event) => {
                 setDepartmentId(event.target.value);
@@ -140,12 +154,11 @@ function QueueRoute() {
                   {department.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
           <label className="flex w-52 flex-col gap-1.5 text-xs font-medium">
             Practitioner
-            <select
-              className={SELECT_CLASS}
+            <NativeSelect
               value={practitionerId}
               onChange={(event) => setPractitionerId(event.target.value)}
             >
@@ -157,7 +170,7 @@ function QueueRoute() {
                     {practitioner.name}
                   </option>
                 ))}
-            </select>
+            </NativeSelect>
           </label>
           <label className="flex h-8 items-center gap-2 text-xs font-medium">
             <Checkbox checked={includeClosed} onCheckedChange={setIncludeClosed} />
@@ -308,7 +321,15 @@ function CancelVisitDialog({
         toast.success("Visit cancelled");
         onClose();
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => {
+        if (refreshVisitOnConflict(queryClient, error, orgSlug, visitId)) {
+          toast.error(
+            "Another terminal already moved this visit — refreshed to the current state.",
+          );
+          return;
+        }
+        toast.error(error.message);
+      },
     }),
   );
   const submit = form.handleSubmit(({ cancelReason }) => {

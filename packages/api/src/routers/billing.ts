@@ -15,13 +15,17 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { businessDateAnchor } from "../lib/business-date";
+import { invoiceBalanceFor, invoiceBalancesFor } from "../lib/invoice-balance";
 import {
+  calculateInvoiceBalance,
   computeInvoiceLines,
   derivePartialCredit,
   documentNumber,
   fiscalYearLabel,
   fromPaise,
   toPaise,
+  toSignedPaise,
 } from "../lib/invoice-math";
 import {
   postJournalEntry,
@@ -61,60 +65,6 @@ const creditLineInput = z.union([
   z.object({ invoiceLineId: z.string(), full: z.literal(true) }).strict(),
   z.object({ invoiceLineId: z.string(), gross: positiveMoney }).strict(),
 ]);
-
-type BillingExecutor = Pick<typeof db, "select">;
-
-type InvoiceBalance = {
-  grandTotal: string;
-  creditTotal: string;
-  paymentsTotal: string;
-  refundsTotal: string;
-  outstanding: string;
-};
-
-async function invoiceBalanceFor(
-  executor: BillingExecutor,
-  orgId: string,
-  invoiceId: string,
-): Promise<InvoiceBalance> {
-  const [invoice] = await executor
-    .select({ grandTotal: invoices.grandTotal })
-    .from(invoices)
-    .where(and(eq(invoices.orgId, orgId), eq(invoices.id, invoiceId)))
-    .limit(1);
-
-  if (!invoice) {
-    throw new ORPCError("NOT_FOUND");
-  }
-
-  const invoiceCreditNotes = await executor
-    .select({ total: creditNotes.total })
-    .from(creditNotes)
-    .where(and(eq(creditNotes.orgId, orgId), eq(creditNotes.invoiceId, invoiceId)));
-  const invoicePayments = await executor
-    .select({ amount: payments.amount })
-    .from(payments)
-    .where(and(eq(payments.orgId, orgId), eq(payments.invoiceId, invoiceId)));
-  const invoiceRefunds = await executor
-    .select({ amount: refunds.amount })
-    .from(refunds)
-    .where(and(eq(refunds.orgId, orgId), eq(refunds.invoiceId, invoiceId)));
-
-  const grandTotalPaise = toPaise(invoice.grandTotal);
-  const creditTotalPaise = invoiceCreditNotes.reduce((sum, row) => sum + toPaise(row.total), 0);
-  const paymentsTotalPaise = invoicePayments.reduce((sum, row) => sum + toPaise(row.amount), 0);
-  const refundsTotalPaise = invoiceRefunds.reduce((sum, row) => sum + toPaise(row.amount), 0);
-
-  return {
-    grandTotal: fromPaise(grandTotalPaise),
-    creditTotal: fromPaise(creditTotalPaise),
-    paymentsTotal: fromPaise(paymentsTotalPaise),
-    refundsTotal: fromPaise(refundsTotalPaise),
-    outstanding: fromPaise(
-      grandTotalPaise - creditTotalPaise - paymentsTotalPaise + refundsTotalPaise,
-    ),
-  };
-}
 
 async function throwForMissingOrStaleCharge(chargeId: string, orgId: string): Promise<never> {
   const [existing] = await db
@@ -268,7 +218,10 @@ export const billingRouter = {
 
     const settings = await readOrgSettings(scope.orgId);
     const now = new Date();
-    const fiscalYear = fiscalYearLabel(now, settings.fiscalYearStartMonth);
+    const fiscalYear = fiscalYearLabel(
+      businessDateAnchor(now, settings.timeZone),
+      settings.fiscalYearStartMonth,
+    );
     const invoiceId = crypto.randomUUID();
 
     const result = await db.transaction(async (tx) => {
@@ -420,6 +373,7 @@ export const billingRouter = {
           narration: `Invoice ${invoiceNumber}`,
           createdBy: scope.userId,
           now,
+          timeZone: settings.timeZone,
           lines: [
             { account: "patient_receivables", debit: fromPaise(grandTotalPaise) },
             ...[...revenueByAccount].map(([account, amount]) => ({
@@ -458,12 +412,19 @@ export const billingRouter = {
     const { scope } = context;
     const settings = await readOrgSettings(scope.orgId);
     const now = new Date();
-    const fiscalYear = fiscalYearLabel(now, settings.fiscalYearStartMonth);
+    const fiscalYear = fiscalYearLabel(
+      businessDateAnchor(now, settings.timeZone),
+      settings.fiscalYearStartMonth,
+    );
     const paymentId = crypto.randomUUID();
 
     const payment = await db.transaction(async (tx) => {
       const [invoice] = await tx
-        .select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber })
+        .select({
+          id: invoices.id,
+          invoiceNumber: invoices.invoiceNumber,
+          grandTotal: invoices.grandTotal,
+        })
         .from(invoices)
         .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.id, input.invoiceId)))
         .limit(1)
@@ -473,10 +434,8 @@ export const billingRouter = {
         throw new ORPCError("NOT_FOUND");
       }
 
-      const balance = await invoiceBalanceFor(tx, scope.orgId, input.invoiceId);
-      const outstandingPaise = balance.outstanding.startsWith("-")
-        ? -toPaise(balance.outstanding.slice(1))
-        : toPaise(balance.outstanding);
+      const balance = await invoiceBalanceFor(tx, scope.orgId, invoice);
+      const outstandingPaise = toSignedPaise(balance.outstanding);
       if (toPaise(input.amount) > Math.max(0, outstandingPaise)) {
         throw new ORPCError("CONFLICT");
       }
@@ -509,6 +468,7 @@ export const billingRouter = {
         narration: `Receipt ${receiptNumber} · Invoice ${invoice.invoiceNumber}`,
         createdBy: scope.userId,
         now,
+        timeZone: settings.timeZone,
         lines: [
           { account: settlementAccountFor(input.method), debit: inserted.amount },
           { account: "patient_receivables", credit: inserted.amount },
@@ -543,7 +503,10 @@ export const billingRouter = {
 
     const settings = await readOrgSettings(scope.orgId);
     const now = new Date();
-    const fiscalYear = fiscalYearLabel(now, settings.fiscalYearStartMonth);
+    const fiscalYear = fiscalYearLabel(
+      businessDateAnchor(now, settings.timeZone),
+      settings.fiscalYearStartMonth,
+    );
     const creditNoteId = crypto.randomUUID();
 
     const result = await db.transaction(async (tx) => {
@@ -719,6 +682,7 @@ export const billingRouter = {
         narration: `Credit note ${creditNoteNumber} · Invoice ${invoice.invoiceNumber}`,
         createdBy: scope.userId,
         now,
+        timeZone: settings.timeZone,
         lines: [
           ...[...revenueByAccount].map(([account, amount]) => ({
             account,
@@ -759,7 +723,10 @@ export const billingRouter = {
     const { scope } = context;
     const settings = await readOrgSettings(scope.orgId);
     const now = new Date();
-    const fiscalYear = fiscalYearLabel(now, settings.fiscalYearStartMonth);
+    const fiscalYear = fiscalYearLabel(
+      businessDateAnchor(now, settings.timeZone),
+      settings.fiscalYearStartMonth,
+    );
     const refundId = crypto.randomUUID();
 
     const refund = await db.transaction(async (tx) => {
@@ -778,7 +745,11 @@ export const billingRouter = {
       }
 
       const [invoice] = await tx
-        .select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber })
+        .select({
+          id: invoices.id,
+          invoiceNumber: invoices.invoiceNumber,
+          grandTotal: invoices.grandTotal,
+        })
         .from(invoices)
         .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.id, creditNote.invoiceId)))
         .limit(1)
@@ -787,10 +758,8 @@ export const billingRouter = {
         throw new ORPCError("NOT_FOUND");
       }
 
-      const balance = await invoiceBalanceFor(tx, scope.orgId, creditNote.invoiceId);
-      const outstandingPaise = balance.outstanding.startsWith("-")
-        ? -toPaise(balance.outstanding.slice(1))
-        : toPaise(balance.outstanding);
+      const balance = await invoiceBalanceFor(tx, scope.orgId, invoice);
+      const outstandingPaise = toSignedPaise(balance.outstanding);
       const refundDuePaise = Math.max(0, -outstandingPaise);
       if (toPaise(input.amount) > refundDuePaise) {
         throw new ORPCError("CONFLICT");
@@ -834,6 +803,7 @@ export const billingRouter = {
         narration: `Refund ${refundNumber} · Invoice ${invoice.invoiceNumber}`,
         createdBy: scope.userId,
         now,
+        timeZone: settings.timeZone,
         lines: [
           { account: "patient_receivables", debit: inserted.amount },
           { account: settlementAccountFor(input.method), credit: inserted.amount },
@@ -855,7 +825,19 @@ export const billingRouter = {
   invoiceBalance: orgProcedure(
     { billing: ["read"] },
     orgInput.extend({ invoiceId: z.string() }),
-  ).handler(({ context, input }) => invoiceBalanceFor(db, context.scope.orgId, input.invoiceId)),
+  ).handler(async ({ context, input }) => {
+    const [invoice] = await db
+      .select({ id: invoices.id, grandTotal: invoices.grandTotal })
+      .from(invoices)
+      .where(and(eq(invoices.orgId, context.scope.orgId), eq(invoices.id, input.invoiceId)))
+      .limit(1);
+
+    if (!invoice) {
+      throw new ORPCError("NOT_FOUND");
+    }
+
+    return invoiceBalanceFor(db, context.scope.orgId, invoice);
+  }),
 
   listInvoices: orgProcedure(
     { billing: ["read"] },
@@ -878,12 +860,15 @@ export const billingRouter = {
       .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.visitId, input.visitId)))
       .orderBy(asc(invoices.createdAt));
 
-    return Promise.all(
-      rows.map(async (invoice) => ({
-        ...invoice,
-        ...(await invoiceBalanceFor(db, scope.orgId, invoice.id)),
-      })),
-    );
+    const balances = await invoiceBalancesFor(db, scope.orgId, rows);
+
+    return rows.map((invoice) => {
+      const balance = balances.get(invoice.id);
+      if (!balance) {
+        throw new Error(`Balance missing for invoice ${invoice.id}`);
+      }
+      return { ...invoice, ...balance };
+    });
   }),
 
   getInvoice: orgProcedure(
@@ -901,7 +886,7 @@ export const billingRouter = {
       throw new ORPCError("NOT_FOUND");
     }
 
-    const [lines, invoicePayments, notes, invoiceRefunds, balance] = await Promise.all([
+    const [lines, invoicePayments, notes, invoiceRefunds] = await Promise.all([
       db
         .select()
         .from(invoiceLines)
@@ -923,7 +908,6 @@ export const billingRouter = {
         .from(refunds)
         .where(and(eq(refunds.orgId, scope.orgId), eq(refunds.invoiceId, input.invoiceId)))
         .orderBy(asc(refunds.createdAt)),
-      invoiceBalanceFor(db, scope.orgId, input.invoiceId),
     ]);
 
     const notesWithLines = await Promise.all(
@@ -947,7 +931,12 @@ export const billingRouter = {
       payments: invoicePayments,
       creditNotes: notesWithLines,
       refunds: invoiceRefunds,
-      balance,
+      balance: calculateInvoiceBalance({
+        grandTotal: invoice.grandTotal,
+        credits: notes.map((note) => note.total),
+        payments: invoicePayments.map((payment) => payment.amount),
+        refunds: invoiceRefunds.map((refund) => refund.amount),
+      }),
     };
   }),
 };

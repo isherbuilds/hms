@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { generate as DefaultImage } from "fumadocs-ui/og/takumi";
+import { generate as DefaultImage } from "@fumadocs/base-ui/og/takumi";
 import { createElement } from "react";
 import { ImageResponse } from "takumi-js/response";
 

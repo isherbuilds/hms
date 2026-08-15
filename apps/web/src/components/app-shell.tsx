@@ -163,19 +163,12 @@ function OrgSwitcher({ activeOrgSlug }: { activeOrgSlug: string }) {
           {organizations?.map((org) => (
             <DropdownMenuItem
               key={org.id}
-              render={
-                <Link
-                  to="/org/$orgSlug/dashboard"
-                  params={{ orgSlug: org.slug }}
-                />
-              }
+              render={<Link to="/org/$orgSlug/dashboard" params={{ orgSlug: org.slug }} />}
               disabled={org.slug === activeOrgSlug}
               className="gap-2"
             >
               <span className="min-w-0 flex-1 truncate">{org.name}</span>
-              {org.slug === activeOrgSlug && (
-                <CheckIcon className="size-3.5 shrink-0" />
-              )}
+              {org.slug === activeOrgSlug && <CheckIcon className="size-3.5 shrink-0" />}
             </DropdownMenuItem>
           ))}
         </DropdownMenuGroup>
@@ -204,9 +197,7 @@ function UserFooter() {
         render={<SidebarMenuButton tooltip={session.user.email} />}
         className="justify-start"
       >
-        <span className="min-w-0 flex-1 truncate text-left">
-          {session.user.email}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-left">{session.user.email}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-(--anchor-width) min-w-56">
         <DropdownMenuGroup>
@@ -239,15 +230,11 @@ function UserFooter() {
 }
 
 function OrgSidebar({ orgSlug }: { orgSlug: string }) {
-  const membership = useQuery(
-    orpc.members.me.queryOptions({ input: { orgSlug } }),
-  );
+  const membership = useQuery(orpc.members.me.queryOptions({ input: { orgSlug } }));
   const roles = membership.data?.roles;
   // Until the roles land, show only what every role can reach, so a link never
   // appears and then disappears.
-  const visible = NAV.filter(({ permission }) =>
-    roles ? authorize(roles, permission) : true,
-  );
+  const visible = NAV.filter(({ permission }) => (roles ? authorize(roles, permission) : true));
   const showSettings = roles
     ? SETTINGS_PERMISSIONS.some((permission) => authorize(roles, permission))
     : true;
@@ -300,9 +287,7 @@ function OrgSidebar({ orgSlug }: { orgSlug: string }) {
               <SidebarMenuButton
                 tooltip="Settings"
                 className="data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-sidebar-accent-foreground"
-                render={
-                  <Link to="/org/$orgSlug/settings" params={{ orgSlug }} />
-                }
+                render={<Link to="/org/$orgSlug/settings" params={{ orgSlug }} />}
               >
                 <SettingsIcon />
                 <span>Settings</span>
@@ -321,13 +306,7 @@ function OrgSidebar({ orgSlug }: { orgSlug: string }) {
   );
 }
 
-export function AppShell({
-  orgSlug,
-  children,
-}: {
-  orgSlug: string;
-  children: ReactNode;
-}) {
+export function AppShell({ orgSlug, children }: { orgSlug: string; children: ReactNode }) {
   // The page title portals into this node, so the app bar carries it instead of
   // the page paying for a second band of chrome underneath.
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
@@ -342,16 +321,11 @@ export function AppShell({
               to keep in sync. */}
           <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-2 print:hidden">
             <SidebarTrigger />
-            <div
-              ref={setHeaderSlot}
-              className="flex min-w-0 flex-1 items-center"
-            />
+            <div ref={setHeaderSlot} className="flex min-w-0 flex-1 items-center" />
           </header>
 
           <main className="min-w-0 flex-1 overflow-y-auto print:overflow-visible">
-            <PageHeaderSlot.Provider value={headerSlot}>
-              {children}
-            </PageHeaderSlot.Provider>
+            <PageHeaderSlot.Provider value={headerSlot}>{children}</PageHeaderSlot.Provider>
           </main>
         </SidebarInset>
       </SidebarProvider>

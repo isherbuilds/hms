@@ -10,8 +10,8 @@
     "start": "bun run dist/index.mjs"
   },
   "dependencies": {
-    "@ai-sdk/devtools": "^1.0.11",
-    "@ai-sdk/google": "^4.0.37",
+    "@ai-sdk/devtools": "^1.0.12",
+    "@ai-sdk/google": "^4.0.44",
     "@hms/api": "workspace:*",
     "@hms/auth": "workspace:*",
     "@hms/db": "workspace:*",

@@ -42,6 +42,7 @@ async function createBillingFixture(seed: string) {
     address: `${seed} Address`,
     taxId: "GSTIN-TEST",
     currency: "INR",
+    timeZone: "Asia/Kolkata",
     mrnPrefix: "MRN",
     invoicePrefix: "INV",
     receiptPrefix: "RCT",

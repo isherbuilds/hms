@@ -12,9 +12,10 @@ import {
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { PlusIcon, SearchIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { orpc } from "@/lib/orpc";
 import { patientAgeYears } from "@/lib/patient-age";
 
@@ -35,17 +36,6 @@ export const Route = createFileRoute("/org/$orgSlug/front-desk/")({
 });
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
-
-function useDebouncedValue(value: string, delay: number): string {
-  const [debounced, setDebounced] = useState(value);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delay);
-    return () => window.clearTimeout(timer);
-  }, [delay, value]);
-
-  return debounced;
-}
 
 function patientAge(dateOfBirth: string | null, ageYears: number | null): string {
   const age = patientAgeYears(dateOfBirth, ageYears);

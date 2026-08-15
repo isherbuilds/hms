@@ -1,5 +1,5 @@
 import { cn } from "@hms/ui/lib/utils";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 /**
@@ -27,11 +27,6 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   const slot = useContext(PageHeaderSlot);
-  const [mounted, setMounted] = useState(false);
-
-  // The portal target only exists after the shell has mounted; until then the
-  // header renders in place so the page is never headerless.
-  useEffect(() => setMounted(true), []);
 
   const content = (
     <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -47,7 +42,7 @@ export function PageHeader({
     </div>
   );
 
-  if (!mounted || !slot) {
+  if (!slot) {
     return (
       <div className="flex items-center gap-3 border-b border-border px-4 py-3">{content}</div>
     );

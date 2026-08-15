@@ -9,6 +9,7 @@ import {
   FormMessage,
 } from "@hms/ui/components/form";
 import { Input } from "@hms/ui/components/input";
+import { NativeSelect } from "@hms/ui/components/native-select";
 import { Skeleton } from "@hms/ui/components/skeleton";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { Textarea } from "@hms/ui/components/textarea";
@@ -28,6 +29,22 @@ export const Route = createFileRoute("/org/$orgSlug/settings/organization")({
   component: SettingsRoute,
 });
 
+const supportedTimeZones = Intl.supportedValuesOf("timeZone");
+
+/**
+ * Probe instead of list membership: engines disagree on canonical ids
+ * (JavaScriptCore lists Asia/Calcutta, V8 lists Asia/Kolkata), and the server
+ * accepts any zone its runtime can format. Mirrors the router's check.
+ */
+function isSupportedTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Mirrors the router contract; messages here are for the person typing. */
 const formSchema = z.object({
   legalName: z.string().trim().max(200, "Keep the legal name under 200 characters"),
@@ -38,6 +55,9 @@ const formSchema = z.object({
     .trim()
     .toUpperCase()
     .regex(/^[A-Z]{3}$/, "Use a three-letter code like INR"),
+  timeZone: z.string().refine(isSupportedTimeZone, {
+    message: "Use a valid IANA time zone like Asia/Kolkata",
+  }),
   mrnPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
   invoicePrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
   receiptPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
@@ -60,9 +80,6 @@ const MONTHS = [
   "November",
   "December",
 ] as const;
-
-const SELECT_CLASS =
-  "h-8 w-full rounded-none border border-input bg-transparent px-2 text-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 dark:bg-input/30";
 
 function SettingsRoute() {
   const { orgSlug } = Route.useParams();
@@ -174,6 +191,33 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
               )}
             />
           </div>
+          <FormField
+            control={form.control}
+            name="timeZone"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Time zone</FormLabel>
+                <FormControl>
+                  <NativeSelect {...field}>
+                    {/* Keep a stored zone selectable even when this browser's canonical list omits it. */}
+                    {field.value && !supportedTimeZones.includes(field.value) ? (
+                      <option value={field.value}>{field.value}</option>
+                    ) : null}
+                    {supportedTimeZones.map((timeZone) => (
+                      <option key={timeZone} value={timeZone}>
+                        {timeZone}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </FormControl>
+                <FormDescription>
+                  Sets the local date used for queues, numbering, and reports. Changing it applies
+                  to new records; existing ones keep their date.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </section>
 
         <section className="flex flex-col gap-3">
@@ -240,8 +284,7 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                 <FormItem>
                   <FormLabel>Fiscal year starts in</FormLabel>
                   <FormControl>
-                    <select
-                      className={SELECT_CLASS}
+                    <NativeSelect
                       value={field.value}
                       onChange={(event) => field.onChange(Number(event.target.value))}
                       onBlur={field.onBlur}
@@ -253,7 +296,7 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                           {month}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </FormControl>
                   <FormMessage />
                 </FormItem>

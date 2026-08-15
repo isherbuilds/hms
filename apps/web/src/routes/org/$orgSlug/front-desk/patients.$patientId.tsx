@@ -16,6 +16,7 @@ import {
   FormMessage,
 } from "@hms/ui/components/form";
 import { Input } from "@hms/ui/components/input";
+import { NativeSelect } from "@hms/ui/components/native-select";
 import { Skeleton } from "@hms/ui/components/skeleton";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { Textarea } from "@hms/ui/components/textarea";
@@ -38,9 +39,6 @@ export const Route = createFileRoute("/org/$orgSlug/front-desk/patients/$patient
   },
   component: PatientDetailRoute,
 });
-
-const SELECT_CLASS =
-  "h-8 w-full rounded-none border border-input bg-transparent px-2 text-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 dark:bg-input/30";
 
 const patientFormSchema = z
   .object({
@@ -228,12 +226,12 @@ function PatientForm({
               <FormItem>
                 <FormLabel>Sex</FormLabel>
                 <FormControl>
-                  <select className={SELECT_CLASS} {...field}>
+                  <NativeSelect {...field}>
                     <option value="male">Male</option>
                     <option value="female">Female</option>
                     <option value="other">Other</option>
                     <option value="unknown">Unknown</option>
-                  </select>
+                  </NativeSelect>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -333,8 +331,7 @@ function PatientForm({
               <FormItem>
                 <FormLabel>Blood group</FormLabel>
                 <FormControl>
-                  <select
-                    className={SELECT_CLASS}
+                  <NativeSelect
                     value={field.value ?? ""}
                     onChange={(event) => field.onChange(event.target.value || null)}
                     onBlur={field.onBlur}
@@ -350,7 +347,7 @@ function PatientForm({
                     <option value="AB-">AB-</option>
                     <option value="O+">O+</option>
                     <option value="O-">O-</option>
-                  </select>
+                  </NativeSelect>
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -494,8 +491,7 @@ function NewVisitDialog({
                   <FormItem>
                     <FormLabel>Department</FormLabel>
                     <FormControl>
-                      <select
-                        className={SELECT_CLASS}
+                      <NativeSelect
                         value={field.value}
                         onChange={(event) => {
                           field.onChange(event);
@@ -513,7 +509,7 @@ function NewVisitDialog({
                             {department.name}
                           </option>
                         ))}
-                      </select>
+                      </NativeSelect>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -526,8 +522,7 @@ function NewVisitDialog({
                   <FormItem>
                     <FormLabel>Practitioner</FormLabel>
                     <FormControl>
-                      <select
-                        className={SELECT_CLASS}
+                      <NativeSelect
                         {...field}
                         disabled={!departmentId || loadingOptions || createVisit.isPending}
                       >
@@ -541,7 +536,7 @@ function NewVisitDialog({
                               {practitioner.name}
                             </option>
                           ))}
-                      </select>
+                      </NativeSelect>
                     </FormControl>
                     <FormMessage />
                   </FormItem>

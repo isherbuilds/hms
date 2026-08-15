@@ -15,10 +15,10 @@ decomposition of DanpheEMR (47 server modules) and Marley/Frappe Health (130 doc
    feedback by weeks. This amends decision 10's "pharmacy first" sequence: module order is now
    set by the trigger table below, not a fixed list.
 2. **Stage 1 — go-live gate** (spec: `docs/specs/accly-hms-go-live.md`): organization timezone
-   + one Business Date rule (tokens, queue, fiscal-year numbering, ledger, GST currently mix
-   UTC and hard-coded IST); multi-terminal freshness via polling — no realtime platform; daily
-   collections + OPD register; unbilled-activity + refund-due worklists. Live pilot traffic
-   starts after Stage 1 plus the operational checklist, not after more features.
+   - one Business Date rule (tokens, queue, fiscal-year numbering, ledger, GST currently mix
+     UTC and hard-coded IST); multi-terminal freshness via polling — no realtime platform; daily
+     collections + OPD register; unbilled-activity + refund-due worklists. Live pilot traffic
+     starts after Stage 1 plus the operational checklist, not after more features.
 3. **Stage 2 — post-live clinical depth**: longitudinal patient timeline (read model over
    visits, billing, prescription scans — no new clinical storage) and typed `vital_signs`
    capture (typed columns, new `observation` permission statement; no JSON/EAV). Specced after
@@ -54,19 +54,19 @@ decomposition of DanpheEMR (47 server modules) and Marley/Frappe Health (130 doc
 Each module starts only when its trigger evidence exists, and is sold to the pilot before
 build (decision 10's rule, kept).
 
-| Module | Trigger |
-| --- | --- |
-| Pharmacy POS + stock | Two stable live weeks; paid commitment; named pharmacy owner; clean opening stock (item/batch/expiry); sale/return/purchase/adjustment workflows signed off. Spec must also decide the inbound side (supplier invoice/GRN, GSTR-2 input-tax-credit) in-product vs accountant-side, and include the Schedule-H register — drug law, not a report preference |
-| In-house lab results | Hospital confirms in-house lab; named lab owner + signing clinician; two weeks of logged test volume; approved test templates + reference ranges; generic order (ServiceRequest) boundary accepted |
-| Radiology | Named owner maps workflow; store-reports-only vs imaging-integration decided; live demand exceeds billing + private report attachments |
-| IPD/ADT + beds | ~Four stable live weeks; paid IPD scope; service-unit/bed master data ready; admission→discharge, deposits, nursing ownership documented |
-| Emergency | Separate clinical-safety discovery; medical owner approves triage + downtime protocol; 24/7 support agreed |
-| OT/surgery | IPD live; named OT owner; consent/anesthesia/consumables/billing workflows approved |
-| Insurance/TPA | Live insured/credit share is meaningful, or a signed payer requirement; payer tariffs + claim lifecycle documented |
-| ABDM | A sale requires it; HFR/HPR/ABHA prerequisites + sandbox access; named compliance owner |
-| Payment gateway / patient portal | Remote prepayment has a real user journey; webhook/refund/reconciliation ownership documented |
-| Offline mode | Outage drill + connectivity log prove outages block operations after network/UPS remediation and the paper fallback is unacceptable |
-| Ambient AI consult | Speech feasibility spike on real consented consultations meets accuracy/time criteria; clinicians approve review workflow; paper source stays authoritative |
+| Module                           | Trigger                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pharmacy POS + stock             | Two stable live weeks; paid commitment; named pharmacy owner; clean opening stock (item/batch/expiry); sale/return/purchase/adjustment workflows signed off. Spec must also decide the inbound side (supplier invoice/GRN, GSTR-2 input-tax-credit) in-product vs accountant-side, and include the Schedule-H register — drug law, not a report preference |
+| In-house lab results             | Hospital confirms in-house lab; named lab owner + signing clinician; two weeks of logged test volume; approved test templates + reference ranges; generic order (ServiceRequest) boundary accepted                                                                                                                                                         |
+| Radiology                        | Named owner maps workflow; store-reports-only vs imaging-integration decided; live demand exceeds billing + private report attachments                                                                                                                                                                                                                     |
+| IPD/ADT + beds                   | ~Four stable live weeks; paid IPD scope; service-unit/bed master data ready; admission→discharge, deposits, nursing ownership documented                                                                                                                                                                                                                   |
+| Emergency                        | Separate clinical-safety discovery; medical owner approves triage + downtime protocol; 24/7 support agreed                                                                                                                                                                                                                                                 |
+| OT/surgery                       | IPD live; named OT owner; consent/anesthesia/consumables/billing workflows approved                                                                                                                                                                                                                                                                        |
+| Insurance/TPA                    | Live insured/credit share is meaningful, or a signed payer requirement; payer tariffs + claim lifecycle documented                                                                                                                                                                                                                                         |
+| ABDM                             | A sale requires it; HFR/HPR/ABHA prerequisites + sandbox access; named compliance owner                                                                                                                                                                                                                                                                    |
+| Payment gateway / patient portal | Remote prepayment has a real user journey; webhook/refund/reconciliation ownership documented                                                                                                                                                                                                                                                              |
+| Offline mode                     | Outage drill + connectivity log prove outages block operations after network/UPS remediation and the paper fallback is unacceptable                                                                                                                                                                                                                        |
+| Ambient AI consult               | Speech feasibility spike on real consented consultations meets accuracy/time criteria; clinicians approve review workflow; paper source stays authoritative                                                                                                                                                                                                |
 
 Until a fulfillment module exists, in-house tests and pharmacy items are billed through
 ordinary Charges — that interim boundary is deliberate. Outsourced (send-out) tests need no
@@ -124,7 +124,7 @@ module at all: bill through Charges and attach the received report via files.
   `payments.method` and `refunds.method` are CHECK-constrained to `cash/upi/card`
   (`packages/db/src/schema/payments.ts:30`, `refunds.ts:34`), and receipt numbers are
   per-payment-row. These two differ in urgency: widening the CHECK is an appended
-  DROP/ADD CONSTRAINT — legal at any time under the append-only rule (which ends *rebasing*,
+  DROP/ADD CONSTRAINT — legal at any time under the append-only rule (which ends _rebasing_,
   not migrating) — so do not widen it speculatively for tenders the pilot never takes. Receipt
   granularity is the genuinely hard one: once receipts are printed and numbered per payment
   row, switching to per-bill numbering breaks issued documents — settle it before the first

@@ -6,7 +6,7 @@ import { AlertCircleIcon, CheckIcon, EyeIcon, EyeOffIcon, LoaderIcon } from "luc
 import { useState, type ComponentProps, type FormEvent, type ReactNode } from "react";
 
 import { authClient } from "@/lib/auth-client";
-import { safeRedirect } from "@/utils/safe-redirect";
+import { safeRedirect } from "@/lib/safe-redirect";
 
 export const Route = createFileRoute("/login")({
   // Nothing here reads the session or touches browser-only APIs during render,

@@ -62,9 +62,12 @@ Owner-funded pilot readiness work; no new product bet. The gap list is verified 
 ## Implementation Decisions
 
 **Business Date (Slice 9).** `organization_settings` gains `timeZone` (IANA name, `NOT NULL`,
-migration backfill `'Asia/Kolkata'`, added to `SETTINGS_DEFAULTS`, validated against
-`Intl.supportedValuesOf("timeZone")` in the settings router and exposed on the admin settings
-page). One helper module `packages/api/src/lib/business-date.ts` owns every calendar
+migration backfill `'Asia/Kolkata'`, added to `SETTINGS_DEFAULTS`, validated by probing
+`Intl.DateTimeFormat` in the settings router and exposed on the admin settings page). Onboarding
+captures it and it stays editable: a hospital does not change country, and guarding the rare edit
+would cost more than it saves. A later change applies to records written afterwards; rows already
+numbered keep their Business Date.
+One helper module `packages/api/src/lib/business-date.ts` owns every calendar
 derivation:
 
 - `businessDate(instant, timeZone): string` — `YYYY-MM-DD` of the instant in the zone;
@@ -155,9 +158,9 @@ Existing seams only; prior art: `tests/support/database.ts` (real Postgres),
 
 ## Task Plan
 
-- [ ] Slice 9: Organization timezone + Business Date (riskiest: touches statutory numbering)
+- [x] Slice 9: Organization timezone + Business Date (riskiest: touches statutory numbering)
   - Acceptance: `organization_settings.timeZone` exists (IANA, backfilled `Asia/Kolkata`,
-    settings page + router validation via `Intl.supportedValuesOf`); token counter keys, queue
+    settings page + router validation via an `Intl.DateTimeFormat` probe); token counter keys, queue
     day window, all four fiscal-year numbering sites, ledger entry dates, and GST bucketing
     derive from `business-date.ts` and the org's zone; no remaining hard-coded
     `Asia/Kolkata`/UTC calendar derivation in `packages/api` outside the helper; a visit
@@ -175,7 +178,7 @@ Existing seams only; prior art: `tests/support/database.ts` (real Postgres),
   - Interfaces: exports `businessDate(instant, timeZone)`, `businessDayWindow(date, timeZone)`
     consumed by Slices 11–12; settings row gains `timeZone: string` (in `SETTINGS_DEFAULTS`
     and `settings.get/update`).
-- [ ] Slice 10: Multi-terminal freshness
+- [x] Slice 10: Multi-terminal freshness
   - Acceptance: front-desk queue, billing visits list, billing visit workspace, and front-desk
     visit detail refetch on a ~10 s foreground interval and on window focus; a `CONFLICT` from
     `visit.transition` or `billing.issueInvoice` invalidates the affected queries and toasts

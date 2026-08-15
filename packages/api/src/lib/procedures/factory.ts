@@ -82,7 +82,7 @@ export async function authorizeOrg(
  * carry the `orgSlug` claim (extend `orgInput`) because the guard reads it
  * after validation. Membership is resolved fresh per request — never cached.
  */
-export const orgProcedure = <TSchema extends z.ZodType<{ orgSlug: string }, any>>(
+export const orgProcedure = <TSchema extends z.ZodType<{ orgSlug: string }, unknown>>(
   permission: AppPermission,
   input: TSchema,
 ) =>

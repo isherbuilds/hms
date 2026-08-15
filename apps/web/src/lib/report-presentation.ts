@@ -4,24 +4,17 @@ const moneyFormatter = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 2,
 });
 
-export function reportToday(now = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en", {
-    timeZone: "Asia/Kolkata",
+export function reportToday(timeZone: string, now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).formatToParts(now);
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((candidate) => candidate.type === type)?.value;
-  const year = part("year");
-  const month = part("month");
-  const day = part("day");
-  if (!year || !month || !day) throw new Error("Could not format the India accounting date");
-  return `${year}-${month}-${day}`;
+  }).format(now);
 }
 
-export function reportDefaultRange(): { from: string; to: string } {
-  const to = reportToday();
+export function reportDefaultRange(timeZone: string): { from: string; to: string } {
+  const to = reportToday(timeZone);
   return { from: `${to.slice(0, 8)}01`, to };
 }
 

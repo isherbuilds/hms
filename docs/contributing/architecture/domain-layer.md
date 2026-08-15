@@ -158,7 +158,7 @@ fiscal-year series from the counter keys `invoice:<fy>`, `receipt:<fy>`,
 | Billing       | `billing.addCharge`, `billing.voidCharge`                                                            | `billing:write`      |
 | Billing       | `billing.issueInvoice`, `billing.recordPayment`                                                      | `billing:write`      |
 | Billing       | `billing.issueCreditNote`, `billing.recordRefund`                                                    | `billing:creditNote` |
-| Report        | `report.trialBalance`, `report.balanceSheet`, `report.gst`                                          | `report:read`        |
+| Report        | `report.trialBalance`, `report.balanceSheet`, `report.gst`                                           | `report:read`        |
 
 These are all `orgProcedure(...)` calls. Permission checks establish what the
 member may do; they do not replace the `orgId` predicate on every select,

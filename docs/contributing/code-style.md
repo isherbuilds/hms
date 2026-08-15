@@ -45,6 +45,12 @@ opt-in when presigning. A comment restating the code below it is noise.
   and keyset columns in order, so a page is an index range scan.
 - Paginate with keysets, not `OFFSET`.
 
+## UI primitives
+
+Use the components in `@hms/ui` for controls with a shared visual contract.
+For example, use `NativeSelect` instead of copying a page-local Tailwind class
+string onto `<select>`. Keep feature-specific layout and behavior in the route.
+
 ## Never hand-edit generated files
 
 `packages/db/src/migrations/**` and `apps/web/src/routeTree.gen.ts` are

@@ -18,6 +18,7 @@ import {
   FormMessage,
 } from "@hms/ui/components/form";
 import { Input } from "@hms/ui/components/input";
+import { NativeSelect } from "@hms/ui/components/native-select";
 import { Skeleton } from "@hms/ui/components/skeleton";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
@@ -37,6 +38,7 @@ import { z } from "zod";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
+import { isConflictError } from "@/lib/orpc-error";
 
 export const Route = createFileRoute("/org/$orgSlug/settings/catalog")({
   loader: ({ context: { queryClient }, params: { orgSlug } }) => {
@@ -44,9 +46,6 @@ export const Route = createFileRoute("/org/$orgSlug/settings/catalog")({
   },
   component: CatalogRoute,
 });
-
-const SELECT_CLASS =
-  "h-8 w-full rounded-none border border-input bg-transparent px-2 text-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 dark:bg-input/30";
 
 // Mirrors CATALOG_CATEGORIES in @hms/db/schema/catalog-items, kept
 // local so no server schema module reaches the client bundle (hard rule 6).
@@ -97,19 +96,6 @@ const EMPTY_VALUES: CatalogFormValues = {
   active: true,
 };
 
-function isConflictError(error: unknown): boolean {
-  let current = error;
-  const seen = new Set<unknown>();
-
-  while (current && typeof current === "object" && !seen.has(current)) {
-    seen.add(current);
-    if ("code" in current && current.code === "CONFLICT") return true;
-    current = "cause" in current ? current.cause : undefined;
-  }
-
-  return false;
-}
-
 function CatalogRoute() {
   const { orgSlug } = Route.useParams();
   const [category, setCategory] = useState<CatalogCategory | "">("");
@@ -138,8 +124,7 @@ function CatalogRoute() {
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex w-48 flex-col gap-1.5 text-xs font-medium">
             Category
-            <select
-              className={SELECT_CLASS}
+            <NativeSelect
               value={category}
               onChange={(event) => setCategory(event.target.value as CatalogCategory | "")}
             >
@@ -149,7 +134,7 @@ function CatalogRoute() {
                   {CATEGORY_LABELS[option]}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
           <label className="flex h-8 items-center gap-2 text-xs font-medium">
             <Checkbox checked={activeOnly} onCheckedChange={setActiveOnly} />
@@ -375,8 +360,7 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
                   <FormItem>
                     <FormLabel>Category</FormLabel>
                     <FormControl>
-                      <select
-                        className={SELECT_CLASS}
+                      <NativeSelect
                         value={field.value}
                         onChange={field.onChange}
                         onBlur={field.onBlur}
@@ -389,7 +373,7 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
                             {CATEGORY_LABELS[option]}
                           </option>
                         ))}
-                      </select>
+                      </NativeSelect>
                     </FormControl>
                     <FormMessage />
                   </FormItem>

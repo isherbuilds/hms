@@ -7,25 +7,24 @@ import {
   FormMessage,
 } from "@hms/ui/components/form";
 import { Input } from "@hms/ui/components/input";
+import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { Textarea } from "@hms/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AlertTriangleIcon } from "lucide-react";
-import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { PageBody, PageHeader } from "@/components/page";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
+import { isConflictError } from "@/lib/orpc-error";
 
 export const Route = createFileRoute("/org/$orgSlug/front-desk/register")({
   component: RegisterPatientRoute,
 });
-
-const SELECT_CLASS =
-  "h-8 w-full rounded-none border border-input bg-transparent px-2 text-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 dark:bg-input/30";
 
 const patientFormSchema = z
   .object({
@@ -48,17 +47,6 @@ const patientFormSchema = z
     message: "Enter a date of birth or age",
     path: ["dateOfBirth"],
   });
-
-function useDebouncedValue(value: string, delay: number): string {
-  const [debounced, setDebounced] = useState(value);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delay);
-    return () => window.clearTimeout(timer);
-  }, [delay, value]);
-
-  return debounced;
-}
 
 function RegisterPatientRoute() {
   const { orgSlug } = Route.useParams();
@@ -101,13 +89,8 @@ function RegisterPatientRoute() {
         });
       },
       onError: (error) => {
-        const conflict =
-          typeof error === "object" &&
-          error !== null &&
-          "code" in error &&
-          error.code === "CONFLICT";
         toast.error(
-          conflict
+          isConflictError(error)
             ? "A patient with this name and phone (or the same UID) already exists."
             : error.message,
         );
@@ -192,12 +175,12 @@ function RegisterPatientRoute() {
                   <FormItem>
                     <FormLabel>Sex</FormLabel>
                     <FormControl>
-                      <select className={SELECT_CLASS} {...field}>
+                      <NativeSelect {...field}>
                         <option value="male">Male</option>
                         <option value="female">Female</option>
                         <option value="other">Other</option>
                         <option value="unknown">Unknown</option>
-                      </select>
+                      </NativeSelect>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -299,8 +282,7 @@ function RegisterPatientRoute() {
                   <FormItem>
                     <FormLabel>Blood group</FormLabel>
                     <FormControl>
-                      <select
-                        className={SELECT_CLASS}
+                      <NativeSelect
                         value={field.value ?? ""}
                         onChange={(event) => field.onChange(event.target.value || null)}
                         onBlur={field.onBlur}
@@ -316,7 +298,7 @@ function RegisterPatientRoute() {
                         <option value="AB-">AB-</option>
                         <option value="O+">O+</option>
                         <option value="O-">O-</option>
-                      </select>
+                      </NativeSelect>
                     </FormControl>
                     <FormMessage />
                   </FormItem>

@@ -34,11 +34,14 @@ import { useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { LastUpdated } from "@/components/last-updated";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { formatFileSize, openOrgFile, uploadOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
+import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { patientAgeYears } from "@/lib/patient-age";
+import { refreshVisitOnConflict } from "@/lib/visit-operational-query";
 
 const VISIT_STATUSES = ["waiting", "in_consult", "completed", "cancelled"] as const;
 type VisitStatus = (typeof VISIT_STATUSES)[number];
@@ -105,15 +108,28 @@ function patientAge(dateOfBirth: string | null, ageYears: number | null): string
   return age === null ? "Age not recorded" : `${age} years`;
 }
 
+// Kept per currency: this runs once per charge line, and constructing an Intl
+// formatter is not free.
+const moneyFormatters = new Map<string, Intl.NumberFormat>();
+
 function formatMoney(amount: string, currency: string): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(Number(amount));
+  let formatter = moneyFormatters.get(currency);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(undefined, { style: "currency", currency });
+    moneyFormatters.set(currency, formatter);
+  }
+  return formatter.format(Number(amount));
 }
 
 function VisitDetailRoute() {
   const { orgSlug, visitId } = Route.useParams();
   const queryClient = useQueryClient();
   const [cancelOpen, setCancelOpen] = useState(false);
-  const detail = useQuery(orpc.visit.get.queryOptions({ input: { orgSlug, visitId } }));
+  const detailQuery = {
+    ...orpc.visit.get.queryOptions({ input: { orgSlug, visitId } }),
+    ...OPERATIONAL_REFETCH,
+  };
+  const detail = useQuery(detailQuery);
   const settings = useQuery(orpc.settings.get.queryOptions({ input: { orgSlug } }));
 
   const transition = useMutation(
@@ -129,7 +145,15 @@ function VisitDetailRoute() {
         ]);
         toast.success(visit.status === "in_consult" ? "Consultation started" : "Visit completed");
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => {
+        if (refreshVisitOnConflict(queryClient, error, orgSlug, visitId)) {
+          toast.error(
+            "Another terminal already moved this visit — refreshed to the current state.",
+          );
+          return;
+        }
+        toast.error(error.message);
+      },
     }),
   );
 
@@ -166,10 +190,13 @@ function VisitDetailRoute() {
           title={`Token ${visit.tokenNumber}`}
           description={`${patient.mrn} · ${patient.name}`}
           action={
-            <Button onClick={() => window.print()}>
-              <PrinterIcon data-icon="inline-start" />
-              Print slip
-            </Button>
+            <div className="flex items-center gap-2">
+              <LastUpdated queryKeys={[detailQuery.queryKey]} />
+              <Button onClick={() => window.print()}>
+                <PrinterIcon data-icon="inline-start" />
+                Print slip
+              </Button>
+            </div>
           }
         />
 
@@ -555,7 +582,15 @@ function CancelVisitDialog({
         toast.success("Visit cancelled");
         onClose();
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => {
+        if (refreshVisitOnConflict(queryClient, error, orgSlug, visitId)) {
+          toast.error(
+            "Another terminal already moved this visit — refreshed to the current state.",
+          );
+          return;
+        }
+        toast.error(error.message);
+      },
     }),
   );
   const submit = form.handleSubmit(({ cancelReason }) => {

@@ -7,15 +7,9 @@ import { payments } from "@hms/db/schema/payments";
 import { visits } from "@hms/db/schema/visits";
 import { sql } from "drizzle-orm";
 
+import { businessDate, businessDayWindow } from "../lib/business-date";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** The UTC day the queue and the collection totals are both measured against. */
-function dayBounds(): { start: Date; end: Date } {
-  const start = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
-  return { start, end: new Date(start.getTime() + DAY_MS) };
-}
+import { readOrgSettings } from "../lib/settings-cache";
 
 export const dashboardRouter = {
   summary: orgProcedure(
@@ -42,13 +36,16 @@ export const dashboardRouter = {
   }),
 
   /**
-   * Today's clinical shape: how many are waiting, how many are in a room, and
-   * which departments the day is actually going to. Separate from `collections`
-   * so a role that may read visits but not money still gets a dashboard.
+   * The organization's local clinical day: how many are waiting, how many are
+   * in a room, and which departments the day is going to. Separate from
+   * `collections` so a role that may read visits but not money still gets a
+   * dashboard.
    */
   today: orgProcedure({ visit: ["read"] }, orgInput).handler(async ({ context }) => {
     const { orgId } = context.scope;
-    const { start, end } = dayBounds();
+    const { timeZone } = await readOrgSettings(orgId);
+    const currentDay = businessDate(new Date(), timeZone);
+    const { start, end } = businessDayWindow(currentDay, timeZone);
 
     const [counts, mix] = await Promise.all([
       db.execute<{ waiting: number; inConsult: number; completed: number; longestWaitMin: number }>(
@@ -90,13 +87,15 @@ export const dashboardRouter = {
   }),
 
   /**
-   * What the desk has taken today and what is still owed. Amounts are returned
-   * as strings: they are `numeric` in Postgres, and rounding them through a JS
-   * float on the way out would be a money bug waiting to happen.
+   * What the desk has taken on the organization's local day and what is still
+   * owed. Amounts are strings because Postgres stores them as `numeric`.
+   * Converting them through a JavaScript float would cause money errors.
    */
   collections: orgProcedure({ billing: ["read"] }, orgInput).handler(async ({ context }) => {
     const { orgId } = context.scope;
-    const { start, end } = dayBounds();
+    const { timeZone } = await readOrgSettings(orgId);
+    const currentDay = businessDate(new Date(), timeZone);
+    const { start, end } = businessDayWindow(currentDay, timeZone);
 
     const result = await db.execute<{
       collected: string;
@@ -133,13 +132,17 @@ export const dashboardRouter = {
     // Fourteen days including today, gap-filled: a day with no payments must
     // plot as a zero-height bar, not vanish and silently compress the axis.
     const trend = await db.execute<{ day: string; amount: string }>(sql`
+        with days as (
+          select (${currentDay}::date - series.days_ago)::date as day
+          from generate_series(13, 0, -1) as series(days_ago)
+        )
         select to_char(days.day, 'YYYY-MM-DD') as "day",
                coalesce(sum(${payments.amount}), 0)::text as "amount"
-        from generate_series(${start}::timestamptz - interval '13 days', ${start}::timestamptz, interval '1 day') as days(day)
+        from days
         left join ${payments}
           on ${payments.orgId} = ${orgId}
-         and ${payments.createdAt} >= days.day
-         and ${payments.createdAt} < days.day + interval '1 day'
+         and ${payments.createdAt} >= days.day::timestamp at time zone ${timeZone}
+         and ${payments.createdAt} < (days.day + 1)::timestamp at time zone ${timeZone}
         group by days.day
         order by days.day asc
       `);

@@ -10,8 +10,10 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 
+import { LastUpdated } from "@/components/last-updated";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { orpc } from "@/lib/orpc";
+import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 
 const ALL_STATUSES = ["waiting", "in_consult", "completed", "cancelled"] as const;
 
@@ -26,13 +28,19 @@ export const Route = createFileRoute("/org/$orgSlug/billing/")({
 
 function BillingIndexRoute() {
   const { orgSlug } = Route.useParams();
-  const visits = useQuery(
-    orpc.visit.queue.queryOptions({ input: { orgSlug, statuses: [...ALL_STATUSES] } }),
-  );
+  const visitsQuery = {
+    ...orpc.visit.queue.queryOptions({ input: { orgSlug, statuses: [...ALL_STATUSES] } }),
+    ...OPERATIONAL_REFETCH,
+  };
+  const visits = useQuery(visitsQuery);
 
   return (
     <>
-      <PageHeader title="Billing" description="Today's visits and accounts" />
+      <PageHeader
+        title="Billing"
+        description="Today's visits and accounts"
+        action={<LastUpdated queryKeys={[visitsQuery.queryKey]} />}
+      />
       <PageBody>
         {visits.isPending ? (
           <div

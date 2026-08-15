@@ -131,7 +131,7 @@ Closed/Cancelled/No Show`; practitioner/department/service-unit targeting; `bill
 - **Does not prove**: anything about adoption, workflow fit, or operational quality of either
   reference; that Marley's shapes are FHIR-_conformant_ (its own API surface is one portal
   module, not a FHIR server — agent://MarleyOpsScout).
-- **Not verified (blocked)** *(at the time of this pass)*: Danphe's field-level entity classes,
+- **Not verified (blocked)** _(at the time of this pass)_: Danphe's field-level entity classes,
   its RBAC/audit tables, and tenancy columns. Its entity project lives outside
   `Code/Websites/DanpheEMR/` (no `ServerModel/` there — tree read 2026-08-07) and the repo's
   GitHub tree pages are too large for web-read recon; two scouts exhausted context on it.

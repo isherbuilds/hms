@@ -3,10 +3,7 @@ import { createUserWithPassword } from "@hms/auth/manual-user";
 import { db } from "@hms/db";
 import { runMigrations } from "@hms/db/migrate";
 import { member, user } from "@hms/db/schema/auth";
-import {
-  SETTINGS_DEFAULTS,
-  organizationSettings,
-} from "@hms/db/schema/organization-settings";
+import { SETTINGS_DEFAULTS, organizationSettings } from "@hms/db/schema/organization-settings";
 import { env } from "@hms/env/server";
 import { count, eq } from "drizzle-orm";
 import pg from "pg";

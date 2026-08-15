@@ -13,6 +13,7 @@ import { and, asc, eq, getTableColumns, gte, inArray, like, lt, ne, or } from "d
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { businessDate, businessDayWindow } from "../lib/business-date";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
 
@@ -70,6 +71,7 @@ export const visitRouter = {
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
+    const settings = await readOrgSettings(scope.orgId);
 
     const [[patient], [practitioner], [department]] = await Promise.all([
       db
@@ -105,7 +107,6 @@ export const visitRouter = {
 
     let feeItem: FeeItemSnapshot | undefined;
     if (practitioner.followUpFeeItemId != null) {
-      const settings = await readOrgSettings(scope.orgId);
       const windowDays = practitioner.followUpValidityDays ?? settings.followUpValidityDays;
       const cutoff = new Date(Date.now() - windowDays * DAY_MS);
       const [recentVisit] = await db
@@ -132,8 +133,10 @@ export const visitRouter = {
 
     const visitId = crypto.randomUUID();
     const chargeId = feeItem ? crypto.randomUUID() : null;
-    // Tokens reset at the UTC day boundary, which is acceptable for the pilot.
-    const counterKey = `token:${input.practitionerId}:${new Date().toISOString().slice(0, 10)}`;
+    // One clock for the token key and the stored row, so the queue's day
+    // window and the token series can never disagree by a few milliseconds.
+    const now = new Date();
+    const counterKey = `token:${input.practitionerId}:${businessDate(now, settings.timeZone)}`;
 
     const result = await db.transaction(async (tx) => {
       const tokenNumber = await nextCounter(tx, scope.orgId, counterKey);
@@ -149,6 +152,8 @@ export const visitRouter = {
           tokenNumber,
           status: "waiting",
           createdBy: scope.userId,
+          createdAt: now,
+          updatedAt: now,
         })
         .returning();
 
@@ -177,6 +182,8 @@ export const visitRouter = {
           sourceId: null,
           status: "pending",
           createdBy: scope.userId,
+          createdAt: now,
+          updatedAt: now,
         })
         .returning();
 
@@ -311,9 +318,9 @@ export const visitRouter = {
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
-    const day = input.date ?? new Date().toISOString().slice(0, 10);
-    const start = new Date(`${day}T00:00:00.000Z`);
-    const end = new Date(start.getTime() + DAY_MS);
+    const { timeZone } = await readOrgSettings(scope.orgId);
+    const day = input.date ?? businessDate(new Date(), timeZone);
+    const { start, end } = businessDayWindow(day, timeZone);
 
     return db
       .select({

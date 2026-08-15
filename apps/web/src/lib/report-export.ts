@@ -40,5 +40,7 @@ export async function downloadXlsx(filename: string, sheets: ReportSheet[]): Pro
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  // The click only queues the download, so revoking in the same task cancels it
+  // in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }

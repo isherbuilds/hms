@@ -1,12 +1,14 @@
 import { expect, test } from "bun:test";
 
 import {
+  calculateInvoiceBalance,
   computeInvoiceLines,
   derivePartialCredit,
   documentNumber,
   fiscalYearLabel,
   splitGst,
   toPaise,
+  toSignedPaise,
 } from "@hms/api/lib/invoice-math";
 
 const charge = (chargeId: string, unitPrice: string, taxRatePercent = "0", qty = 1) => ({
@@ -141,4 +143,22 @@ test("accepts only non-negative money with at most two decimal places", () => {
   expect(() => toPaise("-1")).toThrow();
   expect(() => toPaise("1.234")).toThrow();
   expect(() => toPaise("abc")).toThrow();
+});
+
+test("invoice balance accounts for credits, payments, and returned refunds", () => {
+  const balance = calculateInvoiceBalance({
+    grandTotal: "500.00",
+    credits: ["100.00", "50.00"],
+    payments: ["400.00"],
+    refunds: ["25.00"],
+  });
+
+  expect(balance).toEqual({
+    grandTotal: "500.00",
+    creditTotal: "150.00",
+    paymentsTotal: "400.00",
+    refundsTotal: "25.00",
+    outstanding: "-25.00",
+  });
+  expect(toSignedPaise(balance.outstanding)).toBe(-2_500);
 });

@@ -43,6 +43,45 @@ export function fromPaise(paise: number): string {
   return `${sign}${whole}.${fraction}`;
 }
 
+export function toSignedPaise(value: string): number {
+  return value.startsWith("-") ? -toPaise(value.slice(1)) : toPaise(value);
+}
+
+export type InvoiceBalance = {
+  grandTotal: string;
+  creditTotal: string;
+  paymentsTotal: string;
+  refundsTotal: string;
+  outstanding: string;
+};
+
+export function calculateInvoiceBalance({
+  grandTotal,
+  credits,
+  payments,
+  refunds,
+}: {
+  grandTotal: string;
+  credits: readonly string[];
+  payments: readonly string[];
+  refunds: readonly string[];
+}): InvoiceBalance {
+  const grandTotalPaise = toPaise(grandTotal);
+  const creditTotalPaise = credits.reduce((sum, amount) => sum + toPaise(amount), 0);
+  const paymentsTotalPaise = payments.reduce((sum, amount) => sum + toPaise(amount), 0);
+  const refundsTotalPaise = refunds.reduce((sum, amount) => sum + toPaise(amount), 0);
+
+  return {
+    grandTotal: fromPaise(grandTotalPaise),
+    creditTotal: fromPaise(creditTotalPaise),
+    paymentsTotal: fromPaise(paymentsTotalPaise),
+    refundsTotal: fromPaise(refundsTotalPaise),
+    outstanding: fromPaise(
+      grandTotalPaise - creditTotalPaise - paymentsTotalPaise + refundsTotalPaise,
+    ),
+  };
+}
+
 type ChargeInput = {
   chargeId: string;
   description: string;
