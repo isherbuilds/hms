@@ -576,6 +576,16 @@ const GUARDED_CALLS = {
 /** The only place a claim is faked away — every entry above stays type-checked. */
 const NO_CLAIM = {} as { orgSlug: string };
 
+/** Wide enough to hold everything a fixture just wrote, inside the report period cap. */
+function reportRange(): { from: string; to: string } {
+  const day = 24 * 60 * 60 * 1_000;
+  const now = Date.now();
+  return {
+    from: new Date(now - 300 * day).toISOString().slice(0, 10),
+    to: new Date(now + day).toISOString().slice(0, 10),
+  };
+}
+
 test("the guarded-call table covers every procedure in the router", () => {
   const procedures = Object.entries(appRouter)
     .flatMap(([namespace, router]) => Object.keys(router).map((name) => `${namespace}.${name}`))
@@ -1052,7 +1062,7 @@ test("reports reject a foreign org claim and expose none of that org's figures i
   const bob = await createTestUser("report-scope-beta-member");
   await joinOrganization(bob, beta.id);
   const bobClient = clientFor(bob);
-  const range = { from: "2000-01-01", to: "2100-01-01" };
+  const range = reportRange();
 
   await expectORPCCode(
     bobClient.report.trialBalance({ orgSlug: alpha.slug, ...range }),
@@ -1113,7 +1123,7 @@ test("one client concurrently scopes report calls to two organizations", async (
     amount: "40.00",
   });
 
-  const range = { from: "2000-01-01", to: "2100-01-01" };
+  const range = reportRange();
   const [trialOne, trialTwo, balanceOne, balanceTwo, gstOne, gstTwo] = await Promise.all([
     api.report.trialBalance({ orgSlug: one.slug, ...range }),
     api.report.trialBalance({ orgSlug: two.slug, ...range }),

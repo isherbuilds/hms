@@ -1,4 +1,4 @@
-import { createDb } from "@hms/db";
+import { db } from "@hms/db";
 import { account, user } from "@hms/db/schema/auth";
 import { hashPassword } from "better-auth/crypto";
 
@@ -21,7 +21,6 @@ export async function createUserWithPassword(input: {
   name: string;
   password: string;
 }): Promise<{ id: string }> {
-  const db = createDb();
   const id = crypto.randomUUID();
 
   const [created] = await db

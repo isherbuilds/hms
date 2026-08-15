@@ -24,9 +24,32 @@ const reportDate = z.iso.date();
 const periodInput = orgInput.extend({ from: reportDate, to: reportDate });
 const asOfInput = orgInput.extend({ asOf: reportDate });
 
-function assertValidPeriod(from: string, to: string): void {
+const DAY_MS = 24 * 60 * 60 * 1_000;
+
+/**
+ * Trial balance and balance sheet return one row per account whatever the
+ * range, so a wide period is a bigger scan, not a bigger answer — refusing
+ * "since inception" would refuse a question accountants legitimately ask, and
+ * the pool's statement timeout already bounds a scan that runs long.
+ *
+ * `maxDays` therefore belongs only to reports whose row count grows with the
+ * period. The GST register returns a row per document, and is filed monthly.
+ */
+const MAX_FILING_DAYS = 366;
+
+function assertValidPeriod(from: string, to: string, maxDays?: number): void {
   if (from > to) {
-    throw new ORPCError("BAD_REQUEST");
+    throw new ORPCError("BAD_REQUEST", {
+      message: "The start date must not be after the end date",
+    });
+  }
+  if (maxDays === undefined) return;
+
+  const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS;
+  if (days > maxDays) {
+    throw new ORPCError("BAD_REQUEST", {
+      message: `The GST register covers at most ${maxDays} days`,
+    });
   }
 }
 
@@ -92,7 +115,7 @@ export const reportRouter = {
   ),
 
   gst: orgProcedure({ report: ["read"] }, periodInput).handler(async ({ context, input }) => {
-    assertValidPeriod(input.from, input.to);
+    assertValidPeriod(input.from, input.to, MAX_FILING_DAYS);
     const orgId = context.scope.orgId;
     const { timeZone } = await readOrgSettings(orgId);
 

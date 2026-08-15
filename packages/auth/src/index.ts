@@ -1,4 +1,4 @@
-import { createDb } from "@hms/db";
+import { db } from "@hms/db";
 import * as schema from "@hms/db/schema/auth";
 import { env } from "@hms/env/server";
 import { organization } from "better-auth/plugins/organization";
@@ -14,8 +14,6 @@ export function invitationUrl(invitationId: string): string {
 }
 
 export function createAuth() {
-  const db = createDb();
-
   return betterAuth({
     experimental: {
       joins: true,

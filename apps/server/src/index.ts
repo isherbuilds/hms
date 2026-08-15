@@ -1,14 +1,17 @@
 import { google } from "@ai-sdk/google";
+import { drainAuditWrites } from "@hms/api/audit";
 import { createContext, type ORPCContext } from "@hms/api/lib/context";
 import { authorizeOrg } from "@hms/api/lib/procedures/factory";
 import { appRouter } from "@hms/api/routers/index";
 import { auth } from "@hms/auth";
+import { db } from "@hms/db";
 import { env } from "@hms/env/server";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { OpenAPIReferencePlugin } from "@orpc/openapi/plugins";
 import { ORPCError, onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
+import { sql } from "drizzle-orm";
 import {
   createUIMessageStreamResponse,
   streamText,
@@ -69,7 +72,14 @@ async function createLoggedRequestContext(
   return requestContext;
 }
 
+/**
+ * Expected outcomes reach here too — a duplicate patient is a `CONFLICT`, not a
+ * fault. Logging those buries the genuine 500s they outnumber.
+ */
 function logORPCError(error: unknown): void {
+  if (error instanceof ORPCError && error.status < 500) {
+    return;
+  }
   console.error(error);
 }
 
@@ -116,6 +126,10 @@ if (!isProduction) {
   });
 }
 
+// Every token is billed, so the conversation a member can submit is bounded.
+const MAX_AI_MESSAGES = 50;
+const MAX_AI_CHARS = 100_000;
+
 app.post("/ai", async (c) => {
   const body = await c.req.json<{ orgSlug?: unknown; messages?: unknown }>();
   if (
@@ -124,6 +138,13 @@ app.post("/ai", async (c) => {
     !Array.isArray(body.messages)
   ) {
     return c.json({ error: "Invalid request" }, 400);
+  }
+
+  if (
+    body.messages.length > MAX_AI_MESSAGES ||
+    JSON.stringify(body.messages).length > MAX_AI_CHARS
+  ) {
+    return c.json({ error: "Conversation too large" }, 413);
   }
 
   const context = await createLoggedRequestContext(c);
@@ -162,8 +183,27 @@ app.post("/ai", async (c) => {
   });
 });
 
-app.get("/", (c) => {
+/**
+ * Readiness, not liveness: a process that answers while Postgres is unreachable
+ * reports healthy through an outage in which every request fails.
+ */
+app.get("/", async (c) => {
+  try {
+    await db.execute(sql`select 1`);
+  } catch (error) {
+    console.error("health check failed", error);
+    return c.text("UNAVAILABLE", 503);
+  }
   return c.text("OK");
 });
+
+// Audit writes are fire-and-forget, so a deploy drops whichever are in flight.
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, () => {
+    void drainAuditWrites()
+      .catch((error: unknown) => console.error("audit drain failed", error))
+      .finally(() => process.exit(0));
+  });
+}
 
 export default app;

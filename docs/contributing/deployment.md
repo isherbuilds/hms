@@ -146,6 +146,31 @@ deployment at an empty database, or reset the schema once
 (`bun run db:seed -- --reset` in dev), and let the journal take over from
 there.
 
+## Backups
+
+Two stores hold data that cannot be recreated:
+
+| Store      | Holds                                      | Covered by                   |
+| ---------- | ------------------------------------------ | ---------------------------- |
+| PostgreSQL | patients, visits, invoices, journal, audit | Coolify scheduled backup     |
+| SeaweedFS  | uploaded documents and prescription scans  | **nothing — configure this** |
+
+Postgres is a Coolify resource, so its own scheduled backup owns the dump and
+the offsite copy. Configure it with an S3 destination, not local retention: a
+dump on the same disk as the database is lost by the same failure that loses
+the database.
+
+**The database backup does not cover object storage.** A restored Postgres with
+no matching bucket gives every patient a file row whose object is missing —
+the record survives and the scanned prescription does not. Replicate the
+SeaweedFS volume on the same schedule.
+
+A backup nobody has restored is a guess. **Rehearse a restore before go-live,
+and after any migration that rewrites data.** Restore into an empty database
+(migrations then find the journal applied and continue), point a scratch
+deployment at it, then sign in, open a patient, and read a GST report. If those
+four work, the copy is real.
+
 ## Known gaps
 
 - **No security headers.** Neither app sets `Content-Security-Policy`,
