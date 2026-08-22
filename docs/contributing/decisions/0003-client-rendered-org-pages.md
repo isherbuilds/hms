@@ -1,9 +1,8 @@
 # 0003: Org-scoped pages are client-rendered
 
-- **Status:** accepted; the claim below is named `orgId` because
-  [0011](./0011-org-slug-as-request-claim.md) had not yet replaced it with the
-  slug. Read every `:orgId` / `$orgId` path here as `:orgSlug` / `$orgSlug` —
-  the rendering decision is unchanged.
+- **Status:** superseded by [0021](./0021-server-rendered-org-pages.md). The
+  claim below is named `orgId` because [0011](./0011-org-slug-as-request-claim.md)
+  had not yet replaced it with the slug.
 - **Date:** 2026-08-05
 
 ## Context

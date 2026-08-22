@@ -1,0 +1,5 @@
+DROP INDEX "opd_appointments_org_date_status_idx";--> statement-breakpoint
+DROP INDEX "opd_appointments_org_practitioner_date_idx";--> statement-breakpoint
+CREATE INDEX "opd_appointments_org_date_active_arrived_idx" ON "opd_appointments" USING btree ("org_id","business_date","arrived_at","id") WHERE "opd_appointments"."token_number" is not null and "opd_appointments"."status" in ('waiting', 'in_consult');--> statement-breakpoint
+CREATE INDEX "opd_appointments_org_date_arrived_idx" ON "opd_appointments" USING btree ("org_id","business_date","arrived_at","id") WHERE "opd_appointments"."token_number" is not null;--> statement-breakpoint
+CREATE INDEX "opd_appointments_org_date_scheduled_idx" ON "opd_appointments" USING btree ("org_id","business_date","scheduled_for","id") WHERE "opd_appointments"."arrival_mode" = 'scheduled';

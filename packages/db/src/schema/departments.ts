@@ -5,7 +5,7 @@ import { catalogItems } from "./catalog-items";
 
 /**
  * Clinical departments (OPD units). Referenced by practitioners and, from
- * Slice 5 on, by visits. No delete path — departments are renamed, not removed.
+ * Slice 5 on, by appointments. No delete path — departments are renamed, not removed.
  */
 export const departments = pgTable(
   "departments",

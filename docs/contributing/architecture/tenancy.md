@@ -6,7 +6,7 @@ records attribution, not scope.
 ## Request flow
 
 ```text
-/org/:orgSlug/... page
+/:orgSlug/... page
         ↓ route parameter
 procedure input { orgSlug, ...domainInput }
         ↓ parsed untrusted claim
@@ -29,11 +29,13 @@ uses one `/rpc` endpoint and one client. Organization procedures include
 tenant. The session's `activeOrganizationId` is not used.
 
 Framework adapters build the small oRPC context from request headers and the
-resolved session. `orgProcedure(permission, input)` parses the explicit slug
-claim, then its internal guard proves membership in a single indexed join.
-Membership is uncached, so removal takes effect on the next request. The
-permission is a required constructor argument and the raw builder is not
-exported, so an org procedure cannot omit the guard.
+resolved session, and give the request one membership map. `orgProcedure(permission, input)`
+parses the explicit slug claim, then its internal guard proves membership in a
+single indexed join. The guard resolves each (caller, slug) pair once per
+request and shares it with the other calls in that request; nothing is kept
+after the request, so removal takes effect on the next one. The permission is a
+required constructor argument and the raw builder is not exported, so an org
+procedure cannot omit the guard.
 
 The internal guard treats `orgSlug` as an unverified claim, checks membership
 and roles, and exposes verified `context.scope`.
@@ -67,20 +69,28 @@ to remove their _cost_ (folding the check into the write, composite
 
 ## Web client
 
-Org pages live under `apps/web/src/routes/org/$orgSlug/` and import the
+Org pages live under `apps/web/src/routes/$orgSlug/` and import the
 singleton `orpc` utilities from `@/lib/orpc`. Every org call passes the route
 `orgSlug` as procedure input. The input becomes part of the generated query key,
 so the shared QueryClient cannot reuse another tenant's data.
 
-The layout remains client-rendered (`ssr: false`) because session and
-organization-list checks are client-side today. RPC transport does not depend on
-that choice: SSR uses the same router through an in-process client with
-request-local context.
+The layout server-renders (`ssr: true`, [ADR 0021](../decisions/0021-server-rendered-org-pages.md)).
+Its loader fetches `member.me` through the in-process client with
+request-local context. The procedure proves the session and membership, so
+`UNAUTHORIZED` redirects to `/login`; callers without organization access choose
+or join one at `/join`. The same
+response supplies the roles, identity, organization list, and timezone used by
+the shell and child routes.
+
+A server render always reaches the server, because its query cache lives for one
+request. A client-side navigation may reuse a membership result up to the 60 s
+app-default `staleTime`, so the shell and its role-derived navigation can lag a
+removed member by that much. This does not extend to data: every procedure call
+proves membership server-side on every request, so a removed member gets
+`FORBIDDEN` on the first query or mutation.
 
 Child routes do not depend on the organization list — they scope by the URL
-slug, and the server proves membership on every call. The layout's wait on that
-list only prevents a flash of 403s before a redirect, so it can be dropped for a
-faster first paint.
+slug, and the server proves membership for every request.
 
 ## Adding a domain
 
@@ -89,7 +99,7 @@ faster first paint.
 3. Add grants in `packages/auth/src/access.ts`.
 4. Declare the procedure with `orgProcedure(permission, orgInput.extend(...))`.
 5. Predicate every query with `context.scope.orgId`.
-6. Put the page under `routes/org/$orgSlug/`, import `orpc`, and include
+6. Put the page under `routes/$orgSlug/`, import `orpc`, and include
    `orgSlug` in every query, mutation, direct call, and tenant-specific
    invalidation key.
 7. Add every new procedure to `GUARDED_CALLS` in

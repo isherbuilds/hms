@@ -25,9 +25,9 @@ export const practitioners = pgTable(
       .references(() => departments.id),
     registrationNumber: text("registration_number"),
     memberUserId: text("member_user_id").references(() => user.id, { onDelete: "set null" }),
-    /** Catalog item snapshotted into the auto consult-fee Charge at visit creation (Slice 5). */
+    /** Catalog item snapshotted into the auto consult-fee Charge at appointment creation (Slice 5). */
     consultFeeItemId: text("consult_fee_item_id").references(() => catalogItems.id),
-    /** Optional follow-up fee used only for a recent visit within the configured window. */
+    /** Optional follow-up fee used only for a recent appointment within the configured window. */
     followUpFeeItemId: text("follow_up_fee_item_id").references(() => catalogItems.id),
     followUpValidityDays: integer("follow_up_validity_days"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

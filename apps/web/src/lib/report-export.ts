@@ -1,4 +1,4 @@
-export type ReportSheet = {
+type ReportSheet = {
   name: string;
   columns: Array<{ header: string; key: string; width?: number }>;
   rows: Array<Record<string, string | number>>;
@@ -16,16 +16,7 @@ export async function downloadXlsx(filename: string, sheets: ReportSheet[]): Pro
       key: column.key,
       width: column.width ?? Math.max(column.header.length + 2, 12),
     }));
-    worksheet.addRows(
-      sheet.rows.map((row) =>
-        Object.fromEntries(
-          Object.entries(row).map(([key, value]) => [
-            key,
-            typeof value === "number" ? Number(value) : value,
-          ]),
-        ),
-      ),
-    );
+    worksheet.addRows(sheet.rows);
     worksheet.getRow(1).font = { bold: true };
   }
 

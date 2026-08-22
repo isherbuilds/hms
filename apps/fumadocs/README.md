@@ -1,6 +1,7 @@
-# fumadocs
+# Product documentation
 
-This is an Astro application generated with [Create Fumadocs](https://github.com/fuma-nama/fumadocs).
+This Astro application contains the end-user HMS guide. Contributor and
+architecture documentation lives in `../../docs/contributing`.
 
 Run the development server from the repository root:
 

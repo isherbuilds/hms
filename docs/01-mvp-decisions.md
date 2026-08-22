@@ -1,85 +1,85 @@
-# HMS MVP — Decision Record
+# HMS product boundaries
 
-Date: 2026-08-03. Product brainstorm output. Terms per `CONTEXT.md`; evidence per
-`research/00-synthesis.md`.
+This document describes the product as it exists and the constraints for its next increments.
+Terms are defined in the [`product blueprint`](./product-blueprint.md). Architectural details live in
+[`contributing/`](./contributing/index.md), and future work is gated by
+[`02-roadmap-decisions.md`](./02-roadmap-decisions.md).
 
-## Decisions
+## Product
 
-1. **Product**: full hospital management system with an AI-native spine — not a wedge add-on to
-   existing HMS vendors.
-2. **Customer**: small-to-mid private hospitals (20–150 beds), emerging markets. Design for
-   India (GST billing, FHIR-R4/ABDM-shaped model), sell wherever first. One committed pilot
-   hospital exists (currently on legacy HMS + Tally).
-3. **Tenancy**: cloud multi-tenant SaaS; one hospital = one Better Auth Organization. On-prem is
-   an escape hatch: same Docker images, single-tenant Coolify install — never a code fork.
-   Multi-branch hospitals: out of MVP (one org = one hospital).
-4. **Connectivity**: online-only MVP. No offline-first/sync architecture. Graceful degradation
-   is a later, evidence-driven investment.
-5. **Domain model**: adopt the FHIR-shaped convergence model — Patient → Visit (OPD/IPD/ER) →
-   Order (ServiceRequest / MedicationRequest) → Result (Observation/DiagnosticReport) → Charge,
-   over a Service Unit facility tree. Vocabulary follows FHIR R4 resource names where sane.
-   ABDM integration itself is deferred; the model must not preclude it.
-6. **Billing vs accounting**: HMS owns Billing — Service Catalog with GST classes, Charges
-   accumulating on Visits, on-the-spot Invoice/Receipt printing, payment capture (cash/UPI/card
-   as recorded methods, no gateway), daily collection reports. **General ledger stays external
-   (Tally)**; HMS ships a Tally XML day-book export. We never build accounting.
-   _(Amended 2026-08-08 by ADR 0020: billing documents post balanced double-entry journals into
-   a minimal, code-owned Billing Ledger for statutory handover — trial balance, billing-ledger
-   balance sheet, GST register. Handover is neutral XLSX/PDF, replacing the promised Tally XML
-   export unless the pilot's accountant proves an adapter necessary. Full bookkeeping, opening
-   balances, reconciliation, and final accounts remain external — that boundary is unchanged.)_
-7. **v0 scope (first live at pilot)**:
-   - Patient registration: per-org MRN, phone+name dedupe.
-   - Department / Practitioner setup, consult fees, OPD ticket + queue.
-   - Service Catalog, billing, GST invoice + receipt printed on the spot.
-   - Daily collection / OPD reports; Tally export.
-   - Optional per-doctor consult screen: diagnosis, Rx lines, A5 printed prescription on
-     letterhead, lab/radiology orders that auto-create Charges. Hospital can run
-     front-office-only.
-   - Explicit non-goals for v0: pharmacy POS/stock, lab result entry, IPD/beds, surgery/OT,
-     insurance/TPA, ABDM, payment gateways, offline mode, general ledger.
-     _(Amended for the delivered v0, per `docs/specs/accly-hms-v0.md`: the consult screen was
-     replaced by signed paper-prescription capture — the pilot's doctors prescribe on paper and
-     hold no logins; daily collection / OPD reports and the exception worklists moved to
-     `docs/specs/accly-hms-go-live.md`; Tally export per the decision 6 amendment above.)_
-8. **AI-native architecture from day one** (costs little, enables the wedge):
-   - **Per-aggregate state machines, shared AI provenance envelope** (amended 2026-08-03 on
-     advisory: a universal Draft→Approve lifecycle would conflate transition/reversal rules).
-     Each aggregate gets its own explicit lifecycle — signed notes/prescriptions are immutable
-     with addenda; invoices are immutable once issued and corrected only by credit note/refund;
-     orders go draft → active → completed/cancelled; charges are pending until invoiced or
-     voided. What is shared is the provenance/review envelope on AI-draftable content:
-     `generatedBy` (member | ai), model + version, reviewer, timestamps.
-   - Append-only event/audit log on every clinical and financial action.
-   - Structured content over free text wherever workflow tolerates.
-   - Early revenue-leak flagging (unbilled activity) — deterministic query in v0, not AI.
-9. **AI wedge (north star, fast-follow after v0)**: ambient OPD consult — code-switched
-   Hindi/Nepali/English speech → drafted clinical note + orders + prescription + bill lines,
-   doctor approves, patient leaves with receipt. Requires a feasibility spike (speech quality on
-   code-switched clinical audio) before it is promised in any demo.
-10. **Module sequence after v0**: pharmacy POS + stock → lab (orders already exist; add result
-    entry + report print) → IPD/ADT (beds, Service Unit tree) → surgery/OT → ABDM integration →
-    insurance/TPA. Each increment sold to the live pilot before build.
-    _(Amended 2026-08-08 by `docs/02-roadmap-decisions.md`: the fixed order is replaced by a
-    per-module trigger table — depth-first go-live precedes every department module. The
-    "sold to the live pilot before build" rule stands.)_
-11. **Stack**: post-dash-stack as-is — Bun, TanStack Start web + Hono/oRPC API (SSR in-process),
-    Better Auth organizations, Drizzle/Postgres, presigned S3 files, no realtime (mutation →
-    query-key refresh), Coolify deployment. App-level clinical roles (receptionist, doctor,
-    billing, admin, later pharmacist/lab-tech) layered over Better Auth's owner/admin/member.
+- HMS is a cloud, multi-tenant hospital management system for small and mid-sized private
+  hospitals. One Better Auth Organization is one hospital.
+- The application is online-only. On-premise deployment may use the same containers, never a
+  separate codebase.
+- The working clinical surface is outpatient care: patient registration, an OPD appointment and queue,
+  billing, private files, and paper-prescription capture. Staff see **OPD**; code uses
+  `opdAppointment` only for the setting-specific record.
+- Inpatient care, emergency, pharmacy, lab fulfillment, radiology, surgery,
+  insurance, ABDM, offline mode, gateways, and a patient portal do not exist until their roadmap
+  triggers fire. They do not receive placeholder routes, permission subjects, tables, or menu
+  entries.
+- One OPD Appointment row handles booked and walk-in outpatient care. Inpatient Admissions and
+  Emergency Cases will own separate tables and state machines. There is no universal Visit or
+  Clinical Encounter wrapper; see
+  [ADR 0026](./contributing/decisions/0026-one-opd-appointment-record.md).
 
-## Open questions (deliberately deferred)
+## Billing and accounting
 
-- Tally version + exact voucher format the pilot's accountant needs (verify on site).
-- GST treatment details per service class (healthcare exemptions vs pharmacy/room-rent GST) —
-  needs an accountant's table, not engineering guesses.
-- Pricing / commercial model (per-bed, per-user, flat?) — validate with pilot.
-- Speech feasibility spike result → go/no-go on ambient wedge timing.
-- Whether the pilot hospital's printers (thermal receipt, A5 Rx) impose format constraints.
-- ABDM sandbox timeline (when India sales become real).
+- HMS owns catalog items, Charges, Invoices, payments, receipts, Credit Notes, refunds, and the
+  Billing Ledger required to explain those source documents.
+- Charges and invoices link directly to the owning OPD Appointment. Future IPD and Emergency money
+  links directly to its Admission or Emergency Case. Their statuses remain independent of finance.
+- An Invoice may be issued and receive multiple partial or full payments after OPD check-in,
+  including while the patient is waiting. Clinical status never gates collection.
+- A configured follow-up fee applies only after a completed OPD Appointment with the same patient and
+  practitioner inside the organization's follow-up window. Waiting and cancelled appointments do not
+  qualify.
+- Optional booking money is an Advance Receipt: a patient-advance liability that may reference an
+  OPD Appointment, never financial state on the Appointment itself. At check-in it can be allocated
+  to the Invoice; unused credit remains reusable or refundable under explicit policy.
+- The Billing Ledger is a code-owned projection, not a general accounting product. HMS has no
+  manual journals, bank reconciliation, expenses, opening balances, period close, inventory
+  accounting, payroll, or final accounts.
+- Accountant handover is neutral XLSX/PDF. A one-way Tally adapter is built only if a real handover
+  test proves the neutral export insufficient. HMS never synchronizes accounting data back from
+  Tally.
 
-## Next step
+## Clinical records and AI
 
-`spec` for v0 (front office + billing + optional consult), sliced so the pilot hospital can go
-live incrementally. Market validation is partially settled by the committed pilot — remaining
-business-model validation happens against that hospital, not in the abstract.
+- The source prescription is signed paper. Staff manage its private scan on the OPD Appointment.
+  HMS does not pretend that an
+  unreviewed digital reconstruction is the clinical source of truth.
+- Sensitive actions are auditable. Audit delivery remains fire-and-forget unless a later ADR
+  explicitly changes that cross-cutting policy.
+- AI may draft or help retrieve information, but it does not bypass authorization, tenancy,
+  provenance, or human review. Ambient consultation is research until the roadmap trigger is met.
+
+## Delivery rules
+
+- This is pre-production software. Schema and API changes are clean cutovers: remove obsolete
+  shapes instead of adding aliases, dual reads, dual writes, or compatibility columns.
+- At the first live financial document, migration history becomes append-only. That freezes
+  rebasing; it does not authorize mixed-version application deployments.
+- A pilot cutover may import demographics and agreed master data. It does not recreate old invoices
+  or run dual entry. The old HMS becomes read-only at the cutover timestamp.
+- Every new module is sold to the pilot, assigned an operational owner, and specified from observed
+  workflow before implementation.
+
+## Staff experience
+
+- Routes and navigation use stable staff vocabulary: **OPD**, **IPD**,
+  **Emergency**, **Patients**, **Billing**, and **Reports**.
+- Navigation is capability-composed because one employee may hold multiple roles. Reception,
+  clinicians, nurses, accountants, and administrators receive different worklists without creating
+  separate applications or role-specific URLs.
+- The current broad `member` grant is development-only. Reception and accountant permissions split
+  before staff onboarding; doctor and nurse grants ship with their first digital workflows.
+- Dashboards are read models over source data. They do not introduce a second write model or copy
+  financial totals into clinical rows.
+
+## Current unresolved product decisions
+
+- Which operational and statutory reports each hospital role may read.
+- Which payment methods and receipt granularity the pilot actually uses.
+- Whether neutral accountant handover is sufficient without a Tally adapter.
+- Printer constraints and the exact pilot cutover/runbook details.

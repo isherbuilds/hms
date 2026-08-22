@@ -1,25 +1,23 @@
-const moneyFormatter = new Intl.NumberFormat(undefined, {
-  style: "currency",
-  currency: "INR",
-  minimumFractionDigits: 2,
-});
+import { formatMoney } from "./money";
 
-export function reportToday(timeZone: string, now = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
+export function formatReportMoney(value: string, currency: string): string {
+  return formatMoney(value, currency);
 }
 
-export function reportDefaultRange(timeZone: string): { from: string; to: string } {
-  const to = reportToday(timeZone);
-  return { from: `${to.slice(0, 8)}01`, to };
-}
+export function validateReportPeriod(
+  from: string,
+  to: string,
+  maximumDays?: number,
+): string | null {
+  if (!from || !to) return "Choose both dates";
+  if (from > to) return "From must be on or before To";
 
-export function formatReportMoney(value: string): string {
-  return moneyFormatter.format(Number(value));
+  if (maximumDays !== undefined) {
+    const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
+    if (days > maximumDays) return `Choose a range of ${maximumDays} days or less`;
+  }
+
+  return null;
 }
 
 function printCss(page: "A4 portrait" | "A4 landscape", margin: string): string {

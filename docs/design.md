@@ -7,8 +7,6 @@ side.
 Every rule is a default. A deviation needs a comment saying why, and a deviation
 that recurs is a missing primitive, not a style choice.
 
-> Supersedes `contributing/frontend-conventions.md`.
-
 ---
 
 ## 1. Surfaces
@@ -148,9 +146,8 @@ Reach for these before writing a `div` with padding. All in
 
 - **`PageBody`** — the page container: `p-4`, `gap-4`, `text-xs`. Every page inside
   the org shell starts with one.
-- **`PageHeader`** — title, optional description, optional action. Portals into the
-  app bar, so a page never spends a second band of chrome on its own title.
-- **`Section`** — a titled block within a page.
+- **`PageHeader`** — title, optional description, optional action. It renders the
+  page's single title band, so a page never adds a second one.
 - **`ErrorNote`** — the one way a page reports a failed read.
 
 A new bespoke layout wrapper is a signal that one of these is missing a prop.

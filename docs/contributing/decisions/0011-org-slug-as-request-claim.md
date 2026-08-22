@@ -1,6 +1,6 @@
 # 0011: The organization slug is the request claim
 
-- **Status:** accepted
+- **Status:** accepted; URL placement and creation validation amended by [0025](./0025-root-org-urls-reserve-system-slugs.md)
 - **Date:** 2026-08-06
 - **Supersedes:** the identifier choice in [0010](./0010-org-id-in-procedure-input.md)
 

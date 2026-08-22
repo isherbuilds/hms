@@ -33,10 +33,11 @@ Everything else in this folder is downstream of those two.
 - [Tenancy](./tenancy.md) — the org claim, the tenant predicate, org switching
 - [Authorization](./authorization.md) — the access-control model and guards
 - [Request lifecycle](./request-lifecycle.md) — from URL to handler
+- [Data fetching](./data-fetching.md) — loaders, the query cache, SSR data transfer
 - [Data storage](./data-storage.md) — schema conventions and indexing
 - [Audit](./audit.md) — what to record and how
 - [File storage](./file-storage.md) — presigned-only object storage
-- [HMS domain layer](./domain-layer.md) — live relationships and front-desk boundary
+- [HMS domain layer](./domain-layer.md) — live relationships and the patient and OPD appointment boundary
 - [Accounting ledger](./accounting.md) — double-entry posting and statutory handover boundary
 
 ## Source of truth in code

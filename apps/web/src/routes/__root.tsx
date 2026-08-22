@@ -32,6 +32,12 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
     ],
     links: [
       {
+        // Declare an icon explicitly so the browser does not probe
+        // `/favicon.ico`, which would otherwise enter the `/$orgSlug` route.
+        rel: "icon",
+        href: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E",
+      },
+      {
         rel: "stylesheet",
         href: appCss,
       },

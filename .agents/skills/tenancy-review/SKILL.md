@@ -5,7 +5,7 @@ description: >-
   repo — missing org predicates, re-derived scope, cached membership, role parsing, presigned
   URL handling and org-route context. Use before merging anything touching packages/api,
   packages/auth, packages/db/src/schema, packages/storage, or
-  apps/web/src/routes/org/$orgSlug/.
+  apps/web/src/routes/$orgSlug/.
 ---
 
 # Tenancy review
@@ -83,11 +83,13 @@ Changes to `packages/api/src/lib/context.ts` or
 
 ## 6. Web routes
 
-- Do org pages live under `apps/web/src/routes/org/$orgSlug/`?
+- Do org pages live under `apps/web/src/routes/$orgSlug/`?
 - Do they import the singleton `orpc` and include the route `orgSlug` in every org
   query, mutation, direct call, and tenant-specific invalidation key?
-- Does the layout keep `ssr: false` while its session and organization-list checks
-  remain client-side?
+- Does the layout keep `ssr: true`, fetch `member.me` in its loader, and isolate
+  every Base UI popup behind `ClientOnly`? The client may reuse a ≤60 s-fresh
+  membership result for the shell; that is accepted (ADR 0021). What is never
+  acceptable is a procedure trusting cached membership instead of proving it.
 
 ## 7. Auth surface
 

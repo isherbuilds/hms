@@ -9,7 +9,8 @@
 
 ```sh
 bun install
-cp apps/server/.env.example apps/server/.env   # then fill it in
+cp packages/env/.env.example packages/env/.env
+# Fill it in, then:
 bun run dev
 ```
 
@@ -29,22 +30,22 @@ bun run create-user <email> <name> <password>
 
 The password is hashed by Better Auth's own algorithm, so the account signs in
 normally at `/login`. To place the account into an organization, invite it from
-**Members → Invite** and let the person accept, or add the membership directly.
+**Members → Invite** and let the person accept at `/join`, or add the membership directly.
 Until `sendInvitationEmail` in `packages/auth/src/index.ts` is wired to a real
-provider, the invitation link is logged and also returned by `members.invite`.
+provider, the invitation link is logged and also returned by `member.invite`.
 
 ### The first organization
 
 Organization creation is closed to everyone except the account identified by
-`FOUNDING_EMAIL` (in `apps/server/.env`) — not even an organization owner can
+`FOUNDING_EMAIL` (in `packages/env/.env`) — not even an organization owner can
 create another. Provision that account once:
 
 ```sh
 bun run create-founder <name> <password>
 ```
 
-The founder signs in like any account and becomes the owner of each
-organization they create. See
+The founder signs in like any account, creates at `/create`, and becomes the
+owner of each organization they create. See
 [ADR 0014](./decisions/0014-founding-email-bootstrap.md).
 
 `bun run db:seed` creates development accounts and two organizations the same
@@ -73,15 +74,15 @@ done.
 
 ## Where things live
 
-| Path               | Holds                                                                      |
-| ------------------ | -------------------------------------------------------------------------- |
-| `apps/web`         | TanStack Start app. Org-scoped pages live under `routes/org/$orgSlug/`.    |
-| `apps/server`      | Hono host: Better Auth handler, oRPC RPC + OpenAPI handlers, the AI route. |
-| `apps/fumadocs`    | Product documentation site.                                                |
-| `packages/api`     | The oRPC router, request context, procedure guards, `audit()`.             |
-| `packages/auth`    | Better Auth config and `access.ts`, the permission source of truth.        |
-| `packages/db`      | Drizzle schema, migrations, the migrator.                                  |
-| `packages/storage` | SeaweedFS/S3 presigning.                                                   |
-| `packages/env`     | Validated environment schemas (server and web).                            |
-| `packages/ui`      | shadcn `base-lyra` components on Base UI.                                  |
-| `tests/`           | Integration tests plus their support harness.                              |
+| Path               | Holds                                                                    |
+| ------------------ | ------------------------------------------------------------------------ |
+| `apps/web`         | TanStack Start app. Org-scoped pages live under `routes/$orgSlug/`.      |
+| `apps/server`      | Hono host: Better Auth handler, oRPC RPC + OpenAPI handlers, and health. |
+| `apps/fumadocs`    | Product documentation site.                                              |
+| `packages/api`     | The oRPC router, request context, procedure guards, `audit()`.           |
+| `packages/auth`    | Better Auth config and `access.ts`, the permission source of truth.      |
+| `packages/db`      | Drizzle schema, migrations, the migrator.                                |
+| `packages/storage` | SeaweedFS/S3 presigning.                                                 |
+| `packages/env`     | Validated environment schemas (server and web).                          |
+| `packages/ui`      | shadcn `base-lyra` components on Base UI.                                |
+| `tests/`           | Integration tests plus their support harness.                            |

@@ -10,6 +10,23 @@ needs the value.
 - `packages/env/src/web.ts` — values exposed to the client. Only `VITE_`-prefixed
   names belong here.
 
+## One file
+
+`packages/env/.env` is the repo's only `.env`. Copy it from the `.env.example`
+beside it.
+
+`packages/env/src/load.ts` resolves that path from its own module URL, not from
+the working directory, so the API server, the web app's SSR runtime,
+`drizzle-kit` and the operator scripts all read the same file no matter which
+directory Turbo or Bun started them in. Nothing passes `--env-file`. Vite is
+pointed at the same directory by `envDir` in `apps/web/vite.config.ts`, which is
+how `VITE_*` names reach the client bundle.
+
+Real environment variables always win — dotenv never overwrites a name that is
+already set. That is what lets `tests/support/preload.ts` pin the test database
+and lets a container get its values from the platform. No `.env` ships in an
+image (see `.dockerignore`); a missing file is a silent no-op.
+
 ## Adding one
 
 1. Add the key to the correct schema in `packages/env` with the narrowest Zod
@@ -20,7 +37,7 @@ needs the value.
    cleanly — `packages/storage` throws a named error listing the four SeaweedFS
    variables when a file operation is attempted without them, rather than
    preventing the app from starting.
-3. Add it to `apps/server/.env.example` with a placeholder, never a real value.
+3. Add it to `packages/env/.env.example`.
 4. Document it in the table below.
 5. Add it to the deployment configuration.
 
@@ -31,6 +48,7 @@ needs the value.
 | `DATABASE_URL`                | yes      | PostgreSQL connection string. The test harness refuses any name not ending `_test`.                     |
 | `BETTER_AUTH_SECRET`          | yes      | Session signing key, ≥32 characters.                                                                    |
 | `BETTER_AUTH_URL`             | yes      | Public base URL Better Auth issues callbacks against.                                                   |
+| `BETTER_AUTH_COOKIE_DOMAIN`   | deploy   | Shared parent domain such as `.example.com` when web and API use separate subdomains.                   |
 | `CORS_ORIGIN`                 | yes      | The web app's origin. Also the trusted origin and the invitation-link base.                             |
 | `FOUNDING_EMAIL`              | yes      | The only account allowed to create organizations (ADR 0014). Provisioned with `bun run create-founder`. |
 | `NODE_ENV`                    | no       | `development` \| `production` \| `test`. Controls production logging and development-only tooling.      |
@@ -43,9 +61,25 @@ needs the value.
 
 ## Web
 
-| Variable          | Required | Purpose                                  |
-| ----------------- | -------- | ---------------------------------------- |
-| `VITE_SERVER_URL` | yes      | Origin the browser's oRPC link talks to. |
+Org pages server-render ([ADR 0021](./decisions/0021-server-rendered-org-pages.md)).
+SSR calls the API router in-process, so the web runtime imports the same auth,
+database, and validated server environment as the API process. Locally the one
+`.env` covers both. In a deployment the web container needs every variable
+below set on it too, with the same values as the API container.
+
+| Variable                    | Phase   | Purpose                                                              |
+| --------------------------- | ------- | -------------------------------------------------------------------- |
+| `VITE_SERVER_URL`           | build   | Origin the browser's oRPC link calls.                                |
+| `DATABASE_URL`              | runtime | Same database as the API server.                                     |
+| `BETTER_AUTH_SECRET`        | runtime | Must match the API server.                                           |
+| `BETTER_AUTH_URL`           | runtime | Must match the API server.                                           |
+| `BETTER_AUTH_COOKIE_DOMAIN` | runtime | Shared parent domain for separate production web and API subdomains. |
+| `CORS_ORIGIN`               | runtime | Web origin; must match the API server.                               |
+| `FOUNDING_EMAIL`            | runtime | Must match because the shared auth configuration validates it.       |
+| `NODE_ENV`                  | runtime | Set to `production` in production.                                   |
+
+A missing or invalid runtime value fails web startup. A valid but wrong database,
+secret, URL, or cookie domain can make every SSR session look signed out.
 
 ## Secrets
 
@@ -62,5 +96,9 @@ grep flags it but it is not a leak. Verify with a build rather than a grep:
 cd apps/web && bun run build
 grep -rl "drizzle-orm\|DATABASE_URL\|SEAWEEDFS" .output/public   # expect no matches
 ```
+
+`BETTER_AUTH_SECRET` is the exception: better-auth's client ships a lazy env
+shim that names it, so the name appears in `auth-client-*.js`. Grep for the
+value from your `.env`, not the name — the value must not appear.
 
 Anything _else_ under `apps/web/src/` matching the grep is the bug.

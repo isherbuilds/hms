@@ -27,11 +27,11 @@ foundation for a safer, clearer product. The incumbent's live OPD surface includ
 discounting, emergency charges, split tender, advance adjustment, dues collection, appointment
 status, item-level cancellation requests, post-discount requests, payment-mode correction,
 expenses, and cashier handover. Accly-hms deliberately implements a smaller loop, but its
-duplicate-aware registration, separated visit and billing workspaces, append-only financial
+duplicate-aware registration, separated OPD encounter and billing workspaces, append-only financial
 documents, atomic double-entry posting, and tenant-scoped permissions are the better design
-direction (`apps/web/src/routes/org/$orgSlug/front-desk/register.tsx:30`,
-`apps/web/src/routes/org/$orgSlug/front-desk/register.tsx:82`,
-`apps/web/src/routes/org/$orgSlug/billing/visits.$visitId.tsx:141`,
+direction (`apps/web/src/components/patient-form.tsx`,
+`apps/web/src/components/new-opd-encounter-dialog.tsx`,
+`apps/web/src/routes/$orgSlug/opd/$opdEncounterId/billing.tsx`,
 `docs/contributing/architecture/accounting.md:36`, `packages/auth/src/access.ts:36`).
 
 We can beat the incumbent on UI and financial integrity, but we cannot yet claim to beat its OPD
@@ -52,8 +52,8 @@ discovery session before making parity claims outside Reception.
 
 The current GST page should be described as an **intra-state outward register**, not a GSTR-1
 filing export. It contains invoice/credit-note documents plus rate and HSN/SAC summaries, but the
-UI explicitly assumes CGST/SGST (`apps/web/src/routes/org/$orgSlug/reports/gst.tsx:43`,
-`apps/web/src/routes/org/$orgSlug/reports/gst.tsx:170`). Official GST tooling separately models
+UI explicitly assumes CGST/SGST (`apps/web/src/routes/$orgSlug/reports/gst.tsx:43`,
+`apps/web/src/routes/$orgSlug/reports/gst.tsx:170`). Official GST tooling separately models
 B2B/B2C, inter-state place of supply, IGST, credit/debit notes, advances, HSN summaries, and the
 document series. From the May 2025 return period, the GST portal also makes the documents-issued
 table mandatory when B2B or B2C supplies are reported. See the
@@ -194,25 +194,20 @@ the live production session.
 ### accly-hms implementation evidence
 
 - Registration asks for a smaller clinical/demographic core, accepts DOB or age, and performs a
-  debounced phone duplicate search before save (`apps/web/src/routes/org/$orgSlug/front-desk/register.tsx:30`,
-  `apps/web/src/routes/org/$orgSlug/front-desk/register.tsx:47`,
-  `apps/web/src/routes/org/$orgSlug/front-desk/register.tsx:82`,
-  `apps/web/src/routes/org/$orgSlug/front-desk/register.tsx:162`).
+  debounced phone duplicate search before save (`apps/web/src/components/patient-form.tsx`,
+  `apps/web/src/components/new-opd-encounter-dialog.tsx`).
 - Billing separates pending charges, invoice issuance, payment, partial/full credit notes, and
   refunds. Current payment methods are cash, UPI, and card; discounts require a reason
-  (`apps/web/src/routes/org/$orgSlug/billing/visits.$visitId.tsx:43`,
-  `apps/web/src/routes/org/$orgSlug/billing/visits.$visitId.tsx:81`,
-  `apps/web/src/routes/org/$orgSlug/billing/visits.$visitId.tsx:90`,
-  `apps/web/src/routes/org/$orgSlug/billing/visits.$visitId.tsx:101`).
+  (`apps/web/src/routes/$orgSlug/opd/$opdEncounterId/billing.tsx`).
 - Financial documents post atomically to an organization-scoped double-entry ledger and cannot
   double-post; the ledger is explicitly not a full ERP (`docs/contributing/architecture/accounting.md:3`,
   `docs/contributing/architecture/accounting.md:52`).
 - Ordinary members may write billing but cannot issue credit notes; admin/owner can. Every role
   currently reads reports (`packages/auth/src/access.ts:36`, `packages/auth/src/access.ts:50`,
   `packages/auth/src/access.ts:65`).
-- The go-live plan already includes multi-terminal freshness, daily collections, an OPD register,
-  unbilled work, and refund-due worklists (`docs/specs/accly-hms-go-live.md:32`,
-  `docs/specs/accly-hms-go-live.md:95`, `docs/specs/accly-hms-go-live.md:114`).
+- The product blueprint and operational-report spec require multi-terminal freshness, daily
+  collections, an OPD register, unbilled work, and refund-due worklists
+  (`docs/product-blueprint.md`, `docs/specs/operational-reports.md`).
 
 ## What this proves / does not prove
 
@@ -700,7 +695,7 @@ This makes the incumbent's true shape explicit: a **full 11-module hospital suit
 
 **Our status:** Roadmap treatment is deferred and sequenced: decision 1 requires the pilot to stay on the completed OPD loop first, with department modules gated behind triggers, not started by menu breadth (`docs/02-roadmap-decisions.md:1-4`). The deferred-matters row for this domain is `IPD/ADT + beds`, triggered only after ~4 stable weeks, paid scope, service-unit/bed master data, and nursing ownership documentation (`docs/02-roadmap-decisions.md:58-60`). Cross-role mapping is still incomplete: the competitor’s Nursing Station was accessible in a supervised account, but mapped only as a functional/supervised pass after OPD write-through, so our current scope remains pre-implement; do not infer full parity from label presence (`docs/research/03-client-hms-production-sitemap.md:84,119-123` and `docs/02-roadmap-decisions.md:119-123`).
 
-**Takeaway:** What to copy: the scope intent (ADT/bed flow, nurse-led shift continuity, handoff artifacts, and separate request/approval/closure paths) is meaningful for inpatient depth, and the workflow counters are good anchors for nurses on small screens if reduced to role-relevant worklists. What to avoid: dense mega-forms, universal mandatory fields, and report/form sprawl, plus any mutable correction of financial outcomes on an existing record. Our better pattern is to defer this module until the IPD trigger gates are proven, then implement it with narrow mobile-first screens per task (ward receive, transfer, assessment, discharge) and immutable event records where billing requests/adjustments create append-only ledger-affecting source docs (`docs/CONTEXT.md`/ADR 0020 approach) and auditable state transitions instead of in-place edits (`docs/contributing/decisions/0020-double-entry-posting-in-billing-transactions.md:1-12`, `docs/contributing/architecture/accounting.md:9-13`).
+**Takeaway:** What to copy: the scope intent (ADT/bed flow, nurse-led shift continuity, handoff artifacts, and separate request/approval/closure paths) is meaningful for inpatient depth, and the workflow counters are good anchors for nurses on small screens if reduced to role-relevant worklists. What to avoid: dense mega-forms, universal mandatory fields, and report/form sprawl, plus any mutable correction of financial outcomes on an existing record. Our better pattern is to defer this module until the IPD trigger gates are proven, then implement it with narrow mobile-first screens per task (ward receive, transfer, assessment, discharge) and immutable event records where billing requests/adjustments create append-only ledger-affecting source docs (the product blueprint and ADR 0020 approach) and auditable state transitions instead of in-place edits (`docs/product-blueprint.md`, `docs/contributing/decisions/0020-double-entry-posting-in-billing-transactions.md:1-12`, `docs/contributing/architecture/accounting.md:9-13`).
 
 ### O34 — Phlebotomy
 
@@ -728,7 +723,7 @@ This makes the incumbent's true shape explicit: a **full 11-module hospital suit
 
 **Key forms:** Scan Reception Tracker FW; Radiology Acceptance; Patient Receiving; Start Scan; Complete Scan; Radiology Reporting; Approval Pending; Consultant Approval; Radiology Outsource; Notifiable Diseases Investigation List; Radiology Control Tower
 
-**Our status:** Deferred in our roadmap; we intentionally ship OPD first and only start Radiology when its per-module trigger is met: named owner maps workflow, report-storage/integration choice is decided, and operational demand plus report-attachment volume justifies it (`docs/02-roadmap-decisions.md:11-12,58`). Until then, fulfillment remains out of scope in v0 docs (`docs/specs/accly-hms-v0.md:609-610`), and radiology execution/report tables are explicitly not yet introduced in the current orders slice plan (`docs/improvements/03-orders.md:165`). ADR-0020 keeps billing immutable source-of-document and constrains accounting expansion before new modules are sold in (`docs/02-roadmap-decisions.md:31-34`).
+**Our status:** Deferred in our roadmap; we intentionally ship OPD first and only start Radiology when its per-module trigger is met: named owner maps workflow, report-storage/integration choice is decided, and operational demand plus report-attachment volume justifies it (`docs/02-roadmap-decisions.md:11-12,58`). The product blueprint keeps radiology evidence-gated and omits execution and result tables until that trigger is met (`docs/product-blueprint.md`). ADR-0020 keeps billing immutable source-of-document and constrains accounting expansion before new modules are sold in (`docs/02-roadmap-decisions.md:31-34`).
 
 **Takeaway:** Copy the useful shape: explicit state transitions for imaging work (accept → receive → start → complete → reporting → approval) and a single modality-agnostic order contract instead of separate per-modality lifecycle code. Keep consultant approval and private report attachment handling, but avoid report-sprawl across 20+ form surfaces; on narrow screens this should be one high-signal, role-aware workflow. Our append-only ledger rule means radiology should generate additive charge events (consult/manual/charge rows) and immutable report artifacts, with reversals handled through reversal entries rather than editing posted financial rows (`docs/02-roadmap-decisions.md:31-34`).
 

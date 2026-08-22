@@ -40,6 +40,13 @@ export const account = pgTable(
     id: text("id").primaryKey(),
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
+    // Better Auth 1.7 signs accounts in by `issuer`, and local credential
+    // accounts carry the synthetic issuer `local:credential`. The default
+    // backfills rows created before the column existed — every account in
+    // this system is a credential account, so it is correct for all of them.
+    // OAuth accounts (future Google sign-in) get their real issuer from
+    // Better Auth's own writes.
+    issuer: text("issuer").notNull().default("local:credential"),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -55,7 +62,10 @@ export const account = pgTable(
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
-  (table) => [index("account_userId_idx").on(table.userId)],
+  (table) => [
+    index("account_userId_idx").on(table.userId),
+    uniqueIndex("account_issuer_accountId_uidx").on(table.issuer, table.accountId),
+  ],
 );
 
 export const verification = pgTable(

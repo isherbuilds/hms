@@ -51,7 +51,9 @@ function HomeRoute() {
         </span>
       </div>
 
-      <Button render={<Link to="/onboarding" />}>Open the app</Button>
+      <Button nativeButton={false} render={<Link to="/join" />}>
+        Open an organization
+      </Button>
     </div>
   );
 }

@@ -59,16 +59,16 @@ type AccountingFixture = {
   organization: { id: string; slug: string };
   api: AppRouterClient;
   patient: { name: string; mrn: string };
-  createVisit: () => Promise<{ id: string }>;
-  addManualCharge: (
-    visitId: string,
+  createOpdAppointment: () => Promise<{ id: string }>;
+  addOtherCharge: (
+    appointmentId: string,
     unitPrice: string,
     taxRatePercent?: string,
     description?: string,
     taxCode?: string,
   ) => Promise<unknown>;
   addCatalogCharge: (
-    visitId: string,
+    appointmentId: string,
     options: {
       name: string;
       category: "consultation" | "procedure" | "lab" | "radiology" | "other";
@@ -115,35 +115,41 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     departmentId: department.id,
   });
 
-  async function createVisit() {
-    const created = await api.visit.create({
+  async function createOpdAppointment() {
+    const created = await api.opd.createWalkIn({
       orgSlug: organization.slug,
       patientId: patient.id,
       practitionerId: practitioner.id,
       departmentId: department.id,
     });
-    return created.visit;
+    return created.appointment;
   }
 
-  async function addManualCharge(
-    visitId: string,
+  async function addOtherCharge(
+    appointmentId: string,
     unitPrice: string,
     taxRatePercent = "0",
-    description = `${seed} Manual Charge`,
+    description = `${seed} Other Charge`,
     taxCode?: string,
   ) {
-    return api.billing.addCharge({
+    const item = await api.catalog.create({
       orgSlug: organization.slug,
-      visitId,
-      description,
+      name: description,
+      code: `${seed.slice(0, 8).toUpperCase()}-${crypto.randomUUID().slice(0, 8)}`,
+      category: "other",
       unitPrice,
       taxRatePercent,
-      ...(taxCode === undefined ? {} : { taxCode }),
+      taxCode,
+    });
+    return api.billing.addCharge({
+      orgSlug: organization.slug,
+      appointmentId,
+      catalogItemId: item.id,
     });
   }
 
   async function addCatalogCharge(
-    visitId: string,
+    appointmentId: string,
     options: {
       name: string;
       category: "consultation" | "procedure" | "lab" | "radiology" | "other";
@@ -163,7 +169,7 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     });
     const charge = await api.billing.addCharge({
       orgSlug: organization.slug,
-      visitId,
+      appointmentId,
       catalogItemId: item.id,
     });
     return { item, charge };
@@ -174,8 +180,8 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     organization,
     api,
     patient,
-    createVisit,
-    addManualCharge,
+    createOpdAppointment,
+    addOtherCharge,
     addCatalogCharge,
   };
 }
@@ -183,7 +189,11 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
 test("dashboard collection trend labels the organization's Business Dates", async () => {
   const now = new Date();
   const utcDate = now.toISOString().slice(0, 10);
-  const timeZone = ["Pacific/Kiritimati", "America/Adak"].find(
+  // These fixed-offset extremes overlap around UTC noon, so at least one is
+  // always on a different calendar date. America/Adak's daylight offset left
+  // a one-hour window where the previous pair matched UTC and made this test
+  // depend on its wall-clock start time.
+  const timeZone = ["Pacific/Kiritimati", "Etc/GMT+12"].find(
     (candidate) => businessDate(now, candidate) !== utcDate,
   );
   if (!timeZone) {
@@ -249,8 +259,8 @@ function lineByCode(lines: Array<{ code: string; debit: string; credit: string }
 }
 
 async function issueConsultationInvoice(fixture: AccountingFixture, seed: string) {
-  const visit = await fixture.createVisit();
-  await fixture.addCatalogCharge(visit.id, {
+  const appointment = await fixture.createOpdAppointment();
+  await fixture.addCatalogCharge(appointment.id, {
     name: `${seed} Consultation`,
     category: "consultation",
     unitPrice: "100.00",
@@ -259,26 +269,26 @@ async function issueConsultationInvoice(fixture: AccountingFixture, seed: string
   });
   const issued = await fixture.api.billing.issueInvoice({
     orgSlug: fixture.organization.slug,
-    visitId: visit.id,
+    appointmentId: appointment.id,
   });
-  return { visit, ...issued };
+  return { appointment, ...issued };
 }
 
 test("issuing an invoice posts one balanced entry split across receivables, revenue, and GST", async () => {
   const fixture = await createAccountingFixture("accounting-invoice");
-  const visit = await fixture.createVisit();
-  await fixture.addCatalogCharge(visit.id, {
+  const appointment = await fixture.createOpdAppointment();
+  await fixture.addCatalogCharge(appointment.id, {
     name: "Taxable Consultation",
     category: "consultation",
     unitPrice: "100.00",
     taxRatePercent: "18.00",
     taxCode: "SVC18",
   });
-  await fixture.addManualCharge(visit.id, "50.00", "0", "Manual Other Service");
+  await fixture.addOtherCharge(appointment.id, "50.00", "0", "Other Service");
 
   const issued = await fixture.api.billing.issueInvoice({
     orgSlug: fixture.organization.slug,
-    visitId: visit.id,
+    appointmentId: appointment.id,
   });
   expect(issued.invoice).toMatchObject({
     subtotal: "150.00",
@@ -310,11 +320,11 @@ test("issuing an invoice posts one balanced entry split across receivables, reve
 
 test("zero-rated invoices omit GST and zero-total invoices do not post", async () => {
   const fixture = await createAccountingFixture("accounting-zero");
-  const zeroRateVisit = await fixture.createVisit();
-  await fixture.addManualCharge(zeroRateVisit.id, "25.00", "0", "Zero-rated Service");
+  const zeroRateOpdAppointment = await fixture.createOpdAppointment();
+  await fixture.addOtherCharge(zeroRateOpdAppointment.id, "25.00", "0", "Zero-rated Service");
   const zeroRate = await fixture.api.billing.issueInvoice({
     orgSlug: fixture.organization.slug,
-    visitId: zeroRateVisit.id,
+    appointmentId: zeroRateOpdAppointment.id,
   });
   const zeroRateJournal = await journalFor(fixture, "invoice", zeroRate.invoice.id);
   expect(zeroRateJournal.entries).toHaveLength(1);
@@ -323,11 +333,11 @@ test("zero-rated invoices omit GST and zero-total invoices do not post", async (
   expect(lineByCode(zeroRateJournal.lines, "4900").credit).toBe("25.00");
   expectBalanced(zeroRateJournal.lines);
 
-  const zeroTotalVisit = await fixture.createVisit();
-  await fixture.addManualCharge(zeroTotalVisit.id, "0.00", "0", "No-charge Service");
+  const zeroTotalOpdAppointment = await fixture.createOpdAppointment();
+  await fixture.addOtherCharge(zeroTotalOpdAppointment.id, "0.00", "0", "No-charge Service");
   const zeroTotal = await fixture.api.billing.issueInvoice({
     orgSlug: fixture.organization.slug,
-    visitId: zeroTotalVisit.id,
+    appointmentId: zeroTotalOpdAppointment.id,
   });
   expect(zeroTotal.invoice.grandTotal).toBe("0.00");
   expect((await journalFor(fixture, "invoice", zeroTotal.invoice.id)).entries).toHaveLength(0);
@@ -472,18 +482,18 @@ test("balance sheet balances GST output and current surplus against assets", asy
 
 test("GST register reconciles invoice and credit-note documents, rates, HSN, and date filters", async () => {
   const fixture = await createAccountingFixture("accounting-gst");
-  const visit = await fixture.createVisit();
-  await fixture.addCatalogCharge(visit.id, {
+  const appointment = await fixture.createOpdAppointment();
+  await fixture.addCatalogCharge(appointment.id, {
     name: "GST Consultation",
     category: "consultation",
     unitPrice: "100.00",
     taxRatePercent: "18.00",
     taxCode: "SVC18",
   });
-  await fixture.addManualCharge(visit.id, "50.00", "0", "Nil-rated Service", "NIL");
+  await fixture.addOtherCharge(appointment.id, "50.00", "0", "Nil-rated Service", "NIL");
   const issued = await fixture.api.billing.issueInvoice({
     orgSlug: fixture.organization.slug,
-    visitId: visit.id,
+    appointmentId: appointment.id,
     discountAmount: "15.00",
     discountReason: "Package discount",
   });
@@ -498,11 +508,11 @@ test("GST register reconciles invoice and credit-note documents, rates, HSN, and
     lines: [{ invoiceLineId: taxableLine.id, full: true }],
   });
 
-  const outsideVisit = await fixture.createVisit();
-  await fixture.addManualCharge(outsideVisit.id, "25.00", "0", "Outside-range Service");
+  const outsideOpdAppointment = await fixture.createOpdAppointment();
+  await fixture.addOtherCharge(outsideOpdAppointment.id, "25.00", "0", "Outside-range Service");
   const outside = await fixture.api.billing.issueInvoice({
     orgSlug: fixture.organization.slug,
-    visitId: outsideVisit.id,
+    appointmentId: outsideOpdAppointment.id,
   });
   const today = reportDate();
   const yesterday = addDays(today, -1);
@@ -583,8 +593,8 @@ test("trial balance rejects an inverted date range", async () => {
 
 test("invoice and credit note keep the revenue category captured when the charge was created", async () => {
   const fixture = await createAccountingFixture("accounting-category-snapshot");
-  const visit = await fixture.createVisit();
-  const { item } = await fixture.addCatalogCharge(visit.id, {
+  const appointment = await fixture.createOpdAppointment();
+  const { item } = await fixture.addCatalogCharge(appointment.id, {
     name: "Snapshot Consultation",
     category: "consultation",
     unitPrice: "100.00",
@@ -605,7 +615,7 @@ test("invoice and credit note keep the revenue category captured when the charge
   });
   const issued = await fixture.api.billing.issueInvoice({
     orgSlug: fixture.organization.slug,
-    visitId: visit.id,
+    appointmentId: appointment.id,
   });
   const invoiceJournal = await journalFor(fixture, "invoice", issued.invoice.id);
   expect(lineByCode(invoiceJournal.lines, "4100").credit).toBe("100.00");
@@ -633,19 +643,19 @@ test("invoice and credit note keep the revenue category captured when the charge
 
 test("concurrent first invoices seed one complete chart and both post", async () => {
   const fixture = await createAccountingFixture("accounting-concurrent-chart");
-  const firstVisit = await fixture.createVisit();
-  const secondVisit = await fixture.createVisit();
-  await fixture.addManualCharge(firstVisit.id, "10.00");
-  await fixture.addManualCharge(secondVisit.id, "20.00");
+  const firstOpdAppointment = await fixture.createOpdAppointment();
+  const secondOpdAppointment = await fixture.createOpdAppointment();
+  await fixture.addOtherCharge(firstOpdAppointment.id, "10.00");
+  await fixture.addOtherCharge(secondOpdAppointment.id, "20.00");
 
   const [first, second] = await Promise.all([
     fixture.api.billing.issueInvoice({
       orgSlug: fixture.organization.slug,
-      visitId: firstVisit.id,
+      appointmentId: firstOpdAppointment.id,
     }),
     fixture.api.billing.issueInvoice({
       orgSlug: fixture.organization.slug,
-      visitId: secondVisit.id,
+      appointmentId: secondOpdAppointment.id,
     }),
   ]);
 
@@ -685,8 +695,8 @@ test("duplicate source posting is rejected", async () => {
 
 test("posting failure rolls back the invoice and charge transition", async () => {
   const fixture = await createAccountingFixture("accounting-posting-rollback");
-  const visit = await fixture.createVisit();
-  await fixture.addManualCharge(visit.id, "25.00");
+  const appointment = await fixture.createOpdAppointment();
+  await fixture.addOtherCharge(appointment.id, "25.00");
   await db.insert(accounts).values({
     id: crypto.randomUUID(),
     orgId: fixture.organization.id,
@@ -698,20 +708,22 @@ test("posting failure rolls back the invoice and charge transition", async () =>
   await expect(
     fixture.api.billing.issueInvoice({
       orgSlug: fixture.organization.slug,
-      visitId: visit.id,
+      appointmentId: appointment.id,
     }),
   ).rejects.toThrow();
 
   expect(
     await fixture.api.billing.listInvoices({
       orgSlug: fixture.organization.slug,
-      visitId: visit.id,
+      appointmentId: appointment.id,
     }),
   ).toHaveLength(0);
   const pending = await db
     .select({ status: charges.status, invoiceId: charges.invoiceId })
     .from(charges)
-    .where(and(eq(charges.orgId, fixture.organization.id), eq(charges.visitId, visit.id)));
+    .where(
+      and(eq(charges.orgId, fixture.organization.id), eq(charges.opdAppointmentId, appointment.id)),
+    );
   expect(pending).toEqual([{ status: "pending", invoiceId: null }]);
 });
 
@@ -719,11 +731,11 @@ test("GST summaries reconcile odd-paise tax buckets", async () => {
   const fixture = await createAccountingFixture("accounting-gst-rounding");
 
   for (const suffix of ["first", "second"]) {
-    const visit = await fixture.createVisit();
-    await fixture.addManualCharge(visit.id, "1.00", "5.00", `${suffix} odd-paise tax service`);
+    const appointment = await fixture.createOpdAppointment();
+    await fixture.addOtherCharge(appointment.id, "1.00", "5.00", `${suffix} odd-paise tax service`);
     await fixture.api.billing.issueInvoice({
       orgSlug: fixture.organization.slug,
-      visitId: visit.id,
+      appointmentId: appointment.id,
     });
   }
 

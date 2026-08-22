@@ -1,117 +1,52 @@
 # HMS
 
-This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines React, TanStack Start, Hono, ORPC, and more.
+A multi-tenant hospital management system for OPD front-office and billing
+workflows. The live product covers patients, OPD appointments and the daily queue,
+catalog and staff setup, invoices and payments, credit notes and refunds,
+reports, private files, audit history, and organization-scoped access.
 
-## Features
+The application uses Bun and Turborepo, TanStack Start, Hono/oRPC, Drizzle and
+PostgreSQL, Better Auth, and SeaweedFS-compatible private object storage.
 
-- **TypeScript** - For type safety and improved developer experience
-- **TanStack Start** - SSR framework with TanStack Router
-- **TailwindCSS** - Utility-first CSS for rapid UI development
-- **Shared UI package** - shadcn/ui primitives live in `packages/ui`
-- **Hono** - Lightweight, performant server framework
-- **oRPC** - End-to-end type-safe APIs with OpenAPI integration
-- **Bun** - Runtime environment
-- **Drizzle** - TypeScript-first ORM
-- **PostgreSQL** - Database engine
-- **Authentication** - Better-Auth
-- **Oxlint** - Oxlint + Oxfmt (linting & formatting)
-- **Turborepo** - Optimized monorepo build system
+## Start locally
 
-## Getting Started
+Prerequisites are Bun (the version pinned in `package.json`) and Docker.
 
-First, install the dependencies:
-
-```bash
+```sh
 bun install
-```
-
-## Database Setup
-
-This project uses PostgreSQL with Drizzle ORM.
-
-1. Make sure you have a PostgreSQL database set up.
-2. Update your `apps/server/.env` file with your PostgreSQL connection details.
-
-3. Apply the schema to your database:
-
-```bash
-bun run db:push
-```
-
-Then, run the development server:
-
-```bash
+cp packages/env/.env.example packages/env/.env
+# Fill in the environment file, then:
 bun run dev
 ```
 
-Open [http://localhost:3001](http://localhost:3001) in your browser to see the web application.
-The API is running at [http://localhost:3000](http://localhost:3000).
+The development command starts PostgreSQL and SeaweedFS, applies migrations,
+and starts the web and API applications. The web app is served on port 3001 and
+the API on port 3000 by default.
 
-## UI Customization
+Public sign-up is disabled. Use `bun run create-founder`, `bun run create-user`,
+or `bun run db:seed` to create local accounts.
 
-React web apps in this stack share shadcn/ui primitives through `packages/ui`.
+## Repository map
 
-- Change design tokens and global styles in `packages/ui/src/styles/globals.css`
-- Update shared primitives in `packages/ui/src/components/*`
-- Adjust shadcn aliases or style config in `packages/ui/components.json` and `apps/web/components.json`
+- `apps/web` — TanStack Start application.
+- `apps/server` — Hono host for auth, oRPC/OpenAPI, and health.
+- `apps/fumadocs` — end-user documentation.
+- `packages/api` — domain routers and authorization guards.
+- `packages/auth` — Better Auth and the permission model.
+- `packages/db` — schema, migrations, and database access.
+- `packages/storage` — private object-storage operations.
+- `packages/ui` — shared Base UI/shadcn components.
+- `docs/contributing` — architecture, decisions, setup, and engineering rules.
 
-### Add more shared components
+Read [project intent](docs/contributing/project-intent.md) for the product
+boundary and [getting started](docs/contributing/getting-started.md) for the
+complete setup, commands, and account bootstrap. Deployment is documented in
+[deployment](docs/contributing/deployment.md).
 
-Run this from the project root to add more primitives to the shared UI package:
+Before handing off a change, run:
 
-```bash
-npx shadcn@latest add accordion dialog popover sheet table -c packages/ui
+```sh
+bun run check-types
+bun run check
+bun run test
 ```
-
-Import shared components like this:
-
-```tsx
-import { Button } from "@hms/ui/components/button";
-```
-
-### Add app-specific blocks
-
-If you want to add app-specific blocks instead of shared primitives, run the shadcn CLI from `apps/web`.
-
-## Deployment
-
-Two applications deploy independently from one repository: the web app
-(TanStack Start on Nitro) and the API server (Hono + oRPC on Bun), plus managed
-PostgreSQL and SeaweedFS resources. There is no production compose file — each
-app owns a Dockerfile that builds from the repository root, and the platform
-supplies environment, health, and routing.
-
-See [docs/contributing/deployment.md](docs/contributing/deployment.md) for the
-full topology, environment variables, and constraints.
-
-## Git Hooks and Formatting
-
-- Run checks: `bun run check`
-
-## Project Structure
-
-```
-hms/
-├── apps/
-│   ├── web/         # Frontend application (React + TanStack Start)
-│   └── server/      # Backend API (Hono, ORPC)
-├── packages/
-│   ├── ui/          # Shared shadcn/ui components and styles
-│   ├── api/         # API layer / business logic
-│   ├── auth/        # Authentication configuration & logic
-│   └── db/          # Database schema & queries
-```
-
-## Available Scripts
-
-- `bun run dev`: Start all applications in development mode
-- `bun run build`: Build all applications
-- `bun run dev:web`: Start only the web application
-- `bun run dev:server`: Start only the server
-- `bun run check-types`: Check TypeScript types across all apps
-- `bun run db:generate`: Generate a drizzle-kit migration
-- `bun run db:migrate`: Run database migrations
-- `bun run db:seed`: Development accounts and two organizations
-- `bun run db:studio`: Open database studio UI
-- `bun run check`: Run Oxlint and Oxfmt
-- `bun run create-user <email> <name> <password>`: Create an account (sign-up is disabled)

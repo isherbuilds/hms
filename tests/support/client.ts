@@ -1,18 +1,33 @@
+import { createRequestContext } from "@hms/api/lib/context";
 import { appRouter, type AppRouterClient } from "@hms/api/routers/index";
-import { auth } from "@hms/auth";
 import { createRouterClient } from "@orpc/server";
 import { expect } from "bun:test";
 
 import type { TestUser } from "./auth";
 
+/**
+ * One context per call, exactly like one HTTP request per call: each call
+ * resolves its own session and gets its own membership map, so nothing an
+ * earlier call proved carries over. Use this to test anything that must be
+ * re-proven per request, such as revocation.
+ */
 export function clientFor(identity: TestUser): AppRouterClient {
   const headers = new Headers({ cookie: identity.cookie });
   return createRouterClient(appRouter, {
-    context: async () => ({
-      headers,
-      session: await auth.api.getSession({ headers }),
-    }),
+    context: () => createRequestContext(headers),
   });
+}
+
+/**
+ * One context for every call, modelling the server-rendered page that fans out
+ * into several procedure calls inside a single request. The shared context is
+ * what lets those calls reuse one membership join; the permission check still
+ * runs per call.
+ */
+export function requestScopedClientFor(identity: TestUser): AppRouterClient {
+  const headers = new Headers({ cookie: identity.cookie });
+  const context = createRequestContext(headers);
+  return createRouterClient(appRouter, { context: () => context });
 }
 
 async function rejection(promise: Promise<unknown>, what: string): Promise<unknown> {

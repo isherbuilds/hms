@@ -1,10 +1,8 @@
 import { db } from "@hms/db";
-import { member } from "@hms/db/schema/auth";
 import { charges } from "@hms/db/schema/charges";
 import { departments } from "@hms/db/schema/departments";
-import { file } from "@hms/db/schema/file";
 import { payments } from "@hms/db/schema/payments";
-import { visits } from "@hms/db/schema/visits";
+import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { sql } from "drizzle-orm";
 
 import { businessDate, businessDayWindow } from "../lib/business-date";
@@ -12,68 +10,49 @@ import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
 
 export const dashboardRouter = {
-  summary: orgProcedure(
-    {
-      member: ["read"],
-      storage: ["read"],
-    },
-    orgInput,
-  ).handler(async ({ context }) => {
-    const { orgId } = context.scope;
-    const result = await db.execute<{ files: number; people: number }>(sql`
-        select
-          (select count(*)::integer from ${file}
-            where ${file.orgId} = ${orgId} and ${file.status} = 'ready') as "files",
-          (select count(*)::integer from ${member}
-            where ${member.organizationId} = ${orgId}) as "people"
-      `);
-    const summary = result.rows[0];
-
-    if (!summary) {
-      throw new Error("Dashboard summary query returned no row");
-    }
-    return summary;
-  }),
-
   /**
    * The organization's local clinical day: how many are waiting, how many are
    * in a room, and which departments the day is going to. Separate from
-   * `collections` so a role that may read visits but not money still gets a
+   * `collections` so a role that may read OPD appointments but not money still gets a
    * dashboard.
    */
-  today: orgProcedure({ visit: ["read"] }, orgInput).handler(async ({ context }) => {
+  today: orgProcedure({ opd: ["read"] }, orgInput).handler(async ({ context }) => {
     const { orgId } = context.scope;
     const { timeZone } = await readOrgSettings(orgId);
     const currentDay = businessDate(new Date(), timeZone);
-    const { start, end } = businessDayWindow(currentDay, timeZone);
 
+    // Both queries window on `businessDate`, which check-in (or walk-in
+    // creation) sets to the arrival day — a booking created yesterday for
+    // today belongs to today, and a booking for next week does not.
     const [counts, mix] = await Promise.all([
       db.execute<{ waiting: number; inConsult: number; completed: number; longestWaitMin: number }>(
         sql`
           select
-            count(*) filter (where ${visits.status} = 'waiting')::integer as "waiting",
-            count(*) filter (where ${visits.status} = 'in_consult')::integer as "inConsult",
-            count(*) filter (where ${visits.status} = 'completed')::integer as "completed",
+            count(*) filter (where ${opdAppointments.status} = 'waiting')::integer as "waiting",
+            count(*) filter (where ${opdAppointments.status} = 'in_consult')::integer as "inConsult",
+            count(*) filter (where ${opdAppointments.status} = 'completed')::integer as "completed",
             coalesce(
-              max(extract(epoch from (now() - ${visits.createdAt})))
-                filter (where ${visits.status} = 'waiting'),
+              max(extract(epoch from (now() - ${opdAppointments.arrivedAt})))
+                filter (where ${opdAppointments.status} = 'waiting'),
               0
             )::integer / 60 as "longestWaitMin"
-          from ${visits}
-          where ${visits.orgId} = ${orgId}
-            and ${visits.createdAt} >= ${start} and ${visits.createdAt} < ${end}
+          from ${opdAppointments}
+          where ${opdAppointments.orgId} = ${orgId}
+            and ${opdAppointments.businessDate} = ${currentDay}
         `,
       ),
+      // The mix counts arrived attendance only: a `booked` row for today may
+      // still cancel or no-show, and `cancelled`/`no_show` work never happened.
       db.execute<{ department: string; count: number }>(sql`
           select coalesce(${departments.name}, 'Unassigned') as "department",
                  count(*)::integer as "count"
-          from ${visits}
+          from ${opdAppointments}
           left join ${departments}
-            on ${departments.id} = ${visits.departmentId}
+            on ${departments.id} = ${opdAppointments.departmentId}
            and ${departments.orgId} = ${orgId}
-          where ${visits.orgId} = ${orgId}
-            and ${visits.createdAt} >= ${start} and ${visits.createdAt} < ${end}
-            and ${visits.status} <> 'cancelled'
+          where ${opdAppointments.orgId} = ${orgId}
+            and ${opdAppointments.businessDate} = ${currentDay}
+            and ${opdAppointments.status} in ('waiting', 'in_consult', 'completed', 'left_unseen')
           group by 1
           order by 2 desc, 1 asc
         `),
@@ -97,41 +76,36 @@ export const dashboardRouter = {
     const currentDay = businessDate(new Date(), timeZone);
     const { start, end } = businessDayWindow(currentDay, timeZone);
 
-    const result = await db.execute<{
-      collected: string;
-      cash: string;
-      upi: string;
-      card: string;
-      unbilled: string;
-      unbilledVisits: number;
-    }>(sql`
+    // The two statements are independent, so they go out together. The totals
+    // split the day's takings by method with `filter` clauses instead of one
+    // subselect per method, so `payments` is scanned once rather than four
+    // times. The charges subselects stay scalar: they read another table and a
+    // different predicate (pending, no date window).
+    const [result, trend] = await Promise.all([
+      db.execute<{
+        collected: string;
+        cash: string;
+        upi: string;
+        card: string;
+        unbilled: string;
+        unbilledOpdAppointments: number;
+      }>(sql`
         select
-          (select coalesce(sum(${payments.amount}), 0)::text from ${payments}
-            where ${payments.orgId} = ${orgId}
-              and ${payments.createdAt} >= ${start} and ${payments.createdAt} < ${end}) as "collected",
-          (select coalesce(sum(${payments.amount}), 0)::text from ${payments}
-            where ${payments.orgId} = ${orgId} and ${payments.method} = 'cash'
-              and ${payments.createdAt} >= ${start} and ${payments.createdAt} < ${end}) as "cash",
-          (select coalesce(sum(${payments.amount}), 0)::text from ${payments}
-            where ${payments.orgId} = ${orgId} and ${payments.method} = 'upi'
-              and ${payments.createdAt} >= ${start} and ${payments.createdAt} < ${end}) as "upi",
-          (select coalesce(sum(${payments.amount}), 0)::text from ${payments}
-            where ${payments.orgId} = ${orgId} and ${payments.method} = 'card'
-              and ${payments.createdAt} >= ${start} and ${payments.createdAt} < ${end}) as "card",
+          coalesce(sum(${payments.amount}), 0)::text as "collected",
+          coalesce(sum(${payments.amount}) filter (where ${payments.method} = 'cash'), 0)::text as "cash",
+          coalesce(sum(${payments.amount}) filter (where ${payments.method} = 'upi'), 0)::text as "upi",
+          coalesce(sum(${payments.amount}) filter (where ${payments.method} = 'card'), 0)::text as "card",
           (select coalesce(sum(${charges.unitPrice} * ${charges.qty}), 0)::text from ${charges}
             where ${charges.orgId} = ${orgId} and ${charges.status} = 'pending') as "unbilled",
-          (select count(distinct ${charges.visitId})::integer from ${charges}
-            where ${charges.orgId} = ${orgId} and ${charges.status} = 'pending') as "unbilledVisits"
-      `);
-
-    const totals = result.rows[0];
-    if (!totals) {
-      throw new Error("Dashboard collections query returned no row");
-    }
-
-    // Fourteen days including today, gap-filled: a day with no payments must
-    // plot as a zero-height bar, not vanish and silently compress the axis.
-    const trend = await db.execute<{ day: string; amount: string }>(sql`
+          (select count(distinct ${charges.opdAppointmentId})::integer from ${charges}
+            where ${charges.orgId} = ${orgId} and ${charges.status} = 'pending') as "unbilledOpdAppointments"
+        from ${payments}
+        where ${payments.orgId} = ${orgId}
+          and ${payments.createdAt} >= ${start} and ${payments.createdAt} < ${end}
+      `),
+      // Fourteen days including today, gap-filled: a day with no payments must
+      // plot as a zero-height bar, not vanish and silently compress the axis.
+      db.execute<{ day: string; amount: string }>(sql`
         with days as (
           select (${currentDay}::date - series.days_ago)::date as day
           from generate_series(13, 0, -1) as series(days_ago)
@@ -145,7 +119,13 @@ export const dashboardRouter = {
          and ${payments.createdAt} < (days.day + 1)::timestamp at time zone ${timeZone}
         group by days.day
         order by days.day asc
-      `);
+      `),
+    ]);
+
+    const totals = result.rows[0];
+    if (!totals) {
+      throw new Error("Dashboard collections query returned no row");
+    }
 
     return { ...totals, trend: trend.rows };
   }),

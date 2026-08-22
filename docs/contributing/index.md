@@ -3,6 +3,9 @@
 Documentation for people and agents **developing this repository**: setup, code
 style, tests, and runtime architecture.
 
+Product language and the complete domain map live in the canonical
+[HMS product blueprint](../product-blueprint.md).
+
 `bun run check-types && bun run check && bun run test` is the local gate.
 
 ## Setup and workflow
@@ -19,6 +22,7 @@ style, tests, and runtime architecture.
 
 ## Code and tooling
 
+- [Design](../design.md) — the UI source of truth: surfaces, spacing, type, motion
 - [Code style](./code-style.md)
 - [Documentation principles](./documentation.md)
 
@@ -40,7 +44,7 @@ style, tests, and runtime architecture.
   - [Audit](./architecture/audit.md)
   - [File storage](./architecture/file-storage.md)
   - [HMS domain layer](./architecture/domain-layer.md) — live relationships and
-    front-desk boundary
+    the patient and OPD appointment boundary
   - [Accounting ledger](./architecture/accounting.md) — double-entry posting and
     statutory handover boundary
 

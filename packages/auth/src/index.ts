@@ -7,13 +7,14 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 
 import { ac, roles } from "./access";
+import { organizationSlugIssue } from "./organization-slug";
 
 /** The page that lists a user's pending invitations and lets them accept one. */
 export function invitationUrl(invitationId: string): string {
-  return new URL(`/onboarding?invitation=${invitationId}`, env.CORS_ORIGIN).toString();
+  return new URL(`/join?invitation=${invitationId}`, env.CORS_ORIGIN).toString();
 }
 
-export function createAuth() {
+function createAuth() {
   return betterAuth({
     experimental: {
       joins: true,
@@ -24,6 +25,9 @@ export function createAuth() {
       schema: schema,
     }),
     trustedOrigins: [env.CORS_ORIGIN],
+    // Creation performs the authoritative uniqueness check. Exposing this
+    // unused probe would let any signed-in account enumerate organization URLs.
+    disabledPaths: ["/organization/check-slug"],
     emailAndPassword: {
       enabled: true,
       // Sign-up is closed: accounts are created by an operator through
@@ -35,7 +39,6 @@ export function createAuth() {
     session: {
       cookieCache: {
         enabled: true,
-        // maxAge: 5 * 60,
       },
     },
     advanced: {
@@ -44,6 +47,12 @@ export function createAuth() {
         secure: true,
         httpOnly: true,
       },
+      crossSubDomainCookies: env.BETTER_AUTH_COOKIE_DOMAIN
+        ? {
+            enabled: true,
+            domain: env.BETTER_AUTH_COOKIE_DOMAIN,
+          }
+        : undefined,
     },
     plugins: [
       organization({
@@ -62,6 +71,14 @@ export function createAuth() {
         // endpoint closed until deletion has an explicit object-cleanup flow.
         disableOrganizationDeletion: true,
         organizationHooks: {
+          beforeCreateOrganization: async ({ organization: candidate }) => {
+            const issue = organizationSlugIssue(candidate.slug);
+            if (issue) {
+              throw new APIError("BAD_REQUEST", {
+                message: issue,
+              });
+            }
+          },
           /**
            * The slug is the tenant claim every org-scoped request carries, so it
            * must be stable, not merely unique. Better Auth never reserves a
@@ -80,7 +97,7 @@ export function createAuth() {
         /**
          * Accounts are created by an operator, so an invitation is how a
          * person is placed into an organization — wire a real provider here.
-         * Until one is configured the link is logged, and `members.invite`
+         * Until one is configured the link is logged, and `member.invite`
          * also returns it so an admin can pass it on directly; the flow is
          * never silently broken.
          */

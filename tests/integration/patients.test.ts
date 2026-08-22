@@ -56,14 +56,15 @@ test("registration uses the organization's configured MRN prefix", async () => {
   expect(patient.mrn).toBe("HMS-000001");
 });
 
-test("register rejects the same name and phone in one organization", async () => {
+test("register permits the same demographics after surfacing candidate matches", async () => {
   const owner = await createTestUser("patient-identity-duplicate");
   const organization = await createOrganization(owner, "patient-identity-duplicate");
   const api = clientFor(owner);
   const input = registration(organization.slug, "Duplicate Patient", "5550150");
 
-  await api.patient.register(input);
-  await expectORPCCode(api.patient.register(input), "CONFLICT");
+  const first = await api.patient.register(input);
+  const second = await api.patient.register(input);
+  expect(second.id).not.toBe(first.id);
 });
 
 test("register allows family members with the same phone and different names", async () => {
@@ -94,16 +95,18 @@ test("register allows the same name and phone in different organizations", async
   expect(second.orgId).toBe(two.id);
 });
 
-test("register rejects case-only name differences with the same phone", async () => {
+test("register permits case-only name differences with the same phone", async () => {
   const owner = await createTestUser("patient-identity-case");
   const organization = await createOrganization(owner, "patient-identity-case");
   const api = clientFor(owner);
 
-  await api.patient.register(registration(organization.slug, "Case Patient", "5550153"));
-  await expectORPCCode(
-    api.patient.register(registration(organization.slug, "case patient", "5550153")),
-    "CONFLICT",
+  const first = await api.patient.register(
+    registration(organization.slug, "Case Patient", "5550153"),
   );
+  const second = await api.patient.register(
+    registration(organization.slug, "case patient", "5550153"),
+  );
+  expect(second.id).not.toBe(first.id);
 });
 
 test("exact-phone dedupe returns every match in the caller's organization only", async () => {

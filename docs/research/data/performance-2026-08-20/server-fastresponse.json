@@ -1,0 +1,87 @@
+{
+  "capturedAt": "2026-08-20T10:35:28.664Z",
+  "route": "/mercy-general/dashboard",
+  "warmupRequests": 10,
+  "rounds": [
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 122.53852018907345,
+      "p50Ms": 7.935042000000067,
+      "p95Ms": 10.248917000000006,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 244.3314757595807,
+      "p50Ms": 121.00145800000018,
+      "p95Ms": 139.26974999999993,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 146.47952029105514,
+      "p50Ms": 6.511792000000241,
+      "p95Ms": 9.047375000000102,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 265.53909913869074,
+      "p50Ms": 109.11704199999986,
+      "p95Ms": 140.21845900000017,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 159.65407228492674,
+      "p50Ms": 6.112166999999317,
+      "p95Ms": 7.408666000000267,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 281.08434706848146,
+      "p50Ms": 106.63991699999951,
+      "p95Ms": 115.64787499999966,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 139.88188826572173,
+      "p50Ms": 6.563583000000108,
+      "p95Ms": 9.013624999999593,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 290.7668794716767,
+      "p50Ms": 105.57745900000009,
+      "p95Ms": 110.57741699999951,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 150.82895609351885,
+      "p50Ms": 6.207749999999578,
+      "p95Ms": 9.003333000000566,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 279.5608734585769,
+      "p50Ms": 106.1490419999991,
+      "p95Ms": 113.52129200000127,
+      "failures": 0
+    }
+  ]
+}

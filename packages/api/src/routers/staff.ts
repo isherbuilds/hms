@@ -47,7 +47,7 @@ async function assertCatalogItemInScope(catalogItemId: string, orgId: string): P
   }
 }
 
-async function assertMemberInScope(memberUserId: string, orgId: string): Promise<void> {
+async function assertMemberUserInScope(memberUserId: string, orgId: string): Promise<void> {
   const [row] = await db
     .select({ id: member.id })
     .from(member)
@@ -77,7 +77,7 @@ async function assertPractitionerReferences(
       ? assertCatalogItemInScope(fields.followUpFeeItemId, orgId)
       : Promise.resolve(),
     fields.memberUserId != null
-      ? assertMemberInScope(fields.memberUserId, orgId)
+      ? assertMemberUserInScope(fields.memberUserId, orgId)
       : Promise.resolve(),
   ]);
 }

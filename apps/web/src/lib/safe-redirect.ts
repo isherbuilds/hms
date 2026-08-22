@@ -16,11 +16,12 @@ export function safeRedirect(to: unknown, defaultRedirect = DEFAULT_REDIRECT): s
     if (url.origin !== APP_ORIGIN) {
       return defaultRedirect;
     }
-    // Allowlist, not denylist: only pages a signed-in user can actually land
-    // on are worth returning to. Anything else — /login itself, nested
-    // /login?redirect=… chains (whose encoded "?" hides inside the pathname),
-    // or arbitrary paths — falls back so the chain always terminates.
-    if (url.pathname !== "/onboarding" && !url.pathname.startsWith("/org/")) {
+    const decodedPath = decodeURIComponent(url.pathname).toLowerCase();
+    if (
+      decodedPath === "/login" ||
+      decodedPath.startsWith("/login/") ||
+      decodedPath.startsWith("/login?")
+    ) {
       return defaultRedirect;
     }
     return `${url.pathname}${url.search}${url.hash}`;

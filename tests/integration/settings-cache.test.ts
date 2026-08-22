@@ -59,10 +59,11 @@ test("direct writes remain stale until the cache TTL expires", async () => {
 
   await db
     .update(organizationSettings)
-    .set({ invoicePrefix: "NEW" })
+    .set({ invoicePrefix: "NEW", timeZone: "Pacific/Auckland" })
     .where(eq(organizationSettings.orgId, organization.id));
 
   expect((await readOrgSettings(organization.id)).invoicePrefix).toBe("OLD");
+  expect((await api.member.me({ orgSlug: organization.slug })).timeZone).toBe("Pacific/Auckland");
   expect(
     (await readOrgSettings(organization.id, Date.now() + SETTINGS_CACHE_TTL_MS + 1_000))
       .invoicePrefix,

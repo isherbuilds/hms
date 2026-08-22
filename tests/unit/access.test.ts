@@ -30,8 +30,6 @@ const MATRIX: Array<{
 
   { permission: { audit: ["read"] }, owner: true, admin: true, member: false },
 
-  { permission: { ai: ["use"] }, owner: true, admin: true, member: true },
-
   { permission: { catalog: ["read"] }, owner: true, admin: true, member: true },
   {
     permission: { catalog: ["create"] },
@@ -61,14 +59,14 @@ const MATRIX: Array<{
   },
 
   {
-    permission: { storage: ["upload"] },
+    permission: { file: ["upload"] },
     owner: true,
     admin: true,
     member: true,
   },
-  { permission: { storage: ["read"] }, owner: true, admin: true, member: true },
+  { permission: { file: ["read"] }, owner: true, admin: true, member: true },
   {
-    permission: { storage: ["delete"] },
+    permission: { file: ["delete"] },
     owner: true,
     admin: true,
     member: false,
@@ -160,7 +158,7 @@ test("authorize grants the union across roles, matching Better Auth's own semant
   // permissions a multi-role member was deliberately granted.
   expect(authorize(parseRoles("member"), { audit: ["read"] })).toBe(false);
   expect(authorize(parseRoles("member,admin"), { audit: ["read"] })).toBe(true);
-  expect(authorize(parseRoles("member,admin"), { storage: ["delete"] })).toBe(true);
+  expect(authorize(parseRoles("member,admin"), { file: ["delete"] })).toBe(true);
 
   expect(authorize(["member"], { organization: ["delete"] })).toBe(false);
   expect(authorize([], { settings: ["read"] })).toBe(false);

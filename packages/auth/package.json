@@ -16,9 +16,7 @@
     "@hms/db": "workspace:*",
     "@hms/env": "workspace:*",
     "better-auth": "catalog:",
-    "dotenv": "catalog:",
-    "drizzle-orm": "catalog:",
-    "zod": "catalog:"
+    "drizzle-orm": "catalog:"
   },
   "devDependencies": {
     "@hms/config": "workspace:*",

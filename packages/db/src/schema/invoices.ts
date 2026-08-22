@@ -2,8 +2,8 @@ import { sql } from "drizzle-orm";
 import { check, index, numeric, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
+import { opdAppointments } from "./opd-appointments";
 import { patients } from "./patients";
-import { visits } from "./visits";
 
 /**
  * Immutable issued invoice headers. Organization and patient print fields are
@@ -19,9 +19,9 @@ export const invoices = pgTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    visitId: text("visit_id")
+    opdAppointmentId: text("opd_appointment_id")
       .notNull()
-      .references(() => visits.id),
+      .references(() => opdAppointments.id),
     patientId: text("patient_id")
       .notNull()
       .references(() => patients.id),
@@ -49,7 +49,7 @@ export const invoices = pgTable(
   (table) => [
     check("invoices_discount_amount_check", sql`${table.discountAmount} >= 0`),
     uniqueIndex("invoices_org_number_idx").on(table.orgId, table.invoiceNumber),
-    index("invoices_org_visit_idx").on(table.orgId, table.visitId),
+    index("invoices_org_opd_appointment_idx").on(table.orgId, table.opdAppointmentId),
     index("invoices_org_created_idx").on(table.orgId, table.createdAt.desc(), table.id.desc()),
   ],
 );

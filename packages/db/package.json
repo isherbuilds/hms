@@ -14,14 +14,12 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
-    "db:migrate": "bun --env-file=../../apps/server/.env src/migrate-command.ts"
+    "db:migrate": "bun src/migrate-command.ts"
   },
   "dependencies": {
     "@hms/env": "workspace:*",
-    "dotenv": "catalog:",
     "drizzle-orm": "catalog:",
-    "pg": "^8.23.0",
-    "zod": "catalog:"
+    "pg": "^8.23.0"
   },
   "devDependencies": {
     "@hms/config": "workspace:*",

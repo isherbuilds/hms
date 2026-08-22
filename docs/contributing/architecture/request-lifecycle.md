@@ -9,12 +9,11 @@
 3. `/api/auth/*` for Better Auth.
 4. `/rpc/*` for every oRPC procedure.
 5. `/api-reference` in development only.
-6. `/ai` for the streaming AI route, guarded by explicit org input and the
-   shared authorization resolver.
 
 The server builds oRPC context only after a request matches the RPC handler.
-`packages/api/src/lib/context.ts` is the Hono adapter; it
-accepts the Hono context so host call sites do not manually extract headers.
+The Hono host extracts the request headers and passes them to the
+framework-neutral `createRequestContext(headers)` function in
+`packages/api/src/lib/context.ts`.
 The host reuses that resolved session to identify the request in evlog, so an
 RPC request performs one Better Auth session lookup rather than one for logging
 and another for authorization. `GET /`, CORS, and auth routes do not
@@ -23,25 +22,33 @@ The server-local `createLoggedRequestContext` name reflects that composition:
 it creates the API context once and then enriches the request log; it does not
 perform a second authentication lookup.
 
-AI SDK devtools are loaded only for non-production AI requests. The middleware
-creates request-specific trace state and rejects production use, so it remains
-inside the request while its package is omitted from the production hot path.
+Request bodies are bounded before this context work. Hono rejects `/rpc/*`
+bodies above 1 MiB before session resolution, and oRPC repeats the same limit
+at its Fetch adapter boundary.
 
 ## Context and procedures
 
-The framework adapter resolves the session and returns the small shared
+`createRequestContext(headers)` builds one context per request. It resolves the
+session once, creates one empty membership map, and returns the small shared
 `ORPCContext`:
 
 ```ts
 {
   session;
   headers;
+  memberships;
 }
 ```
 
 `orgProcedure(permission, input)` parses the explicit org claim, performs the
 indexed membership lookup, checks the role grant, and adds verified scope. The
-lookup is fresh for every request. The permission is a required constructor
+guard memoizes the membership row in `context.memberships`, keyed by caller and
+claimed slug, so a request joins each pair once and later calls in the same
+request reuse the result. The map is created per request and never outlives it,
+so a removed member is rejected on the next request. An SSR org page whose
+parent and child loaders fan out into several procedure calls therefore proves
+membership once instead of once per call. The permission check and its denial
+audit still run on every call. The permission is a required constructor
 argument and the raw oRPC builder is not exported, so the guard cannot be
 omitted. `headers` lets org procedures call Better Auth as the authenticated
 caller.
@@ -74,19 +81,19 @@ and a fresh instance for each SSR router. Queries do not retry during SSR or
 after `401`/`403`; other browser failures retry at most twice. Stale queries
 retain TanStack Query's mount, focus, and reconnect revalidation.
 
-`apps/web/src/lib/operational-query.ts` owns the polling policy for the four screens
-several terminals share: the front-desk queue and visit detail, and the billing visits
-list and visit workspace. They refetch every 10 seconds and on window focus, with a
+`apps/web/src/lib/operational-query.ts` owns the polling policy for the three screens
+several terminals share: the OPD queue and the two tabs of an OPD appointment — the clinical
+view and its billing tab. They refetch every 10 seconds and on window focus, with a
 5-second `staleTime` under the 60-second global default. TanStack suppresses the
 interval in background tabs, so an idle terminal costs nothing. There are no
 websockets or SSE.
 
 When a mutation loses a race, the server answers `CONFLICT` and
-`refreshVisitOnConflict` in `apps/web/src/lib/visit-operational-query.ts` invalidates
-the queue, the visit, its pending charges, and its invoices, then the caller toasts the
+`toastOpdConflict` in `apps/web/src/lib/opd-operational-query.ts` invalidates
+the queue, the OPD appointment, its pending charges, and its invoices, then toasts the
 cross-terminal cause. The loser sees the winner's state rather than an opaque error.
 
-Org pages take `orgSlug` from `/org/$orgSlug`, pass it in procedure input, and include
+Org pages take `orgSlug` from `/$orgSlug`, pass it in procedure input, and include
 it in tenant-specific invalidation keys. oRPC includes procedure input in query
 identity, so tenant cache separation requires no second client or custom header.
 The dashboard uses one scoped summary procedure with scalar counts rather than

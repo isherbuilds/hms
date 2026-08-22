@@ -12,19 +12,14 @@
   "dependencies": {
     "@hms/auth": "workspace:*",
     "@hms/db": "workspace:*",
-    "@hms/env": "workspace:*",
     "@hms/storage": "workspace:*",
-    "@orpc/openapi": "catalog:",
     "@orpc/server": "catalog:",
-    "@orpc/zod": "catalog:",
     "@types/pg": "catalog:",
-    "dotenv": "catalog:",
     "drizzle-orm": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@hms/config": "workspace:*",
-    "hono": "catalog:",
     "typescript": "catalog:"
   }
 }

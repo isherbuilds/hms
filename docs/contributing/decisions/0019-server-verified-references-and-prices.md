@@ -16,7 +16,7 @@ But "the client" is any holder of a valid session cookie, not our UI. A member
 of one org can send another org's ids from curl; a tampered price would flow
 into an immutable invoice. A single-column foreign key proves existence, not
 tenancy. And the checks being skipped are indexed `(org_id, id)` lookups —
-`visit.create` resolves patient, practitioner, and department in one parallel
+`opd.create` resolves patient, practitioner, and department in one parallel
 round trip — while request latency is dominated by network, the membership
 guard, and transactions. The trade on offer was a sub-millisecond saving
 against a cross-tenant write or a zero-rupee consultation.

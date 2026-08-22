@@ -113,7 +113,7 @@ Closed/Cancelled/No Show`; practitioner/department/service-unit targeting; `bill
    (packages/auth/src/access.ts:27). The intent doc predates the HMS pivot and never mentions it.
 2. AGENTS.md hard rule 2: org pages use "the single `/rpc` client". `/ai` is a second
    org-authorized HTTP surface (apps/server/src/index.ts:119–163) consumed by
-   apps/web/src/routes/org/$orgSlug/ai.tsx. No ADR sanctions the exception —
+   apps/web/src/routes/$orgSlug/ai.tsx. No ADR sanctions the exception —
    docs/contributing/decisions/index.md:22–37 lists 0001–0016, none about AI or non-oRPC
    endpoints.
 3. `docs/contributing/architecture/` has no page for the domain layer: MRN/counter sequencing,
@@ -222,5 +222,5 @@ status, billingStatus, orderedBy practitionerId, orderedAt}`. Danphe's `VisitBL`
   `Controllers/Appointment/{Appointment,Visit}Controller.cs`, `Controllers/Appointment/VisitBL.cs`,
   `Controllers/Billing/BillingController.cs` (branch `master`, read 2026-08-07).
 - Local: packages/api/src/routers/_, packages/auth/src/access.ts, packages/db/src/schema/_,
-  apps/server/src/index.ts, apps/web/src/routes/org/$orgSlug/_, docs/contributing/_, tests/*.
+  apps/server/src/index.ts, apps/web/src/routes/$orgSlug/_, docs/contributing/_, tests/*.
 - Scout reports: agent://MarleySpineScout, agent://MarleyOpsScout, agent://DanpheScout.

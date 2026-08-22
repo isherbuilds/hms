@@ -1,0 +1,92 @@
+{
+  "capturedAt": "2026-08-20T10:38:36.023Z",
+  "browser": "Google Chrome 151, headless, isolated persistent profile",
+  "viewport": "1440x900",
+  "cache": "browser restart per sample; disk/media cache capped at 1 byte",
+  "network": "unthrottled",
+  "sampleCount": 5,
+  "samples": {
+    "/mercy-general/dashboard": [
+      {
+        "path": "/mercy-general/dashboard",
+        "ttfbMs": 96.10000000149012,
+        "dclMs": 317.3999999985099,
+        "loadMs": 769.7000000029802,
+        "fcpMs": 348,
+        "lcpMs": 348,
+        "cls": 0.004587062757201646,
+        "longTaskMs": 0,
+        "requestCount": 42,
+        "transferBytes": 412451,
+        "scriptTransferBytes": 27894,
+        "scriptDecodedBytes": 80426,
+        "rpcCount": 0,
+        "recoveryMarker": false
+      },
+      {
+        "path": "/mercy-general/dashboard",
+        "ttfbMs": 74.10000000149012,
+        "dclMs": 256.20000000298023,
+        "loadMs": 676.5,
+        "fcpMs": 304,
+        "lcpMs": 304,
+        "cls": 0.004587062757201646,
+        "longTaskMs": 0,
+        "requestCount": 42,
+        "transferBytes": 412451,
+        "scriptTransferBytes": 27894,
+        "scriptDecodedBytes": 80426,
+        "rpcCount": 0,
+        "recoveryMarker": false
+      },
+      {
+        "path": "/mercy-general/dashboard",
+        "ttfbMs": 64.69999999552965,
+        "dclMs": 243.39999999850988,
+        "loadMs": 678.6999999955297,
+        "fcpMs": 292,
+        "lcpMs": 292,
+        "cls": 0.004587062757201646,
+        "longTaskMs": 0,
+        "requestCount": 42,
+        "transferBytes": 412451,
+        "scriptTransferBytes": 27894,
+        "scriptDecodedBytes": 80426,
+        "rpcCount": 0,
+        "recoveryMarker": false
+      },
+      {
+        "path": "/mercy-general/dashboard",
+        "ttfbMs": 65.79999999701977,
+        "dclMs": 263.59999999403954,
+        "loadMs": 710.8999999985099,
+        "fcpMs": 308,
+        "lcpMs": 308,
+        "cls": 0.004587062757201646,
+        "longTaskMs": 0,
+        "requestCount": 42,
+        "transferBytes": 412451,
+        "scriptTransferBytes": 27894,
+        "scriptDecodedBytes": 80426,
+        "rpcCount": 0,
+        "recoveryMarker": false
+      },
+      {
+        "path": "/mercy-general/dashboard",
+        "ttfbMs": 62.5,
+        "dclMs": 245.10000000149012,
+        "loadMs": 692.5,
+        "fcpMs": 288,
+        "lcpMs": 288,
+        "cls": 0.004587062757201646,
+        "longTaskMs": 0,
+        "requestCount": 42,
+        "transferBytes": 412451,
+        "scriptTransferBytes": 27894,
+        "scriptDecodedBytes": 80426,
+        "rpcCount": 0,
+        "recoveryMarker": false
+      }
+    ]
+  }
+}

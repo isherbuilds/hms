@@ -37,7 +37,7 @@ account by `systemKey`, never by a user-facing name.
 
 Billing documents post these entries in the same database transaction that
 creates the document. Revenue lines are grouped by the catalog category carried
-by the billed charge's immutable category snapshot; manual charges use Other Revenue.
+by the billed Charge's immutable catalog-category snapshot.
 
 | Document    | Debit                                                                              | Credit                                                                    |
 | ----------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
@@ -69,10 +69,15 @@ not tenant scope.
 ## Reports and dates
 
 Journal dates use the organization's configured Business Date. Document timestamps used by the
-GST register are converted to that same time zone before taking their calendar date. The time zone
-is captured at onboarding and stays editable. Changing it moves the day boundary for records
-written afterwards; token, document, journal, and report dates already on disk keep the calendar
-day they were numbered under.
+GST register are converted to that same time zone before taking their calendar date. A new
+organization starts on `SETTINGS_DEFAULTS.timeZone` (`Asia/Kolkata`) and the value is edited on the
+admin settings page — onboarding does not ask for it. Changing it moves the day boundary for
+records written afterwards; token, document, journal, and report dates already on disk keep the
+calendar day they were numbered under.
+
+The boundary itself is local midnight, always: `businessDate()` formats the instant with
+`Intl.DateTimeFormat` in the organization's zone and takes the calendar date. There is no
+configurable day start, so a token issued at 05:00 belongs to the day that began at 00:00.
 
 Trial balance and billing-ledger balance sheet read the ledger. The GST report instead reads
 invoice and credit-note documents and their snapshotted lines, because tax

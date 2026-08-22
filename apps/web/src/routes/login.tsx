@@ -15,7 +15,7 @@ export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
     // Only same-app absolute paths; anything else could bounce a fresh sign-in
     // to a foreign origin. Unsafe values become undefined rather than "/" so
-    // the post-sign-in branch falls through to onboarding.
+    // the post-sign-in branch falls through to organization selection.
     redirect: safeRedirect(search.redirect, "") || undefined,
   }),
   component: LoginRoute,
@@ -77,7 +77,7 @@ function LoginRoute() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // An invite recipient arrives signed out and is bounced here by /onboarding,
+  // An invite recipient arrives signed out and is bounced here by /join,
   // so the invitation id rides along inside `redirect`. The invitation's org
   // and inviter are not readable before authentication — the copy stays
   // deliberately generic rather than naming something we cannot verify.
@@ -115,7 +115,7 @@ function LoginRoute() {
     if (redirect) {
       navigate({ href: redirect });
     } else {
-      navigate({ to: "/onboarding" });
+      navigate({ to: "/join" });
     }
   };
 

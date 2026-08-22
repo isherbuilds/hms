@@ -1,1 +1,0 @@
-ALTER TABLE "organization_settings" ADD COLUMN "time_zone" text DEFAULT 'Asia/Kolkata' NOT NULL;

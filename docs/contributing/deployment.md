@@ -10,12 +10,12 @@ a deployment artefact.
 
 ## Topology
 
-| Piece      | What it is                         | Reachable from                  |
-| ---------- | ---------------------------------- | ------------------------------- |
-| web        | TanStack Start on Nitro, port 3001 | the internet                    |
-| server     | Hono + oRPC on Bun, port 3000      | the internet (browser calls it) |
-| PostgreSQL | Coolify resource                   | the server only, internally     |
-| SeaweedFS  | Coolify resource                   | **the internet** — see below    |
+| Piece      | What it is                         | Reachable from                     |
+| ---------- | ---------------------------------- | ---------------------------------- |
+| web        | TanStack Start on Nitro, port 3001 | the internet                       |
+| server     | Hono + oRPC on Bun, port 3000      | the internet (browser calls it)    |
+| PostgreSQL | Coolify resource                   | the server and web app, internally |
+| SeaweedFS  | Coolify resource                   | **the internet** — see below       |
 
 The browser talks to the server directly on every `/rpc` call, so the server is
 public, not internal. The web app never proxies it.
@@ -34,9 +34,9 @@ Both point at the same repository with the **Dockerfile** build pack.
 Health checks are configured in the platform UI (Coolify) per application:
 neither Dockerfile declares an internal `HEALTHCHECK`.
 
-No `depends_on` equivalent is needed. The web app makes no server call while
-booting; a cold server only means the landing page's status dot reads
-"API unreachable" until it warms up.
+No `depends_on` equivalent is needed. The web app validates its database and
+auth environment at boot but does not make a network call to the API server.
+Both applications connect to the same PostgreSQL resource.
 
 If you serve either app from a **subpath** rather than a subdomain, uncheck
 `Strip Prefixes` under Advanced — otherwise the prefix is removed before the app
@@ -44,21 +44,22 @@ sees it and every route 404s.
 
 ## Environment
 
-### server (all runtime)
+### server (runtime)
 
-| Variable                       | Required  | Value                                         |
-| ------------------------------ | --------- | --------------------------------------------- |
-| `DATABASE_URL`                 | yes       | Coolify's internal Postgres connection string |
-| `BETTER_AUTH_SECRET`           | yes       | ≥32 chars, `openssl rand -base64 32`          |
-| `BETTER_AUTH_URL`              | yes       | the server's own public origin                |
-| `CORS_ORIGIN`                  | yes       | the **web app's** public origin, exactly      |
-| `NODE_ENV`                     | yes       | `production`                                  |
-| `SEAWEEDFS_ENDPOINT`           | for files | SeaweedFS's **public** S3 origin              |
-| `SEAWEEDFS_BUCKET`             | for files | e.g. `files`                                  |
-| `SEAWEEDFS_ACCESS_KEY_ID`      | for files |                                               |
-| `SEAWEEDFS_SECRET_ACCESS_KEY`  | for files |                                               |
-| `SEAWEEDFS_MAX_UPLOAD_BYTES`   | no        | default 100 MB                                |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | for `/ai` |                                               |
+| Variable                      | Required   | Value                                         |
+| ----------------------------- | ---------- | --------------------------------------------- |
+| `DATABASE_URL`                | yes        | Coolify's internal Postgres connection string |
+| `BETTER_AUTH_SECRET`          | yes        | ≥32 chars, `openssl rand -base64 32`          |
+| `BETTER_AUTH_URL`             | yes        | the server's own public origin                |
+| `BETTER_AUTH_COOKIE_DOMAIN`   | split host | shared parent domain, such as `.example.com`  |
+| `CORS_ORIGIN`                 | yes        | the **web app's** public origin, exactly      |
+| `FOUNDING_EMAIL`              | yes        | the operator account from ADR 0014            |
+| `NODE_ENV`                    | yes        | `production`                                  |
+| `SEAWEEDFS_ENDPOINT`          | for files  | SeaweedFS's **public** S3 origin              |
+| `SEAWEEDFS_BUCKET`            | for files  | e.g. `files`                                  |
+| `SEAWEEDFS_ACCESS_KEY_ID`     | for files  |                                               |
+| `SEAWEEDFS_SECRET_ACCESS_KEY` | for files  |                                               |
+| `SEAWEEDFS_MAX_UPLOAD_BYTES`  | no         | default 100 MB                                |
 
 Sign-up is disabled; see
 [ADR 0013](./decisions/0013-signup-disabled.md). To create an account, run
@@ -74,29 +75,46 @@ them.
 `CORS_ORIGIN` is also the base for invitation links, so it must be the origin a
 recipient can actually open.
 
-Everything except the SeaweedFS and AI keys is validated at boot by
+Everything except the SeaweedFS keys is validated at boot by
 `packages/env/src/server.ts` — a misconfigured server fails to start rather than
 failing on the first request.
 
-### web (all build-time)
+### web
 
-| Variable          | Required | Value                      |
-| ----------------- | -------- | -------------------------- |
-| `VITE_SERVER_URL` | yes      | the server's public origin |
+| Variable                    | Phase   | Value                                        |
+| --------------------------- | ------- | -------------------------------------------- |
+| `VITE_SERVER_URL`           | build   | the server's public origin                   |
+| `DATABASE_URL`              | runtime | the same internal Postgres connection string |
+| `BETTER_AUTH_SECRET`        | runtime | the same value as the server                 |
+| `BETTER_AUTH_URL`           | runtime | the server's public origin                   |
+| `BETTER_AUTH_COOKIE_DOMAIN` | runtime | the same shared parent domain as the server  |
+| `CORS_ORIGIN`               | runtime | the web app's public origin                  |
+| `FOUNDING_EMAIL`            | runtime | the same value as the server                 |
+| `NODE_ENV`                  | runtime | `production`                                 |
 
-**This must be a build variable, not a runtime one.** It is read through
-`import.meta.env` and compiled into the bundle. Changing it and restarting keeps
-the old URL baked in; you have to rebuild. The web app needs no runtime
-environment at all.
+`VITE_SERVER_URL` is compiled into the browser bundle and needs a rebuild when
+it changes. The other values configure the Nitro SSR process and must be present
+when the container starts.
 
 ## Constraints that will break the deployment if ignored
 
-**Both apps must share a registrable domain.** `app.example.com` +
-`api.example.com` is fine; `myapp.com` + `myapi.dev` is not. `packages/auth`
-sets `sameSite: "lax"`, and Lax cookies are not sent on cross-_site_ fetches —
-which is what every `/rpc` call is. Sign-in would appear to succeed and every
-subsequent request would be 401. Genuinely cross-domain requires `sameSite:
-"none"` and the Safari ITP caveats that come with it.
+**Both apps must share a registrable domain and cookie domain.**
+`app.example.com` + `api.example.com` with
+`BETTER_AUTH_COOKIE_DOMAIN=.example.com` is valid. The API issues the shared
+`httpOnly`, `secure`, `sameSite: "lax"` session cookie; the web host then receives
+it on org-page requests and can verify the session during SSR. Genuinely
+cross-site deployment requires a different cookie policy and is not supported.
+
+**No shared cache may hold SSR HTML.** Org pages server-render the signed-in
+user's own data — their email, their organization names, their shell. A CDN,
+reverse proxy, or platform cache in front of the web app would serve one user's
+document to the next. Cache static assets only; keep every org route
+uncacheable.
+
+**PostgreSQL must sit next to the web and API processes.** Same host, or the
+same region on a low-latency link. An org page awaits several queries per
+render, so every millisecond of web→database latency multiplies straight into
+TTFB. A database in another region turns a fast page into a slow one.
 
 **SeaweedFS must be publicly reachable, at one origin.**
 `packages/storage/src/index.ts` presigns with `forcePathStyle: true`, so
@@ -125,17 +143,21 @@ guessable URL.
 The server container runs migrations before it accepts traffic:
 
 ```
-bun /app/packages/db/src/migrate-command.ts && exec bun dist/index.mjs
+bun /app/packages/db/src/migrate-command.ts && \
+  exec bun dist/index.mjs
 ```
 
 A failed migration therefore fails the deploy instead of leaving a running
 server against a schema it does not understand. `packages/db/src/migrate.ts`
-takes a Postgres advisory lock, so concurrent replicas starting together
-serialise safely — the loser waits, finds the journal applied, and continues.
+takes a Postgres advisory lock, so
+concurrent replicas starting together serialise safely — the loser waits, finds
+the journal applied, and continues.
 
-The consequence is the usual one for migrate-on-boot: during a rolling update
-the old release runs briefly against the new schema, so migrations must stay
-backward-compatible for one release. See
+The app is still pre-production, so releases are clean cutovers rather than
+mixed-version rolling deployments. A release stops the old application,
+applies its migration, and starts the new application. Do not add compatibility
+columns, dual reads, or dual writes. Revisit the rollout strategy before the
+first deployment that requires overlapping application versions. See
 [ADR 0012](./decisions/0012-migrations-run-before-the-server.md).
 
 **The migration base is fresh-database only.** The single initial migration
@@ -146,14 +168,47 @@ deployment at an empty database, or reset the schema once
 (`bun run db:seed -- --reset` in dev), and let the journal take over from
 there.
 
+## Release verification
+
+No script covers these. Run them by hand before a release goes to users
+([ADR 0021](./decisions/0021-server-rendered-org-pages.md)).
+
+The web build emits Brotli and gzip variants for public assets. Nitro documents this as zero-runtime-
+overhead compression for deployments where the Node process serves `.output/public`; keep it enabled
+even when a CDN is added, unless the CDN is proven to compress the same immutable assets itself
+([Nitro `compressPublicAssets`](https://nitro.build/config#compresspublicassets)). A production asset
+request with `Accept-Encoding: br,gzip` must return `Content-Encoding: br` or `gzip`; if the host
+uses chunked transfer rather than `Content-Length`, verify the browser's transferred bytes instead.
+
+1. **The org routes render on the server.** Build and serve the web app, sign
+   in, and load representative org routes — `/$orgSlug/dashboard`,
+   `/$orgSlug/patients`, and `/$orgSlug/opd`.
+   Search each response's HTML for `<!--$!-->`. That marker means the server
+   render threw and the browser silently recovered; treat any occurrence as a
+   failed release.
+2. **The client bundle is clean.** Grep the built client assets for server
+   secrets (`BETTER_AUTH_SECRET`, `DATABASE_URL`, connection strings) and for
+   database code. Both must be absent.
+3. **A signed-in org URL survives a refresh on the deployed host.** A wrong
+   database or cookie domain looks like a signed-out session, and only a real
+   refresh against the deployed web host shows it.
+4. **The performance fixture still satisfies correctness budgets.** Use
+   `bun run benchmark:browser` and `bun run benchmark:server` with the isolated
+   fixture described in
+   [`docs/research/10-production-performance-benchmark.md`](../research/10-production-performance-benchmark.md).
+   The commands exit nonzero for redirects, failed documents, SSR recovery,
+   hydration RPCs, or CLS above 0.05. Compare the emitted JSON with the committed
+   baseline manually; the harness does not automatically reject a 5% timing or
+   transfer regression.
+
 ## Backups
 
 Two stores hold data that cannot be recreated:
 
-| Store      | Holds                                      | Covered by                   |
-| ---------- | ------------------------------------------ | ---------------------------- |
-| PostgreSQL | patients, visits, invoices, journal, audit | Coolify scheduled backup     |
-| SeaweedFS  | uploaded documents and prescription scans  | **nothing — configure this** |
+| Store      | Holds                                                | Covered by                   |
+| ---------- | ---------------------------------------------------- | ---------------------------- |
+| PostgreSQL | patients, opd_appointments, invoices, journal, audit | Coolify scheduled backup     |
+| SeaweedFS  | uploaded documents and prescription scans            | **nothing — configure this** |
 
 Postgres is a Coolify resource, so its own scheduled backup owns the dump and
 the offsite copy. Configure it with an S3 destination, not local retention: a

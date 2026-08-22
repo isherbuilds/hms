@@ -2,7 +2,7 @@ import { db } from "@hms/db";
 import { SETTINGS_DEFAULTS, organizationSettings } from "@hms/db/schema/organization-settings";
 import { eq } from "drizzle-orm";
 
-export type OrgSettings = Omit<
+type OrgSettings = Omit<
   typeof organizationSettings.$inferSelect,
   "orgId" | "createdAt" | "updatedAt"
 >;

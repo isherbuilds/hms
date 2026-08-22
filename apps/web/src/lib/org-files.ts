@@ -10,7 +10,7 @@ export async function uploadOrgFile(
   mimeType?: string,
 ): Promise<string> {
   const contentType = mimeType ?? (file.type || undefined);
-  const { key, uploadUrl } = await orpc.files.createUpload.call({
+  const { key, uploadUrl } = await orpc.file.createUpload.call({
     orgSlug,
     name: file.name,
     mimeType: contentType,
@@ -24,7 +24,7 @@ export async function uploadOrgFile(
   if (!response.ok) {
     throw new Error(`Storage rejected the upload (${response.status})`);
   }
-  await orpc.files.finalizeUpload.call({ orgSlug, key });
+  await orpc.file.finalizeUpload.call({ orgSlug, key });
   return key;
 }
 
@@ -35,7 +35,7 @@ export async function openOrgFile(orgSlug: string, key: string): Promise<void> {
   if (popup) popup.opener = null;
 
   try {
-    const { url } = await orpc.files.getReadUrl.call({ orgSlug, key });
+    const { url } = await orpc.file.getReadUrl.call({ orgSlug, key });
     if (popup) {
       popup.location.href = url;
     } else {

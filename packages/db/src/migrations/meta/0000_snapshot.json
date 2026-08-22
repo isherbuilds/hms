@@ -1,5 +1,5 @@
 {
-  "id": "ffab9a7e-e6cd-4bc2-b5b0-236c258864fe",
+  "id": "46817f0b-673f-447a-9828-7a76f8518bc6",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -321,7 +321,7 @@
       "checkConstraints": {
         "attachments_target_type_check": {
           "name": "attachments_target_type_check",
-          "value": "\"attachments\".\"target_type\" in ('visit_prescription')"
+          "value": "\"attachments\".\"target_type\" in ('prescription')"
         }
       },
       "isRLSEnabled": false
@@ -444,6 +444,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "issuer": {
+          "name": "issuer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'local:credential'"
+        },
         "user_id": {
           "name": "user_id",
           "type": "text",
@@ -518,6 +525,27 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "account_issuer_accountId_uidx": {
+          "name": "account_issuer_accountId_uidx",
+          "columns": [
+            {
+              "expression": "issuer",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1273,8 +1301,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "visit_id": {
-          "name": "visit_id",
+        "opd_appointment_id": {
+          "name": "opd_appointment_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -1283,7 +1311,7 @@
           "name": "catalog_item_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "description": {
           "name": "description",
@@ -1353,31 +1381,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "generated_by": {
-          "name": "generated_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'member'"
-        },
-        "model_name": {
-          "name": "model_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "model_version": {
-          "name": "model_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reviewed_by": {
-          "name": "reviewed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_by": {
           "name": "created_by",
           "type": "text",
@@ -1400,8 +1403,8 @@
         }
       },
       "indexes": {
-        "charges_org_visit_idx": {
-          "name": "charges_org_visit_idx",
+        "charges_org_opd_appointment_idx": {
+          "name": "charges_org_opd_appointment_idx",
           "columns": [
             {
               "expression": "org_id",
@@ -1410,7 +1413,7 @@
               "nulls": "last"
             },
             {
-              "expression": "visit_id",
+              "expression": "opd_appointment_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1427,8 +1430,8 @@
           "method": "btree",
           "with": {}
         },
-        "charges_org_status_idx": {
-          "name": "charges_org_status_idx",
+        "charges_org_status_created_idx": {
+          "name": "charges_org_status_created_idx",
           "columns": [
             {
               "expression": "org_id",
@@ -1438,6 +1441,18 @@
             },
             {
               "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1463,12 +1478,12 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "charges_visit_id_visits_id_fk": {
-          "name": "charges_visit_id_visits_id_fk",
+        "charges_opd_appointment_id_opd_appointments_id_fk": {
+          "name": "charges_opd_appointment_id_opd_appointments_id_fk",
           "tableFrom": "charges",
-          "tableTo": "visits",
+          "tableTo": "opd_appointments",
           "columnsFrom": [
-            "visit_id"
+            "opd_appointment_id"
           ],
           "columnsTo": [
             "id"
@@ -1502,19 +1517,6 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "charges_reviewed_by_user_id_fk": {
-          "name": "charges_reviewed_by_user_id_fk",
-          "tableFrom": "charges",
-          "tableTo": "user",
-          "columnsFrom": [
-            "reviewed_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "charges_created_by_user_id_fk": {
           "name": "charges_created_by_user_id_fk",
           "tableFrom": "charges",
@@ -1539,7 +1541,7 @@
         },
         "charges_source_type_check": {
           "name": "charges_source_type_check",
-          "value": "\"charges\".\"source_type\" in ('consult_fee', 'manual')"
+          "value": "\"charges\".\"source_type\" in ('consult_fee', 'catalog')"
         },
         "charges_status_check": {
           "name": "charges_status_check",
@@ -1548,10 +1550,6 @@
         "charges_revenue_category_check": {
           "name": "charges_revenue_category_check",
           "value": "\"charges\".\"revenue_category\" in ('consultation', 'procedure', 'lab', 'radiology', 'other')"
-        },
-        "charges_generated_by_check": {
-          "name": "charges_generated_by_check",
-          "value": "\"charges\".\"generated_by\" in ('member', 'ai')"
         }
       },
       "isRLSEnabled": false
@@ -2192,6 +2190,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "time_zone": {
+          "name": "time_zone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Asia/Kolkata'"
+        },
         "follow_up_validity_days": {
           "name": "follow_up_validity_days",
           "type": "integer",
@@ -2394,33 +2399,6 @@
           ],
           "isUnique": true,
           "where": "\"patients\".\"uid\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "patients_org_phone_name_idx": {
-          "name": "patients_org_phone_name_idx",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "phone",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "lower(\"name\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -2699,8 +2677,8 @@
       },
       "isRLSEnabled": false
     },
-    "public.visits": {
-      "name": "visits",
+    "public.opd_appointments": {
+      "name": "opd_appointments",
       "schema": "",
       "columns": {
         "id": {
@@ -2719,7 +2697,19 @@
           "name": "patient_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "caller_name": {
+          "name": "caller_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "caller_phone": {
+          "name": "caller_phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "practitioner_id": {
           "name": "practitioner_id",
@@ -2733,34 +2723,51 @@
           "primaryKey": false,
           "notNull": true
         },
-        "visit_class": {
-          "name": "visit_class",
+        "arrival_mode": {
+          "name": "arrival_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'opd'"
-        },
-        "token_number": {
-          "name": "token_number",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
+          "default": "'consultation'"
         },
         "status": {
           "name": "status",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'waiting'"
+          "notNull": true
         },
-        "cancel_reason": {
-          "name": "cancel_reason",
-          "type": "text",
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scheduled_for": {
+          "name": "scheduled_for",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
-        "started_at": {
-          "name": "started_at",
+        "token_number": {
+          "name": "token_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "arrived_at": {
+          "name": "arrived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "consultation_started_at": {
+          "name": "consultation_started_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -2774,6 +2781,24 @@
         "cancelled_at": {
           "name": "cancelled_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "no_show_at": {
+          "name": "no_show_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "left_unseen_at": {
+          "name": "left_unseen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancel_reason": {
+          "name": "cancel_reason",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -2799,35 +2824,8 @@
         }
       },
       "indexes": {
-        "visits_org_created_idx": {
-          "name": "visits_org_created_idx",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "visits_org_practitioner_idx": {
-          "name": "visits_org_practitioner_idx",
+        "opd_appointments_org_practitioner_date_token_uq": {
+          "name": "opd_appointments_org_practitioner_date_token_uq",
           "columns": [
             {
               "expression": "org_id",
@@ -2842,7 +2840,53 @@
               "nulls": "last"
             },
             {
+              "expression": "business_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "token_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"opd_appointments\".\"token_number\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "opd_appointments_org_date_status_idx": {
+          "name": "opd_appointments_org_date_status_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
               "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2853,8 +2897,47 @@
           "method": "btree",
           "with": {}
         },
-        "visits_org_patient_idx": {
-          "name": "visits_org_patient_idx",
+        "opd_appointments_org_practitioner_date_idx": {
+          "name": "opd_appointments_org_practitioner_date_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "practitioner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "opd_appointments_org_patient_completed_idx": {
+          "name": "opd_appointments_org_patient_completed_idx",
           "columns": [
             {
               "expression": "org_id",
@@ -2869,9 +2952,15 @@
               "nulls": "last"
             },
             {
-              "expression": "created_at",
+              "expression": "practitioner_id",
               "isExpression": false,
-              "asc": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "completed_at",
+              "isExpression": false,
+              "asc": true,
               "nulls": "last"
             }
           ],
@@ -2882,9 +2971,9 @@
         }
       },
       "foreignKeys": {
-        "visits_org_id_organization_id_fk": {
-          "name": "visits_org_id_organization_id_fk",
-          "tableFrom": "visits",
+        "opd_appointments_org_id_organization_id_fk": {
+          "name": "opd_appointments_org_id_organization_id_fk",
+          "tableFrom": "opd_appointments",
           "tableTo": "organization",
           "columnsFrom": [
             "org_id"
@@ -2895,9 +2984,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "visits_patient_id_patients_id_fk": {
-          "name": "visits_patient_id_patients_id_fk",
-          "tableFrom": "visits",
+        "opd_appointments_patient_id_patients_id_fk": {
+          "name": "opd_appointments_patient_id_patients_id_fk",
+          "tableFrom": "opd_appointments",
           "tableTo": "patients",
           "columnsFrom": [
             "patient_id"
@@ -2908,9 +2997,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "visits_practitioner_id_practitioners_id_fk": {
-          "name": "visits_practitioner_id_practitioners_id_fk",
-          "tableFrom": "visits",
+        "opd_appointments_practitioner_id_practitioners_id_fk": {
+          "name": "opd_appointments_practitioner_id_practitioners_id_fk",
+          "tableFrom": "opd_appointments",
           "tableTo": "practitioners",
           "columnsFrom": [
             "practitioner_id"
@@ -2921,9 +3010,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "visits_department_id_departments_id_fk": {
-          "name": "visits_department_id_departments_id_fk",
-          "tableFrom": "visits",
+        "opd_appointments_department_id_departments_id_fk": {
+          "name": "opd_appointments_department_id_departments_id_fk",
+          "tableFrom": "opd_appointments",
           "tableTo": "departments",
           "columnsFrom": [
             "department_id"
@@ -2934,9 +3023,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "visits_created_by_user_id_fk": {
-          "name": "visits_created_by_user_id_fk",
-          "tableFrom": "visits",
+        "opd_appointments_created_by_user_id_fk": {
+          "name": "opd_appointments_created_by_user_id_fk",
+          "tableFrom": "opd_appointments",
           "tableTo": "user",
           "columnsFrom": [
             "created_by"
@@ -2952,13 +3041,25 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "visits_class_check": {
-          "name": "visits_class_check",
-          "value": "\"visits\".\"visit_class\" in ('opd', 'ipd', 'er')"
+        "opd_appointments_token_positive_check": {
+          "name": "opd_appointments_token_positive_check",
+          "value": "\"opd_appointments\".\"token_number\" is null or \"opd_appointments\".\"token_number\" > 0"
         },
-        "visits_status_check": {
-          "name": "visits_status_check",
-          "value": "\"visits\".\"status\" in ('waiting', 'in_consult', 'completed', 'cancelled')"
+        "opd_appointments_identity_check": {
+          "name": "opd_appointments_identity_check",
+          "value": "\"opd_appointments\".\"patient_id\" is not null or (\"opd_appointments\".\"caller_name\" is not null and \"opd_appointments\".\"caller_phone\" is not null)"
+        },
+        "opd_appointments_scheduled_check": {
+          "name": "opd_appointments_scheduled_check",
+          "value": "\"opd_appointments\".\"arrival_mode\" <> 'scheduled' or \"opd_appointments\".\"scheduled_for\" is not null"
+        },
+        "opd_appointments_arrived_check": {
+          "name": "opd_appointments_arrived_check",
+          "value": "\"opd_appointments\".\"status\" not in ('waiting', 'in_consult', 'completed', 'left_unseen') or (\"opd_appointments\".\"patient_id\" is not null and \"opd_appointments\".\"token_number\" is not null and \"opd_appointments\".\"arrived_at\" is not null)"
+        },
+        "opd_appointments_booked_check": {
+          "name": "opd_appointments_booked_check",
+          "value": "\"opd_appointments\".\"status\" <> 'booked' or (\"opd_appointments\".\"arrival_mode\" = 'scheduled' and \"opd_appointments\".\"token_number\" is null and \"opd_appointments\".\"arrived_at\" is null)"
         }
       },
       "isRLSEnabled": false
@@ -2979,8 +3080,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "visit_id": {
-          "name": "visit_id",
+        "opd_appointment_id": {
+          "name": "opd_appointment_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -3118,8 +3219,8 @@
           "method": "btree",
           "with": {}
         },
-        "invoices_org_visit_idx": {
-          "name": "invoices_org_visit_idx",
+        "invoices_org_opd_appointment_idx": {
+          "name": "invoices_org_opd_appointment_idx",
           "columns": [
             {
               "expression": "org_id",
@@ -3128,7 +3229,7 @@
               "nulls": "last"
             },
             {
-              "expression": "visit_id",
+              "expression": "opd_appointment_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3181,12 +3282,12 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "invoices_visit_id_visits_id_fk": {
-          "name": "invoices_visit_id_visits_id_fk",
+        "invoices_opd_appointment_id_opd_appointments_id_fk": {
+          "name": "invoices_opd_appointment_id_opd_appointments_id_fk",
           "tableFrom": "invoices",
-          "tableTo": "visits",
+          "tableTo": "opd_appointments",
           "columnsFrom": [
-            "visit_id"
+            "opd_appointment_id"
           ],
           "columnsTo": [
             "id"

@@ -256,8 +256,16 @@ contain — at the entity level, not the module-name level?
   answers them.
 - When the pharmacy trigger fires: read ERPNext's (not Marley's) stock ledger and GST-India app
   before speccing, since both references punt exactly there.
+- Emergency donor shape: **found 2026-08-21** — Frappe Health now ships `Emergency Record`,
+  `Triage Level` and `Emergency Occupancy` (commit `ac8a300`, newer than this pass). §E7's
+  "model it fresh" is superseded for triage, unidentified intake, ER bed occupancy and disposition;
+  see [12-patient-flow-end-to-end.md](12-patient-flow-end-to-end.md) §F8. Danphe's ER remains the
+  counter-example for provenance loss.
 - If appointments trigger fires: prototype the queue-display read model against the existing
   queue query before adding any schema.
+  **Fired 2026-08-20** — see [11-appointment-vs-visit-boundary.md](11-appointment-vs-visit-boundary.md)
+  for the entity-boundary answer (two tables, check-in is the conversion, token stays on the visit).
+  This doc stays canonical for queue _mechanics_; doc 11 is canonical for the appointment/visit split.
 
 ## Sources
 

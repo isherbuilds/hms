@@ -4,26 +4,26 @@ import { auditRouter } from "./audit";
 import { billingRouter } from "./billing";
 import { catalogRouter } from "./catalog";
 import { dashboardRouter } from "./dashboard";
-import { filesRouter } from "./files";
-import { membersRouter } from "./members";
+import { fileRouter } from "./file";
+import { memberRouter } from "./member";
 import { patientRouter } from "./patient";
 import { reportRouter } from "./report";
 import { settingsRouter } from "./settings";
 import { staffRouter } from "./staff";
-import { visitRouter } from "./visit";
+import { opdRouter } from "./opd";
 
 export const appRouter = {
-  dashboard: dashboardRouter,
-  settings: settingsRouter,
   audit: auditRouter,
   billing: billingRouter,
-  files: filesRouter,
-  members: membersRouter,
+  catalog: catalogRouter,
+  dashboard: dashboardRouter,
+  file: fileRouter,
+  member: memberRouter,
   patient: patientRouter,
   report: reportRouter,
-  visit: visitRouter,
-  catalog: catalogRouter,
+  settings: settingsRouter,
   staff: staffRouter,
+  opd: opdRouter,
 };
 export type AppRouter = typeof appRouter;
 export type AppRouterClient = RouterClient<typeof appRouter>;

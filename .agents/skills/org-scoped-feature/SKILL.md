@@ -4,7 +4,7 @@ description: >-
   Add or change an organization-scoped domain in this repo — schema, migration, permission,
   oRPC router, route, and the tenancy test. Use whenever work touches a table with orgId, a
   procedure declared with orgProcedure, packages/auth/src/access.ts, or a page under
-  apps/web/src/routes/org/$orgSlug/.
+  apps/web/src/routes/$orgSlug/.
 ---
 
 # Add an org-scoped feature
@@ -88,12 +88,12 @@ Non-negotiable in every handler:
 
 Register it in `packages/api/src/routers/index.ts`.
 
-## 5. Route — `apps/web/src/routes/org/$orgSlug/<thing>.tsx`
+## 5. Route — `apps/web/src/routes/$orgSlug/<thing>.tsx`
 
-It must live under the org layout, import the singleton `orpc` from
-`@/lib/orpc`, read `orgSlug` from route params, and include it in every procedure
-input and tenant-specific invalidation key. The layout currently sets `ssr: false`
-because its session and organization-list checks are client-side.
+It must live under the server-rendered org layout, import the singleton `orpc`
+from `@/lib/orpc`, read `orgSlug` from route params, and include it in every
+procedure input and tenant-specific invalidation key. Put Base UI popups behind
+TanStack Router's `ClientOnly`.
 
 Follow `packages/ui` (shadcn `base-lyra` on Base UI: zero radius, `text-xs`,
 compact). Colour means one thing only — which tenant you are acting as.
@@ -122,7 +122,7 @@ bun run check-types && bun run check && bun run test
 - [ ] Every query in the new router has the tenant predicate.
 - [ ] No handler re-derives an org from the URL, session, or input.
 - [ ] The permission is granted explicitly per role, in `access.ts` only.
-- [ ] The page is under `routes/org/$orgSlug/`, imports `orpc`, and passes `orgSlug` in every call and tenant-specific key.
+- [ ] The page is under `routes/$orgSlug/`, imports `orpc`, and passes `orgSlug` in every call and tenant-specific key.
 - [ ] The tenancy test answers all four questions for this domain.
 - [ ] The migration is generated, not hand-edited.
 - [ ] Behaviour that changed has its doc updated in the same change.

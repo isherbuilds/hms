@@ -71,11 +71,6 @@ export const patients = pgTable(
     uniqueIndex("patients_org_uid_idx")
       .on(table.orgId, table.uid)
       .where(sql`${table.uid} is not null`),
-    uniqueIndex("patients_org_phone_name_idx").on(
-      table.orgId,
-      table.phone,
-      sql`lower(${table.name})`,
-    ),
     // Covers patient search/list keyset pagination: org, newest-first id tiebreak.
     index("patients_org_created_idx").on(table.orgId, table.createdAt.desc(), table.id.desc()),
   ],

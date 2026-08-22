@@ -1,7 +1,5 @@
-import { google } from "@ai-sdk/google";
 import { drainAuditWrites } from "@hms/api/audit";
-import { createContext, type ORPCContext } from "@hms/api/lib/context";
-import { authorizeOrg } from "@hms/api/lib/procedures/factory";
+import { createRequestContext, type ORPCContext } from "@hms/api/lib/context";
 import { appRouter } from "@hms/api/routers/index";
 import { auth } from "@hms/auth";
 import { db } from "@hms/db";
@@ -9,22 +7,16 @@ import { env } from "@hms/env/server";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { OpenAPIReferencePlugin } from "@orpc/openapi/plugins";
 import { ORPCError, onError } from "@orpc/server";
-import { RPCHandler } from "@orpc/server/fetch";
+import { BodyLimitPlugin, RPCHandler } from "@orpc/server/fetch";
 import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { sql } from "drizzle-orm";
-import {
-  createUIMessageStreamResponse,
-  streamText,
-  toUIMessageStream,
-  convertToModelMessages,
-  wrapLanguageModel,
-} from "ai";
 import { initLogger } from "evlog";
-import { createAILogger, createEvlogIntegration } from "evlog/ai";
 import { identifyUser } from "evlog/better-auth";
 import { createFsDrain } from "evlog/fs";
 import { evlog, type EvlogVariables } from "evlog/hono";
+import { compress } from "hono/compress";
 import { Hono, type Context as HonoContext } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 
 initLogger({
@@ -51,6 +43,8 @@ app.use(
     maxAge: 86400,
   }),
 );
+// Compress JSON RPC payloads.
+app.use("/*", compress());
 
 app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 
@@ -58,7 +52,7 @@ async function createLoggedRequestContext(
   context: HonoContext<EvlogVariables>,
 ): Promise<ORPCContext> {
   const startedAt = Date.now();
-  const requestContext = await createContext({ context });
+  const requestContext = await createRequestContext(context.req.raw.headers);
   const identified = requestContext.session
     ? identifyUser(context.get("log"), requestContext.session, {
         maskEmail: true,
@@ -83,10 +77,22 @@ function logORPCError(error: unknown): void {
   console.error(error);
 }
 
+const MAX_RPC_BODY_BYTES = 1024 * 1024;
+
 const rpcHandler = new RPCHandler(appRouter, {
+  plugins: [new BodyLimitPlugin({ maxBodySize: MAX_RPC_BODY_BYTES })],
   interceptors: [onError(logORPCError)],
 });
 
+// Reject oversized requests before session resolution. The oRPC plugin repeats
+// the limit at the protocol adapter boundary for callers mounted elsewhere.
+app.use(
+  "/rpc/*",
+  bodyLimit({
+    maxSize: MAX_RPC_BODY_BYTES,
+    onError: (c) => c.json({ error: "Request too large" }, 413),
+  }),
+);
 app.use("/rpc/*", async (c) => {
   const context = await createLoggedRequestContext(c);
   const result = await rpcHandler.handle(c.req.raw, {
@@ -125,63 +131,6 @@ if (!isProduction) {
     return c.newResponse(result.response.body, result.response);
   });
 }
-
-// Every token is billed, so the conversation a member can submit is bounded.
-const MAX_AI_MESSAGES = 50;
-const MAX_AI_CHARS = 100_000;
-
-app.post("/ai", async (c) => {
-  const body = await c.req.json<{ orgSlug?: unknown; messages?: unknown }>();
-  if (
-    typeof body.orgSlug !== "string" ||
-    body.orgSlug.length === 0 ||
-    !Array.isArray(body.messages)
-  ) {
-    return c.json({ error: "Invalid request" }, 400);
-  }
-
-  if (
-    body.messages.length > MAX_AI_MESSAGES ||
-    JSON.stringify(body.messages).length > MAX_AI_CHARS
-  ) {
-    return c.json({ error: "Conversation too large" }, 413);
-  }
-
-  const context = await createLoggedRequestContext(c);
-  try {
-    await authorizeOrg(context, body.orgSlug, { ai: ["use"] });
-  } catch (error) {
-    if (error instanceof ORPCError && error.code === "UNAUTHORIZED") {
-      return c.json({ error: error.code }, 401);
-    }
-    if (error instanceof ORPCError && error.code === "FORBIDDEN") {
-      return c.json({ error: error.code }, 403);
-    }
-    throw error;
-  }
-
-  const uiMessages = body.messages;
-  const ai = createAILogger(c.get("log"));
-  const baseModel = google("gemini-2.5-flash");
-  const model = isProduction
-    ? baseModel
-    : wrapLanguageModel({
-        model: baseModel,
-        middleware: (await import("@ai-sdk/devtools")).devToolsMiddleware(),
-      });
-  const result = streamText({
-    model: ai.wrap(model),
-    messages: await convertToModelMessages(uiMessages),
-    telemetry: {
-      isEnabled: true,
-      integrations: [createEvlogIntegration(ai)],
-    },
-  });
-
-  return createUIMessageStreamResponse({
-    stream: toUIMessageStream({ stream: result.stream }),
-  });
-});
 
 /**
  * Readiness, not liveness: a process that answers while Postgres is unreachable

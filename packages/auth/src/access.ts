@@ -19,62 +19,69 @@ export const ac = createAccessControl({
   // in an org can see who else is in it while only admins can change it.
   member: ["create", "read", "update", "delete"],
   patient: ["create", "read", "update"],
-  visit: ["create", "read", "update"],
+  // `opd` is the current care domain. Future settings add their own subject when
+  // their domain ships rather than widening today's permission vocabulary.
+  opd: ["create", "read", "update"],
   billing: ["read", "write", "creditNote"],
   catalog: ["create", "read", "update"],
   staff: ["create", "read", "update"],
   settings: ["read", "update"],
   audit: ["read"],
   report: ["read"],
-  storage: ["upload", "read", "delete"],
-  ai: ["use"],
+  file: ["upload", "read", "delete"],
 } as const);
 
 // Each role spreads the Better Auth defaults first, then states this app's
 // grants explicitly. Permissions are the last place to be clever about
 // inheritance — a reader should see a role's full surface in one block.
+//
+// `admin` and `owner` read as duplicates and must stay that way: they spread
+// *different* Better Auth bases (`ownerAc` alone grants `organization:delete`),
+// so sharing one body would silently move org deletion between them.
+//
+// `member: ["create"]` is not the gate for adding a person — `member.invite`
+// checks `invitation: ["create"]`, and Better Auth's own member endpoints check
+// only `update`/`delete`. It is kept because this object is also handed to the
+// organization plugin, so it defines the shared vocabulary, not just our guards.
 export const member = ac.newRole({
   ...memberAc.statements,
   member: ["read"],
   patient: ["create", "read", "update"],
-  visit: ["create", "read", "update"],
+  opd: ["create", "read", "update"],
   billing: ["read", "write"],
   catalog: ["read"],
   staff: ["read"],
   settings: ["read"],
   report: ["read"],
-  storage: ["upload", "read"],
-  ai: ["use"],
+  file: ["upload", "read"],
 });
 
 export const admin = ac.newRole({
   ...adminAc.statements,
   member: ["create", "read", "update", "delete"],
   patient: ["create", "read", "update"],
-  visit: ["create", "read", "update"],
+  opd: ["create", "read", "update"],
   billing: ["read", "write", "creditNote"],
   catalog: ["create", "read", "update"],
   staff: ["create", "read", "update"],
   settings: ["read", "update"],
   audit: ["read"],
   report: ["read"],
-  storage: ["upload", "read", "delete"],
-  ai: ["use"],
+  file: ["upload", "read", "delete"],
 });
 
 export const owner = ac.newRole({
   ...ownerAc.statements,
   member: ["create", "read", "update", "delete"],
   patient: ["create", "read", "update"],
-  visit: ["create", "read", "update"],
+  opd: ["create", "read", "update"],
   billing: ["read", "write", "creditNote"],
   catalog: ["create", "read", "update"],
   staff: ["create", "read", "update"],
   settings: ["read", "update"],
   audit: ["read"],
   report: ["read"],
-  storage: ["upload", "read", "delete"],
-  ai: ["use"],
+  file: ["upload", "read", "delete"],
 });
 
 export const roles = { owner, admin, member } as const;

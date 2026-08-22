@@ -15,6 +15,7 @@ EXPOSE 3000
 WORKDIR /app/apps/server
 # A failed migration prevents the server from accepting traffic. `exec` then
 # makes the server the container process so it receives termination signals.
-# The migrator is invoked directly rather than through the package script, which
-# points at a dev-only `--env-file` that does not exist in the image.
+# The migrator is invoked directly rather than through the package script so the
+# image does not need turbo on the runtime path. No .env ships in the image
+# (see .dockerignore); every value comes from the platform's environment.
 CMD ["sh", "-c", "bun /app/packages/db/src/migrate-command.ts && exec bun dist/index.mjs"]

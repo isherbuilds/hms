@@ -16,8 +16,8 @@ for the current surface.
 
 `member` is Better Auth's own statement, extended with a `read` action of ours
 so everyone in an org can see who else is in it while only admins can change it.
-The rest — `patient`, `visit`, `billing`, `catalog`, `staff`, `settings`,
-`audit`, `storage`, `ai` — are this application's.
+The rest — `patient`, `OPD appointment`, `billing`, `catalog`, `staff`, `settings`,
+`audit`, and `storage` — are this application's.
 
 ## Roles state their grants explicitly
 
@@ -68,9 +68,15 @@ the guard requires, in order:
 It adds verified `scope` to context. The original input claim remains ordinary
 handler input, but it is never used for authorization or query scope.
 
+The guard memoizes the membership row in the per-request context, keyed by
+caller and claimed slug, so several procedure calls in one request share one
+join. Step 3 is unaffected: the permission check and its denial audit run on
+every call, because each endpoint requires its own grant. The memo lives and
+dies with the request, so a revoked membership is rejected on the next one.
+
 ```ts
 delete: orgProcedure(
-  { storage: ["delete"] },
+  { file: ["delete"] },
   orgInput.extend({ id: z.number() }),
 ).handler(async ({ context, input }) => {
   // input.orgSlug is the claim; context.scope.orgId is proven.

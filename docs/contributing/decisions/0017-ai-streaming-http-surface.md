@@ -1,6 +1,6 @@
 # 0017: Keep AI streaming as a narrow HTTP exception
 
-- **Status:** accepted
+- **Status:** superseded by [0024](./0024-remove-generic-ai-chat.md)
 - **Date:** 2026-08-07
 
 ## Context

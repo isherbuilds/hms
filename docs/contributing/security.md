@@ -17,10 +17,13 @@ context.scope.orgId)` belongs in the `where` even when the query also filters
    something. It never authorizes anything, and a query filtered by `userId`
    alone is not scoped.
 3. **The org is explicit procedure input and is proven per guarded request.**
-   The `/org/:orgSlug` page parameter is passed as `input.orgSlug`. It is an
+   The `/:orgSlug` page parameter is passed as `input.orgSlug`. It is an
    unverified claim until `orgProcedure`'s internal guard resolves it to verified
    `context.scope`. Handlers never use the claim for authorization or SQL scope.
-   There is no fallback to `session.activeOrganizationId`.
+   There is no fallback to `session.activeOrganizationId`. Better Auth's unused
+   organization slug-check endpoint stays disabled so it cannot become a tenant
+   existence oracle; organization creation performs the authoritative uniqueness
+   check.
 4. **Membership is resolved directly by every org procedure and is not cached
    across requests.** `orgProcedure` requires the permission and input schema as
    constructor arguments, and the raw builder is not exported. Removal is
@@ -56,11 +59,11 @@ context.scope.orgId)` belongs in the `where` even when the query also filters
 11. **The OpenAPI reference never mounts in production.** It publishes the whole
     API surface unauthenticated; it is a development affordance, gated on
     `NODE_ENV`.
-12. **Org AI requests are authenticated and scoped before model execution.**
-    The browser sends credentials plus `orgSlug`; `/ai` uses the same fresh
-    membership and permission resolver as oRPC before incurring provider cost.
-13. **No secrets or server-only modules in client assets.** See
+12. **No secrets or server-only modules in client assets.** See
     [environment variables](./environment-variables.md).
+13. **Unexpected server errors are not user-facing diagnostics.** The
+    production route boundary renders generic copy; development may show the
+    original message. Full causes stay in server logs, never SSR HTML.
 
 ## Cookies and CORS
 

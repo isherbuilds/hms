@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 
-import { businessDate, businessDateAnchor, businessDayWindow } from "@hms/api/lib/business-date";
+import {
+  businessDate,
+  businessDateAnchor,
+  businessDayWindow,
+  localDateTime,
+} from "@hms/api/lib/business-date";
 import { fiscalYearLabel } from "@hms/api/lib/invoice-math";
 
 test("changes the Kolkata business date at local midnight", () => {
@@ -22,6 +27,12 @@ test("returns Kolkata midnight instants for a complete business date", () => {
   expect(window.end.toISOString()).toBe("2026-08-08T18:30:00.000Z");
   expect(businessDate(window.start, "Asia/Kolkata")).toBe("2026-08-08");
   expect(businessDate(new Date(window.end.getTime() - 1), "Asia/Kolkata")).toBe("2026-08-08");
+});
+
+test("converts a hospital wall-clock value without using the caller timezone", () => {
+  expect(localDateTime("2026-08-22T10:30", "Asia/Kolkata").toISOString()).toBe(
+    "2026-08-22T05:00:00.000Z",
+  );
 });
 
 test("uses a 23-hour window when New York enters daylight saving time", () => {

@@ -23,7 +23,7 @@ export type SystemAccountKey =
   | "revenue_radiology"
   | "revenue_other";
 
-export const SYSTEM_ACCOUNTS: ReadonlyArray<{
+const SYSTEM_ACCOUNTS: ReadonlyArray<{
   key: SystemAccountKey;
   code: string;
   name: string;
@@ -109,7 +109,7 @@ export function settlementAccountFor(method: string): SystemAccountKey {
   }
 }
 
-export async function ensureChartOfAccounts(
+async function ensureChartOfAccounts(
   tx: DbTransaction,
   orgId: string,
 ): Promise<Record<SystemAccountKey, string>> {
@@ -163,7 +163,7 @@ export async function ensureChartOfAccounts(
   return complete;
 }
 
-export type JournalLineInput = {
+type JournalLineInput = {
   account: SystemAccountKey;
   debit?: string;
   credit?: string;

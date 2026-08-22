@@ -6,8 +6,9 @@ import { file } from "./file";
 
 /**
  * Generic file attachments: one polymorphic link table for every domain that
- * attaches documents (paper prescriptions on visits today; invoices, pharmacy
- * bills, and the like add a `targetType` value, never a new table). `targetId` intentionally
+ * attaches documents (paper prescriptions on OPD appointments today; invoices,
+ * pharmacy bills, and the like add a `targetType` value, never a new table).
+ * `targetId` intentionally
  * has no foreign key — it points at a different table per type — so each
  * domain's attach procedure must prove the target exists in the caller's org
  * before inserting, and any future delete path for an attachable target must
@@ -33,7 +34,7 @@ export const attachments = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    check("attachments_target_type_check", sql`${table.targetType} in ('visit_prescription')`),
+    check("attachments_target_type_check", sql`${table.targetType} in ('prescription')`),
     uniqueIndex("attachments_org_target_file_uq").on(
       table.orgId,
       table.targetType,
@@ -47,7 +48,7 @@ export const attachments = pgTable(
       table.createdAt,
     ),
     // `file.id` is the only foreign key pointing into the files domain, so
-    // `files.delete` has to look for dependants before deleting. Without this
+    // `file.delete` has to look for dependants before deleting. Without this
     // the check is a sequential scan of every attachment in the database.
     index("attachments_org_file_idx").on(table.orgId, table.fileId),
   ],

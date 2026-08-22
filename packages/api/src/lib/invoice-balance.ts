@@ -8,7 +8,7 @@ import { calculateInvoiceBalance, type InvoiceBalance } from "./invoice-math";
 
 type BillingExecutor = Pick<typeof db, "select">;
 
-export type BalanceInvoice = {
+type BalanceInvoice = {
   id: string;
   grandTotal: string;
 };

@@ -132,7 +132,12 @@ function FormMessage({ className, children, ...props }: React.ComponentProps<"p"
     <p
       data-slot="form-message"
       id={formMessageId}
-      className={cn("text-xs text-destructive", className)}
+      className={cn(
+        // Fades in rather than appearing: the message is new information,
+        // and 150ms is short enough not to delay reading it.
+        "animate-in text-xs text-destructive duration-150 fade-in-0 ease-out",
+        className,
+      )}
       {...props}
     >
       {body}
@@ -140,13 +145,4 @@ function FormMessage({ className, children, ...props }: React.ComponentProps<"p"
   );
 }
 
-export {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  useFormField,
-};
+export { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage };

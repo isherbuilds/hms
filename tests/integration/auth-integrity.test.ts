@@ -1,7 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 
 import { drainAuditWrites } from "@hms/api/audit";
-import { auth } from "@hms/auth";
+import { auth, invitationUrl } from "@hms/auth";
 import { createUserWithPassword } from "@hms/auth/manual-user";
 import { db } from "@hms/db";
 import { auditLog } from "@hms/db/schema/audit";
@@ -34,6 +34,11 @@ test("public email sign-up is disabled", async () => {
 
   const [probe] = await db.select({ id: user.id }).from(user).limit(1);
   expect(probe?.id).toBeUndefined();
+});
+
+test("organization invitations enter through the join route", () => {
+  expect(new URL(invitationUrl("invite-id")).pathname).toBe("/join");
+  expect(new URL(invitationUrl("invite-id")).searchParams.get("invitation")).toBe("invite-id");
 });
 
 test("an operator-created account can sign in and is email-verified for account linking", async () => {
@@ -117,6 +122,33 @@ test("only the founding email can create an organization", async () => {
     "FORBIDDEN",
     "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_ORGANIZATION",
   );
+});
+
+test("short and reserved root slugs cannot create organizations", async () => {
+  const owner = await createTestUser("static-route-slug-owner");
+
+  for (const slug of ["abc", "CREATE", "docs", "blog"]) {
+    await expectAuthStatus(
+      auth.api.createOrganization({
+        body: { name: "Invalid organization URL", slug, userId: owner.user.id },
+      }),
+      "BAD_REQUEST",
+    );
+  }
+});
+
+test("the unused organization slug-check endpoint is not exposed", async () => {
+  const user = await createTestUser("slug-check-disabled");
+  const response = await app.request("http://localhost/api/auth/organization/check-slug", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      cookie: user.cookie,
+    },
+    body: JSON.stringify({ slug: "unclaimed-workspace" }),
+  });
+
+  expect(response.status).toBe(404);
 });
 
 test("organization deletion stays disabled until external objects can be cleaned up", async () => {
@@ -216,7 +248,7 @@ test("the direct Better Auth surface enforces the same permissions and skips the
     await db.select({ id: member.id }).from(member).where(eq(member.userId, target.user.id)),
   ).toHaveLength(0);
 
-  // The documented cost of that convenience: no audit row, unlike members.remove.
+  // The documented cost of that convenience: no audit row, unlike member.remove.
   await drainAuditWrites();
   const [audited] = await db
     .select({ id: auditLog.id })

@@ -1,0 +1,167 @@
+{
+  "capturedAt": "2026-08-20T10:51:18.059Z",
+  "route": "/mercy-general/dashboard",
+  "warmupRequests": 10,
+  "rounds": [
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 126.69855246903805,
+      "p50Ms": 7.391250000000014,
+      "p95Ms": 10.159457999999859,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 230.31908239845743,
+      "p50Ms": 124.98295800000005,
+      "p95Ms": 152.45050000000015,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 149.51471262150872,
+      "p50Ms": 6.470208999999613,
+      "p95Ms": 7.7775000000001455,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 279.10372514829726,
+      "p50Ms": 106.4174579999999,
+      "p95Ms": 113.48687500000005,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 152.3983595828383,
+      "p50Ms": 6.232500000000073,
+      "p95Ms": 8.401625000000422,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 278.37403743871727,
+      "p50Ms": 109.26404199999979,
+      "p95Ms": 114.67541700000038,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 138.4203103767061,
+      "p50Ms": 6.676292000000103,
+      "p95Ms": 9.702250000000276,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 282.7217990610397,
+      "p50Ms": 107.90045800000007,
+      "p95Ms": 115.33737500000007,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 139.80276050560494,
+      "p50Ms": 6.666291999999885,
+      "p95Ms": 9.009250000000975,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 287.20486748835583,
+      "p50Ms": 104.94933300000048,
+      "p95Ms": 112.61458400000083,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 109.56756789384202,
+      "p50Ms": 6.216707999999926,
+      "p95Ms": 9.257292000000234,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 256.64746337667424,
+      "p50Ms": 108.83483299999898,
+      "p95Ms": 157.95570800000132,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 159.44011010933988,
+      "p50Ms": 6.087915999998586,
+      "p95Ms": 7.211875000000873,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 284.8695906753196,
+      "p50Ms": 104.28033299999879,
+      "p95Ms": 120.36650000000009,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 149.67804245583875,
+      "p50Ms": 6.259165999999823,
+      "p95Ms": 9.268332999999984,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 291.5137669266412,
+      "p50Ms": 102.45070900000064,
+      "p95Ms": 119.8017920000002,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 160.73982110059782,
+      "p50Ms": 6.032458000001498,
+      "p95Ms": 8.072207999999591,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 254.16913268266399,
+      "p50Ms": 105.86070899999868,
+      "p95Ms": 222.85866700000042,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 141.36178757634832,
+      "p50Ms": 6.538333000000421,
+      "p95Ms": 9.70116699999926,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 278.40977441035943,
+      "p50Ms": 106.05408399999942,
+      "p95Ms": 136.3697089999987,
+      "failures": 0
+    }
+  ]
+}

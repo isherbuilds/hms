@@ -16,6 +16,7 @@ build
 .env*.local
 
 # IDEs and editors
+.cursor/
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
@@ -54,3 +55,7 @@ coverage
 .cache
 tmp
 temp
+
+# Local prototypes
+.prototypes/
+.agent-native/

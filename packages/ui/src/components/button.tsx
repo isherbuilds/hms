@@ -29,11 +29,20 @@ const buttonVariants = cva(
         pill: "rounded-full",
       },
       size: {
+        /*
+         * `px-3`/`px-4` rather than the `px-2.5` these two used to share with
+         * `sm`: 10px is off the spacing scale (see `docs/design.md` §2).
+         *
+         * `min-w-16` is the part that matters. Padding alone cannot give a
+         * four-letter label any presence — "Save" measured 50px against a 470px
+         * field. A floor on the width lets short labels sit at the same weight
+         * as long ones, and is invisible to every button already wider than it.
+         */
         default:
-          "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+          "h-8 min-w-16 gap-1.5 px-3 has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5",
         xs: "h-6 gap-1 rounded-md px-2 text-xs has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-7 gap-1 rounded-md px-2.5 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        lg: "h-9 min-w-20 gap-1.5 px-4 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",
         icon: "size-8",
         "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
         "icon-sm": "size-7 rounded-md",
