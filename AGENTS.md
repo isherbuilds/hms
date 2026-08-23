@@ -2,18 +2,17 @@
 
 Hospital management system built on a multi-tenant application spine. Bun + Turborepo; TanStack Start (`apps/web`) + Hono/oRPC (`apps/server`); Drizzle + PostgreSQL; Better Auth with the organization plugin.
 
-This file is a map plus the rules you must not break. Detail lives in [`docs/contributing/`](./docs/contributing/index.md) — update the closest doc in the same change as the code.
+This file is a map plus the rules you must not break. Start at the
+[documentation index](./docs/README.md) and update the closest owner in the same
+change as code.
 
-- [Project intent](./docs/contributing/project-intent.md) — what this repo is and is not
-- [Product blueprint](./docs/product-blueprint.md) — canonical staff language, domain boundaries, finance flows, and delivery map
-- [Decision records](./docs/contributing/decisions/index.md) — **check before proposing something already decided against**
-- [Getting started](./docs/contributing/getting-started.md), [environment variables](./docs/contributing/environment-variables.md), [deployment](./docs/contributing/deployment.md)
-- [Design](./docs/design.md) — **the UI source of truth**: surfaces, spacing, type, motion
-- [Code style](./docs/contributing/code-style.md), [documentation principles](./docs/contributing/documentation.md), [testing principles](./docs/contributing/testing-principles.md)
-- [Security invariants](./docs/contributing/security.md)
-- Architecture: [overview](./docs/contributing/architecture/index.md) — [tenancy](./docs/contributing/architecture/tenancy.md), [authorization](./docs/contributing/architecture/authorization.md), [request lifecycle](./docs/contributing/architecture/request-lifecycle.md), [data fetching](./docs/contributing/architecture/data-fetching.md), [data storage](./docs/contributing/architecture/data-storage.md), [HMS domain layer](./docs/contributing/architecture/domain-layer.md), [accounting ledger](./docs/contributing/architecture/accounting.md), [audit](./docs/contributing/architecture/audit.md), [file storage](./docs/contributing/architecture/file-storage.md)
-- [Research](./docs/research/) — evidence and external reference analysis, not accepted decisions
-- [Harness engineering](./docs/contributing/harness-engineering.md) — how a repeated mistake becomes a guardrail
+- [Product](./docs/product.md) — scope, canonical language, finance flows, roadmap gates
+- [Architecture](./docs/architecture.md) — tenancy, auth, requests, data, audit, files, accounting
+- [Development](./docs/development.md) and [Operations](./docs/operations.md)
+- [Decision log](./docs/decisions.md) — **check before revisiting an architectural choice**
+- [Design](./docs/design.md) — **the UI source of truth**
+- Active specs: [OPD intake](./docs/specs/opd.md), [OPD desk lifecycle](./docs/specs/opd-desk-lifecycle.md), [reports](./docs/specs/reports.md), [remove loading placeholders](./docs/specs/remove-loading-placeholders.md)
+- [Research ledger](./docs/research/README.md) — evidence, not product authority
 - Skills: [`org-scoped-feature`](./.agents/skills/org-scoped-feature/SKILL.md) to add an org-scoped domain, [`tenancy-review`](./.agents/skills/tenancy-review/SKILL.md) to audit a diff for cross-tenant leaks
 
 ## Commands
@@ -25,14 +24,16 @@ This file is a map plus the rules you must not break. Detail lives in [`docs/con
 - `bun run db:up` — starts the dev Postgres + SeaweedFS stack, waiting for health; no-op if already running.
 - `bun run db:seed` — development accounts and two organizations; `-- --reset` wipes first. Prints the credentials. Refuses to run against `NODE_ENV=production`.
 
-`bun run dev`, `dev:web`, and `dev:server` all run `db:up` then `db:migrate` before starting, so a fresh checkout is `bun install` + `.env` + one dev command.
+`bun run dev` runs `db:up` and `db:migrate` before starting all apps.
+`dev:web` and `dev:server` run only the selected Turbo task, so start/migrate the
+database first when using them directly.
 
 ## Hard rules
 
 1. **Every domain row belongs to exactly one org (`orgId NOT NULL`), and every query carries the tenant predicate `eq(orgId, scope.orgId)`.** This includes infrastructure tables (`audit_log`, `file`), not just domain tables. `userId` columns are attribution, never scope.
 2. **Org context is explicit procedure input, proven by the permission guard.** Org pages pass their `/:orgSlug` route param as `input.orgSlug` through the single `/rpc` client. Framework adapters supply only request dependencies (`session`, `headers`, and the request's own membership map); `orgProcedure(permission, input)` resolves membership directly in its internal guard and turns the claim into verified `context.scope`. The permission is a required constructor argument and the raw builder is not exported, so an org procedure cannot omit the guard. Handlers use only scope for authorization and SQL. Membership resolves once per request and is shared only within that request, never across requests — the permission check and its denial audit still run on every call — and there is no fallback to `session.activeOrganizationId`.
-   - Org pages live under `apps/web/src/routes/$orgSlug/` and import the singleton `orpc`. Organization choices use normal route links. Every org query, mutation, direct call, and tenant-specific invalidation includes `orgSlug`, so generated query keys cannot reuse another tenant's data. Organization slugs are validated by `@hms/auth/organization-slug`: at least four characters, URL-safe, and outside the public/system root namespace. URLs make selection per-tab. The layout server-renders; its loader fetches `member.me` (always on the server, where the cache is request-local; a client navigation may reuse a ≤60 s-fresh result for the shell only), and Base UI popups stay behind `ClientOnly` (ADR 0021).
-   - Sign-up is disabled: accounts are created by an operator via `createUserWithPassword` / `scripts/create-user.ts`, never through a public endpoint. Organization creation is restricted to the `FOUNDING_EMAIL` account alone — no role grants it, not even owners (see ADR 0014 and `scripts/create-founder.ts`).
+   - Org pages live under `apps/web/src/routes/$orgSlug/` and import the singleton `orpc`. Organization choices use normal route links. Every org query, mutation, direct call, and tenant-specific invalidation includes `orgSlug`, so generated query keys cannot reuse another tenant's data. Organization slugs are validated by `@hms/auth/organization-slug`: at least four characters, URL-safe, and outside the public/system root namespace. URLs make selection per-tab. The layout server-renders; its loader fetches `member.me` (always on the server, where the cache is request-local; a client navigation may reuse a ≤60 s-fresh result for the shell only), and Base UI popups stay behind `ClientOnly` (decision D008).
+   - Sign-up is disabled: accounts are created by an operator via `createUserWithPassword` / `scripts/create-user.ts`, never through a public endpoint. Organization creation is restricted to the `FOUNDING_EMAIL` account alone — no role grants it, not even owners (decision D006 and `scripts/create-founder.ts`).
    - A member's roles are stored comma-joined and authorize as a **union** (Better Auth's own semantics). Use `parseRoles`/`authorize` from `@hms/auth/access`; never read `role.split(",")[0]`.
 3. **Audit sensitive actions, not everything.** `audit()` is fire-and-forget — it can never slow a response or turn one into a 500. Role denials are audited centrally in `orgProcedure`'s internal guard; routers call `audit()` only for sensitive/destructive mutations (e.g. `file.delete`). Patient mutations also keep this fire-and-forget behavior; do not move audit writes into domain transactions without a separately approved decision.
 4. **Never hand-edit generated migrations.** New schema → `bun run db:generate`; hand-authored SQL gets its own migration file.

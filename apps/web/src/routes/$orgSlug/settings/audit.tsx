@@ -86,7 +86,7 @@ function AuditRoute() {
                         {formatDateTime(entry.createdAt, timeZone)}
                       </TableCell>
                       <TableCell>
-                        <span className="flex items-center gap-1.5">
+                        <span className="flex items-center gap-2">
                           <span className="font-medium">{entry.action}</span>
                           {entry.denied && <Badge variant="destructive">denied</Badge>}
                         </span>

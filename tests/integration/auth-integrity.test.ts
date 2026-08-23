@@ -14,7 +14,6 @@ import { app } from "../../apps/server/src/index";
 import { createOrganization, createTestUser, joinOrganization } from "../support/auth";
 import { expectAuthStatus } from "../support/client";
 import { resetTestDatabase } from "../support/database";
-
 beforeAll(async () => {
   await resetTestDatabase();
 });
@@ -23,7 +22,7 @@ test("public email sign-up is disabled", async () => {
   await expectAuthStatus(
     auth.api.signUpEmail({
       body: {
-        email: `signup-${crypto.randomUUID()}@example.com`,
+        email: `signup-${Bun.randomUUIDv7()}@example.com`,
         name: "Sign-up probe",
         password: "integration-test-password",
       },
@@ -42,7 +41,7 @@ test("organization invitations enter through the join route", () => {
 });
 
 test("an operator-created account can sign in and is email-verified for account linking", async () => {
-  const email = `operator-${crypto.randomUUID()}@example.com`;
+  const email = `operator-${Bun.randomUUIDv7()}@example.com`;
   const { id } = await createUserWithPassword({
     email,
     name: "Operator user",
@@ -175,7 +174,7 @@ test("a user can have only one membership row per organization", async () => {
     db
       .insert(member)
       .values({
-        id: crypto.randomUUID(),
+        id: Bun.randomUUIDv7(),
         organizationId: organization.id,
         userId: owner.user.id,
         role: "member",
@@ -188,7 +187,7 @@ test("a user can have only one membership row per organization", async () => {
 test("deleting an attributed user preserves organization content", async () => {
   const owner = await createTestUser("attribution-owner");
   const organization = await createOrganization(owner, "attribution");
-  const fileId = `${organization.id}/${crypto.randomUUID()}/keep.txt`;
+  const fileId = `${organization.id}/${Bun.randomUUIDv7()}/keep.txt`;
   await db.insert(file).values({
     id: fileId,
     orgId: organization.id,
@@ -205,7 +204,7 @@ test("deleting an attributed user preserves organization content", async () => {
 });
 
 /**
- * ADR 0002 accepts that Better Auth's organization endpoints are mounted whole
+ * Decision D001 accepts that Better Auth's organization endpoints are mounted whole
  * at `/api/auth/*` rather than closed at the edge, on two load-bearing claims:
  * they enforce the same permissions (so the open surface is not a privilege
  * bypass), and they write no audit row (so `members.*` stays the preferred

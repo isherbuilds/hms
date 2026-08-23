@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  check,
+  foreignKey,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+} from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
 import { catalogItems } from "./catalog-items";
@@ -20,20 +29,31 @@ export const practitioners = pgTable(
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    departmentId: text("department_id")
-      .notNull()
-      .references(() => departments.id),
+    departmentId: text("department_id").notNull(),
     registrationNumber: text("registration_number"),
     memberUserId: text("member_user_id").references(() => user.id, { onDelete: "set null" }),
     /** Catalog item snapshotted into the auto consult-fee Charge at appointment creation (Slice 5). */
-    consultFeeItemId: text("consult_fee_item_id").references(() => catalogItems.id),
+    consultFeeItemId: text("consult_fee_item_id"),
     /** Optional follow-up fee used only for a recent appointment within the configured window. */
-    followUpFeeItemId: text("follow_up_fee_item_id").references(() => catalogItems.id),
+    followUpFeeItemId: text("follow_up_fee_item_id"),
     followUpValidityDays: integer("follow_up_validity_days"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    unique("practitioners_org_id_id_unique").on(table.orgId, table.id),
+    foreignKey({
+      columns: [table.orgId, table.departmentId],
+      foreignColumns: [departments.orgId, departments.id],
+    }),
+    foreignKey({
+      columns: [table.orgId, table.consultFeeItemId],
+      foreignColumns: [catalogItems.orgId, catalogItems.id],
+    }),
+    foreignKey({
+      columns: [table.orgId, table.followUpFeeItemId],
+      foreignColumns: [catalogItems.orgId, catalogItems.id],
+    }),
     index("practitioners_org_name_idx").on(table.orgId, table.name),
     index("practitioners_org_department_idx").on(table.orgId, table.departmentId),
     check(

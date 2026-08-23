@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@hms/config": "workspace:*",
+    "@types/bun": "catalog:",
     "typescript": "catalog:"
   }
 }

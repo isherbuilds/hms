@@ -14,7 +14,6 @@ import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
 import { Route as CreateRouteImport } from './routes/create'
 import { Route as JoinRouteImport } from './routes/join'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as PrototypeOpdDeskRouteImport } from './routes/prototype-opd-desk'
 import { Route as OrgSlugIndexRouteImport } from './routes/$orgSlug/index'
 import { Route as OrgSlugDashboardRouteImport } from './routes/$orgSlug/dashboard'
 import { Route as OrgSlugFilesRouteImport } from './routes/$orgSlug/files'
@@ -23,6 +22,7 @@ import { Route as OrgSlugSettingsRouteRouteImport } from './routes/$orgSlug/sett
 import { Route as OrgSlugBillingIndexRouteImport } from './routes/$orgSlug/billing/index'
 import { Route as OrgSlugOpdIndexRouteImport } from './routes/$orgSlug/opd/index'
 import { Route as OrgSlugOpdAppointmentIdRouteRouteImport } from './routes/$orgSlug/opd/$appointmentId/route'
+import { Route as OrgSlugOpdNewRouteImport } from './routes/$orgSlug/opd/new'
 import { Route as OrgSlugPatientsIndexRouteImport } from './routes/$orgSlug/patients/index'
 import { Route as OrgSlugPatientsPatientIdRouteImport } from './routes/$orgSlug/patients/$patientId'
 import { Route as OrgSlugReportsIndexRouteImport } from './routes/$orgSlug/reports/index'
@@ -67,11 +67,6 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PrototypeOpdDeskRoute = PrototypeOpdDeskRouteImport.update({
-  id: '/prototype-opd-desk',
-  path: '/prototype-opd-desk',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const OrgSlugIndexRoute = OrgSlugIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -113,6 +108,11 @@ const OrgSlugOpdAppointmentIdRouteRoute =
     path: '/opd/$appointmentId',
     getParentRoute: () => OrgSlugRouteRoute,
   } as any)
+const OrgSlugOpdNewRoute = OrgSlugOpdNewRouteImport.update({
+  id: '/opd/new',
+  path: '/opd/new',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
 const OrgSlugPatientsIndexRoute = OrgSlugPatientsIndexRouteImport.update({
   id: '/patients/',
   path: '/patients/',
@@ -220,13 +220,13 @@ export interface FileRoutesByFullPath {
   '/create': typeof CreateRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
-  '/prototype-opd-desk': typeof PrototypeOpdDeskRoute
   '/$orgSlug/settings': typeof OrgSlugSettingsRouteRouteWithChildren
   '/$orgSlug/dashboard': typeof OrgSlugDashboardRoute
   '/$orgSlug/files': typeof OrgSlugFilesRoute
   '/$orgSlug/onboarding': typeof OrgSlugOnboardingRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
   '/$orgSlug/opd/$appointmentId': typeof OrgSlugOpdAppointmentIdRouteRouteWithChildren
+  '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
   '/$orgSlug/patients/$patientId': typeof OrgSlugPatientsPatientIdRoute
   '/$orgSlug/reports/balance-sheet': typeof OrgSlugReportsBalanceSheetRoute
   '/$orgSlug/reports/gst': typeof OrgSlugReportsGstRoute
@@ -253,11 +253,11 @@ export interface FileRoutesByTo {
   '/create': typeof CreateRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
-  '/prototype-opd-desk': typeof PrototypeOpdDeskRoute
   '/$orgSlug/dashboard': typeof OrgSlugDashboardRoute
   '/$orgSlug/files': typeof OrgSlugFilesRoute
   '/$orgSlug/onboarding': typeof OrgSlugOnboardingRoute
   '/$orgSlug': typeof OrgSlugIndexRoute
+  '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
   '/$orgSlug/patients/$patientId': typeof OrgSlugPatientsPatientIdRoute
   '/$orgSlug/reports/balance-sheet': typeof OrgSlugReportsBalanceSheetRoute
   '/$orgSlug/reports/gst': typeof OrgSlugReportsGstRoute
@@ -286,13 +286,13 @@ export interface FileRoutesById {
   '/create': typeof CreateRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
-  '/prototype-opd-desk': typeof PrototypeOpdDeskRoute
   '/$orgSlug/settings': typeof OrgSlugSettingsRouteRouteWithChildren
   '/$orgSlug/dashboard': typeof OrgSlugDashboardRoute
   '/$orgSlug/files': typeof OrgSlugFilesRoute
   '/$orgSlug/onboarding': typeof OrgSlugOnboardingRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
   '/$orgSlug/opd/$appointmentId': typeof OrgSlugOpdAppointmentIdRouteRouteWithChildren
+  '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
   '/$orgSlug/patients/$patientId': typeof OrgSlugPatientsPatientIdRoute
   '/$orgSlug/reports/balance-sheet': typeof OrgSlugReportsBalanceSheetRoute
   '/$orgSlug/reports/gst': typeof OrgSlugReportsGstRoute
@@ -322,13 +322,13 @@ export interface FileRouteTypes {
     | '/create'
     | '/join'
     | '/login'
-    | '/prototype-opd-desk'
     | '/$orgSlug/settings'
     | '/$orgSlug/dashboard'
     | '/$orgSlug/files'
     | '/$orgSlug/onboarding'
     | '/$orgSlug/'
     | '/$orgSlug/opd/$appointmentId'
+    | '/$orgSlug/opd/new'
     | '/$orgSlug/patients/$patientId'
     | '/$orgSlug/reports/balance-sheet'
     | '/$orgSlug/reports/gst'
@@ -355,11 +355,11 @@ export interface FileRouteTypes {
     | '/create'
     | '/join'
     | '/login'
-    | '/prototype-opd-desk'
     | '/$orgSlug/dashboard'
     | '/$orgSlug/files'
     | '/$orgSlug/onboarding'
     | '/$orgSlug'
+    | '/$orgSlug/opd/new'
     | '/$orgSlug/patients/$patientId'
     | '/$orgSlug/reports/balance-sheet'
     | '/$orgSlug/reports/gst'
@@ -387,13 +387,13 @@ export interface FileRouteTypes {
     | '/create'
     | '/join'
     | '/login'
-    | '/prototype-opd-desk'
     | '/$orgSlug/settings'
     | '/$orgSlug/dashboard'
     | '/$orgSlug/files'
     | '/$orgSlug/onboarding'
     | '/$orgSlug/'
     | '/$orgSlug/opd/$appointmentId'
+    | '/$orgSlug/opd/new'
     | '/$orgSlug/patients/$patientId'
     | '/$orgSlug/reports/balance-sheet'
     | '/$orgSlug/reports/gst'
@@ -422,7 +422,6 @@ export interface RootRouteChildren {
   CreateRoute: typeof CreateRoute
   JoinRoute: typeof JoinRoute
   LoginRoute: typeof LoginRoute
-  PrototypeOpdDeskRoute: typeof PrototypeOpdDeskRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -460,13 +459,6 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/prototype-opd-desk': {
-      id: '/prototype-opd-desk'
-      path: '/prototype-opd-desk'
-      fullPath: '/prototype-opd-desk'
-      preLoaderRoute: typeof PrototypeOpdDeskRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$orgSlug/': {
@@ -523,6 +515,13 @@ declare module '@tanstack/react-router' {
       path: '/opd/$appointmentId'
       fullPath: '/$orgSlug/opd/$appointmentId'
       preLoaderRoute: typeof OrgSlugOpdAppointmentIdRouteRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/opd/new': {
+      id: '/$orgSlug/opd/new'
+      path: '/opd/new'
+      fullPath: '/$orgSlug/opd/new'
+      preLoaderRoute: typeof OrgSlugOpdNewRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
     '/$orgSlug/patients/': {
@@ -719,6 +718,7 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugOnboardingRoute: typeof OrgSlugOnboardingRoute
   OrgSlugIndexRoute: typeof OrgSlugIndexRoute
   OrgSlugOpdAppointmentIdRouteRoute: typeof OrgSlugOpdAppointmentIdRouteRouteWithChildren
+  OrgSlugOpdNewRoute: typeof OrgSlugOpdNewRoute
   OrgSlugPatientsPatientIdRoute: typeof OrgSlugPatientsPatientIdRoute
   OrgSlugReportsBalanceSheetRoute: typeof OrgSlugReportsBalanceSheetRoute
   OrgSlugReportsGstRoute: typeof OrgSlugReportsGstRoute
@@ -738,6 +738,7 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugIndexRoute: OrgSlugIndexRoute,
   OrgSlugOpdAppointmentIdRouteRoute:
     OrgSlugOpdAppointmentIdRouteRouteWithChildren,
+  OrgSlugOpdNewRoute: OrgSlugOpdNewRoute,
   OrgSlugPatientsPatientIdRoute: OrgSlugPatientsPatientIdRoute,
   OrgSlugReportsBalanceSheetRoute: OrgSlugReportsBalanceSheetRoute,
   OrgSlugReportsGstRoute: OrgSlugReportsGstRoute,
@@ -760,7 +761,6 @@ const rootRouteChildren: RootRouteChildren = {
   CreateRoute: CreateRoute,
   JoinRoute: JoinRoute,
   LoginRoute: LoginRoute,
-  PrototypeOpdDeskRoute: PrototypeOpdDeskRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

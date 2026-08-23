@@ -1,6 +1,10 @@
 import { toast } from "sonner";
 
-import { invalidateOpdAppointmentState, type QueryInvalidator } from "@/lib/domain-invalidation";
+import {
+  invalidateOpdAppointmentState,
+  type OpdAppointmentTransition,
+  type QueryInvalidator,
+} from "@/lib/domain-invalidation";
 import { isConflictError } from "@/lib/orpc-error";
 import { orpc } from "@/lib/orpc";
 
@@ -18,12 +22,13 @@ export function toastOpdConflict(
   error: unknown,
   orgSlug: string,
   appointmentId: string,
+  transition: OpdAppointmentTransition,
   raceMessage: string = OPD_RACE_MESSAGE,
 ): boolean {
   if (!isConflictError(error)) return false;
 
   void Promise.all([
-    invalidateOpdAppointmentState(queryClient, orgSlug, appointmentId),
+    invalidateOpdAppointmentState(queryClient, orgSlug, appointmentId, transition),
     queryClient.invalidateQueries({
       queryKey: orpc.billing.listPendingCharges.key({ input: { orgSlug, appointmentId } }),
     }),

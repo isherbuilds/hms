@@ -50,12 +50,7 @@ function BillingIndexRoute() {
         action={<StaleDataNotice dataUpdatedAt={worklist.dataUpdatedAt} />}
       />
       <PageBody>
-        {worklist.isPending ? (
-          <div role="status" aria-label="Loading billing worklist" className="flex flex-col gap-4">
-            <div className="h-40 rounded-xl bg-muted" />
-            <div className="h-40 rounded-xl bg-muted" />
-          </div>
-        ) : worklist.isError ? (
+        {worklist.isPending ? null : worklist.isError ? (
           <ErrorNote title="Could not load the billing worklist" detail={worklist.error.message} />
         ) : (
           <>

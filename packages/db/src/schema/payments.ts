@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { check, index, numeric, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  check,
+  foreignKey,
+  index,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
 import { invoices } from "./invoices";
@@ -12,9 +21,7 @@ export const payments = pgTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    invoiceId: text("invoice_id")
-      .notNull()
-      .references(() => invoices.id),
+    invoiceId: text("invoice_id").notNull(),
     method: text("method").notNull(),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     reference: text("reference"),
@@ -29,8 +36,16 @@ export const payments = pgTable(
   (table) => [
     check("payments_method_check", sql`${table.method} in ('cash', 'upi', 'card')`),
     check("payments_amount_check", sql`${table.amount} > 0`),
+    foreignKey({
+      columns: [table.orgId, table.invoiceId],
+      foreignColumns: [invoices.orgId, invoices.id],
+    }),
     uniqueIndex("payments_org_receipt_number_idx").on(table.orgId, table.receiptNumber),
-    index("payments_org_invoice_idx").on(table.orgId, table.invoiceId),
-    index("payments_org_created_idx").on(table.orgId, table.createdAt.desc(), table.id.desc()),
+    // Dashboard collection totals read one organization's payments over a
+    // Business-Date range, independently of any invoice.
+    index("payments_org_created_idx").on(table.orgId, table.createdAt),
+    // Every read is scoped to one invoice and sorted by time, so the sort
+    // rides along in the same index.
+    index("payments_org_invoice_idx").on(table.orgId, table.invoiceId, table.createdAt),
   ],
 );

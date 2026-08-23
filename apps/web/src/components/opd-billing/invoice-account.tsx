@@ -127,7 +127,7 @@ export function InvoiceAccount({
           <Link
             to="/$orgSlug/billing/invoices/$invoiceId"
             params={{ orgSlug, invoiceId: invoice.id }}
-            className="font-semibold underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+            className="font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
           >
             {invoice.invoiceNumber}
           </Link>

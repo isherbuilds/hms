@@ -15,7 +15,6 @@ import { z } from "zod";
 
 import { audit } from "../audit";
 import { orgInput, orgProcedure, type Scope } from "../lib/procedures/factory";
-
 const keyInput = orgInput.extend({ key: z.string().min(1) });
 
 /**
@@ -138,7 +137,7 @@ export const fileRouter = {
       });
     }
 
-    const key = `${scope.orgId}/${crypto.randomUUID()}/${sanitizeKeyName(input.name)}`;
+    const key = `${scope.orgId}/${Bun.randomUUIDv7()}/${sanitizeKeyName(input.name)}`;
     const uploadUrl = await createUploadUrl(key, {
       contentType: input.mimeType,
       size: input.size,
@@ -261,7 +260,7 @@ export const fileRouter = {
       return deleted;
     });
 
-    // Fire-and-forget (ADR 0005) and issued right after the committed
+    // Fire-and-forget (decision D004) and issued right after the committed
     // delete, so no storage failure can sit between the delete and its
     // record.
     audit({

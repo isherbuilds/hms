@@ -1,4 +1,4 @@
-import { index, numeric, pgTable, text } from "drizzle-orm/pg-core";
+import { foreignKey, index, numeric, pgTable, text } from "drizzle-orm/pg-core";
 
 import { organization } from "./auth";
 import { creditNotes } from "./credit-notes";
@@ -15,17 +15,21 @@ export const creditNoteLines = pgTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    creditNoteId: text("credit_note_id")
-      .notNull()
-      .references(() => creditNotes.id),
-    invoiceLineId: text("invoice_line_id")
-      .notNull()
-      .references(() => invoiceLines.id),
+    creditNoteId: text("credit_note_id").notNull(),
+    invoiceLineId: text("invoice_line_id").notNull(),
     taxableValue: numeric("taxable_value", { precision: 12, scale: 2 }).notNull(),
     taxAmount: numeric("tax_amount", { precision: 12, scale: 2 }).notNull(),
     gross: numeric("gross", { precision: 12, scale: 2 }).notNull(),
   },
   (table) => [
+    foreignKey({
+      columns: [table.orgId, table.creditNoteId],
+      foreignColumns: [creditNotes.orgId, creditNotes.id],
+    }),
+    foreignKey({
+      columns: [table.orgId, table.invoiceLineId],
+      foreignColumns: [invoiceLines.orgId, invoiceLines.id],
+    }),
     index("credit_note_lines_org_credit_note_idx").on(table.orgId, table.creditNoteId),
     index("credit_note_lines_org_invoice_line_idx").on(table.orgId, table.invoiceLineId),
   ],

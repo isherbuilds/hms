@@ -19,7 +19,7 @@ export type Scope = {
  * org-scoped and permission-guarded, so the only way to declare one is
  * `orgProcedure`, which cannot be constructed without stating a permission.
  * A genuinely public endpoint would be a new architectural decision, not a
- * default (see ADR 0015).
+ * default (see decision D001).
  */
 const base = os.$context<ORPCContext>();
 

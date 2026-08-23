@@ -1,6 +1,6 @@
 import { auth } from "@hms/auth";
 import { createUserWithPassword } from "@hms/auth/manual-user";
-
+import { uniqueSuffix } from "./unique";
 export type TestUser = {
   cookie: string;
   headers: Headers;
@@ -15,7 +15,7 @@ export type TestUser = {
 const TEST_PASSWORD = "integration-test-password";
 
 export async function createTestUser(prefix: string): Promise<TestUser> {
-  const email = `${prefix}-${crypto.randomUUID()}@example.com`;
+  const email = `${prefix}-${Bun.randomUUIDv7()}@example.com`;
   const name = `${prefix} test user`;
   const { id } = await createUserWithPassword({ email, name, password: TEST_PASSWORD });
 
@@ -43,12 +43,15 @@ export async function createTestUser(prefix: string): Promise<TestUser> {
  * must be creatable even though no test user is the founding email. The
  * creator still becomes owner via the plugin's default `creatorRole`.
  */
+// The slug is only made unique so repeat runs do not collide — see
+// `uniqueSuffix`. Production does not generate one: a person picks the slug and
+// the unique index decides whether it is free.
 export async function createOrganization(
   owner: TestUser,
   name: string,
 ): Promise<{ id: string; slug: string }> {
   const organization = await auth.api.createOrganization({
-    body: { name, slug: `${name}-${crypto.randomUUID().slice(0, 8)}`, userId: owner.user.id },
+    body: { name, slug: `${name}-${uniqueSuffix()}`, userId: owner.user.id },
   });
   if (!organization) {
     throw new Error(`Failed to create organization "${name}"`);

@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
@@ -57,6 +58,7 @@ export const catalogItems = pgTable(
       "catalog_items_tax_rate_check",
       sql`${table.taxRatePercent} >= 0 and ${table.taxRatePercent} <= 99.99`,
     ),
+    unique("catalog_items_org_id_id_unique").on(table.orgId, table.id),
     uniqueIndex("catalog_items_org_code_idx").on(table.orgId, table.code),
     // Covers the admin list and pickers: org (+ category filter), name-ordered.
     index("catalog_items_org_category_name_idx").on(table.orgId, table.category, table.name),

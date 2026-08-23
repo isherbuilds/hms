@@ -124,7 +124,7 @@ function CatalogRoute() {
 
       <PageBody>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex w-48 flex-col gap-1.5 text-xs font-medium">
+          <label className="flex w-48 flex-col gap-2 text-xs font-medium">
             Category
             <NativeSelect
               value={category}

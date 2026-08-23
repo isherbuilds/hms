@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { type ReactNode } from "react";
 
+import { Monogram } from "@/components/monogram";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { authClient } from "@/lib/auth-client";
 import { NAV_GROUPS, PRIMARY_NAV, SETTINGS_PERMISSIONS } from "@/lib/navigation";
@@ -59,10 +60,11 @@ function OrgSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={<SidebarMenuButton tooltip={name} />}
+        render={<SidebarMenuButton size="lg" tooltip={name} />}
         className="justify-between gap-2"
       >
-        <span className="min-w-0 truncate font-medium">{name}</span>
+        <Monogram label={name} tone="accent" />
+        <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
         <ChevronsUpDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-(--anchor-width) min-w-56">
@@ -105,14 +107,20 @@ function UserFooter({ user }: { user: { name: string; email: string } | undefine
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={<SidebarMenuButton tooltip={user.email} />}
-        className="justify-start"
+        render={<SidebarMenuButton size="lg" tooltip={user.email} />}
+        className="justify-start gap-2"
       >
-        <span className="min-w-0 flex-1 truncate text-left">{user.email}</span>
+        <Monogram label={user.name || user.email} />
+        <span className="flex min-w-0 flex-1 flex-col text-left leading-tight">
+          <span className="truncate font-medium">{user.name || user.email}</span>
+          <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+        </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-(--anchor-width) min-w-56">
         <DropdownMenuGroup>
-          <DropdownMenuLabel>{user.name}</DropdownMenuLabel>
+          <DropdownMenuLabel className="truncate font-normal text-muted-foreground">
+            {user.email}
+          </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -178,7 +186,7 @@ function OrgSidebar({ orgSlug }: { orgSlug: string }) {
                           than a second source of truth. */}
                       <SidebarMenuButton
                         tooltip={label}
-                        className="data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-sidebar-accent-foreground"
+                        className="[&_svg]:text-muted-foreground data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-sidebar-accent-foreground data-[status=active]:[&_svg]:text-foreground"
                         render={<Link to={to} params={{ orgSlug }} />}
                       >
                         <Icon />
@@ -199,7 +207,7 @@ function OrgSidebar({ orgSlug }: { orgSlug: string }) {
             <SidebarMenuItem>
               <SidebarMenuButton
                 tooltip="Settings"
-                className="data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-sidebar-accent-foreground"
+                className="data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-sidebar-accent-foreground data-[status=active]:[&_svg]:text-foreground"
                 render={<Link to="/$orgSlug/settings" params={{ orgSlug }} />}
               >
                 <SettingsIcon />
@@ -224,15 +232,11 @@ export function AppShell({ orgSlug, children }: { orgSlug: string; children: Rea
   return (
     <TooltipProvider>
       <SidebarProvider className="h-svh overflow-hidden print:h-auto print:overflow-visible">
-        <ClientOnly
-          fallback={
-            <div className="hidden w-64 shrink-0 border-r border-border bg-sidebar md:block" />
-          }
-        >
+        <ClientOnly fallback={<div className="hidden w-64 shrink-0 bg-sidebar md:block" />}>
           <OrgSidebar orgSlug={orgSlug} />
         </ClientOnly>
         <SidebarInset className="min-w-0 overflow-hidden print:overflow-visible">
-          <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-2 print:hidden md:hidden">
+          <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-2 print:hidden md:hidden">
             <SidebarTrigger />
           </header>
 

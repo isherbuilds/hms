@@ -2,10 +2,11 @@ import { Button } from "@hms/ui/components/button";
 import { Input } from "@hms/ui/components/input";
 import { ORGANIZATION_SLUG_MIN_LENGTH, organizationSlugIssue } from "@hms/auth/organization-slug";
 import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { AlertCircleIcon, ArrowRightIcon, CheckIcon, LoaderIcon } from "lucide-react";
+import { ArrowRightIcon, CheckIcon, LoaderIcon } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { OrganizationEntryLayout } from "@/components/organization-entry-layout";
+import { ErrorNote } from "@/components/page";
 import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/create")({
@@ -48,7 +49,16 @@ function CreateOrganizationRoute() {
         slug,
       });
       if (failure) {
-        setError(failure.message || "This organization could not be created.");
+        // The address being taken is the one failure a person can act on, and
+        // the database is what decides it — there is no pre-check to trust.
+        const taken =
+          failure.code === "ORGANIZATION_SLUG_ALREADY_TAKEN" ||
+          failure.code === "ORGANIZATION_ALREADY_EXISTS";
+        setError(
+          taken
+            ? `The address "${slug}" is already taken. Try another.`
+            : failure.message || "This organization could not be created.",
+        );
         return;
       }
 
@@ -150,15 +160,7 @@ function CreateOrganizationRoute() {
           </p>
         </div>
 
-        {error && (
-          <div
-            role="alert"
-            className="flex items-start gap-2 border-l-2 border-destructive pl-3 text-xs text-destructive"
-          >
-            <AlertCircleIcon className="mt-0.5 size-3.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+        {error && <ErrorNote title={error} />}
 
         <Button
           type="submit"

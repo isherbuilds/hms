@@ -11,7 +11,6 @@ import { journalLines } from "@hms/db/schema/journal-lines";
 
 import { businessDate } from "./business-date";
 import { fromPaise, toPaise } from "./invoice-math";
-
 export type SystemAccountKey =
   | "cash"
   | "bank"
@@ -131,7 +130,7 @@ async function ensureChartOfAccounts(
       .insert(accounts)
       .values(
         missing.map((account) => ({
-          id: crypto.randomUUID(),
+          id: Bun.randomUUIDv7(),
           orgId,
           code: account.code,
           name: account.name,
@@ -221,7 +220,7 @@ export async function postJournalEntry(
   }
 
   const accountIds = await ensureChartOfAccounts(tx, args.orgId);
-  const entryId = crypto.randomUUID();
+  const entryId = Bun.randomUUIDv7();
   await tx.insert(journalEntries).values({
     id: entryId,
     orgId: args.orgId,
@@ -233,7 +232,7 @@ export async function postJournalEntry(
   });
   await tx.insert(journalLines).values(
     preparedLines.map((line) => ({
-      id: crypto.randomUUID(),
+      id: Bun.randomUUIDv7(),
       orgId: args.orgId,
       entryId,
       accountId: accountIds[line.account],

@@ -3,7 +3,7 @@ import { beforeAll, expect, test } from "bun:test";
 import { createOrganization, createTestUser, joinOrganization } from "../support/auth";
 import { clientFor, eventually, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
-
+import { uniqueSuffix } from "../support/unique";
 beforeAll(async () => {
   await resetTestDatabase();
 });
@@ -24,7 +24,7 @@ test("catalog CRUD, filters, deactivation, and code uniqueness are organization-
   const one = await createOrganization(owner, "catalog-crud-one");
   const two = await createOrganization(owner, "catalog-crud-two");
   const api = clientFor(owner);
-  const code = `CONS-${crypto.randomUUID().slice(0, 8)}`;
+  const code = `CONS-${uniqueSuffix()}`;
 
   const created = await api.catalog.create(catalogItemInput(one.slug, code));
   expect(created).toMatchObject({
@@ -64,7 +64,7 @@ test("catalog CRUD, filters, deactivation, and code uniqueness are organization-
   expect(sameCodeElsewhere.orgId).toBe(two.id);
 
   const procedure = await api.catalog.create({
-    ...catalogItemInput(one.slug, `PROC-${crypto.randomUUID().slice(0, 8)}`, "Procedure"),
+    ...catalogItemInput(one.slug, `PROC-${uniqueSuffix()}`, "Procedure"),
     category: "procedure",
   });
   await api.catalog.update({
@@ -96,16 +96,14 @@ test("plain members can read catalog and staff but cannot mutate either domain",
   const ownerClient = clientFor(owner);
   const memberClient = clientFor(member);
   const item = await ownerClient.catalog.create(
-    catalogItemInput(organization.slug, `GATE-${crypto.randomUUID().slice(0, 8)}`),
+    catalogItemInput(organization.slug, `GATE-${uniqueSuffix()}`),
   );
 
   expect(await memberClient.catalog.list({ orgSlug: organization.slug })).toContainEqual(item);
   expect(await memberClient.staff.listPractitioners({ orgSlug: organization.slug })).toEqual([]);
 
   await expectORPCCode(
-    memberClient.catalog.create(
-      catalogItemInput(organization.slug, `DENY-${crypto.randomUUID().slice(0, 8)}`),
-    ),
+    memberClient.catalog.create(catalogItemInput(organization.slug, `DENY-${uniqueSuffix()}`)),
     "FORBIDDEN",
   );
   await expectORPCCode(
@@ -130,7 +128,7 @@ test("plain members can read catalog and staff but cannot mutate either domain",
     memberClient.staff.createPractitioner({
       orgSlug: organization.slug,
       name: "Denied",
-      departmentId: crypto.randomUUID(),
+      departmentId: Bun.randomUUIDv7(),
     }),
     "FORBIDDEN",
   );
@@ -162,7 +160,7 @@ test("departments and practitioners support linked CRUD within an organization",
   );
 
   const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, `FEE-${crypto.randomUUID().slice(0, 8)}`, "Consult Fee"),
+    catalogItemInput(organization.slug, `FEE-${uniqueSuffix()}`, "Consult Fee"),
   );
   const practitioner = await api.staff.createPractitioner({
     orgSlug: organization.slug,
@@ -216,7 +214,7 @@ test("practitioner references cannot cross organization boundaries", async () =>
     name: "Beta Department",
   });
   const betaFee = await betaClient.catalog.create(
-    catalogItemInput(beta.slug, `BETA-${crypto.randomUUID().slice(0, 8)}`),
+    catalogItemInput(beta.slug, `BETA-${uniqueSuffix()}`),
   );
 
   await expectORPCCode(
@@ -263,10 +261,10 @@ test("catalog, department, and practitioner updates hide unknown and foreign ids
     name: "Beta Update Department",
   });
   const alphaItem = await alphaClient.catalog.create(
-    catalogItemInput(alpha.slug, `ALPHA-${crypto.randomUUID().slice(0, 8)}`),
+    catalogItemInput(alpha.slug, `ALPHA-${uniqueSuffix()}`),
   );
   const betaItem = await betaClient.catalog.create(
-    catalogItemInput(beta.slug, `BETA-${crypto.randomUUID().slice(0, 8)}`),
+    catalogItemInput(beta.slug, `BETA-${uniqueSuffix()}`),
   );
   const alphaPractitioner = await alphaClient.staff.createPractitioner({
     orgSlug: alpha.slug,
@@ -279,7 +277,7 @@ test("catalog, department, and practitioner updates hide unknown and foreign ids
     departmentId: betaDepartment.id,
   });
 
-  for (const itemId of [crypto.randomUUID(), betaItem.id]) {
+  for (const itemId of [Bun.randomUUIDv7(), betaItem.id]) {
     await expectORPCCode(
       alphaClient.catalog.update({
         orgSlug: alpha.slug,
@@ -295,7 +293,7 @@ test("catalog, department, and practitioner updates hide unknown and foreign ids
       "NOT_FOUND",
     );
   }
-  for (const departmentId of [crypto.randomUUID(), betaDepartment.id]) {
+  for (const departmentId of [Bun.randomUUIDv7(), betaDepartment.id]) {
     await expectORPCCode(
       alphaClient.staff.updateDepartment({
         orgSlug: alpha.slug,
@@ -305,7 +303,7 @@ test("catalog, department, and practitioner updates hide unknown and foreign ids
       "NOT_FOUND",
     );
   }
-  for (const practitionerId of [crypto.randomUUID(), betaPractitioner.id]) {
+  for (const practitionerId of [Bun.randomUUIDv7(), betaPractitioner.id]) {
     await expectORPCCode(
       alphaClient.staff.updatePractitioner({
         orgSlug: alpha.slug,
@@ -326,7 +324,7 @@ test("catalog mutations and practitioner creates are audited, with price meta as
   const organization = await createOrganization(owner, "catalog-staff-audit");
   const api = clientFor(owner);
   const item = await api.catalog.create(
-    catalogItemInput(organization.slug, `AUDIT-${crypto.randomUUID().slice(0, 8)}`),
+    catalogItemInput(organization.slug, `AUDIT-${uniqueSuffix()}`),
   );
   const department = await api.staff.createDepartment({
     orgSlug: organization.slug,

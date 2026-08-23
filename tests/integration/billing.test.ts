@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { createOrganization, createTestUser, joinOrganization } from "../support/auth";
 import { clientFor, eventually, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
-
+import { uniqueSuffix } from "../support/unique";
 beforeAll(async () => {
   await resetTestDatabase();
 });
@@ -74,13 +74,19 @@ async function createBillingFixture(seed: string) {
   });
 
   async function createOpdAppointment() {
-    const created = await api.opd.createWalkIn({
+    const booked = await api.opd.book({
       orgSlug: organization.slug,
       patientId: patient.id,
       practitionerId: practitioner.id,
       departmentId: department.id,
+      scheduledLocal: "2030-03-15T10:30",
     });
-    return created.appointment;
+    return (
+      await api.opd.checkIn({
+        orgSlug: organization.slug,
+        appointmentId: booked.id,
+      })
+    ).appointment;
   }
 
   async function addCatalogCharge(
@@ -92,7 +98,7 @@ async function createBillingFixture(seed: string) {
     const item = await api.catalog.create({
       orgSlug: organization.slug,
       name: description,
-      code: `TEST-${crypto.randomUUID().slice(0, 8)}`,
+      code: `TEST-${uniqueSuffix()}`,
       category: "other",
       unitPrice,
       taxRatePercent,
@@ -151,7 +157,7 @@ test("catalog charges issue an exact invoice and a full payment settles it", asy
   const item = await api.catalog.create({
     orgSlug: organization.slug,
     name: "Taxable Procedure",
-    code: `BILL-${crypto.randomUUID().slice(0, 8)}`,
+    code: `BILL-${uniqueSuffix()}`,
     category: "procedure",
     unitPrice: "100.00",
     taxRatePercent: "18.00",
@@ -273,6 +279,28 @@ test("catalog charges issue an exact invoice and a full payment settles it", asy
   });
 });
 
+test("consultation catalog items cannot be added as post-check-in charges", async () => {
+  const fixture = await createBillingFixture("billing-consultation-filter");
+  const appointment = await fixture.createOpdAppointment();
+  const consultation = await fixture.api.catalog.create({
+    orgSlug: fixture.organization.slug,
+    name: "Additional consultation",
+    code: `CONSULT-${uniqueSuffix()}`,
+    category: "consultation",
+    unitPrice: "100.00",
+    taxRatePercent: "0",
+  });
+
+  await expectORPCCode(
+    fixture.api.billing.addCharge({
+      orgSlug: fixture.organization.slug,
+      appointmentId: appointment.id,
+      catalogItemId: consultation.id,
+    }),
+    "NOT_FOUND",
+  );
+});
+
 test("concurrent invoice issuance has one winner and leaves no charges for re-issue", async () => {
   const fixture = await createBillingFixture("billing-race");
   const appointment = await fixture.createOpdAppointment();
@@ -323,7 +351,7 @@ test("zero pending charges conflict and voided charges are excluded from issuanc
   );
 });
 
-test("charges and invoices are rejected before check-in and after a no-show", async () => {
+test("charges and invoices require a checked-in appointment", async () => {
   const fixture = await createBillingFixture("billing-pre-arrival");
   const booked = await fixture.api.opd.book({
     orgSlug: fixture.organization.slug,
@@ -334,26 +362,41 @@ test("charges and invoices are rejected before check-in and after a no-show", as
   });
 
   await expectORPCCode(fixture.addCatalogCharge(booked.id, "100.00"), "CONFLICT");
-  await expectORPCCode(
-    fixture.api.billing.issueInvoice({
-      orgSlug: fixture.organization.slug,
-      appointmentId: booked.id,
-    }),
-    "CONFLICT",
-  );
-
   await fixture.api.opd.markNoShow({
     orgSlug: fixture.organization.slug,
     appointmentId: booked.id,
   });
   await expectORPCCode(fixture.addCatalogCharge(booked.id, "100.00"), "CONFLICT");
-  await expectORPCCode(
-    fixture.api.billing.issueInvoice({
-      orgSlug: fixture.organization.slug,
-      appointmentId: booked.id,
-    }),
-    "CONFLICT",
-  );
+
+  const cancelled = await fixture.createOpdAppointment();
+  await fixture.api.opd.cancel({
+    orgSlug: fixture.organization.slug,
+    appointmentId: cancelled.id,
+    reason: "Patient left",
+  });
+  await expectORPCCode(fixture.addCatalogCharge(cancelled.id, "100.00"), "CONFLICT");
+});
+
+test("cancelling a paid appointment does not issue credit or refund", async () => {
+  const fixture = await createBillingFixture("billing-cancel-paid");
+  const issued = await createInvoice(fixture);
+  await fixture.api.billing.recordPayment({
+    orgSlug: fixture.organization.slug,
+    invoiceId: issued.invoice.id,
+    amount: issued.invoice.grandTotal,
+    method: "cash",
+  });
+  await fixture.api.opd.cancel({
+    orgSlug: fixture.organization.slug,
+    appointmentId: issued.appointment.id,
+    reason: "Patient left",
+  });
+  const detail = await fixture.api.billing.getInvoice({
+    orgSlug: fixture.organization.slug,
+    invoiceId: issued.invoice.id,
+  });
+  expect(detail.creditNotes).toEqual([]);
+  expect(detail.refunds).toEqual([]);
 });
 
 test("voiding distinguishes unknown and invoiced charges and records its reason and audit", async () => {
@@ -386,7 +429,7 @@ test("voiding distinguishes unknown and invoiced charges and records its reason 
   await expectORPCCode(
     fixture.api.billing.voidCharge({
       orgSlug: fixture.organization.slug,
-      chargeId: crypto.randomUUID(),
+      chargeId: Bun.randomUUIDv7(),
       reason: "Unknown",
     }),
     "NOT_FOUND",
@@ -473,7 +516,7 @@ test("discount allocation, multi-rate totals, and partial credit tax extraction 
     orgSlug: fixture.organization.slug,
     appointmentId: appointment.id,
     discountAmount: "30.00",
-    discountReason: "Package discount",
+    note: "Package discount",
   });
   expect(issued.lines).toEqual(
     expect.arrayContaining([
@@ -551,7 +594,7 @@ test("discount allocation, multi-rate totals, and partial credit tax extraction 
       orgSlug: fixture.organization.slug,
       appointmentId: excessiveOpdAppointment.id,
       discountAmount: "400.00",
-      discountReason: "Impossible discount",
+      note: "Impossible discount",
     }),
     "BAD_REQUEST",
   );
@@ -912,7 +955,7 @@ test("members can charge, invoice, and pay but cannot issue credits or refunds",
   const item = await fixture.api.catalog.create({
     orgSlug: fixture.organization.slug,
     name: "Member-added service",
-    code: `MEMBER-${crypto.randomUUID().slice(0, 8)}`,
+    code: `MEMBER-${uniqueSuffix()}`,
     category: "other",
     unitPrice: "100.00",
     taxRatePercent: "0",

@@ -13,7 +13,7 @@ import {
 } from "../support/auth";
 import { clientFor, eventually, expectAuthStatus, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
-
+import { uniqueSuffix } from "../support/unique";
 beforeAll(async () => {
   await resetTestDatabase();
 });
@@ -24,7 +24,7 @@ test("public email sign-up is disabled", async () => {
   await expectAuthStatus(
     auth.api.signUpEmail({
       body: {
-        email: `uninvited-${crypto.randomUUID()}@example.com`,
+        email: `uninvited-${Bun.randomUUIDv7()}@example.com`,
         name: "uninvited",
         password: "integration-test-password",
       },
@@ -137,8 +137,8 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
   const outsider = await createTestUser("today-visitor");
   const api = clientFor(owner);
 
-  // A appointment and a pending charge in `one` only. `two` stays empty, which is
-  // what makes a leak visible rather than merely unlikely.
+  // One checked-in appointment and one pending charge exist in `one` only.
+  // `two` stays empty, which makes a leak visible rather than merely unlikely.
   const patient = await api.patient.register({
     orgSlug: one.slug,
     name: "Today Patient",
@@ -153,17 +153,22 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
     name: "Dr. Today",
     departmentId: department.id,
   });
-  const { appointment } = await api.opd.createWalkIn({
+  const booked = await api.opd.book({
     orgSlug: one.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
+    scheduledLocal: "2030-03-15T10:30",
+  });
+  const { appointment } = await api.opd.checkIn({
+    orgSlug: one.slug,
+    appointmentId: booked.id,
   });
   const consult = await api.catalog.create({
     orgSlug: one.slug,
     name: "Consultation",
     code: "TODAY-CONSULT",
-    category: "consultation",
+    category: "other",
     unitPrice: "500.00",
     taxRatePercent: "0",
   });
@@ -182,9 +187,9 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
     api.dashboard.collections({ orgSlug: two.slug }),
   ]);
 
-  expect(todayOne.waiting).toBe(1);
+  expect(todayOne.checkedIn).toBe(1);
   expect(todayOne.mix).toEqual([{ department: "Today Dept", count: 1 }]);
-  expect(todayTwo.waiting).toBe(0);
+  expect(todayTwo.checkedIn).toBe(0);
   expect(todayTwo.mix).toEqual([]);
 
   expect(Number(moneyOne.unbilled)).toBe(500);
@@ -201,7 +206,7 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
   const member = await createTestUser("today-member");
   await joinOrganization(member, one.id);
   const memberApi = clientFor(member);
-  expect((await memberApi.dashboard.today({ orgSlug: one.slug })).waiting).toBe(1);
+  expect((await memberApi.dashboard.today({ orgSlug: one.slug })).checkedIn).toBe(1);
   await removeFromOrganization(owner, member.user.email, one.id);
   await expectORPCCode(memberApi.dashboard.today({ orgSlug: one.slug }), "FORBIDDEN");
 });
@@ -344,10 +349,7 @@ test("an unknown slug is FORBIDDEN, not NOT_FOUND — existence never leaks", as
 
   // Identical to the code a real-but-foreign org returns, so the two cases are
   // indistinguishable: a caller cannot probe which slugs exist.
-  await expectORPCCode(
-    api.settings.get({ orgSlug: `absent-${crypto.randomUUID().slice(0, 8)}` }),
-    "FORBIDDEN",
-  );
+  await expectORPCCode(api.settings.get({ orgSlug: `absent-${uniqueSuffix()}` }), "FORBIDDEN");
   await api.settings.get({ orgSlug: organization.slug });
 });
 
@@ -394,11 +396,11 @@ const GUARDED_CALLS = {
       ageYears: 30,
     }),
   "patient.search": (api, claim) => api.patient.search({ ...claim, query: "intrusion" }),
-  "patient.get": (api, claim) => api.patient.get({ ...claim, patientId: crypto.randomUUID() }),
+  "patient.get": (api, claim) => api.patient.get({ ...claim, patientId: Bun.randomUUIDv7() }),
   "patient.update": (api, claim) =>
     api.patient.update({
       ...claim,
-      patientId: crypto.randomUUID(),
+      patientId: Bun.randomUUIDv7(),
       name: "Intrusion",
       phone: "5550000",
       sex: "other",
@@ -409,7 +411,7 @@ const GUARDED_CALLS = {
     api.catalog.create({
       ...claim,
       name: "Intrusion",
-      code: `INTR-${crypto.randomUUID().slice(0, 8)}`,
+      code: `INTR-${uniqueSuffix()}`,
       category: "other",
       unitPrice: "1.00",
       taxRatePercent: "0",
@@ -417,9 +419,9 @@ const GUARDED_CALLS = {
   "catalog.update": (api, claim) =>
     api.catalog.update({
       ...claim,
-      itemId: crypto.randomUUID(),
+      itemId: Bun.randomUUIDv7(),
       name: "Intrusion",
-      code: `INTR-${crypto.randomUUID().slice(0, 8)}`,
+      code: `INTR-${uniqueSuffix()}`,
       category: "other",
       unitPrice: "1.00",
       taxRatePercent: "0",
@@ -431,7 +433,7 @@ const GUARDED_CALLS = {
   "staff.updateDepartment": (api, claim) =>
     api.staff.updateDepartment({
       ...claim,
-      departmentId: crypto.randomUUID(),
+      departmentId: Bun.randomUUIDv7(),
       name: "Intrusion",
     }),
   "staff.listPractitioners": (api, claim) => api.staff.listPractitioners({ ...claim }),
@@ -439,118 +441,112 @@ const GUARDED_CALLS = {
     api.staff.createPractitioner({
       ...claim,
       name: "Intrusion",
-      departmentId: crypto.randomUUID(),
+      departmentId: Bun.randomUUIDv7(),
     }),
   "staff.updatePractitioner": (api, claim) =>
     api.staff.updatePractitioner({
       ...claim,
-      practitionerId: crypto.randomUUID(),
+      practitionerId: Bun.randomUUIDv7(),
       name: "Intrusion",
-      departmentId: crypto.randomUUID(),
+      departmentId: Bun.randomUUIDv7(),
     }),
   "opd.book": (api, claim) =>
     api.opd.book({
       ...claim,
       callerName: "Intrusion",
       callerPhone: "0000",
-      practitionerId: crypto.randomUUID(),
-      departmentId: crypto.randomUUID(),
+      practitionerId: Bun.randomUUIDv7(),
+      departmentId: Bun.randomUUIDv7(),
       scheduledLocal: "2026-08-22T10:00",
+    }),
+  "opd.quoteWalkIn": (api, claim) =>
+    api.opd.quoteWalkIn({
+      ...claim,
+      patientId: Bun.randomUUIDv7(),
+      practitionerId: Bun.randomUUIDv7(),
+      departmentId: Bun.randomUUIDv7(),
     }),
   "opd.createWalkIn": (api, claim) =>
     api.opd.createWalkIn({
       ...claim,
-      patientId: crypto.randomUUID(),
-      practitionerId: crypto.randomUUID(),
-      departmentId: crypto.randomUUID(),
+      patientId: Bun.randomUUIDv7(),
+      practitionerId: Bun.randomUUIDv7(),
+      departmentId: Bun.randomUUIDv7(),
+      settlement: { payments: [], note: "Guarded-call tenant probe" },
     }),
   "opd.checkIn": (api, claim) =>
     api.opd.checkIn({
       ...claim,
-      appointmentId: crypto.randomUUID(),
-      patientId: crypto.randomUUID(),
+      appointmentId: Bun.randomUUIDv7(),
+      patientId: Bun.randomUUIDv7(),
     }),
   "opd.reschedule": (api, claim) =>
     api.opd.reschedule({
       ...claim,
-      appointmentId: crypto.randomUUID(),
+      appointmentId: Bun.randomUUIDv7(),
       scheduledLocal: "2026-08-23T10:00",
     }),
-  "opd.startConsultation": (api, claim) =>
-    api.opd.startConsultation({
-      ...claim,
-      appointmentId: crypto.randomUUID(),
-    }),
-  "opd.complete": (api, claim) =>
-    api.opd.complete({ ...claim, appointmentId: crypto.randomUUID() }),
   "opd.cancel": (api, claim) =>
-    api.opd.cancel({ ...claim, appointmentId: crypto.randomUUID(), reason: "Intrusion" }),
+    api.opd.cancel({ ...claim, appointmentId: Bun.randomUUIDv7(), reason: "Intrusion" }),
   "opd.markNoShow": (api, claim) =>
-    api.opd.markNoShow({ ...claim, appointmentId: crypto.randomUUID() }),
-  "opd.markLeftUnseen": (api, claim) =>
-    api.opd.markLeftUnseen({
-      ...claim,
-      appointmentId: crypto.randomUUID(),
-      reason: "Intrusion",
-    }),
-  "opd.queue": (api, claim) => api.opd.queue({ ...claim }),
-  "opd.appointments": (api, claim) => api.opd.appointments({ ...claim }),
-  "opd.get": (api, claim) => api.opd.get({ ...claim, appointmentId: crypto.randomUUID() }),
+    api.opd.markNoShow({ ...claim, appointmentId: Bun.randomUUIDv7() }),
+  "opd.day": (api, claim) => api.opd.day({ ...claim }),
+  "opd.get": (api, claim) => api.opd.get({ ...claim, appointmentId: Bun.randomUUIDv7() }),
   "opd.attachPrescription": (api, claim) =>
     api.opd.attachPrescription({
       ...claim,
-      appointmentId: crypto.randomUUID(),
-      fileId: crypto.randomUUID(),
+      appointmentId: Bun.randomUUIDv7(),
+      fileId: Bun.randomUUIDv7(),
     }),
   "opd.detachPrescription": (api, claim) =>
     api.opd.detachPrescription({
       ...claim,
-      attachmentId: crypto.randomUUID(),
+      attachmentId: Bun.randomUUIDv7(),
     }),
   "billing.worklist": (api, claim) => api.billing.worklist({ ...claim }),
   "billing.listPendingCharges": (api, claim) =>
-    api.billing.listPendingCharges({ ...claim, appointmentId: crypto.randomUUID() }),
+    api.billing.listPendingCharges({ ...claim, appointmentId: Bun.randomUUIDv7() }),
   "billing.addCharge": (api, claim) =>
     api.billing.addCharge({
       ...claim,
-      appointmentId: crypto.randomUUID(),
-      catalogItemId: crypto.randomUUID(),
+      appointmentId: Bun.randomUUIDv7(),
+      catalogItemId: Bun.randomUUIDv7(),
     }),
   "billing.voidCharge": (api, claim) =>
     api.billing.voidCharge({
       ...claim,
-      chargeId: crypto.randomUUID(),
+      chargeId: Bun.randomUUIDv7(),
       reason: "Intrusion",
     }),
   "billing.issueInvoice": (api, claim) =>
-    api.billing.issueInvoice({ ...claim, appointmentId: crypto.randomUUID() }),
+    api.billing.issueInvoice({ ...claim, appointmentId: Bun.randomUUIDv7() }),
   "billing.recordPayment": (api, claim) =>
     api.billing.recordPayment({
       ...claim,
-      invoiceId: crypto.randomUUID(),
+      invoiceId: Bun.randomUUIDv7(),
       method: "cash",
       amount: "1.00",
     }),
   "billing.issueCreditNote": (api, claim) =>
     api.billing.issueCreditNote({
       ...claim,
-      invoiceId: crypto.randomUUID(),
+      invoiceId: Bun.randomUUIDv7(),
       reason: "Intrusion",
-      lines: [{ invoiceLineId: crypto.randomUUID(), full: true }],
+      lines: [{ invoiceLineId: Bun.randomUUIDv7(), full: true }],
     }),
   "billing.recordRefund": (api, claim) =>
     api.billing.recordRefund({
       ...claim,
-      creditNoteId: crypto.randomUUID(),
+      creditNoteId: Bun.randomUUIDv7(),
       method: "cash",
       amount: "1.00",
     }),
   "billing.invoiceBalance": (api, claim) =>
-    api.billing.invoiceBalance({ ...claim, invoiceId: crypto.randomUUID() }),
+    api.billing.invoiceBalance({ ...claim, invoiceId: Bun.randomUUIDv7() }),
   "billing.listInvoices": (api, claim) =>
-    api.billing.listInvoices({ ...claim, appointmentId: crypto.randomUUID() }),
+    api.billing.listInvoices({ ...claim, appointmentId: Bun.randomUUIDv7() }),
   "billing.getInvoice": (api, claim) =>
-    api.billing.getInvoice({ ...claim, invoiceId: crypto.randomUUID() }),
+    api.billing.getInvoice({ ...claim, invoiceId: Bun.randomUUIDv7() }),
   "report.trialBalance": (api, claim) =>
     api.report.trialBalance({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
   "report.balanceSheet": (api, claim) => api.report.balanceSheet({ ...claim, asOf: "2024-01-31" }),
@@ -606,7 +602,7 @@ test("every procedure rejects a missing org claim as BAD_REQUEST, not FORBIDDEN"
   const user = await createTestUser("no-claim");
   const api = clientFor(user);
 
-  // Documented in ADR 0002: a missing claim never reaches the permission
+  // Documented in decision D001: a missing claim never reaches the permission
   // guard, so it is a validation failure rather than an authorization one. A
   // procedure that dropped `orgInput` would answer FORBIDDEN here — or worse,
   // succeed — so the code, not merely the rejection, is what is asserted.
@@ -675,7 +671,7 @@ test("an invitation id from another tenant cannot be revoked", async () => {
 
   const invited = await clientFor(alice).member.invite({
     orgSlug: alpha.slug,
-    email: `scoped-${crypto.randomUUID()}@example.com`,
+    email: `scoped-${Bun.randomUUIDv7()}@example.com`,
   });
 
   await expectORPCCode(
@@ -754,7 +750,7 @@ test("catalog rows are invisible from another org and cannot be updated by forei
   const item = await clientFor(alice).catalog.create({
     orgSlug: alpha.slug,
     name: "Alpha Item",
-    code: `ALPHA-${crypto.randomUUID().slice(0, 8)}`,
+    code: `ALPHA-${uniqueSuffix()}`,
     category: "other",
     unitPrice: "1.00",
     taxRatePercent: "0",
@@ -787,7 +783,7 @@ test("one client concurrently scopes catalog calls to two organizations", async 
     api.catalog.create({
       orgSlug: one.slug,
       name: "Item In One",
-      code: `ONE-${crypto.randomUUID().slice(0, 8)}`,
+      code: `ONE-${uniqueSuffix()}`,
       category: "other",
       unitPrice: "1.00",
       taxRatePercent: "0",
@@ -795,7 +791,7 @@ test("one client concurrently scopes catalog calls to two organizations", async 
     api.catalog.create({
       orgSlug: two.slug,
       name: "Item In Two",
-      code: `TWO-${crypto.randomUUID().slice(0, 8)}`,
+      code: `TWO-${uniqueSuffix()}`,
       category: "other",
       unitPrice: "2.00",
       taxRatePercent: "0",
@@ -862,6 +858,14 @@ test("OPD appointment rows are invisible from another org through queue or get",
     ageYears: 30,
     address: "",
   });
+  const fee = await aliceClient.catalog.create({
+    orgSlug: alpha.slug,
+    name: "Alpha consultation",
+    code: `ALPHA-CONSULT-${uniqueSuffix()}`,
+    category: "consultation",
+    unitPrice: "100.00",
+    taxRatePercent: "0",
+  });
   const department = await aliceClient.staff.createDepartment({
     orgSlug: alpha.slug,
     name: "Alpha OpdAppointment Department",
@@ -870,21 +874,38 @@ test("OPD appointment rows are invisible from another org through queue or get",
     orgSlug: alpha.slug,
     name: "Dr. Alpha OpdAppointment",
     departmentId: department.id,
+    consultFeeItemId: fee.id,
   });
   const created = await aliceClient.opd.createWalkIn({
     orgSlug: alpha.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
+    settlement: { payments: [], note: "Tenant visibility probe" },
+  });
+  const pastBooking = await aliceClient.opd.book({
+    orgSlug: alpha.slug,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    departmentId: department.id,
+    scheduledLocal: "2026-08-22T10:00",
   });
 
   const bob = await createTestUser("opd-scope-bob");
   const beta = await createOrganization(bob, "opd-scope-beta");
   const bobClient = clientFor(bob);
-  expect(await bobClient.opd.queue({ orgSlug: beta.slug })).toEqual({
-    items: [],
-    nextCursor: null,
-  });
+  expect(
+    await bobClient.opd.day({
+      orgSlug: beta.slug,
+      date: "2026-08-22",
+      q: patient.name,
+      includeClosed: true,
+    }),
+  ).toEqual({ items: [], nextCursor: null });
+  expect(
+    (await aliceClient.opd.get({ orgSlug: alpha.slug, appointmentId: pastBooking.id })).appointment
+      .status,
+  ).toBe("booked");
   await expectORPCCode(
     bobClient.opd.get({ orgSlug: beta.slug, appointmentId: created.appointment.id }),
     "NOT_FOUND",
@@ -914,6 +935,24 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
       address: "",
     }),
   ]);
+  const [feeOne, feeTwo] = await Promise.all([
+    api.catalog.create({
+      orgSlug: one.slug,
+      name: "Organization One Consultation",
+      code: `ONE-CONSULT-${uniqueSuffix()}`,
+      category: "consultation",
+      unitPrice: "100.00",
+      taxRatePercent: "0",
+    }),
+    api.catalog.create({
+      orgSlug: two.slug,
+      name: "Organization Two Consultation",
+      code: `TWO-CONSULT-${uniqueSuffix()}`,
+      category: "consultation",
+      unitPrice: "100.00",
+      taxRatePercent: "0",
+    }),
+  ]);
   const [departmentOne, departmentTwo] = await Promise.all([
     api.staff.createDepartment({ orgSlug: one.slug, name: "OpdAppointment Department One" }),
     api.staff.createDepartment({ orgSlug: two.slug, name: "OpdAppointment Department Two" }),
@@ -923,11 +962,13 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
       orgSlug: one.slug,
       name: "Dr. OpdAppointment One",
       departmentId: departmentOne.id,
+      consultFeeItemId: feeOne.id,
     }),
     api.staff.createPractitioner({
       orgSlug: two.slug,
       name: "Dr. OpdAppointment Two",
       departmentId: departmentTwo.id,
+      consultFeeItemId: feeTwo.id,
     }),
   ]);
 
@@ -937,27 +978,38 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
       patientId: patientOne.id,
       practitionerId: practitionerOne.id,
       departmentId: departmentOne.id,
+      settlement: { payments: [{ method: "cash", amount: "100.00" }] },
     }),
     api.opd.createWalkIn({
       orgSlug: two.slug,
       patientId: patientTwo.id,
       practitionerId: practitionerTwo.id,
       departmentId: departmentTwo.id,
+      settlement: { payments: [{ method: "cash", amount: "100.00" }] },
     }),
   ]);
   const [seenInOne, seenInTwo] = await Promise.all([
-    api.opd.queue({ orgSlug: one.slug }),
-    api.opd.queue({ orgSlug: two.slug }),
+    api.opd.day({ orgSlug: one.slug }),
+    api.opd.day({ orgSlug: two.slug }),
   ]);
 
   expect(seenInOne.items.map((appointment) => appointment.id)).toEqual([inOne.appointment.id]);
   expect(seenInTwo.items.map((appointment) => appointment.id)).toEqual([inTwo.appointment.id]);
+  expect(inOne.appointment.tokenNumber).toBe(1);
+  expect(inTwo.appointment.tokenNumber).toBe(1);
+  expect(inOne.invoice.invoiceNumber.endsWith("/1")).toBe(true);
+  expect(inTwo.invoice.invoiceNumber.endsWith("/1")).toBe(true);
+  expect(inOne.payments[0]!.receiptNumber.endsWith("/1")).toBe(true);
+  expect(inTwo.payments[0]!.receiptNumber.endsWith("/1")).toBe(true);
 });
 
 async function createScopedInvoice(
   api: AppRouterClient,
   organization: { slug: string },
   seed: string,
+  settlement: Parameters<AppRouterClient["opd"]["createWalkIn"]>[0]["settlement"] = {
+    payments: [{ method: "cash", amount: "100.00" }],
+  },
 ) {
   await api.settings.update({
     orgSlug: organization.slug,
@@ -981,6 +1033,14 @@ async function createScopedInvoice(
     ageYears: 30,
     address: "",
   });
+  const fee = await api.catalog.create({
+    orgSlug: organization.slug,
+    name: `${seed} Consultation`,
+    code: `SCOPE-${uniqueSuffix()}`,
+    category: "consultation",
+    unitPrice: "100.00",
+    taxRatePercent: "0",
+  });
   const department = await api.staff.createDepartment({
     orgSlug: organization.slug,
     name: `${seed} Department`,
@@ -989,31 +1049,20 @@ async function createScopedInvoice(
     orgSlug: organization.slug,
     name: `Dr. ${seed}`,
     departmentId: department.id,
+    consultFeeItemId: fee.id,
   });
   const created = await api.opd.createWalkIn({
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
+    settlement,
   });
-  const item = await api.catalog.create({
-    orgSlug: organization.slug,
-    name: `${seed} Charge`,
-    code: `SCOPE-${crypto.randomUUID().slice(0, 8)}`,
-    category: "other",
-    unitPrice: "100.00",
-    taxRatePercent: "0",
-  });
-  await api.billing.addCharge({
-    orgSlug: organization.slug,
-    appointmentId: created.appointment.id,
-    catalogItemId: item.id,
-  });
-  const issued = await api.billing.issueInvoice({
-    orgSlug: organization.slug,
-    appointmentId: created.appointment.id,
-  });
-  return { appointment: created.appointment, ...issued };
+  return {
+    appointment: created.appointment,
+    invoice: created.invoice,
+    payments: created.payments,
+  };
 }
 
 test("invoices are invisible from another org through get or list", async () => {
@@ -1051,6 +1100,12 @@ test("one client concurrently scopes billing calls to two organizations", async 
 
   expect(seenInOne.map((invoice) => invoice.id)).toEqual([inOne.invoice.id]);
   expect(seenInTwo.map((invoice) => invoice.id)).toEqual([inTwo.invoice.id]);
+  expect(inOne.appointment.tokenNumber).toBe(1);
+  expect(inTwo.appointment.tokenNumber).toBe(1);
+  expect(inOne.invoice.invoiceNumber.endsWith("/1")).toBe(true);
+  expect(inTwo.invoice.invoiceNumber.endsWith("/1")).toBe(true);
+  expect(inOne.payments[0]!.receiptNumber.endsWith("/1")).toBe(true);
+  expect(inTwo.payments[0]!.receiptNumber.endsWith("/1")).toBe(true);
 });
 
 test("reports reject a foreign org claim and expose none of that org's figures in a member's own org", async () => {
@@ -1113,9 +1168,10 @@ test("one client concurrently scopes report calls to two organizations", async (
   const one = await createOrganization(user, "report-scope-one");
   const two = await createOrganization(user, "report-scope-two");
   const api = clientFor(user);
+  const unpaid = { payments: [], note: "Settle at the counter" };
   const [inOne, inTwo] = await Promise.all([
-    createScopedInvoice(api, one, "Report One"),
-    createScopedInvoice(api, two, "Report Two"),
+    createScopedInvoice(api, one, "Report One", unpaid),
+    createScopedInvoice(api, two, "Report Two", unpaid),
   ]);
   await api.billing.recordPayment({
     orgSlug: one.slug,

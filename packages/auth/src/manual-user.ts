@@ -2,7 +2,6 @@ import { db } from "@hms/db";
 import { account, user } from "@hms/db/schema/auth";
 import { createLocalAccountIssuer } from "better-auth/db";
 import { hashPassword } from "better-auth/crypto";
-
 /**
  * Creates a user account the way an operator would: directly in the database,
  * with a password hashed by Better Auth's own algorithm. The public sign-up
@@ -22,30 +21,34 @@ export async function createUserWithPassword(input: {
   name: string;
   password: string;
 }): Promise<{ id: string }> {
-  const id = crypto.randomUUID();
+  const id = Bun.randomUUIDv7();
+  // Hash before the transaction so a hashing failure leaves no rows behind.
+  const password = await hashPassword(input.password);
 
-  const [created] = await db
-    .insert(user)
-    .values({
-      id,
-      name: input.name,
-      email: input.email.toLowerCase(),
-      emailVerified: true,
-    })
-    .returning({ id: user.id });
-  if (!created) {
-    throw new Error(`Failed to create user ${input.email}`);
-  }
-
-  await db.insert(account).values({
-    id: crypto.randomUUID(),
-    userId: id,
-    accountId: id,
-    providerId: "credential",
-    // The synthetic issuer Better Auth 1.7's sign-in filters credential
-    // accounts by; without it the account cannot authenticate.
-    issuer: createLocalAccountIssuer("credential"),
-    password: await hashPassword(input.password),
+  const created = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(user)
+      .values({
+        id,
+        name: input.name,
+        email: input.email.toLowerCase(),
+        emailVerified: true,
+      })
+      .returning({ id: user.id });
+    if (!row) {
+      throw new Error(`Failed to create user ${input.email}`);
+    }
+    await tx.insert(account).values({
+      id: Bun.randomUUIDv7(),
+      userId: id,
+      accountId: id,
+      providerId: "credential",
+      // The synthetic issuer Better Auth 1.7's sign-in filters credential
+      // accounts by; without it the account cannot authenticate.
+      issuer: createLocalAccountIssuer("credential"),
+      password,
+    });
+    return row;
   });
 
   return created;

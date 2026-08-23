@@ -9,7 +9,6 @@ import { audit } from "../audit";
 import { isUniqueViolation } from "../lib/db-errors";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
-
 const patientFields = z.object({
   name: z.string().trim().min(1).max(200),
   phone: z.string().trim().min(4).max(20),
@@ -46,7 +45,7 @@ export const patientRouter = {
     async ({ context, input }) => {
       const { scope } = context;
       const { orgSlug: _claim, ...fields } = input;
-      const id = crypto.randomUUID();
+      const id = Bun.randomUUIDv7();
       // Prefix is read through the settings cache; bounded staleness is acceptable for numbering and keeps the counter lock window minimal.
       const settings = await readOrgSettings(scope.orgId);
 

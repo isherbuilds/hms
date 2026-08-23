@@ -1,4 +1,13 @@
-import { index, numeric, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  foreignKey,
+  index,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
 import { invoices } from "./invoices";
@@ -15,9 +24,7 @@ export const creditNotes = pgTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    invoiceId: text("invoice_id")
-      .notNull()
-      .references(() => invoices.id),
+    invoiceId: text("invoice_id").notNull(),
     creditNoteNumber: text("credit_note_number").notNull(),
     fiscalYear: text("fiscal_year").notNull(),
     reason: text("reason").notNull(),
@@ -31,6 +38,11 @@ export const creditNotes = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    unique("credit_notes_org_id_id_unique").on(table.orgId, table.id),
+    foreignKey({
+      columns: [table.orgId, table.invoiceId],
+      foreignColumns: [invoices.orgId, invoices.id],
+    }),
     uniqueIndex("credit_notes_org_number_idx").on(table.orgId, table.creditNoteNumber),
     index("credit_notes_org_invoice_idx").on(table.orgId, table.invoiceId),
   ],

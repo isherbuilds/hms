@@ -2,15 +2,16 @@ import { Button } from "@hms/ui/components/button";
 import { cn } from "@hms/ui/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AlertCircleIcon, CheckIcon, EyeIcon, EyeOffIcon, LoaderIcon } from "lucide-react";
+import { CheckIcon, EyeIcon, EyeOffIcon, LoaderIcon } from "lucide-react";
 import { useState, type ComponentProps, type FormEvent, type ReactNode } from "react";
 
+import { ErrorNote } from "@/components/page";
 import { authClient } from "@/lib/auth-client";
 import { safeRedirect } from "@/lib/safe-redirect";
 
 export const Route = createFileRoute("/login")({
   // Nothing here reads the session or touches browser-only APIs during render,
-  // so this page server-renders per ADR 0003.
+  // so this page server-renders under decision D008.
   ssr: true,
   validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
     // Only same-app absolute paths; anything else could bounce a fresh sign-in
@@ -149,7 +150,7 @@ function LoginRoute() {
           <form onSubmit={submit} className="flex flex-1 flex-col justify-center gap-6">
             <div className="flex flex-col items-center gap-1 text-center">
               {invited && (
-                <span className="mb-2 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                <span className="mb-2 rounded-full border border-border px-2 py-1 text-xs text-muted-foreground">
                   You have an invitation
                 </span>
               )}
@@ -204,15 +205,7 @@ function LoginRoute() {
                 </button>
               </Field>
 
-              {error && (
-                <div
-                  role="alert"
-                  className="flex items-start gap-2 border-l-2 border-destructive pl-3 text-sm text-destructive"
-                >
-                  <AlertCircleIcon className="mt-0.5 size-4 shrink-0" />
-                  {error}
-                </div>
-              )}
+              {error && <ErrorNote title={error} />}
 
               <Button
                 type="submit"

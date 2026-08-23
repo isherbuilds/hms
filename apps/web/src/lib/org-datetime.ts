@@ -5,7 +5,7 @@ const orgRoute = getRouteApi("/$orgSlug");
 /**
  * Timestamps render in the organization's timezone, not the browser's, so a
  * clinic in Delhi and a doctor logged in from Dubai read the same queue times
- * (ADR 0021). The org layout loader resolves the zone once per navigation and
+ * (decision D008). The org layout loader resolves the zone once per navigation and
  * every helper here takes it explicitly — no hidden context, no wrapper types.
  *
  * Two kinds of value live here and they are not interchangeable:
@@ -30,6 +30,31 @@ function formatter(
   const created = new Intl.DateTimeFormat(locale, options);
   formatters.set(key, created);
   return created;
+}
+
+/** An instant as the org-local `datetime-local` input value. */
+export function localInputValue(date: Date, timeZone: string): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+/** The next half-hour boundary as an org-local `datetime-local` value. */
+export function nextHalfHour(timeZone: string): string {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() + (30 - (date.getMinutes() % 30)), 0, 0);
+  return localInputValue(date, timeZone);
 }
 
 /** "12 Aug 2026, 4:05 pm" — an instant, in tables and detail views. */

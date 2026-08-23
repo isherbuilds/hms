@@ -15,7 +15,7 @@ import { and, eq } from "drizzle-orm";
 import { createOrganization, createTestUser } from "../support/auth";
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
-
+import { uniqueSuffix } from "../support/unique";
 beforeAll(async () => {
   await resetTestDatabase();
 });
@@ -71,12 +71,18 @@ type AccountingFixture = {
     appointmentId: string,
     options: {
       name: string;
-      category: "consultation" | "procedure" | "lab" | "radiology" | "other";
+      category: "procedure" | "lab" | "radiology" | "other";
       unitPrice: string;
       taxRatePercent: string;
       taxCode?: string;
     },
   ) => Promise<unknown>;
+  createConsultationAppointment: (options: {
+    name: string;
+    unitPrice: string;
+    taxRatePercent: string;
+    taxCode?: string;
+  }) => Promise<{ appointment: { id: string }; item: { id: string } }>;
 };
 
 async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") {
@@ -116,13 +122,19 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
   });
 
   async function createOpdAppointment() {
-    const created = await api.opd.createWalkIn({
+    const booked = await api.opd.book({
       orgSlug: organization.slug,
       patientId: patient.id,
       practitionerId: practitioner.id,
       departmentId: department.id,
+      scheduledLocal: "2030-03-15T10:30",
     });
-    return created.appointment;
+    return (
+      await api.opd.checkIn({
+        orgSlug: organization.slug,
+        appointmentId: booked.id,
+      })
+    ).appointment;
   }
 
   async function addOtherCharge(
@@ -135,7 +147,7 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     const item = await api.catalog.create({
       orgSlug: organization.slug,
       name: description,
-      code: `${seed.slice(0, 8).toUpperCase()}-${crypto.randomUUID().slice(0, 8)}`,
+      code: `ACCT-${uniqueSuffix().toUpperCase()}`,
       category: "other",
       unitPrice,
       taxRatePercent,
@@ -147,12 +159,51 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
       catalogItemId: item.id,
     });
   }
+  /**
+   * Consultation revenue can only enter through the real path: a practitioner
+   * configured with a consult fee, charged at check-in. `billing.addCharge`
+   * rejects consultation-category items by contract.
+   */
+  async function createConsultationAppointment(options: {
+    name: string;
+    unitPrice: string;
+    taxRatePercent: string;
+    taxCode?: string;
+  }) {
+    const item = await api.catalog.create({
+      orgSlug: organization.slug,
+      name: options.name,
+      code: `ACCT-${uniqueSuffix().toUpperCase()}`,
+      category: "consultation",
+      unitPrice: options.unitPrice,
+      taxRatePercent: options.taxRatePercent,
+      taxCode: options.taxCode,
+    });
+    const consultant = await api.staff.createPractitioner({
+      orgSlug: organization.slug,
+      name: `Dr. ${options.name}`,
+      departmentId: department.id,
+      consultFeeItemId: item.id,
+    });
+    const booked = await api.opd.book({
+      orgSlug: organization.slug,
+      patientId: patient.id,
+      practitionerId: consultant.id,
+      departmentId: department.id,
+      scheduledLocal: "2030-03-15T10:30",
+    });
+    const checkedIn = await api.opd.checkIn({
+      orgSlug: organization.slug,
+      appointmentId: booked.id,
+    });
+    return { appointment: checkedIn.appointment, item };
+  }
 
   async function addCatalogCharge(
     appointmentId: string,
     options: {
       name: string;
-      category: "consultation" | "procedure" | "lab" | "radiology" | "other";
+      category: "procedure" | "lab" | "radiology" | "other";
       unitPrice: string;
       taxRatePercent: string;
       taxCode?: string;
@@ -161,7 +212,7 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     const item = await api.catalog.create({
       orgSlug: organization.slug,
       name: options.name,
-      code: `${seed.slice(0, 8).toUpperCase()}-${crypto.randomUUID().slice(0, 8)}`,
+      code: `ACCT-${uniqueSuffix().toUpperCase()}`,
       category: options.category,
       unitPrice: options.unitPrice,
       taxRatePercent: options.taxRatePercent,
@@ -183,6 +234,7 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     createOpdAppointment,
     addOtherCharge,
     addCatalogCharge,
+    createConsultationAppointment,
   };
 }
 
@@ -259,10 +311,8 @@ function lineByCode(lines: Array<{ code: string; debit: string; credit: string }
 }
 
 async function issueConsultationInvoice(fixture: AccountingFixture, seed: string) {
-  const appointment = await fixture.createOpdAppointment();
-  await fixture.addCatalogCharge(appointment.id, {
+  const { appointment } = await fixture.createConsultationAppointment({
     name: `${seed} Consultation`,
-    category: "consultation",
     unitPrice: "100.00",
     taxRatePercent: "18.00",
     taxCode: "SVC18",
@@ -276,10 +326,8 @@ async function issueConsultationInvoice(fixture: AccountingFixture, seed: string
 
 test("issuing an invoice posts one balanced entry split across receivables, revenue, and GST", async () => {
   const fixture = await createAccountingFixture("accounting-invoice");
-  const appointment = await fixture.createOpdAppointment();
-  await fixture.addCatalogCharge(appointment.id, {
+  const { appointment } = await fixture.createConsultationAppointment({
     name: "Taxable Consultation",
-    category: "consultation",
     unitPrice: "100.00",
     taxRatePercent: "18.00",
     taxCode: "SVC18",
@@ -482,10 +530,8 @@ test("balance sheet balances GST output and current surplus against assets", asy
 
 test("GST register reconciles invoice and credit-note documents, rates, HSN, and date filters", async () => {
   const fixture = await createAccountingFixture("accounting-gst");
-  const appointment = await fixture.createOpdAppointment();
-  await fixture.addCatalogCharge(appointment.id, {
+  const { appointment } = await fixture.createConsultationAppointment({
     name: "GST Consultation",
-    category: "consultation",
     unitPrice: "100.00",
     taxRatePercent: "18.00",
     taxCode: "SVC18",
@@ -495,7 +541,7 @@ test("GST register reconciles invoice and credit-note documents, rates, HSN, and
     orgSlug: fixture.organization.slug,
     appointmentId: appointment.id,
     discountAmount: "15.00",
-    discountReason: "Package discount",
+    note: "Package discount",
   });
   const taxableLine = issued.lines.find((line) => line.taxRatePercent === "18.00");
   if (!taxableLine) {
@@ -593,10 +639,8 @@ test("trial balance rejects an inverted date range", async () => {
 
 test("invoice and credit note keep the revenue category captured when the charge was created", async () => {
   const fixture = await createAccountingFixture("accounting-category-snapshot");
-  const appointment = await fixture.createOpdAppointment();
-  const { item } = await fixture.addCatalogCharge(appointment.id, {
+  const { appointment, item } = await fixture.createConsultationAppointment({
     name: "Snapshot Consultation",
-    category: "consultation",
     unitPrice: "100.00",
     taxRatePercent: "18.00",
     taxCode: "SVC18",
@@ -698,7 +742,7 @@ test("posting failure rolls back the invoice and charge transition", async () =>
   const appointment = await fixture.createOpdAppointment();
   await fixture.addOtherCharge(appointment.id, "25.00");
   await db.insert(accounts).values({
-    id: crypto.randomUUID(),
+    id: Bun.randomUUIDv7(),
     orgId: fixture.organization.id,
     code: "1000",
     name: "Conflicting custom account",

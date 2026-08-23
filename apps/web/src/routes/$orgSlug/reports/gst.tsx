@@ -235,7 +235,7 @@ function GstReportRoute() {
               </p>
             </header>
 
-            <section className="space-y-1.5">
+            <section className="space-y-2">
               <h2 className="font-semibold uppercase tracking-wide">Documents</h2>
               <div className="overflow-x-auto ring-1 ring-border">
                 <Table>
@@ -300,7 +300,7 @@ function GstReportRoute() {
             </section>
 
             <div className="grid gap-3 lg:grid-cols-2">
-              <section className="space-y-1.5">
+              <section className="space-y-2">
                 <h2 className="font-semibold uppercase tracking-wide">Rate summary</h2>
                 <div className="overflow-x-auto ring-1 ring-border">
                   <Table>
@@ -353,7 +353,7 @@ function GstReportRoute() {
                 </div>
               </section>
 
-              <section className="space-y-1.5">
+              <section className="space-y-2">
                 <h2 className="font-semibold uppercase tracking-wide">HSN/SAC summary</h2>
                 <div className="overflow-x-auto ring-1 ring-border">
                   <Table>

@@ -25,9 +25,9 @@ function HomeRoute() {
 
   return (
     <div className="mx-auto flex min-h-svh w-full max-w-sm flex-col justify-center gap-4 p-4">
-      <div>
+      <div className="flex flex-col gap-1">
         <h1 className="text-sm font-medium">HMS</h1>
-        <p className="mt-0.5 text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           A multi-tenant base for data-intensive internal software. Every record belongs to exactly
           one organization, and every request proves membership.
         </p>

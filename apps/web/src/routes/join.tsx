@@ -1,12 +1,12 @@
 import { Button, buttonVariants } from "@hms/ui/components/button";
-import { Skeleton } from "@hms/ui/components/skeleton";
 import { cn } from "@hms/ui/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { AlertCircleIcon, ArrowRightIcon, Building2Icon, LoaderIcon, MailIcon } from "lucide-react";
+import { ArrowRightIcon, Building2Icon, LoaderIcon, MailIcon } from "lucide-react";
 import { useState } from "react";
 
 import { OrganizationEntryLayout } from "@/components/organization-entry-layout";
+import { ErrorNote } from "@/components/page";
 import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/join")({
@@ -102,13 +102,8 @@ function JoinOrganizationRoute() {
           </p>
         </div>
 
-        {loading ? (
-          <div className="flex flex-col gap-2" role="status" aria-label="Loading organizations">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : (
-          <div className="flex flex-col gap-5">
+        {loading ? null : (
+          <div className="flex flex-col gap-4">
             {orderedInvitations.length > 0 && (
               <section aria-labelledby="pending-invitations">
                 <h3
@@ -127,11 +122,11 @@ function JoinOrganizationRoute() {
                       )}
                     >
                       <MailIcon className="size-4 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
                         <p className="truncate text-xs font-medium">
                           {invitation.organizationName}
                         </p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           Invited as {invitation.role}
                         </p>
                       </div>
@@ -198,18 +193,14 @@ function JoinOrganizationRoute() {
         )}
 
         {(actionError || invitations.error || organizations.error || highlightedMissing) && (
-          <div
-            role="alert"
-            className="flex items-start gap-2 border-l-2 border-destructive pl-3 text-xs text-destructive"
-          >
-            <AlertCircleIcon className="mt-0.5 size-3.5 shrink-0" />
-            <span>
-              {actionError ??
-                (invitations.error instanceof Error ? invitations.error.message : undefined) ??
-                organizations.error?.message ??
-                "This invitation is no longer available. Ask the sender for a new link."}
-            </span>
-          </div>
+          <ErrorNote
+            title={
+              actionError ??
+              (invitations.error instanceof Error ? invitations.error.message : undefined) ??
+              organizations.error?.message ??
+              "This invitation is no longer available. Ask the sender for a new link."
+            }
+          />
         )}
       </div>
     </OrganizationEntryLayout>

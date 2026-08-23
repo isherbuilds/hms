@@ -1,5 +1,5 @@
 {
-  "id": "46817f0b-673f-447a-9828-7a76f8518bc6",
+  "id": "e909f902-d83b-403c-a464-3770f76996d5",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1267,7 +1267,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "catalog_items_org_id_id_unique": {
+          "name": "catalog_items_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "catalog_items_category_check": {
@@ -1478,45 +1487,6 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "charges_opd_appointment_id_opd_appointments_id_fk": {
-          "name": "charges_opd_appointment_id_opd_appointments_id_fk",
-          "tableFrom": "charges",
-          "tableTo": "opd_appointments",
-          "columnsFrom": [
-            "opd_appointment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "charges_catalog_item_id_catalog_items_id_fk": {
-          "name": "charges_catalog_item_id_catalog_items_id_fk",
-          "tableFrom": "charges",
-          "tableTo": "catalog_items",
-          "columnsFrom": [
-            "catalog_item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "charges_invoice_id_invoices_id_fk": {
-          "name": "charges_invoice_id_invoices_id_fk",
-          "tableFrom": "charges",
-          "tableTo": "invoices",
-          "columnsFrom": [
-            "invoice_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "charges_created_by_user_id_fk": {
           "name": "charges_created_by_user_id_fk",
           "tableFrom": "charges",
@@ -1529,15 +1499,77 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "charges_org_id_opd_appointment_id_opd_appointments_org_id_id_fk": {
+          "name": "charges_org_id_opd_appointment_id_opd_appointments_org_id_id_fk",
+          "tableFrom": "charges",
+          "tableTo": "opd_appointments",
+          "columnsFrom": [
+            "org_id",
+            "opd_appointment_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "charges_org_id_catalog_item_id_catalog_items_org_id_id_fk": {
+          "name": "charges_org_id_catalog_item_id_catalog_items_org_id_id_fk",
+          "tableFrom": "charges",
+          "tableTo": "catalog_items",
+          "columnsFrom": [
+            "org_id",
+            "catalog_item_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "charges_org_id_invoice_id_invoices_org_id_id_fk": {
+          "name": "charges_org_id_invoice_id_invoices_org_id_id_fk",
+          "tableFrom": "charges",
+          "tableTo": "invoices",
+          "columnsFrom": [
+            "org_id",
+            "invoice_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "charges_org_id_id_unique": {
+          "name": "charges_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "charges_qty_check": {
           "name": "charges_qty_check",
           "value": "\"charges\".\"qty\" > 0"
+        },
+        "charges_unit_price_check": {
+          "name": "charges_unit_price_check",
+          "value": "\"charges\".\"unit_price\" >= 0"
+        },
+        "charges_tax_rate_percent_check": {
+          "name": "charges_tax_rate_percent_check",
+          "value": "\"charges\".\"tax_rate_percent\" >= 0"
         },
         "charges_source_type_check": {
           "name": "charges_source_type_check",
@@ -1712,27 +1744,31 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "credit_note_lines_credit_note_id_credit_notes_id_fk": {
-          "name": "credit_note_lines_credit_note_id_credit_notes_id_fk",
+        "credit_note_lines_org_id_credit_note_id_credit_notes_org_id_id_fk": {
+          "name": "credit_note_lines_org_id_credit_note_id_credit_notes_org_id_id_fk",
           "tableFrom": "credit_note_lines",
           "tableTo": "credit_notes",
           "columnsFrom": [
+            "org_id",
             "credit_note_id"
           ],
           "columnsTo": [
+            "org_id",
             "id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "credit_note_lines_invoice_line_id_invoice_lines_id_fk": {
-          "name": "credit_note_lines_invoice_line_id_invoice_lines_id_fk",
+        "credit_note_lines_org_id_invoice_line_id_invoice_lines_org_id_id_fk": {
+          "name": "credit_note_lines_org_id_invoice_line_id_invoice_lines_org_id_id_fk",
           "tableFrom": "credit_note_lines",
           "tableTo": "invoice_lines",
           "columnsFrom": [
+            "org_id",
             "invoice_line_id"
           ],
           "columnsTo": [
+            "org_id",
             "id"
           ],
           "onDelete": "no action",
@@ -1875,19 +1911,6 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "credit_notes_invoice_id_invoices_id_fk": {
-          "name": "credit_notes_invoice_id_invoices_id_fk",
-          "tableFrom": "credit_notes",
-          "tableTo": "invoices",
-          "columnsFrom": [
-            "invoice_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "credit_notes_issued_by_user_id_fk": {
           "name": "credit_notes_issued_by_user_id_fk",
           "tableFrom": "credit_notes",
@@ -1900,10 +1923,34 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "credit_notes_org_id_invoice_id_invoices_org_id_id_fk": {
+          "name": "credit_notes_org_id_invoice_id_invoices_org_id_id_fk",
+          "tableFrom": "credit_notes",
+          "tableTo": "invoices",
+          "columnsFrom": [
+            "org_id",
+            "invoice_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "credit_notes_org_id_id_unique": {
+          "name": "credit_notes_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -1988,14 +2035,16 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "departments_default_consult_fee_item_id_catalog_items_id_fk": {
-          "name": "departments_default_consult_fee_item_id_catalog_items_id_fk",
+        "departments_org_id_default_consult_fee_item_id_catalog_items_org_id_id_fk": {
+          "name": "departments_org_id_default_consult_fee_item_id_catalog_items_org_id_id_fk",
           "tableFrom": "departments",
           "tableTo": "catalog_items",
           "columnsFrom": [
+            "org_id",
             "default_consult_fee_item_id"
           ],
           "columnsTo": [
+            "org_id",
             "id"
           ],
           "onDelete": "no action",
@@ -2003,7 +2052,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "departments_org_id_id_unique": {
+          "name": "departments_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -2077,13 +2135,13 @@
               "expression": "created_at",
               "isExpression": false,
               "asc": false,
-              "nulls": "last"
+              "nulls": "first"
             },
             {
               "expression": "id",
               "isExpression": false,
               "asc": false,
-              "nulls": "last"
+              "nulls": "first"
             }
           ],
           "isUnique": false,
@@ -2416,13 +2474,13 @@
               "expression": "created_at",
               "isExpression": false,
               "asc": false,
-              "nulls": "last"
+              "nulls": "first"
             },
             {
               "expression": "id",
               "isExpression": false,
               "asc": false,
-              "nulls": "last"
+              "nulls": "first"
             }
           ],
           "isUnique": false,
@@ -2460,7 +2518,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "patients_org_id_id_unique": {
+          "name": "patients_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "patients_age_or_dob_check": {
@@ -2613,19 +2680,6 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "practitioners_department_id_departments_id_fk": {
-          "name": "practitioners_department_id_departments_id_fk",
-          "tableFrom": "practitioners",
-          "tableTo": "departments",
-          "columnsFrom": [
-            "department_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "practitioners_member_user_id_user_id_fk": {
           "name": "practitioners_member_user_id_user_id_fk",
           "tableFrom": "practitioners",
@@ -2639,27 +2693,46 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
-        "practitioners_consult_fee_item_id_catalog_items_id_fk": {
-          "name": "practitioners_consult_fee_item_id_catalog_items_id_fk",
+        "practitioners_org_id_department_id_departments_org_id_id_fk": {
+          "name": "practitioners_org_id_department_id_departments_org_id_id_fk",
           "tableFrom": "practitioners",
-          "tableTo": "catalog_items",
+          "tableTo": "departments",
           "columnsFrom": [
-            "consult_fee_item_id"
+            "org_id",
+            "department_id"
           ],
           "columnsTo": [
+            "org_id",
             "id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "practitioners_follow_up_fee_item_id_catalog_items_id_fk": {
-          "name": "practitioners_follow_up_fee_item_id_catalog_items_id_fk",
+        "practitioners_org_id_consult_fee_item_id_catalog_items_org_id_id_fk": {
+          "name": "practitioners_org_id_consult_fee_item_id_catalog_items_org_id_id_fk",
           "tableFrom": "practitioners",
           "tableTo": "catalog_items",
           "columnsFrom": [
+            "org_id",
+            "consult_fee_item_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "practitioners_org_id_follow_up_fee_item_id_catalog_items_org_id_id_fk": {
+          "name": "practitioners_org_id_follow_up_fee_item_id_catalog_items_org_id_id_fk",
+          "tableFrom": "practitioners",
+          "tableTo": "catalog_items",
+          "columnsFrom": [
+            "org_id",
             "follow_up_fee_item_id"
           ],
           "columnsTo": [
+            "org_id",
             "id"
           ],
           "onDelete": "no action",
@@ -2667,7 +2740,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "practitioners_org_id_id_unique": {
+          "name": "practitioners_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "practitioners_follow_up_days_check": {
@@ -2729,13 +2811,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'consultation'"
-        },
         "status": {
           "name": "status",
           "type": "text",
@@ -2766,17 +2841,15 @@
           "primaryKey": false,
           "notNull": false
         },
-        "consultation_started_at": {
-          "name": "consultation_started_at",
+        "day_order_at": {
+          "name": "day_order_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": false,
+          "generated": {
+            "as": "coalesce(\"opd_appointments\".\"arrived_at\", \"opd_appointments\".\"scheduled_for\")",
+            "type": "stored"
+          }
         },
         "cancelled_at": {
           "name": "cancelled_at",
@@ -2786,12 +2859,6 @@
         },
         "no_show_at": {
           "name": "no_show_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "left_unseen_at": {
-          "name": "left_unseen_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -2858,8 +2925,8 @@
           "method": "btree",
           "with": {}
         },
-        "opd_appointments_org_date_status_idx": {
-          "name": "opd_appointments_org_date_status_idx",
+        "opd_appointments_org_date_day_order_idx": {
+          "name": "opd_appointments_org_date_day_order_idx",
           "columns": [
             {
               "expression": "org_id",
@@ -2874,13 +2941,7 @@
               "nulls": "last"
             },
             {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
+              "expression": "day_order_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2897,47 +2958,8 @@
           "method": "btree",
           "with": {}
         },
-        "opd_appointments_org_practitioner_date_idx": {
-          "name": "opd_appointments_org_practitioner_date_idx",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "practitioner_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "business_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "opd_appointments_org_patient_completed_idx": {
-          "name": "opd_appointments_org_patient_completed_idx",
+        "opd_appointments_org_patient_arrived_idx": {
+          "name": "opd_appointments_org_patient_arrived_idx",
           "columns": [
             {
               "expression": "org_id",
@@ -2958,13 +2980,14 @@
               "nulls": "last"
             },
             {
-              "expression": "completed_at",
+              "expression": "arrived_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
+          "where": "\"opd_appointments\".\"status\" = 'checked_in'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -2984,45 +3007,6 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "opd_appointments_patient_id_patients_id_fk": {
-          "name": "opd_appointments_patient_id_patients_id_fk",
-          "tableFrom": "opd_appointments",
-          "tableTo": "patients",
-          "columnsFrom": [
-            "patient_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "opd_appointments_practitioner_id_practitioners_id_fk": {
-          "name": "opd_appointments_practitioner_id_practitioners_id_fk",
-          "tableFrom": "opd_appointments",
-          "tableTo": "practitioners",
-          "columnsFrom": [
-            "practitioner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "opd_appointments_department_id_departments_id_fk": {
-          "name": "opd_appointments_department_id_departments_id_fk",
-          "tableFrom": "opd_appointments",
-          "tableTo": "departments",
-          "columnsFrom": [
-            "department_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "opd_appointments_created_by_user_id_fk": {
           "name": "opd_appointments_created_by_user_id_fk",
           "tableFrom": "opd_appointments",
@@ -3035,12 +3019,74 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "opd_appointments_org_id_patient_id_patients_org_id_id_fk": {
+          "name": "opd_appointments_org_id_patient_id_patients_org_id_id_fk",
+          "tableFrom": "opd_appointments",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "org_id",
+            "patient_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "opd_appointments_org_id_practitioner_id_practitioners_org_id_id_fk": {
+          "name": "opd_appointments_org_id_practitioner_id_practitioners_org_id_id_fk",
+          "tableFrom": "opd_appointments",
+          "tableTo": "practitioners",
+          "columnsFrom": [
+            "org_id",
+            "practitioner_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "opd_appointments_org_id_department_id_departments_org_id_id_fk": {
+          "name": "opd_appointments_org_id_department_id_departments_org_id_id_fk",
+          "tableFrom": "opd_appointments",
+          "tableTo": "departments",
+          "columnsFrom": [
+            "org_id",
+            "department_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "opd_appointments_org_id_id_unique": {
+          "name": "opd_appointments_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
+        "opd_appointments_arrival_mode_check": {
+          "name": "opd_appointments_arrival_mode_check",
+          "value": "\"opd_appointments\".\"arrival_mode\" in ('scheduled', 'walk_in')"
+        },
+        "opd_appointments_status_check": {
+          "name": "opd_appointments_status_check",
+          "value": "\"opd_appointments\".\"status\" in ('booked', 'checked_in', 'cancelled', 'no_show')"
+        },
         "opd_appointments_token_positive_check": {
           "name": "opd_appointments_token_positive_check",
           "value": "\"opd_appointments\".\"token_number\" is null or \"opd_appointments\".\"token_number\" > 0"
@@ -3055,7 +3101,7 @@
         },
         "opd_appointments_arrived_check": {
           "name": "opd_appointments_arrived_check",
-          "value": "\"opd_appointments\".\"status\" not in ('waiting', 'in_consult', 'completed', 'left_unseen') or (\"opd_appointments\".\"patient_id\" is not null and \"opd_appointments\".\"token_number\" is not null and \"opd_appointments\".\"arrived_at\" is not null)"
+          "value": "\"opd_appointments\".\"status\" <> 'checked_in' or (\"opd_appointments\".\"patient_id\" is not null and \"opd_appointments\".\"token_number\" is not null and \"opd_appointments\".\"arrived_at\" is not null)"
         },
         "opd_appointments_booked_check": {
           "name": "opd_appointments_booked_check",
@@ -3111,8 +3157,8 @@
           "notNull": true,
           "default": "'0'"
         },
-        "discount_reason": {
-          "name": "discount_reason",
+        "note": {
+          "name": "note",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -3233,6 +3279,12 @@
               "isExpression": false,
               "asc": true,
               "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -3252,13 +3304,13 @@
             {
               "expression": "created_at",
               "isExpression": false,
-              "asc": false,
+              "asc": true,
               "nulls": "last"
             },
             {
               "expression": "id",
               "isExpression": false,
-              "asc": false,
+              "asc": true,
               "nulls": "last"
             }
           ],
@@ -3282,32 +3334,6 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "invoices_opd_appointment_id_opd_appointments_id_fk": {
-          "name": "invoices_opd_appointment_id_opd_appointments_id_fk",
-          "tableFrom": "invoices",
-          "tableTo": "opd_appointments",
-          "columnsFrom": [
-            "opd_appointment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "invoices_patient_id_patients_id_fk": {
-          "name": "invoices_patient_id_patients_id_fk",
-          "tableFrom": "invoices",
-          "tableTo": "patients",
-          "columnsFrom": [
-            "patient_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "invoices_issued_by_user_id_fk": {
           "name": "invoices_issued_by_user_id_fk",
           "tableFrom": "invoices",
@@ -3320,15 +3346,74 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "invoices_org_id_opd_appointment_id_opd_appointments_org_id_id_fk": {
+          "name": "invoices_org_id_opd_appointment_id_opd_appointments_org_id_id_fk",
+          "tableFrom": "invoices",
+          "tableTo": "opd_appointments",
+          "columnsFrom": [
+            "org_id",
+            "opd_appointment_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "invoices_org_id_patient_id_patients_org_id_id_fk": {
+          "name": "invoices_org_id_patient_id_patients_org_id_id_fk",
+          "tableFrom": "invoices",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "org_id",
+            "patient_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "invoices_org_id_id_unique": {
+          "name": "invoices_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "invoices_discount_amount_check": {
           "name": "invoices_discount_amount_check",
           "value": "\"invoices\".\"discount_amount\" >= 0"
+        },
+        "invoices_subtotal_check": {
+          "name": "invoices_subtotal_check",
+          "value": "\"invoices\".\"subtotal\" >= 0"
+        },
+        "invoices_tax_total_check": {
+          "name": "invoices_tax_total_check",
+          "value": "\"invoices\".\"tax_total\" >= 0"
+        },
+        "invoices_grand_total_check": {
+          "name": "invoices_grand_total_check",
+          "value": "\"invoices\".\"grand_total\" >= 0"
+        },
+        "invoices_discount_not_above_subtotal_check": {
+          "name": "invoices_discount_not_above_subtotal_check",
+          "value": "\"invoices\".\"discount_amount\" <= \"invoices\".\"subtotal\""
+        },
+        "invoices_total_math_check": {
+          "name": "invoices_total_math_check",
+          "value": "\"invoices\".\"grand_total\" = \"invoices\".\"subtotal\" - \"invoices\".\"discount_amount\" + \"invoices\".\"tax_total\""
         }
       },
       "isRLSEnabled": false
@@ -3480,27 +3565,31 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "invoice_lines_invoice_id_invoices_id_fk": {
-          "name": "invoice_lines_invoice_id_invoices_id_fk",
+        "invoice_lines_org_id_invoice_id_invoices_org_id_id_fk": {
+          "name": "invoice_lines_org_id_invoice_id_invoices_org_id_id_fk",
           "tableFrom": "invoice_lines",
           "tableTo": "invoices",
           "columnsFrom": [
+            "org_id",
             "invoice_id"
           ],
           "columnsTo": [
+            "org_id",
             "id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "invoice_lines_charge_id_charges_id_fk": {
-          "name": "invoice_lines_charge_id_charges_id_fk",
+        "invoice_lines_org_id_charge_id_charges_org_id_id_fk": {
+          "name": "invoice_lines_org_id_charge_id_charges_org_id_id_fk",
           "tableFrom": "invoice_lines",
           "tableTo": "charges",
           "columnsFrom": [
+            "org_id",
             "charge_id"
           ],
           "columnsTo": [
+            "org_id",
             "id"
           ],
           "onDelete": "no action",
@@ -3508,7 +3597,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "invoice_lines_org_id_id_unique": {
+          "name": "invoice_lines_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "invoice_lines_revenue_category_check": {
@@ -3606,6 +3704,27 @@
           "method": "btree",
           "with": {}
         },
+        "payments_org_created_idx": {
+          "name": "payments_org_created_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "payments_org_invoice_idx": {
           "name": "payments_org_invoice_idx",
           "columns": [
@@ -3620,32 +3739,11 @@
               "isExpression": false,
               "asc": true,
               "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "payments_org_created_idx": {
-          "name": "payments_org_created_idx",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
             },
             {
               "expression": "created_at",
               "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": false,
+              "asc": true,
               "nulls": "last"
             }
           ],
@@ -3669,19 +3767,6 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "payments_invoice_id_invoices_id_fk": {
-          "name": "payments_invoice_id_invoices_id_fk",
-          "tableFrom": "payments",
-          "tableTo": "invoices",
-          "columnsFrom": [
-            "invoice_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "payments_received_by_user_id_fk": {
           "name": "payments_received_by_user_id_fk",
           "tableFrom": "payments",
@@ -3690,6 +3775,21 @@
             "received_by"
           ],
           "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "payments_org_id_invoice_id_invoices_org_id_id_fk": {
+          "name": "payments_org_id_invoice_id_invoices_org_id_id_fk",
+          "tableFrom": "payments",
+          "tableTo": "invoices",
+          "columnsFrom": [
+            "org_id",
+            "invoice_id"
+          ],
+          "columnsTo": [
+            "org_id",
             "id"
           ],
           "onDelete": "no action",
@@ -3819,6 +3919,12 @@
               "isExpression": false,
               "asc": true,
               "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
             }
           ],
           "isUnique": false,
@@ -3846,33 +3952,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "refunds_org_created_idx": {
-          "name": "refunds_org_created_idx",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -3889,32 +3968,6 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "refunds_invoice_id_invoices_id_fk": {
-          "name": "refunds_invoice_id_invoices_id_fk",
-          "tableFrom": "refunds",
-          "tableTo": "invoices",
-          "columnsFrom": [
-            "invoice_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "refunds_credit_note_id_credit_notes_id_fk": {
-          "name": "refunds_credit_note_id_credit_notes_id_fk",
-          "tableFrom": "refunds",
-          "tableTo": "credit_notes",
-          "columnsFrom": [
-            "credit_note_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "refunds_refunded_by_user_id_fk": {
           "name": "refunds_refunded_by_user_id_fk",
           "tableFrom": "refunds",
@@ -3923,6 +3976,36 @@
             "refunded_by"
           ],
           "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "refunds_org_id_invoice_id_invoices_org_id_id_fk": {
+          "name": "refunds_org_id_invoice_id_invoices_org_id_id_fk",
+          "tableFrom": "refunds",
+          "tableTo": "invoices",
+          "columnsFrom": [
+            "org_id",
+            "invoice_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "refunds_org_id_credit_note_id_credit_notes_org_id_id_fk": {
+          "name": "refunds_org_id_credit_note_id_credit_notes_org_id_id_fk",
+          "tableFrom": "refunds",
+          "tableTo": "credit_notes",
+          "columnsFrom": [
+            "org_id",
+            "credit_note_id"
+          ],
+          "columnsTo": [
+            "org_id",
             "id"
           ],
           "onDelete": "no action",

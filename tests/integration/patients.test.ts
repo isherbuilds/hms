@@ -3,7 +3,6 @@ import { beforeAll, expect, test } from "bun:test";
 import { createOrganization, createTestUser, joinOrganization } from "../support/auth";
 import { clientFor, eventually, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
-
 beforeAll(async () => {
   await resetTestDatabase();
 });
@@ -204,7 +203,7 @@ test("update changes demographics without changing identity or consuming an MRN"
   );
   expect(next.mrn).toBe("000002");
 
-  const missingId = crypto.randomUUID();
+  const missingId = Bun.randomUUIDv7();
   await expectORPCCode(
     api.patient.get({ orgSlug: organization.slug, patientId: missingId }),
     "NOT_FOUND",

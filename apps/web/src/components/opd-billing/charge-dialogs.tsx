@@ -10,6 +10,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -40,10 +41,10 @@ const voidSchema = z.object({ reason: z.string().trim().min(1, "Enter a reason")
 const invoiceSchema = z
   .object({
     discountAmount: z.string().regex(MONEY_INPUT_PATTERN, "Amount like 0 or 50.00"),
-    discountReason: z.string().trim().max(500).optional(),
+    note: z.string().trim().max(500).optional(),
   })
-  .refine((value) => Number(value.discountAmount) <= 0 || Boolean(value.discountReason), {
-    path: ["discountReason"],
+  .refine((value) => Number(value.discountAmount) <= 0 || Boolean(value.note), {
+    path: ["note"],
     message: "A reason is required when applying a discount",
   });
 
@@ -237,7 +238,7 @@ export function IssueInvoiceDialog({
   const queryClient = useQueryClient();
   const invalidate = useBillingInvalidation(orgSlug, appointmentId);
   const form = useZodForm(invoiceSchema, {
-    defaultValues: { discountAmount: "0", discountReason: "" },
+    defaultValues: { discountAmount: "0", note: "" },
   });
   const mutation = useMutation(
     orpc.billing.issueInvoice.mutationOptions({
@@ -249,7 +250,7 @@ export function IssueInvoiceDialog({
       onError: (error) => {
         const raced =
           "Another terminal already issued this invoice — refreshed to the current state.";
-        if (toastOpdConflict(queryClient, error, orgSlug, appointmentId, raced)) return;
+        if (toastOpdConflict(queryClient, error, orgSlug, appointmentId, "billing", raced)) return;
         toast.error(error.message);
       },
     }),
@@ -269,7 +270,7 @@ export function IssueInvoiceDialog({
                 orgSlug,
                 appointmentId,
                 discountAmount: value.discountAmount,
-                discountReason: value.discountReason || undefined,
+                note: value.note || undefined,
               }),
             )}
             className="flex flex-col gap-3"
@@ -289,13 +290,16 @@ export function IssueInvoiceDialog({
             />
             <FormField
               control={form.control}
-              name="discountReason"
+              name="note"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Discount reason</FormLabel>
+                  <FormLabel>Note</FormLabel>
                   <FormControl>
                     <Textarea {...field} disabled={mutation.isPending} />
                   </FormControl>
+                  <FormDescription>
+                    Why this invoice looks the way it does. Staff only — it is not printed.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

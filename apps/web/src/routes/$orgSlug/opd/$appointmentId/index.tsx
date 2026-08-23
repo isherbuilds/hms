@@ -8,7 +8,7 @@ import {
   TableRow,
 } from "@hms/ui/components/table";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { ClientOnly, Link, createFileRoute } from "@tanstack/react-router";
 import { FileTextIcon, PrinterIcon, Trash2Icon, UploadIcon } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -16,11 +16,10 @@ import { toast } from "sonner";
 import {
   CheckInOpdAppointmentDialog,
   RescheduleOpdAppointmentDialog,
-} from "@/components/book-opd-appointment-dialog";
+} from "@/components/opd-appointment-dialogs";
 import { useConfirm } from "@/components/confirm-dialog";
 import {
   CancelOpdAppointmentDialog,
-  MarkLeftUnseenOpdAppointmentDialog,
   OpdAppointmentStatusBadge,
   useOpdStatusActions,
 } from "@/components/opd-appointment";
@@ -81,7 +80,6 @@ function OpdAppointmentDetailRoute() {
   const { orgSlug, appointmentId } = Route.useParams();
   const { timeZone, today } = useOrgDateTime();
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [leftUnseenOpen, setLeftUnseenOpen] = useState(false);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [confirm, confirmDialog] = useConfirm();
@@ -92,23 +90,14 @@ function OpdAppointmentDetailRoute() {
   const detail = useQuery(detailQuery);
   const settings = useQuery(orpc.settings.get.queryOptions({ input: { orgSlug } }));
 
-  const { startConsultation, complete, checkIn, markNoShow } = useOpdStatusActions(orgSlug);
-  const changingStatus =
-    startConsultation.isPending || complete.isPending || checkIn.isPending || markNoShow.isPending;
+  const { checkIn, markNoShow } = useOpdStatusActions(orgSlug);
+  const changingStatus = checkIn.isPending || markNoShow.isPending;
 
   if (detail.isPending || settings.isPending) {
-    // A swallowed prefetch failure leaves this pending for a whole refetch, and
-    // a blank screen reads as a broken terminal. Static blocks, not a shimmer:
-    // this is an all-day console and the wait is usually one frame.
     return (
       <>
         <PageHeader title="OPD appointment" />
-        <PageBody className="max-w-5xl">
-          <div role="status" aria-label="Loading OPD appointment" className="flex flex-col gap-4">
-            <div className="h-24 bg-muted" />
-            <div className="h-40 bg-muted" />
-          </div>
-        </PageBody>
+        <PageBody className="max-w-5xl" />
       </>
     );
   }
@@ -233,39 +222,14 @@ function OpdAppointmentDetailRoute() {
                       Cancel
                     </Button>
                   </>
-                ) : appointment.status === "waiting" ? (
-                  <>
-                    <Button
-                      size="xs"
-                      disabled={changingStatus}
-                      onClick={() => startConsultation.mutate({ orgSlug, appointmentId })}
-                    >
-                      Start consult
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      disabled={changingStatus}
-                      onClick={() => setLeftUnseenOpen(true)}
-                    >
-                      Left unseen
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      disabled={changingStatus}
-                      onClick={() => setCancelOpen(true)}
-                    >
-                      Cancel
-                    </Button>
-                  </>
-                ) : appointment.status === "in_consult" ? (
+                ) : appointment.status === "checked_in" ? (
                   <Button
                     size="xs"
+                    variant="ghost"
                     disabled={changingStatus}
-                    onClick={() => complete.mutate({ orgSlug, appointmentId })}
+                    onClick={() => setCancelOpen(true)}
                   >
-                    Complete
+                    Cancel
                   </Button>
                 ) : (
                   <span className="text-muted-foreground">No actions available</span>
@@ -354,7 +318,7 @@ function OpdAppointmentDetailRoute() {
               <p className="mt-1 whitespace-pre-line">{settings.data.address}</p>
             ) : null}
           </header>
-          <div className="border-b border-black py-5 text-center">
+          <div className="border-b border-black py-4 text-center">
             <p className="uppercase tracking-[0.18em]">Outpatient token</p>
             <p className="mt-1 text-5xl font-bold tabular-nums">{appointment.tokenNumber}</p>
           </div>
@@ -388,38 +352,33 @@ function OpdAppointmentDetailRoute() {
         [data-opd-slip] { position: fixed; inset: 0; width: 100%; }
       }`}</style>
 
-      {cancelOpen ? (
-        <CancelOpdAppointmentDialog
-          orgSlug={orgSlug}
-          appointmentId={appointmentId}
-          onClose={() => setCancelOpen(false)}
-        />
-      ) : null}
-      {leftUnseenOpen ? (
-        <MarkLeftUnseenOpdAppointmentDialog
-          orgSlug={orgSlug}
-          appointmentId={appointmentId}
-          onClose={() => setLeftUnseenOpen(false)}
-        />
-      ) : null}
-      {rescheduleOpen ? (
-        <RescheduleOpdAppointmentDialog
-          orgSlug={orgSlug}
-          appointmentId={appointmentId}
-          scheduledFor={appointment.scheduledFor}
-          onClose={() => setRescheduleOpen(false)}
-        />
-      ) : null}
-      {checkInOpen ? (
-        <CheckInOpdAppointmentDialog
-          orgSlug={orgSlug}
-          appointmentId={appointmentId}
-          callerName={appointment.callerName}
-          callerPhone={appointment.callerPhone}
-          onClose={() => setCheckInOpen(false)}
-        />
-      ) : null}
-      {confirmDialog}
+      <ClientOnly fallback={null}>
+        {cancelOpen ? (
+          <CancelOpdAppointmentDialog
+            orgSlug={orgSlug}
+            appointmentId={appointmentId}
+            onClose={() => setCancelOpen(false)}
+          />
+        ) : null}
+        {rescheduleOpen ? (
+          <RescheduleOpdAppointmentDialog
+            orgSlug={orgSlug}
+            appointmentId={appointmentId}
+            scheduledFor={appointment.scheduledFor}
+            onClose={() => setRescheduleOpen(false)}
+          />
+        ) : null}
+        {checkInOpen ? (
+          <CheckInOpdAppointmentDialog
+            orgSlug={orgSlug}
+            appointmentId={appointmentId}
+            callerName={appointment.callerName}
+            callerPhone={appointment.callerPhone}
+            onClose={() => setCheckInOpen(false)}
+          />
+        ) : null}
+        {confirmDialog}
+      </ClientOnly>
     </>
   );
 }
@@ -505,9 +464,9 @@ function PrescriptionDocuments({
   return (
     <section className="ring-1 ring-border">
       <div className="flex items-start justify-between gap-3 border-b p-3">
-        <div>
+        <div className="flex flex-col gap-1">
           <h2 className="text-sm font-medium">Paper prescription</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Keep the doctor's signed image or PDF as the source record.
           </p>
         </div>

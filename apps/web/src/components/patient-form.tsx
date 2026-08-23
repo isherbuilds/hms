@@ -11,11 +11,10 @@ import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { Textarea } from "@hms/ui/components/textarea";
-import { cn } from "@hms/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { AlertTriangleIcon, MailIcon, PhoneIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -59,9 +58,6 @@ const patientFormSchema = z
     path: ["dateOfBirth"],
   });
 
-/** `SheetContent` opens over 200ms; nothing measures until it has landed. */
-const SHEET_ENTER_MS = 200;
-
 /** Puts a glyph inside a control. Inputs only — a textarea has no vertical
  * centre to hang one on. */
 function WithIcon({ icon: Icon, children }: { icon: typeof PhoneIcon; children: ReactNode }) {
@@ -76,62 +72,34 @@ function WithIcon({ icon: Icon, children }: { icon: typeof PhoneIcon; children: 
 export function PatientForm({
   orgSlug,
   patient,
+  seed,
   onCancel,
   onSaved,
-  onDirtyChange,
-  onPendingChange,
+  onRegistered,
 }: {
   orgSlug: string;
   /** Omit to register a new patient; pass a record to correct an existing one. */
   patient?: EditablePatient;
+  /**
+   * What the operator already typed somewhere else — the OPD desk's search box
+   * hands over its phone number or name so it is never keyed twice.
+   */
+  seed?: { name?: string; phone?: string };
   onCancel: () => void;
   onSaved: () => void;
-  onDirtyChange?: (dirty: boolean) => void;
-  onPendingChange?: (pending: boolean) => void;
+  /**
+   * Set when the caller needs the new record back rather than a trip to its
+   * page — registering from inside another task, such as an OPD walk-in.
+   */
+  onRegistered?: (patient: { id: string; name: string; mrn: string }) => void;
 }) {
   const isEdit = patient !== undefined;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const [moreBelow, setMoreBelow] = useState(false);
-
-  // The rule above the actions is not "has scrolled" but "there is more to
-  // read": it has to be there while the form is taller than the panel, and gone
-  // once the last field is in view.
-  const measure = useCallback(() => {
-    const body = bodyRef.current;
-    if (!body) return;
-    setMoreBelow(body.scrollHeight - body.scrollTop - body.clientHeight > 1);
-  }, []);
-
-  /**
-   * Deliberately nothing measures until the sheet has finished sliding in.
-   * Mounting twelve fields already costs the first frame of the entrance; a
-   * synchronous measure and a second render on top of it is what made the panel
-   * stutter as it arrived. Watching the content wrapper (not the scroll box)
-   * catches the height changes that matter — an error message, the duplicate
-   * notice — without a subtree MutationObserver firing through the whole mount.
-   */
-  useEffect(() => {
-    const content = contentRef.current;
-    if (!content) return;
-    let observer: ResizeObserver | undefined;
-    const start = setTimeout(() => {
-      measure();
-      observer = new ResizeObserver(measure);
-      observer.observe(content);
-    }, SHEET_ENTER_MS);
-    return () => {
-      clearTimeout(start);
-      observer?.disconnect();
-    };
-  }, [measure]);
-
   const form = useZodForm(patientFormSchema, {
     defaultValues: patient ?? {
-      name: "",
-      phone: "",
+      name: seed?.name ?? "",
+      phone: seed?.phone ?? "",
       sex: "other",
       dateOfBirth: null,
       ageYears: null,
@@ -143,10 +111,6 @@ export function PatientForm({
       uid: null,
     },
   });
-
-  useEffect(() => {
-    onDirtyChange?.(form.formState.isDirty);
-  }, [form.formState.isDirty, onDirtyChange]);
 
   const phone = form.watch("phone");
   const debouncedPhone = useDebouncedValue(phone.trim(), 300);
@@ -167,6 +131,13 @@ export function PatientForm({
           queryKey: orpc.patient.search.key({ input: { orgSlug } }),
         });
         toast.success(`Patient registered as ${created.mrn}`);
+        // Registering inside another task hands the record straight back; only
+        // a standalone registration has anywhere else to be.
+        if (onRegistered) {
+          onRegistered(created);
+          onSaved();
+          return;
+        }
         await navigate({
           to: "/$orgSlug/patients/$patientId",
           params: { orgSlug, patientId: created.id },
@@ -198,9 +169,6 @@ export function PatientForm({
   );
 
   const pending = isEdit ? update.isPending : register.isPending;
-  useEffect(() => {
-    onPendingChange?.(pending);
-  }, [onPendingChange, pending]);
   const onSubmit = form.handleSubmit((values) =>
     isEdit
       ? update.mutate({ orgSlug, patientId: patient.id, ...values })
@@ -219,10 +187,21 @@ export function PatientForm({
       {/* `noValidate`: Zod owns every message, so the browser must not pre-empt
           it with a native bubble that says something different. Without it a
           half-typed email blocks submit silently and the form looks dead. */}
-      <form noValidate onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+      {/* The two flags the sheet needs to guard a close, published on the
+          element instead of lifted into its state — see `PatientSheet`. */}
+      <form
+        noValidate
+        onSubmit={onSubmit}
+        data-dirty={form.formState.isDirty}
+        data-pending={pending}
+        className="flex min-h-0 flex-1 flex-col"
+      >
         <fieldset disabled={pending} className="contents">
-          <div ref={bodyRef} onScroll={measure} className="min-h-0 flex-1 overflow-y-auto p-4">
-            <div ref={contentRef} className="flex flex-col gap-4">
+          {/* `scroll-rule` draws the hairline above the actions in CSS: there
+              while the form is taller than the panel, gone once the last field
+              is in view. */}
+          <div className="scroll-rule min-h-0 flex-1 overflow-y-auto p-4">
+            <div className="flex flex-col gap-4">
               <FormField
                 control={form.control}
                 name="name"
@@ -267,13 +246,13 @@ export function PatientForm({
               {matches.length > 0 ? (
                 <div
                   role="status"
-                  className="animate-in rounded-sm border border-border bg-muted p-3 text-xs duration-150 fade-in-0 ease-out"
+                  className="animate-in rounded-lg border border-border bg-muted p-3 text-xs duration-150 fade-in-0 ease-out"
                 >
-                  <p className="flex items-center gap-1.5 font-medium text-foreground">
+                  <p className="flex items-center gap-2 font-medium text-foreground">
                     <AlertTriangleIcon className="size-4 shrink-0" />
                     {matches.length} existing patient(s) with this phone
                   </p>
-                  <ul className="flex flex-col gap-0.5 pt-1.5">
+                  <ul className="flex flex-col gap-1 pt-2">
                     {matches.map((patient) => (
                       <li key={patient.id} className="text-muted-foreground">
                         <Link
@@ -499,15 +478,7 @@ export function PatientForm({
             </div>
           </div>
 
-          {/* No rule above the actions while the whole form fits, as in the
-            reference. When it does not, one appears — without it the fields
-            slide under the buttons and the panel looks broken. */}
-          <footer
-            className={cn(
-              "flex shrink-0 items-center gap-2 border-t border-transparent bg-popover p-4 text-xs transition-colors",
-              moreBelow && "border-border",
-            )}
-          >
+          <footer className="flex shrink-0 items-center gap-2 bg-popover p-4 text-xs">
             {problems > 0 ? (
               <span className="min-w-0 truncate text-destructive">
                 {problems} {problems === 1 ? "field needs" : "fields need"} fixing

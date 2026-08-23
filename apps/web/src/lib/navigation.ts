@@ -57,7 +57,7 @@ export const PRIMARY_NAV: readonly PrimaryNavItem[] = [
     group: "Care",
     permission: { member: ["read"] },
   },
-  // ADR 0022: each built care setting gets its own destination. The route stays
+  // Decision D013: each built care setting gets its own destination. The route stays
   // `/opd` so staff terminology, navigation, and URLs do not drift apart.
   {
     to: "/$orgSlug/opd",

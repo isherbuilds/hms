@@ -1,5 +1,15 @@
 import { sql } from "drizzle-orm";
-import { check, index, numeric, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  check,
+  foreignKey,
+  index,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
 import { opdAppointments } from "./opd-appointments";
@@ -19,16 +29,18 @@ export const invoices = pgTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    opdAppointmentId: text("opd_appointment_id")
-      .notNull()
-      .references(() => opdAppointments.id),
-    patientId: text("patient_id")
-      .notNull()
-      .references(() => patients.id),
+    opdAppointmentId: text("opd_appointment_id").notNull(),
+    patientId: text("patient_id").notNull(),
     invoiceNumber: text("invoice_number").notNull(),
     fiscalYear: text("fiscal_year").notNull(),
     discountAmount: numeric("discount_amount", { precision: 12, scale: 2 }).notNull().default("0"),
-    discountReason: text("discount_reason"),
+    /**
+     * Why this invoice looks the way it does — a discount, or the patient
+     * leaving without paying. Required by the app whenever either happens.
+     * Internal: it is deliberately not on the printed invoice, so the desk can
+     * write plainly without thinking about who reads it.
+     */
+    note: text("note"),
     subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull(),
     taxTotal: numeric("tax_total", { precision: 12, scale: 2 }).notNull(),
     grandTotal: numeric("grand_total", { precision: 12, scale: 2 }).notNull(),
@@ -48,8 +60,34 @@ export const invoices = pgTable(
   },
   (table) => [
     check("invoices_discount_amount_check", sql`${table.discountAmount} >= 0`),
+    check("invoices_subtotal_check", sql`${table.subtotal} >= 0`),
+    check("invoices_tax_total_check", sql`${table.taxTotal} >= 0`),
+    check("invoices_grand_total_check", sql`${table.grandTotal} >= 0`),
+    check(
+      "invoices_discount_not_above_subtotal_check",
+      sql`${table.discountAmount} <= ${table.subtotal}`,
+    ),
+    check(
+      "invoices_total_math_check",
+      sql`${table.grandTotal} = ${table.subtotal} - ${table.discountAmount} + ${table.taxTotal}`,
+    ),
+    unique("invoices_org_id_id_unique").on(table.orgId, table.id),
     uniqueIndex("invoices_org_number_idx").on(table.orgId, table.invoiceNumber),
-    index("invoices_org_opd_appointment_idx").on(table.orgId, table.opdAppointmentId),
-    index("invoices_org_created_idx").on(table.orgId, table.createdAt.desc(), table.id.desc()),
+    foreignKey({
+      columns: [table.orgId, table.opdAppointmentId],
+      foreignColumns: [opdAppointments.orgId, opdAppointments.id],
+    }),
+    foreignKey({
+      columns: [table.orgId, table.patientId],
+      foreignColumns: [patients.orgId, patients.id],
+    }),
+    index("invoices_org_opd_appointment_idx").on(
+      table.orgId,
+      table.opdAppointmentId,
+      table.createdAt,
+    ),
+    // The billing worklist reads these oldest-first, so the index is ascending
+    // — a DESC index cannot serve an ASC scan without the same NULLS trap.
+    index("invoices_org_created_idx").on(table.orgId, table.createdAt, table.id),
   ],
 );

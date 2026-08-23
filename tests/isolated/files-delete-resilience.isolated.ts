@@ -23,7 +23,6 @@ const { eq } = await import("drizzle-orm");
 import { createOrganization, createTestUser } from "../support/auth";
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
-
 /**
  * Pins the deletion contract: the audit row commits with the row delete, not
  * after object cleanup, so an unreachable store can neither swallow the record
@@ -37,7 +36,7 @@ test("a delete still audits and succeeds when object cleanup fails", async () =>
   const owner = await createTestUser("resilient-owner");
   const org = await createOrganization(owner, "resilient");
   const api = clientFor(owner);
-  const key = `${org.id}/${crypto.randomUUID()}/notes.txt`;
+  const key = `${org.id}/${Bun.randomUUIDv7()}/notes.txt`;
 
   await db.insert(file).values({
     id: key,
@@ -71,7 +70,7 @@ test("an out-of-scope key is denied and recorded as a digest, not the raw key", 
 
   // A foreign tenant's key — or a presigned URL passed as the key — must never
   // be persisted verbatim in the audit trail.
-  const hostile = `${crypto.randomUUID()}/x.txt`;
+  const hostile = `${Bun.randomUUIDv7()}/x.txt`;
   await expectORPCCode(api.file.delete({ orgSlug: org.slug, key: hostile }), "FORBIDDEN");
 
   await drainAuditWrites();

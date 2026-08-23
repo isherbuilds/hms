@@ -303,7 +303,7 @@ function MembersRoute() {
             type="search"
             aria-label="Search members"
             placeholder="Search by name or email"
-            className="pl-7"
+            className="pl-8"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
@@ -433,7 +433,7 @@ function MembersRoute() {
                       <RoleBadge role={invitation.role ?? "member"} />
                     </TableCell>
                     <TableCell>
-                      <span className="flex items-center gap-1.5">
+                      <span className="flex items-center gap-2">
                         <Badge variant="outline">invited</Badge>
                         expires {formatDate(invitation.expiresAt, timeZone)}
                       </span>

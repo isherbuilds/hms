@@ -78,9 +78,7 @@ function PatientsRoute() {
           />
         </div>
 
-        {patients.isPending ? (
-          <div role="status" aria-label="Loading patients" className="h-40 max-w-5xl bg-muted" />
-        ) : patients.isError ? (
+        {patients.isPending ? null : patients.isError ? (
           <ErrorNote title="Could not load patients" detail={patients.error.message} />
         ) : items.length === 0 ? (
           <div className="border border-dashed px-4 py-8 text-center text-xs text-muted-foreground">

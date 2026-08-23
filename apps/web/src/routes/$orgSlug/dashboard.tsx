@@ -1,6 +1,6 @@
 import { authorize } from "@hms/auth/access";
 import { Badge } from "@hms/ui/components/badge";
-import { Button } from "@hms/ui/components/button";
+import { buttonVariants } from "@hms/ui/components/button";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
@@ -12,10 +12,9 @@ import {
   type LucideIcon,
   PlusIcon,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode } from "react";
 
 import { BarChart, type BarDatum } from "@/components/bar-chart";
-import { NewOpdWalkInDialog } from "@/components/new-opd-walk-in-dialog";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { formatMoney } from "@/lib/money";
 import { formatDay } from "@/lib/org-datetime";
@@ -33,7 +32,7 @@ export const Route = createFileRoute("/$orgSlug/dashboard")({
       prefetches.push(
         queryClient.prefetchQuery(orpc.dashboard.today.queryOptions({ input: { orgSlug } })),
         queryClient.prefetchQuery(
-          orpc.opd.queue.queryOptions({
+          orpc.opd.day.queryOptions({
             input: { orgSlug, limit: 6 },
           }),
         ),
@@ -159,7 +158,6 @@ function DashboardRoute() {
   // required before offering it.
   const canCreateOpdAppointments =
     authorize(roles, { opd: ["create"] }) && authorize(roles, { patient: ["read"] });
-  const [newOpdAppointmentOpen, setNewOpdAppointmentOpen] = useState(false);
 
   const today = useQuery({
     ...orpc.dashboard.today.queryOptions({ input: { orgSlug } }),
@@ -170,7 +168,7 @@ function DashboardRoute() {
     enabled: canReadBilling,
   });
   const queue = useQuery({
-    ...orpc.opd.queue.queryOptions({
+    ...orpc.opd.day.queryOptions({
       input: { orgSlug, limit: 6 },
     }),
     enabled: canReadOpdAppointments,
@@ -200,23 +198,19 @@ function DashboardRoute() {
           {canReadOpdAppointments && (
             <>
               <StatCard
-                label="Waiting now"
+                label="Booked, not arrived"
                 icon={ClockIcon}
-                value={today.data?.waiting ?? 0}
-                note={
-                  today.data?.longestWaitMin
-                    ? `Longest wait ${today.data.longestWaitMin} min`
-                    : "Nobody is waiting"
-                }
+                value={today.data?.booked ?? 0}
+                note="Expected today"
                 pending={today.isPending}
                 to="/$orgSlug/opd"
                 orgSlug={orgSlug}
               />
               <StatCard
-                label="In consult"
+                label="Checked in"
                 icon={StethoscopeIcon}
-                value={today.data?.inConsult ?? 0}
-                note={`${today.data?.completed ?? 0} completed today`}
+                value={today.data?.checkedIn ?? 0}
+                note="Arrived today"
                 pending={today.isPending}
                 to="/$orgSlug/opd"
                 orgSlug={orgSlug}
@@ -266,7 +260,7 @@ function DashboardRoute() {
                 )}
                 {mixTotal > 0 && (
                   <>
-                    <div className="flex gap-0.5">
+                    <div className="flex gap-1">
                       {mix.map((row, index) => (
                         <span
                           key={row.department}
@@ -300,10 +294,14 @@ function DashboardRoute() {
             action={
               <div className="flex items-center gap-2">
                 {canCreateOpdAppointments && (
-                  <Button size="xs" onClick={() => setNewOpdAppointmentOpen(true)}>
+                  <Link
+                    className={buttonVariants({ size: "xs" })}
+                    to="/$orgSlug/opd/new"
+                    params={{ orgSlug }}
+                  >
                     <PlusIcon />
                     New OPD appointment
-                  </Button>
+                  </Link>
                 )}
                 <Link
                   to="/$orgSlug/opd"
@@ -348,10 +346,8 @@ function DashboardRoute() {
                       <td className="py-2 text-muted-foreground">{appointment.departmentName}</td>
                       <td className="py-2 text-muted-foreground">{appointment.practitionerName}</td>
                       <td className="py-2 text-right">
-                        <Badge
-                          variant={appointment.status === "in_consult" ? "default" : "secondary"}
-                        >
-                          {appointment.status === "in_consult" ? "In consult" : "Waiting"}
+                        <Badge variant="secondary">
+                          {appointment.status === "checked_in" ? "Checked In" : "Booked"}
                         </Badge>
                       </td>
                     </tr>
@@ -362,9 +358,6 @@ function DashboardRoute() {
           </Panel>
         )}
       </PageBody>
-      {newOpdAppointmentOpen && (
-        <NewOpdWalkInDialog orgSlug={orgSlug} onClose={() => setNewOpdAppointmentOpen(false)} />
-      )}
     </>
   );
 }

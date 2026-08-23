@@ -173,7 +173,7 @@ function FilesRoute() {
                         {formatDateTime(file.createdAt, timeZone)}
                       </TableCell>
                       <TableCell>
-                        <div className="flex justify-end gap-0.5">
+                        <div className="flex justify-end gap-1">
                           <Button
                             variant="ghost"
                             size="icon-sm"

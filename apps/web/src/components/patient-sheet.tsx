@@ -1,9 +1,6 @@
-import { Button } from "@hms/ui/components/button";
-import { Sheet, SheetContent, SheetTitle } from "@hms/ui/components/sheet";
-import { cn } from "@hms/ui/lib/utils";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@hms/ui/components/sheet";
 import { ClientOnly, useBlocker } from "@tanstack/react-router";
-import { XIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import { useConfirm } from "@/components/confirm-dialog";
 import { PatientForm, type EditablePatient } from "@/components/patient-form";
@@ -15,133 +12,94 @@ import { PatientForm, type EditablePatient } from "@/components/patient-form";
  *
  * One sheet serves both jobs. The sheet owns only opening and closing;
  * `PatientForm` owns the record, and switches between registering and
- * correcting based on whether it was handed one.
+ * correcting based on whether it was handed one. It needs no styling of its
+ * own: the floating panel is `SheetContent`'s default.
  */
 
-/**
- * Geometry only. The motion — a 2.5rem slide with an opacity fade over 200ms,
- * behind a `bg-black/10` scrim — is `SheetContent`'s own and is deliberately
- * left alone: ReUI's sheet, read off their live page, resolves to exactly these
- * values, so the default already is the reference.
- *
- * The classes carry the `data-[side=right]:` prefix because that is the prefix
- * `SheetContent` uses for its own geometry, and an unprefixed class loses to
- * it. If a second sheet ever needs a different size, that belongs in the
- * component as a variant rather than as a second copy of this block.
- */
-const PANEL = cn(
-  // Below `md` the panel is the page. A 520px sheet on a phone is a modal
-  // pretending to be a sheet.
-  "data-[side=right]:inset-0 data-[side=right]:h-full data-[side=right]:w-full",
-  "data-[side=right]:border-l-0 data-[side=right]:sm:max-w-none",
-  // From `md` up it floats clear of the edges.
-  "data-[side=right]:md:inset-y-4 data-[side=right]:md:right-4 data-[side=right]:md:left-auto",
-  "data-[side=right]:md:h-auto data-[side=right]:md:w-[520px]",
-  "data-[side=right]:md:rounded-lg data-[side=right]:md:border",
-  // The form supplies its own padding per region, so the panel supplies none.
-  "gap-0 p-0",
-);
+const DISCARD = {
+  title: "Discard unsaved changes?",
+  description: "The patient record has changes that have not been saved.",
+  confirmLabel: "Discard changes",
+};
 
 export function PatientSheet({
   orgSlug,
   patient,
+  seed,
   open,
   onOpenChange,
+  onRegistered,
 }: {
   orgSlug: string;
   /** Omit to register a new patient; pass a record to correct an existing one. */
   patient?: EditablePatient;
+  /** Pre-fills a new record from what the operator already typed elsewhere. */
+  seed?: { name?: string; phone?: string };
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Hands the new record back instead of routing to it. */
+  onRegistered?: (patient: { id: string; name: string; mrn: string }) => void;
 }) {
-  const [dirty, setDirty] = useState(false);
-  const [pending, setPending] = useState(false);
   const [confirm, confirmation] = useConfirm();
-  const bypassBlocker = useRef(false);
+  const panel = useRef<HTMLDivElement>(null);
+
+  /**
+   * The form marks itself dirty and busy on its own element, and this reads it
+   * at the moment of closing. Mirroring those two flags up here as state cost
+   * the sheet a render every time the operator dirtied a field, to answer a
+   * question nothing asks until they try to leave.
+   */
+  const flags = () => panel.current?.querySelector("form")?.dataset ?? {};
+  const isDirty = () => flags().dirty === "true";
+
+  // `data-dirty` is still set while the panel animates out, so this is what
+  // tells an in-flight close from a real attempt to leave with unsaved work.
+  const leaving = useRef(false);
   const blocker = useBlocker({
-    shouldBlockFn: () => dirty && !bypassBlocker.current,
-    enableBeforeUnload: dirty,
-    disabled: !dirty,
+    shouldBlockFn: () => isDirty() && !leaving.current,
+    enableBeforeUnload: isDirty,
     withResolver: true,
   });
 
-  const closeWithoutBlocking = useCallback(() => {
-    bypassBlocker.current = true;
-    setDirty(false);
+  const closeWithoutBlocking = () => {
+    leaving.current = true;
     onOpenChange(false);
     window.setTimeout(() => {
-      bypassBlocker.current = false;
+      leaving.current = false;
     }, 0);
-  }, [onOpenChange]);
+  };
 
+  /** Closing by any route — the X, Escape, the scrim, the form's Cancel. */
+  const close = () => {
+    if (flags().pending === "true") return;
+    if (!isDirty()) return closeWithoutBlocking();
+    confirm({ ...DISCARD, run: closeWithoutBlocking });
+  };
+
+  // Navigating away from under the sheet asks the same question.
   useEffect(() => {
     if (blocker.status !== "blocked") return;
-    confirm({
-      title: "Discard unsaved changes?",
-      description: "The patient record has changes that have not been saved.",
-      confirmLabel: "Discard changes",
-      run: () => {
-        setDirty(false);
-        blocker.proceed();
-      },
-      cancel: blocker.reset,
-    });
+    confirm({ ...DISCARD, run: blocker.proceed, cancel: blocker.reset });
   }, [blocker, confirm]);
-
-  const close = useCallback(() => {
-    if (pending) return;
-
-    if (!dirty) {
-      closeWithoutBlocking();
-      return;
-    }
-
-    confirm({
-      title: "Discard unsaved changes?",
-      description: "The patient record has changes that have not been saved.",
-      confirmLabel: "Discard changes",
-      run: closeWithoutBlocking,
-    });
-  }, [closeWithoutBlocking, confirm, dirty, pending]);
-
-  const saved = useCallback(() => closeWithoutBlocking(), [closeWithoutBlocking]);
 
   return (
     <>
       <ClientOnly fallback={null}>
-        <Sheet open={open} onOpenChange={(nextOpen) => (nextOpen ? onOpenChange(true) : close())}>
-          <SheetContent
-            className={PANEL}
-            showCloseButton={false}
-            // Without this the sheet opens with the close button focused, because
-            // it is the first focusable element in the panel. The field ids are
-            // generated by `FormItem`, so the first input is the reliable target.
-            initialFocus={() =>
-              document.querySelector<HTMLElement>("[data-slot=sheet-content] input")
-            }
-          >
-            <header className="flex shrink-0 items-center gap-3 border-b border-border p-4">
+        <Sheet open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
+          <SheetContent ref={panel}>
+            <SheetHeader className="border-b border-border">
               <SheetTitle>{patient ? "Edit patient" : "Register patient"}</SheetTitle>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="ml-auto"
-                onClick={close}
-                disabled={pending}
-              >
-                <XIcon />
-                <span className="sr-only">Close</span>
-              </Button>
-            </header>
+            </SheetHeader>
             <PatientForm
-              key={`${patient?.id ?? "new"}:${open ? "open" : "closed"}`}
+              // The seed is part of the identity: reopening the sheet after a
+              // different search must not keep the previous defaults.
+              key={`${patient?.id ?? "new"}:${seed?.name ?? ""}:${seed?.phone ?? ""}:${open}`}
               orgSlug={orgSlug}
               patient={patient}
+              seed={seed}
               onCancel={close}
-              onSaved={saved}
-              onDirtyChange={setDirty}
-              onPendingChange={setPending}
+              onSaved={closeWithoutBlocking}
+              onRegistered={onRegistered}
             />
           </SheetContent>
         </Sheet>

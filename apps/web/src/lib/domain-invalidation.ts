@@ -6,37 +6,48 @@ export type QueryInvalidator = {
   invalidateQueries: (filters: { queryKey: QueryKey }) => Promise<unknown>;
 };
 
+export type OpdAppointmentTransition =
+  | "billing"
+  | "create"
+  | "cancel"
+  | "checkIn"
+  | "noShow"
+  | "reschedule";
+
 export function invalidateOpdAppointmentState(
   queryClient: QueryInvalidator,
   orgSlug: string,
-  appointmentId?: string,
+  appointmentId: string,
+  transition: OpdAppointmentTransition,
 ): Promise<unknown[]> {
-  return Promise.all([
+  const invalidations = [
     queryClient.invalidateQueries({
-      queryKey: orpc.opd.queue.key({ input: { orgSlug } }),
+      queryKey: orpc.opd.day.key({ input: { orgSlug } }),
     }),
     queryClient.invalidateQueries({
-      queryKey: orpc.opd.appointments.key({ input: { orgSlug } }),
+      queryKey: orpc.opd.get.key({ input: { orgSlug, appointmentId } }),
     }),
-    ...(appointmentId
-      ? [
-          queryClient.invalidateQueries({
-            queryKey: orpc.opd.get.key({ input: { orgSlug, appointmentId } }),
-          }),
-        ]
-      : []),
     queryClient.invalidateQueries({
       queryKey: orpc.dashboard.today.key({ input: { orgSlug } }),
     }),
-    // OPD appointment creation may add the default consultation charge, and cancellation
-    // voids pending charges, so both transitions can change these aggregates.
-    queryClient.invalidateQueries({
-      queryKey: orpc.dashboard.collections.key({ input: { orgSlug } }),
-    }),
-    queryClient.invalidateQueries({
-      queryKey: orpc.billing.worklist.key({ input: { orgSlug } }),
-    }),
-  ]);
+  ];
+
+  if (transition === "create" || transition === "cancel") {
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: orpc.dashboard.collections.key({ input: { orgSlug } }),
+      }),
+    );
+  }
+  if (transition !== "reschedule") {
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: orpc.billing.worklist.key({ input: { orgSlug } }),
+      }),
+    );
+  }
+
+  return Promise.all(invalidations);
 }
 
 export function invalidateBillingState(

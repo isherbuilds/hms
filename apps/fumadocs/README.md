@@ -1,7 +1,7 @@
 # Product documentation
 
 This Astro application contains the end-user HMS guide. Contributor and
-architecture documentation lives in `../../docs/contributing`.
+architecture documentation starts at `../../docs/README.md`.
 
 Run the development server from the repository root:
 

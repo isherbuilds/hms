@@ -82,18 +82,10 @@ function BillingOpdAppointmentRoute() {
   const currency = settings.data.currency;
 
   if (detail.isPending || pending.isPending || invoices.isPending) {
-    // A swallowed prefetch failure leaves this pending for a whole refetch, and
-    // a blank page reads as a broken terminal. Static blocks, not a shimmer:
-    // this is an all-day console and the wait is usually one frame.
     return (
       <>
         <PageHeader title="Billing" />
-        <PageBody className="max-w-7xl">
-          <div role="status" aria-label="Loading OPD billing" className="flex flex-col gap-4">
-            <div className="h-24 bg-muted" />
-            <div className="h-40 bg-muted" />
-          </div>
-        </PageBody>
+        <PageBody className="max-w-7xl" />
       </>
     );
   }

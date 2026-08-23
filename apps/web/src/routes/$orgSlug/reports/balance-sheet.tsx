@@ -170,7 +170,7 @@ function BalanceSheetRoute() {
             ) : null}
 
             <div className="grid gap-3 lg:grid-cols-2">
-              <section className="space-y-1.5">
+              <section className="space-y-2">
                 <h2 className="font-semibold uppercase tracking-wide">Assets</h2>
                 <div className="overflow-x-auto ring-1 ring-border">
                   <Table>
@@ -202,7 +202,7 @@ function BalanceSheetRoute() {
                 </div>
               </section>
 
-              <section className="space-y-1.5">
+              <section className="space-y-2">
                 <h2 className="font-semibold uppercase tracking-wide">Liabilities and equity</h2>
                 <div className="overflow-x-auto ring-1 ring-border">
                   <Table>

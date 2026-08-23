@@ -44,7 +44,7 @@ export function PageBody({
   bleed = false,
   className,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   bleed?: boolean;
   className?: string;
 }) {
@@ -73,7 +73,7 @@ export function ErrorNote({
     <div
       role="alert"
       className={cn(
-        "flex flex-col gap-0.5 border-l-2 border-destructive pl-3 text-xs",
+        "flex flex-col gap-1 border-l-2 border-destructive pl-3 text-xs",
         inset && "m-4",
       )}
     >

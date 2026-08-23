@@ -30,12 +30,23 @@ function serialize(keys: QueryKey[]): string[] {
 
 test("appointment invalidation scopes every key to the given org", async () => {
   const { client, keys } = recordingInvalidator();
-  await invalidateOpdAppointmentState(client, "org-a", "appointment-1");
+  await invalidateOpdAppointmentState(client, "org-a", "appointment-1", "create");
 
   const emitted = serialize(keys);
   expect(emitted.length).toBeGreaterThan(0);
   for (const key of emitted) expect(key).toContain('"orgSlug":"org-a"');
   expect(emitted.some((key) => key.includes('"appointmentId":"appointment-1"'))).toBe(true);
+  expect(emitted.some((key) => key.includes('"collections"'))).toBe(true);
+});
+
+test("a reschedule leaves financial caches alone", async () => {
+  const { client, keys } = recordingInvalidator();
+  await invalidateOpdAppointmentState(client, "org-a", "appointment-1", "reschedule");
+
+  const emitted = serialize(keys);
+  expect(emitted.length).toBeGreaterThan(0);
+  expect(emitted.some((key) => key.includes('"collections"'))).toBe(false);
+  expect(emitted.some((key) => key.includes('"worklist"'))).toBe(false);
 });
 
 test("billing invalidation scopes every key to the given org", async () => {

@@ -200,12 +200,6 @@ function InvoicePrintRoute() {
             <dd>{invoice.subtotal}</dd>
             <dt>Discount</dt>
             <dd>{invoice.discountAmount}</dd>
-            {invoice.discountReason ? (
-              <>
-                <dt>Discount reason</dt>
-                <dd>{invoice.discountReason}</dd>
-              </>
-            ) : null}
             <dt>Tax</dt>
             <dd>{invoice.taxTotal}</dd>
             <dt className="font-bold">Grand total</dt>

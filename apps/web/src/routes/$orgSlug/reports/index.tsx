@@ -27,7 +27,7 @@ function ReportsIndexRoute() {
               params={{ orgSlug }}
               className="flex min-h-28 flex-col gap-2 p-3 ring-1 ring-border [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/40"
             >
-              <span className="flex items-center gap-1.5 font-medium">
+              <span className="flex items-center gap-2 font-medium">
                 <Icon className="size-3.5" />
                 {label}
               </span>

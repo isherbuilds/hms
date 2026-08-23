@@ -10,7 +10,7 @@ type OrgSettings = Omit<
 /**
  * Per-process TTL cache for organization settings, for server-side *derived*
  * reads only (document numbering prefixes, print headers) where a bounded
- * staleness window is acceptable (see ADR 0016).
+ * staleness window is acceptable (see decision D009).
  *
  * - `settings.update` invalidates the entry, so a same-process write is
  *   visible to the very next read; other instances converge within the TTL.

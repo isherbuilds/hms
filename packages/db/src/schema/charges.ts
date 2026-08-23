@@ -1,5 +1,15 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, numeric, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  check,
+  foreignKey,
+  index,
+  integer,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+} from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
 import { CATALOG_CATEGORIES, catalogItems } from "./catalog-items";
@@ -12,9 +22,9 @@ import { opdAppointments } from "./opd-appointments";
  * price, tax, and revenue category are snapshotted at creation so later catalog
  * changes never alter existing care.
  *
- * A patient-level account (advances, deposits, insurance) is deliberately absent:
- * when it lands it is one row per patient that encounters point *at*, which is
- * additive to this column rather than a container above it (ADR 0023).
+ * A patient-level account (advances, deposits, insurance) is deliberately absent.
+ * If a live workflow earns one, it is additive; it does not restore the removed
+ * per-attendance wrapper (decision D013).
  */
 export const charges = pgTable(
   "charges",
@@ -23,12 +33,8 @@ export const charges = pgTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    opdAppointmentId: text("opd_appointment_id")
-      .notNull()
-      .references(() => opdAppointments.id),
-    catalogItemId: text("catalog_item_id")
-      .notNull()
-      .references(() => catalogItems.id),
+    opdAppointmentId: text("opd_appointment_id").notNull(),
+    catalogItemId: text("catalog_item_id").notNull(),
     description: text("description").notNull(),
     unitPrice: numeric("unit_price", { precision: 12, scale: 2 }).notNull(),
     taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull(),
@@ -39,7 +45,7 @@ export const charges = pgTable(
     sourceId: text("source_id"),
     status: text("status").notNull().default("pending"),
     /** Set exactly once when a pending charge becomes part of an issued invoice. */
-    invoiceId: text("invoice_id").references(() => invoices.id),
+    invoiceId: text("invoice_id"),
     voidReason: text("void_reason"),
     /** Attribution only; authorization always comes from the request's organization scope. */
     createdBy: text("created_by")
@@ -50,6 +56,8 @@ export const charges = pgTable(
   },
   (table) => [
     check("charges_qty_check", sql`${table.qty} > 0`),
+    check("charges_unit_price_check", sql`${table.unitPrice} >= 0`),
+    check("charges_tax_rate_percent_check", sql`${table.taxRatePercent} >= 0`),
     // No `order`: orders left the consult domain before it shipped, and
     // in-house fulfillment is billed as a `catalog` charge by the desk.
     check("charges_source_type_check", sql`${table.sourceType} in ('consult_fee', 'catalog')`),
@@ -58,6 +66,19 @@ export const charges = pgTable(
       "charges_revenue_category_check",
       sql`${table.revenueCategory} in ('consultation', 'procedure', 'lab', 'radiology', 'other')`,
     ),
+    unique("charges_org_id_id_unique").on(table.orgId, table.id),
+    foreignKey({
+      columns: [table.orgId, table.opdAppointmentId],
+      foreignColumns: [opdAppointments.orgId, opdAppointments.id],
+    }),
+    foreignKey({
+      columns: [table.orgId, table.catalogItemId],
+      foreignColumns: [catalogItems.orgId, catalogItems.id],
+    }),
+    foreignKey({
+      columns: [table.orgId, table.invoiceId],
+      foreignColumns: [invoices.orgId, invoices.id],
+    }),
     index("charges_org_opd_appointment_idx").on(table.orgId, table.opdAppointmentId, table.status),
     index("charges_org_status_created_idx").on(
       table.orgId,

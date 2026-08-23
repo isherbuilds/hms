@@ -36,12 +36,12 @@ or `bun run db:seed` to create local accounts.
 - `packages/db` — schema, migrations, and database access.
 - `packages/storage` — private object-storage operations.
 - `packages/ui` — shared Base UI/shadcn components.
-- `docs/contributing` — architecture, decisions, setup, and engineering rules.
+- `docs` — product, architecture, decisions, setup, operations, and active specs.
 
-Read [project intent](docs/contributing/project-intent.md) for the product
-boundary and [getting started](docs/contributing/getting-started.md) for the
-complete setup, commands, and account bootstrap. Deployment is documented in
-[deployment](docs/contributing/deployment.md).
+Start at the [documentation index](docs/README.md). The compact sources of truth
+are [Product](docs/product.md), [Architecture](docs/architecture.md),
+[Development](docs/development.md), [Operations](docs/operations.md), and the
+[Decision log](docs/decisions.md).
 
 Before handing off a change, run:
 

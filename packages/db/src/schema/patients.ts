@@ -6,6 +6,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -67,11 +68,20 @@ export const patients = pgTable(
       "patients_blood_group_check",
       sql`${table.bloodGroup} is null or ${table.bloodGroup} in ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')`,
     ),
+    unique("patients_org_id_id_unique").on(table.orgId, table.id),
     uniqueIndex("patients_org_mrn_idx").on(table.orgId, table.mrn),
     uniqueIndex("patients_org_uid_idx")
       .on(table.orgId, table.uid)
       .where(sql`${table.uid} is not null`),
     // Covers patient search/list keyset pagination: org, newest-first id tiebreak.
-    index("patients_org_created_idx").on(table.orgId, table.createdAt.desc(), table.id.desc()),
+    // `.desc()` alone emits `DESC NULLS LAST`, but `ORDER BY x DESC` means NULLS
+    // FIRST — a mismatch the planner will not bridge, so it discards the index
+    // and falls back to a scan and sort. Both columns are NOT NULL, so this
+    // only has to agree with the query.
+    index("patients_org_created_idx").on(
+      table.orgId,
+      table.createdAt.desc().nullsFirst(),
+      table.id.desc().nullsFirst(),
+    ),
   ],
 );

@@ -7,8 +7,6 @@ side.
 Every rule is a default. A deviation needs a comment saying why, and a deviation
 that recurs is a missing primitive, not a style choice.
 
----
-
 ## 1. Surfaces
 
 Three greys, and they must stay distinguishable. This is the single most
@@ -38,8 +36,6 @@ six unrelated boxes. Do not nest a shell inside a shell.
 **Do not tune these values per page.** If a shell is invisible, the token is
 wrong, not the page — fix `--muted` in `packages/ui/src/styles/globals.css`.
 
----
-
 ## 2. Spacing
 
 One scale. Five steps carry everything:
@@ -59,8 +55,6 @@ One scale. Five steps carry everything:
   `PageHeader` owns it.
 - **`5`, `7`, `9` and fractional steps are not in the scale.** Reaching for `p-5`
   means the answer is `p-4` or `p-6`.
-
----
 
 ## 3. Type
 
@@ -89,8 +83,6 @@ A dense data surface. `text-xs` is the body size, not a small size.
 via `@fontsource-variable/*`. No CDN: the app must work on a hospital LAN with no
 outbound internet. Two families, no more.
 
----
-
 ## 4. Radius
 
 Set by the component layer, never at a call site.
@@ -105,7 +97,8 @@ Set by the component layer, never at a call site.
 A component in `packages/ui` owns its radius. If a page is writing `rounded-*`,
 either it is building a shell (allowed) or the component is missing a variant.
 
----
+The base is `--radius: 0.625rem`; every step above is derived from it, so a
+tier is changed once in `globals.css` and never at a call site.
 
 ## 5. Colour
 
@@ -123,8 +116,6 @@ border-black` — paper is white with black ink in every theme), and the login
   act on. Status is carried by a `Badge`, never by colour alone — the word is
   always present.
 
----
-
 ## 6. Icons
 
 Lucide only. Never a second icon set.
@@ -137,9 +128,26 @@ Lucide only. Never a second icon set.
 
 A bare icon button needs `aria-label`. An icon beside text needs nothing.
 
----
+**Where there is no picture, there is a `Monogram`** — the initials square used
+for an organization, a member and a patient. One size (`size-6`), two tones. A
+second hand-rolled initials box is the bug, not a style choice.
 
-## 7. Layout primitives
+## 7. Sidebar
+
+The rail sits flat on the canvas (`--sidebar` equals `--background`) and the
+content panel is the card that rises off it. The rail is not a card.
+
+- **Hover is `bg-sidebar-accent/60`, the active row is the full accent plus
+  `font-medium`.** They must not be the same value, or the current page is
+  indistinguishable from whatever the pointer is passing over.
+- **Nav icons are `text-muted-foreground` until the row is active.** This is the
+  one place secondary colour is applied to an icon rather than to text.
+
+Keyboard focus is the global unlayered `:focus-visible` rule in `globals.css`;
+do not remove or replace it with component-only rings. Hover effects are gated
+to `(hover: hover) and (pointer: fine)`.
+
+## 8. Layout primitives
 
 Reach for these before writing a `div` with padding. All in
 `apps/web/src/components/page.tsx`.
@@ -152,22 +160,19 @@ Reach for these before writing a `div` with padding. All in
 
 A new bespoke layout wrapper is a signal that one of these is missing a prop.
 
----
-
-## 8. Density and emptiness
+## 9. Density and emptiness
 
 - **A panel holds its height when empty.** An empty dashboard should read as a
   dashboard with nothing in it, not as a collapsed page. Panels declare a
   `min-h-*` so the layout is the same shape at 0 rows as at 20.
 - **Empty text states what would be here**, in `text-muted-foreground`: "The queue
   is empty", not "No data".
-- **Skeletons match the height of what they replace**, so nothing jumps on load.
+- **Nothing stands in for data that has not arrived.** A page renders only the
+  chrome it can build from route params: its header band. The data region stays
+  empty until the data lands. The panel's `min-h-*` makes that blank region read
+  as an empty panel, not a collapsed page.
 
----
-
-## 9. Charts
-
-Read `.claude/skills` → `dataviz` before building one. The short version:
+## 10. Charts
 
 - **Pick the form from the data's job**, not from what looks good. Magnitude over
   time → bars. A single headline → a stat card, not a chart.
@@ -181,27 +186,21 @@ Read `.claude/skills` → `dataviz` before building one. The short version:
 - **A bar chart is interactive by default**: per-bar hover, a readout that does not
   reflow the plot, hit targets the full column height.
 
----
+## 11. Motion
 
-## 10. Motion
-
-- **Entrances `ease-out`, never `ease-in`.** Sub-300ms for UI motion.
+- **Entrances `ease-out`, never `ease-in`.** Keep UI motion under 200ms.
 - **`transform` and `opacity` only.** No animating width, height, or top.
 - **The more frequent the action, the less it animates.** A view switch a user
   performs 100 times a session gets no transition at all.
 - **`prefers-reduced-motion` is handled globally** in `globals.css`; do not
   re-implement it per component.
 
----
-
-## 11. Money and numbers
+## 12. Money and numbers
 
 - **Amounts cross the wire as `numeric` strings**, never JS numbers — rounding money
   through a float is a bug waiting to happen.
 - **Format at the edge** with `Intl.NumberFormat`, currency from org settings.
 - **Right-align numeric table columns**; left-align text.
-
----
 
 ## Checklist before calling a screen done
 
@@ -212,4 +211,5 @@ Read `.claude/skills` → `dataviz` before building one. The short version:
 - [ ] `tabular-nums` on every changing number; `font-mono` on identifiers.
 - [ ] Icons are Lucide at `size-3.5`/`size-4`.
 - [ ] Panels hold their height when empty, and say what would be there.
+- [ ] No placeholder stands in for loading data.
 - [ ] The page uses `PageBody` / `PageHeader`, not a bespoke wrapper.

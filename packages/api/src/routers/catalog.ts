@@ -7,7 +7,6 @@ import { z } from "zod";
 import { audit } from "../audit";
 import { isUniqueViolation } from "../lib/db-errors";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
-
 const catalogFields = z.object({
   name: z.string().trim().min(1).max(200),
   code: z.string().trim().min(1).max(20),
@@ -45,7 +44,7 @@ export const catalogRouter = {
     async ({ context, input }) => {
       const { scope } = context;
       const { orgSlug: _claim, ...fields } = input;
-      const id = crypto.randomUUID();
+      const id = Bun.randomUUIDv7();
 
       try {
         const [item] = await db
@@ -120,7 +119,7 @@ export const catalogRouter = {
         orgId: scope.orgId,
         target: `catalogItem:${itemId}`,
         // Written values make the audit trail double as the price-change
-        // history (see docs/research/01-catalog-flexibility.md) — the
+        // history (see docs/research/README.md) — the
         // reference systems keep a dedicated BillItemPriceHistory table;
         // successive catalog.update entries reconstruct the same timeline.
         meta: {

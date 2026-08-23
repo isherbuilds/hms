@@ -7,8 +7,10 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* The shell puts a white sidebar and white cards on the canvas, so the
-     canvas itself is a step down from white rather than white. */
+  /* The inset shell layers three surfaces: the canvas (--background), the
+     rail that sits flat on it (--sidebar, same value), and the raised content
+     card (--card). Keep --sidebar equal to --background or the rail stops
+     reading as part of the page. */
   --background: oklch(0.978 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -32,12 +34,12 @@
   --chart-3: oklch(0.546 0.245 262.881);
   --chart-4: oklch(0.488 0.243 264.376);
   --chart-5: oklch(0.424 0.199 265.638);
-  --radius: 0.525rem;
-  --sidebar: oklch(1 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.978 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent: oklch(0.928 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
@@ -67,9 +69,9 @@
   --chart-3: oklch(0.546 0.245 262.881);
   --chart-4: oklch(0.488 0.243 264.376);
   --chart-5: oklch(0.424 0.199 265.638);
-  --sidebar: oklch(0.205 0 0);
+  --sidebar: oklch(0.145 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary: oklch(0.922 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
@@ -136,6 +138,31 @@
     height: 100%;
     overscroll-behavior: none;
   }
+}
+
+/*
+ * A hairline at the bottom edge of a scroll box, there only while something is
+ * still below the fold. The JS-free scroll shadow: no measuring, no observer,
+ * no state, and it keeps up with a flung scroll because the browser never asks
+ * us anything.
+ *
+ * Two 1px layers in the same place. The rule is pinned to the box (`scroll`);
+ * the cover is pinned to the end of the content (`local`), so it only reaches
+ * the box's bottom edge once the last row is in view — and hides the rule
+ * exactly then. Content that fits without scrolling starts covered.
+ *
+ * The cover has to be opaque against whatever is behind it, so a surface other
+ * than a popover sets `--scroll-rule-surface`.
+ */
+@utility scroll-rule {
+  --scroll-rule-surface: var(--color-popover);
+  background-image:
+    linear-gradient(var(--scroll-rule-surface), var(--scroll-rule-surface)),
+    linear-gradient(var(--color-border), var(--color-border));
+  background-position: bottom;
+  background-size: 100% 1px;
+  background-repeat: no-repeat;
+  background-attachment: local, scroll;
 }
 
 /*

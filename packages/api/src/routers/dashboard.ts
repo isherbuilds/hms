@@ -11,10 +11,8 @@ import { readOrgSettings } from "../lib/settings-cache";
 
 export const dashboardRouter = {
   /**
-   * The organization's local clinical day: how many are waiting, how many are
-   * in a room, and which departments the day is going to. Separate from
-   * `collections` so a role that may read OPD appointments but not money still gets a
-   * dashboard.
+   * The organization's local clinical day: how many patients checked in and
+   * how many booked patients have not arrived.
    */
   today: orgProcedure({ opd: ["read"] }, orgInput).handler(async ({ context }) => {
     const { orgId } = context.scope;
@@ -25,24 +23,17 @@ export const dashboardRouter = {
     // creation) sets to the arrival day — a booking created yesterday for
     // today belongs to today, and a booking for next week does not.
     const [counts, mix] = await Promise.all([
-      db.execute<{ waiting: number; inConsult: number; completed: number; longestWaitMin: number }>(
+      db.execute<{ checkedIn: number; booked: number }>(
         sql`
           select
-            count(*) filter (where ${opdAppointments.status} = 'waiting')::integer as "waiting",
-            count(*) filter (where ${opdAppointments.status} = 'in_consult')::integer as "inConsult",
-            count(*) filter (where ${opdAppointments.status} = 'completed')::integer as "completed",
-            coalesce(
-              max(extract(epoch from (now() - ${opdAppointments.arrivedAt})))
-                filter (where ${opdAppointments.status} = 'waiting'),
-              0
-            )::integer / 60 as "longestWaitMin"
+            count(*) filter (where ${opdAppointments.status} = 'checked_in')::integer as "checkedIn",
+            count(*) filter (where ${opdAppointments.status} = 'booked')::integer as "booked"
           from ${opdAppointments}
           where ${opdAppointments.orgId} = ${orgId}
             and ${opdAppointments.businessDate} = ${currentDay}
         `,
       ),
-      // The mix counts arrived attendance only: a `booked` row for today may
-      // still cancel or no-show, and `cancelled`/`no_show` work never happened.
+      // The mix counts attended appointments only.
       db.execute<{ department: string; count: number }>(sql`
           select coalesce(${departments.name}, 'Unassigned') as "department",
                  count(*)::integer as "count"
@@ -52,7 +43,7 @@ export const dashboardRouter = {
            and ${departments.orgId} = ${orgId}
           where ${opdAppointments.orgId} = ${orgId}
             and ${opdAppointments.businessDate} = ${currentDay}
-            and ${opdAppointments.status} in ('waiting', 'in_consult', 'completed', 'left_unseen')
+            and ${opdAppointments.status} = 'checked_in'
           group by 1
           order by 2 desc, 1 asc
         `),

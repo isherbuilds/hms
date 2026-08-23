@@ -48,9 +48,9 @@ function OrganizationOnboardingRoute() {
                   {String(index + 1).padStart(2, "0")}
                 </span>
                 <Icon className="size-4 text-muted-foreground" />
-                <span className="min-w-0">
-                  <span className="block font-medium">{label}</span>
-                  <span className="mt-0.5 block text-muted-foreground">{description}</span>
+                <span className="flex min-w-0 flex-col gap-1">
+                  <span className="font-medium">{label}</span>
+                  <span className="text-muted-foreground">{description}</span>
                 </span>
                 <ArrowRightIcon className="size-3.5 text-muted-foreground" />
               </Link>

@@ -10,7 +10,6 @@ import { z } from "zod";
 import { audit } from "../audit";
 import { isUniqueViolation } from "../lib/db-errors";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
-
 const departmentName = z.string().trim().min(1).max(200);
 
 const practitionerFields = z.object({
@@ -99,7 +98,7 @@ export const staffRouter = {
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
-    const id = crypto.randomUUID();
+    const id = Bun.randomUUIDv7();
     if (input.defaultConsultFeeItemId != null) {
       await assertCatalogItemInScope(input.defaultConsultFeeItemId, scope.orgId);
     }
@@ -199,7 +198,7 @@ export const staffRouter = {
 
     await assertPractitionerReferences(fields, scope.orgId);
 
-    const id = crypto.randomUUID();
+    const id = Bun.randomUUIDv7();
     const [practitioner] = await db
       .insert(practitioners)
       .values({

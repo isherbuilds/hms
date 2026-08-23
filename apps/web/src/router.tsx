@@ -21,13 +21,6 @@ export const getRouter = () => {
     // the same data two owners with two different ideas of when it went stale.
     defaultPreloadStaleTime: 0,
     context: { queryClient },
-    // Loaders await their data; without a pending floor a slow loader leaves
-    // the previous page up with nothing to say it is working. The delay is the
-    // point: under 800ms TanStack keeps the current route visible, so every
-    // hover-preloaded navigation swaps straight across and never sees this.
-    defaultPendingMs: 800,
-    defaultPendingMinMs: 400,
-    defaultPendingComponent: RoutePending,
     defaultErrorComponent: DefaultRouteError,
     defaultNotFoundComponent: NotFound,
   });
@@ -39,18 +32,6 @@ export const getRouter = () => {
 
   return router;
 };
-
-/** Mirrors the page rhythm — header line, then blocks — so that when the real
- *  content lands it replaces this in place instead of reflowing the screen. */
-function RoutePending() {
-  return (
-    <div className="flex flex-col gap-4 p-4" role="status" aria-label="Loading page">
-      <div className="h-4 w-40 bg-muted" />
-      <div className="h-28 bg-muted" />
-      <div className="h-28 bg-muted" />
-    </div>
-  );
-}
 
 function DefaultRouteError({ error, reset }: ErrorComponentProps) {
   return (

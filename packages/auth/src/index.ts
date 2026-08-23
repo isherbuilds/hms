@@ -16,9 +16,6 @@ export function invitationUrl(invitationId: string): string {
 
 function createAuth() {
   return betterAuth({
-    experimental: {
-      joins: true,
-    },
     database: drizzleAdapter(db, {
       provider: "pg",
 
@@ -42,6 +39,22 @@ function createAuth() {
       },
     },
     advanced: {
+      database: {
+        // Better Auth 1.7 moved this out of `experimental`. Left there it is
+        // silently ignored, and a session resolves with a query per model
+        // instead of one join.
+        joins: true,
+        /**
+         * Better Auth mints the primary key for every row it owns — user,
+         * session, account, organization, member, invitation. Its default is a
+         * random string, so consecutive inserts scatter across the primary-key
+         * index instead of appending. UUIDv7 is time-ordered.
+         *
+         * `Bun.randomUUIDv7()`, not `crypto.randomUUID({ version: 7 })` — the
+         * latter accepts the option and silently returns a v4.
+         */
+        generateId: () => Bun.randomUUIDv7(),
+      },
       defaultCookieAttributes: {
         sameSite: "lax",
         secure: true,
