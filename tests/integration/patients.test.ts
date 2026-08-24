@@ -147,7 +147,7 @@ test("search matches name and MRN substrings and keyset pagination has no duplic
   }
 
   const seenIds: string[] = [];
-  let cursor: { createdAt: string; id: string } | undefined;
+  let cursor: string | undefined;
   do {
     const page = await api.patient.search({
       orgSlug: organization.slug,

@@ -2,7 +2,7 @@ import { db } from "@hms/db";
 import { nextCounter } from "@hms/db/counter";
 import { patients } from "@hms/db/schema/patients";
 import { ORPCError } from "@orpc/server";
-import { and, desc, eq, ilike, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, lt, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
@@ -103,23 +103,17 @@ export const patientRouter = {
     orgInput.extend({
       query: z.string().trim().optional(),
       phone: z.string().trim().min(4).max(20).optional(),
-      // The timestamp stays a Postgres text literal end to end: a JS Date
-      // truncates timestamptz to milliseconds, which silently drops rows
-      // that share the boundary millisecond with the cursor.
-      cursor: z
-        .object({
-          createdAt: z
-            .string()
-            .max(64)
-            .refine((value) => !Number.isNaN(Date.parse(value)), "Invalid cursor timestamp"),
-          id: z.string(),
-        })
-        .optional(),
+      // Keyset on the UUIDv7 id alone (like audit.list): ids are minted at
+      // registration so they order chronologically, `unique(org_id, id)`
+      // backs the scan, and a timestamp cursor's millisecond truncation
+      // (JS Date vs timestamptz microseconds) is unrepresentable.
+      cursor: z.string().optional(),
       limit: z.number().int().min(1).max(100).default(20),
     }),
   ).handler(async ({ context, input }) => {
     const scoped = and(
       eq(patients.orgId, context.scope.orgId),
+      input.cursor ? lt(patients.id, input.cursor) : undefined,
       input.phone ? eq(patients.phone, input.phone) : undefined,
       input.query
         ? or(
@@ -130,33 +124,21 @@ export const patientRouter = {
         : undefined,
     );
 
-    const cursorTimestamp = input.cursor ? sql`${input.cursor.createdAt}::timestamptz` : undefined;
-    const rows = await db
-      .select({ patient: patients, createdAtText: sql<string>`${patients.createdAt}::text` })
+    const items = await db
+      .select()
       .from(patients)
-      .where(
-        input.cursor && cursorTimestamp
-          ? and(
-              scoped,
-              or(
-                lt(patients.createdAt, cursorTimestamp),
-                and(eq(patients.createdAt, cursorTimestamp), lt(patients.id, input.cursor.id)),
-              ),
-            )
-          : scoped,
-      )
-      .orderBy(desc(patients.createdAt), desc(patients.id))
+      .where(scoped)
+      .orderBy(desc(patients.id))
       .limit(input.limit + 1);
 
-    const hasNextPage = rows.length > input.limit;
+    const hasNextPage = items.length > input.limit;
     if (hasNextPage) {
-      rows.pop();
+      items.pop();
     }
-    const last = rows[rows.length - 1];
+    const last = items[items.length - 1];
     return {
-      items: rows.map((row) => row.patient),
-      nextCursor:
-        hasNextPage && last ? { createdAt: last.createdAtText, id: last.patient.id } : null,
+      items,
+      nextCursor: hasNextPage && last ? last.id : null,
     };
   }),
 

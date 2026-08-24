@@ -10,7 +10,7 @@ import {
 } from "@hms/storage";
 import { ORPCError } from "@orpc/server";
 import { createHash } from "node:crypto";
-import { and, desc, eq, lt, or } from "drizzle-orm";
+import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
@@ -69,17 +69,29 @@ export const fileRouter = {
   /**
    * The org's ready files, newest first. Keyset pagination on `createdAt` +
    * `id`: no OFFSET scan as the table grows, and the pair is unique so a
-   * page boundary can never skip or repeat a row.
+   * page boundary can never skip or repeat a row. The cursor timestamp stays
+   * a Postgres text literal end to end — `created_at` is `defaultNow()`, so
+   * it stores microseconds a JS Date cursor would truncate, silently
+   * dropping rows that share the boundary millisecond.
    */
   list: orgProcedure(
     { file: ["read"] },
     orgInput.extend({
-      cursor: z.object({ createdAt: z.coerce.date(), id: z.string() }).optional(),
+      cursor: z
+        .object({
+          createdAt: z
+            .string()
+            .max(64)
+            .refine((value) => !Number.isNaN(Date.parse(value)), "Invalid cursor timestamp"),
+          id: z.string(),
+        })
+        .optional(),
       limit: z.number().int().min(1).max(100).default(50),
     }),
   ).handler(async ({ context, input }) => {
     const scoped = and(eq(fileTable.orgId, context.scope.orgId), eq(fileTable.status, "ready"));
 
+    const cursorTimestamp = input.cursor ? sql`${input.cursor.createdAt}::timestamptz` : undefined;
     const items = await db
       .select({
         id: fileTable.id,
@@ -88,30 +100,31 @@ export const fileRouter = {
         size: fileTable.size,
         userId: fileTable.userId,
         createdAt: fileTable.createdAt,
+        createdAtCursor: sql<string>`${fileTable.createdAt}::text`,
       })
       .from(fileTable)
       .where(
-        input.cursor
+        input.cursor && cursorTimestamp
           ? and(
               scoped,
               or(
-                lt(fileTable.createdAt, input.cursor.createdAt),
-                and(
-                  eq(fileTable.createdAt, input.cursor.createdAt),
-                  lt(fileTable.id, input.cursor.id),
-                ),
+                lt(fileTable.createdAt, cursorTimestamp),
+                and(eq(fileTable.createdAt, cursorTimestamp), lt(fileTable.id, input.cursor.id)),
               ),
             )
           : scoped,
       )
       .orderBy(desc(fileTable.createdAt), desc(fileTable.id))
-      .limit(input.limit);
+      .limit(input.limit + 1);
 
+    const hasNextPage = items.length > input.limit;
+    if (hasNextPage) {
+      items.pop();
+    }
     const last = items[items.length - 1];
     return {
-      items,
-      nextCursor:
-        items.length === input.limit && last ? { createdAt: last.createdAt, id: last.id } : null,
+      items: items.map(({ createdAtCursor: _cursor, ...item }) => item),
+      nextCursor: hasNextPage && last ? { createdAt: last.createdAtCursor, id: last.id } : null,
     };
   }),
 

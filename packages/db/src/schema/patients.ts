@@ -73,11 +73,13 @@ export const patients = pgTable(
     uniqueIndex("patients_org_uid_idx")
       .on(table.orgId, table.uid)
       .where(sql`${table.uid} is not null`),
-    // Covers patient search/list keyset pagination: org, newest-first id tiebreak.
-    // `.desc()` alone emits `DESC NULLS LAST`, but `ORDER BY x DESC` means NULLS
-    // FIRST — a mismatch the planner will not bridge, so it discards the index
-    // and falls back to a scan and sort. Both columns are NOT NULL, so this
-    // only has to agree with the query.
+    // Newest-first browsing by registration time. `patient.search` keysets on
+    // the UUIDv7 id via `patients_org_id_id_unique`; keep this index only
+    // while a createdAt-ordered query exists or returns. `.desc()` alone
+    // emits `DESC NULLS LAST`, but `ORDER BY x DESC` means NULLS FIRST — a
+    // mismatch the planner will not bridge, so it discards the index and
+    // falls back to a scan and sort. Both columns are NOT NULL, so this only
+    // has to agree with the query.
     index("patients_org_created_idx").on(
       table.orgId,
       table.createdAt.desc().nullsFirst(),

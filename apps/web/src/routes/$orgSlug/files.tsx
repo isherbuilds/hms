@@ -22,7 +22,7 @@ import { orpc } from "@/lib/orpc";
 
 const filesQuery = (orgSlug: string) =>
   orpc.file.list.infiniteOptions({
-    input: (cursor: { createdAt: Date; id: string } | undefined) => ({
+    input: (cursor: { createdAt: string; id: string } | undefined) => ({
       orgSlug,
       cursor,
       limit: 50,

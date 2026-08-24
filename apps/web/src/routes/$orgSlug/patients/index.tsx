@@ -23,7 +23,7 @@ import { patientAgeYears } from "@/lib/patient-age";
 
 const patientSearchQuery = (orgSlug: string, query: string) =>
   orpc.patient.search.infiniteOptions({
-    input: (cursor: { createdAt: string; id: string } | undefined) => ({
+    input: (cursor: string | undefined) => ({
       orgSlug,
       query: query || undefined,
       cursor,
