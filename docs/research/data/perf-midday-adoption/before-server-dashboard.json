@@ -1,0 +1,55 @@
+{
+  "capturedAt": "2026-08-24T10:56:59.218Z",
+  "route": "/mercy-general/dashboard",
+  "warmupRequests": 10,
+  "rounds": [
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 102.07160706003789,
+      "p50Ms": 9.072791999999936,
+      "p95Ms": 13.409708000000023,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 192.3498458997224,
+      "p50Ms": 148.77037500000006,
+      "p95Ms": 197.07804099999998,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 130.07667575173335,
+      "p50Ms": 6.8511249999996835,
+      "p95Ms": 9.253416000000016,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 208.67068427290786,
+      "p50Ms": 139.3144169999996,
+      "p95Ms": 158.28745800000024,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 132.78883995422427,
+      "p50Ms": 6.927167000000736,
+      "p95Ms": 9.711584000000585,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 210.02674073064588,
+      "p50Ms": 141.18937499999993,
+      "p95Ms": 165.89995799999997,
+      "failures": 0
+    }
+  ]
+}

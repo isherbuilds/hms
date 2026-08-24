@@ -1,4 +1,5 @@
 import { Button } from "@hms/ui/components/button";
+import { Combobox } from "@hms/ui/components/combobox";
 import {
   Empty,
   EmptyContent,
@@ -6,7 +7,6 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@hms/ui/components/empty";
-import { Input } from "@hms/ui/components/input";
 import { useQuery } from "@tanstack/react-query";
 import { SearchIcon } from "lucide-react";
 import { useRef, useState } from "react";
@@ -71,6 +71,7 @@ export function OpdPatientSearch({
   const { today } = useOrgDateTime();
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState(initialQuery ?? "");
+  const [open, setOpen] = useState(false);
   /**
    * Held rather than derived, so the sheet keeps the values the desk had typed
    * at the moment it opened even if the box is edited behind it.
@@ -81,67 +82,79 @@ export function OpdPatientSearch({
 
   // Digits are a phone, anything else is a name — the same split the search box
   // already makes, so whatever was typed lands in the right field.
-  const openRegistration = () =>
+  const openRegistration = () => {
+    setOpen(false);
     setSeed(LOOKS_LIKE_PHONE.test(trimmed) ? { phone: trimmed } : { name: trimmed });
+  };
 
   return (
     <div className="flex flex-col gap-3">
       <div className="relative">
         <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          ref={searchRef}
-          aria-label="Phone or name"
-          className="pl-8"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Phone or name"
-          autoFocus
-          autoComplete="off"
+        <Combobox
+          items={matches}
+          getItemKey={(match) => match.id}
+          getItemLabel={(match) => match.name}
+          inputValue={query}
+          onInputValueChange={(value) => {
+            setQuery(value);
+            setOpen(value.trim().length >= 2);
+          }}
+          onSelect={(match) => {
+            setOpen(false);
+            onSelect({ id: match.id, name: match.name, mrn: match.mrn });
+          }}
+          open={open}
+          onOpenChange={setOpen}
+          inputRef={searchRef}
+          inputClassName="pl-8"
+          inputProps={{
+            "aria-label": "Phone or name",
+            placeholder: "Phone or name",
+            autoFocus: true,
+            autoComplete: "off",
+            onFocus: () => {
+              if (trimmed.length >= 2) setOpen(true);
+            },
+          }}
+          itemClassName="items-baseline gap-2 rounded-none border-b border-border px-3 py-2 last:border-b-0"
+          renderItem={(match) => {
+            const age = patientAgeYears(match.dateOfBirth, match.ageYears, today);
+            return (
+              <>
+                <span className="font-medium">{match.name}</span>
+                <span className="text-muted-foreground">
+                  {match.mrn} · {match.phone}
+                </span>
+                <span className="ml-auto shrink-0 capitalize text-muted-foreground">
+                  {age === null ? "Age —" : `${age}y`} · {match.sex}
+                </span>
+              </>
+            );
+          }}
+          emptyContent={
+            searched ? (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyTitle>No patient matches “{trimmed}”</EmptyTitle>
+                  <EmptyDescription>
+                    {LOOKS_LIKE_PHONE.test(trimmed)
+                      ? "Register them and this number is filled in for you."
+                      : "Register them and this name is filled in for you."}
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Button type="button" onClick={openRegistration}>
+                    Register new patient
+                  </Button>
+                </EmptyContent>
+              </Empty>
+            ) : undefined
+          }
         />
       </div>
 
-      {error ? (
-        <ErrorNote title="Could not search patients" detail={error.message} />
-      ) : matches.length > 0 ? (
-        <ul className="flex max-h-72 flex-col overflow-y-auto rounded-md ring-1 ring-border">
-          {matches.map((match) => {
-            const age = patientAgeYears(match.dateOfBirth, match.ageYears, today);
-            return (
-              <li key={match.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelect({ id: match.id, name: match.name, mrn: match.mrn })}
-                  className="flex w-full items-baseline gap-2 border-b border-border px-3 py-2 text-left last:border-b-0 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/40"
-                >
-                  <span className="font-medium">{match.name}</span>
-                  <span className="text-muted-foreground">
-                    {match.mrn} · {match.phone}
-                  </span>
-                  <span className="ml-auto shrink-0 capitalize text-muted-foreground">
-                    {age === null ? "Age —" : `${age}y`} · {match.sex}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : searched ? (
-        <Empty className="rounded-md ring-1 ring-border">
-          <EmptyHeader>
-            <EmptyTitle>No patient matches “{trimmed}”</EmptyTitle>
-            <EmptyDescription>
-              {LOOKS_LIKE_PHONE.test(trimmed)
-                ? "Register them and this number is filled in for you."
-                : "Register them and this name is filled in for you."}
-            </EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <Button type="button" onClick={openRegistration}>
-              Register new patient
-            </Button>
-          </EmptyContent>
-        </Empty>
-      ) : null}
+      {error ? <ErrorNote title="Could not search patients" detail={error.message} /> : null}
 
       {searched && matches.length === 0 ? null : (
         <Button type="button" variant="outline" className="self-start" onClick={openRegistration}>

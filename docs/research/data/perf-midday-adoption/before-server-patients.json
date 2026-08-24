@@ -1,0 +1,55 @@
+{
+  "capturedAt": "2026-08-24T10:57:28.906Z",
+  "route": "/mercy-general/patients",
+  "warmupRequests": 10,
+  "rounds": [
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 144.64444901700907,
+      "p50Ms": 5.690082999999959,
+      "p95Ms": 13.787000000000035,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 291.5440680938566,
+      "p50Ms": 100.77408300000002,
+      "p95Ms": 114.81837500000006,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 149.51176946631946,
+      "p50Ms": 6.423374999999851,
+      "p95Ms": 8.618249999999989,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 303.555648393666,
+      "p50Ms": 96.33399999999983,
+      "p95Ms": 107.73679200000015,
+      "failures": 0
+    },
+    {
+      "concurrency": 1,
+      "requests": 100,
+      "requestsPerSecond": 161.15490047879103,
+      "p50Ms": 6.1834579999995185,
+      "p95Ms": 7.994874999999865,
+      "failures": 0
+    },
+    {
+      "concurrency": 30,
+      "requests": 300,
+      "requestsPerSecond": 281.29863389662603,
+      "p50Ms": 102.75737500000014,
+      "p95Ms": 133.26637500000015,
+      "failures": 0
+    }
+  ]
+}

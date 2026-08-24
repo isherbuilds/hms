@@ -11,7 +11,7 @@ change as code.
 - [Development](./docs/development.md) and [Operations](./docs/operations.md)
 - [Decision log](./docs/decisions.md) — **check before revisiting an architectural choice**
 - [Design](./docs/design.md) — **the UI source of truth**
-- Active specs: [OPD intake](./docs/specs/opd.md), [OPD desk lifecycle](./docs/specs/opd-desk-lifecycle.md), [reports](./docs/specs/reports.md), [remove loading placeholders](./docs/specs/remove-loading-placeholders.md)
+- Active specs: [OPD intake](./docs/specs/opd.md), [OPD desk lifecycle](./docs/specs/opd-desk-lifecycle.md), [reports](./docs/specs/reports.md), [remove loading placeholders](./docs/specs/remove-loading-placeholders.md), [midday adoption](./docs/specs/midday-adoption.md)
 - [Research ledger](./docs/research/README.md) — evidence, not product authority
 - Skills: [`org-scoped-feature`](./.agents/skills/org-scoped-feature/SKILL.md) to add an org-scoped domain, [`tenancy-review`](./.agents/skills/tenancy-review/SKILL.md) to audit a diff for cross-tenant leaks
 

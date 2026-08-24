@@ -8,10 +8,10 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { PlusIcon, SearchIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
@@ -37,21 +37,63 @@ export const Route = createFileRoute("/$orgSlug/patients/")({
   head: () => ({ meta: [{ title: "Patients · HMS" }] }),
   // Registration is a panel over this list rather than a page of its own, so
   // its open state lives in the URL: the link is shareable and Back closes it.
-  validateSearch: z.object({ create: z.boolean().optional().catch(undefined) }),
-  loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
-    await queryClient.prefetchInfiniteQuery(patientSearchQuery(orgSlug, ""));
+  validateSearch: z.object({
+    create: z.boolean().optional().catch(undefined),
+    q: z
+      .string()
+      .trim()
+      .optional()
+      .catch(undefined)
+      .transform((value) => value || undefined),
+  }),
+  loaderDeps: ({ search }) => ({ q: search.q }),
+  loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {
+    await queryClient.prefetchInfiniteQuery(patientSearchQuery(orgSlug, deps.q ?? ""));
   },
   component: PatientsRoute,
 });
 
 function PatientsRoute() {
   const { orgSlug } = Route.useParams();
-  const { create } = Route.useSearch();
+  const { create, q } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const { timeZone, today } = useOrgDateTime();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => q ?? "");
   const debouncedQuery = useDebouncedValue(query.trim(), 300);
-  const patients = useInfiniteQuery(patientSearchQuery(orgSlug, debouncedQuery));
+  const lastWrittenQuery = useRef(q);
+  const syncingFromUrl = useRef(false);
+
+  useEffect(() => {
+    if (q !== lastWrittenQuery.current) {
+      lastWrittenQuery.current = q;
+      syncingFromUrl.current = true;
+      setQuery(q ?? "");
+    }
+  }, [q]);
+
+  useEffect(() => {
+    const nextQuery = debouncedQuery || undefined;
+    if (syncingFromUrl.current) {
+      if (nextQuery === q) {
+        syncingFromUrl.current = false;
+      }
+      return;
+    }
+    if (nextQuery === q) {
+      return;
+    }
+
+    lastWrittenQuery.current = nextQuery;
+    void navigate({
+      search: (previous) => ({ ...previous, q: nextQuery }),
+      replace: true,
+    });
+  }, [debouncedQuery, navigate, q]);
+
+  const patients = useInfiniteQuery({
+    ...patientSearchQuery(orgSlug, debouncedQuery),
+    placeholderData: keepPreviousData,
+  });
   const items = patients.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
@@ -59,7 +101,9 @@ function PatientsRoute() {
       <PageHeader
         title="Patients"
         action={
-          <Button onClick={() => navigate({ search: { create: true } })}>
+          <Button
+            onClick={() => navigate({ search: (previous) => ({ ...previous, create: true }) })}
+          >
             <PlusIcon />
             Register patient
           </Button>
@@ -140,7 +184,11 @@ function PatientsRoute() {
       <PatientSheet
         orgSlug={orgSlug}
         open={create === true}
-        onOpenChange={(open) => navigate({ search: open ? { create: true } : {} })}
+        onOpenChange={(open) =>
+          navigate({
+            search: (previous) => ({ ...previous, create: open ? true : undefined }),
+          })
+        }
       />
     </>
   );

@@ -1,4 +1,5 @@
 import { notFound } from "@tanstack/react-router";
+import type { FieldPath, FieldValues, UseFormReturn } from "react-hook-form";
 
 export function hasErrorCode(error: unknown, code: string): boolean {
   let current = error;
@@ -8,6 +9,20 @@ export function hasErrorCode(error: unknown, code: string): boolean {
     seen.add(current);
     if ("code" in current && current.code === code) return true;
     current = "cause" in current ? current.cause : undefined;
+  }
+
+  return false;
+}
+
+export function applyOrpcFieldError<TFieldValues extends FieldValues, TContext, TTransformedValues>(
+  form: UseFormReturn<TFieldValues, TContext, TTransformedValues>,
+  error: unknown,
+  map: Record<string, { field: string; message: string }>,
+): boolean {
+  for (const [code, fieldError] of Object.entries(map)) {
+    if (!hasErrorCode(error, code)) continue;
+    form.setError(fieldError.field as FieldPath<TFieldValues>, { message: fieldError.message });
+    return true;
   }
 
   return false;

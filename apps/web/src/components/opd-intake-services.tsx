@@ -1,5 +1,6 @@
 import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
+import { Combobox } from "@hms/ui/components/combobox";
 import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import {
@@ -88,8 +89,6 @@ export function ServicePicker({
   const [category, setCategory] = useState<"all" | "procedure" | "lab" | "radiology" | "other">(
     "all",
   );
-  // The popup opens on typing, focus, or a category choice, and closes on
-  // selection, Escape, or focus leaving the picker.
   const [open, setOpen] = useState(false);
   const normalized = query.trim().toLowerCase();
   const selectedIds = new Set(services.map((service) => service.catalogItemId));
@@ -108,12 +107,7 @@ export function ServicePicker({
     : [];
 
   return (
-    <div
-      className="flex flex-col gap-2 sm:flex-row sm:items-end"
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
-      }}
-    >
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
       <label className="flex w-full flex-col gap-2 text-xs font-medium sm:w-48">
         Category
         <NativeSelect
@@ -133,51 +127,52 @@ export function ServicePicker({
       </label>
       <div className="relative min-w-0 flex-1">
         <SearchIcon className="pointer-events-none absolute top-2.5 left-2.5 size-3.5 text-muted-foreground" />
-        <Input
-          id="service-search"
-          name="service-search"
-          value={query}
-          disabled={disabled}
-          autoComplete="off"
-          placeholder="Search service code, name or category"
-          className="pl-8"
-          onChange={(event) => {
-            setQuery(event.target.value);
+        <Combobox
+          items={results}
+          getItemKey={(item) => item.id}
+          getItemLabel={(item) => item.name}
+          inputValue={query}
+          onInputValueChange={(value) => {
+            setQuery(value);
             setOpen(true);
           }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") setOpen(false);
+          onSelect={(item) => {
+            onChange([...services, { catalogItemId: item.id, qty: 1 }]);
+            setQuery("");
+            setOpen(false);
           }}
-        />
-        {searching && open ? (
-          <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg bg-popover shadow-lg ring-1 ring-border">
-            {results.length > 0 ? (
-              results.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-border px-3 py-2 text-left last:border-b-0 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted"
-                  onClick={() => {
-                    onChange([...services, { catalogItemId: item.id, qty: 1 }]);
-                    setQuery("");
-                    setOpen(false);
-                  }}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{item.name}</span>
-                    <span className="font-mono text-muted-foreground">
-                      {item.code} · {item.category}
-                    </span>
-                  </span>
-                  <span className="tabular-nums">{formatMoney(item.unitPrice, currency)}</span>
-                </button>
-              ))
-            ) : (
+          open={open && searching}
+          onOpenChange={setOpen}
+          disabled={disabled}
+          inputClassName="pl-8"
+          inputProps={{
+            id: "service-search",
+            name: "service-search",
+            autoComplete: "off",
+            placeholder: "Search service code, name or category",
+            onFocus: () => {
+              if (searching) setOpen(true);
+            },
+            "aria-label": "Search services",
+          }}
+          itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-none border-b border-border px-3 py-2 last:border-b-0"
+          renderItem={(item) => (
+            <>
+              <span className="min-w-0">
+                <span className="block truncate font-medium">{item.name}</span>
+                <span className="font-mono text-muted-foreground">
+                  {item.code} · {item.category}
+                </span>
+              </span>
+              <span className="tabular-nums">{formatMoney(item.unitPrice, currency)}</span>
+            </>
+          )}
+          emptyContent={
+            searching ? (
               <p className="px-3 py-2 text-muted-foreground">No unused service matches.</p>
-            )}
-          </div>
-        ) : null}
+            ) : undefined
+          }
+        />
       </div>
     </div>
   );

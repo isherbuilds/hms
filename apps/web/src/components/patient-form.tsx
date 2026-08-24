@@ -21,7 +21,7 @@ import { z } from "zod";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
-import { isConflictError } from "@/lib/orpc-error";
+import { applyOrpcFieldError } from "@/lib/orpc-error";
 
 /**
  * A patient record, as one plain column of labels and fields — the same form
@@ -121,8 +121,12 @@ export function PatientForm({
     enabled: debouncedPhone.length >= 4,
   });
 
-  const onConflict = (error: Error) =>
-    toast.error(isConflictError(error) ? "A patient with this UID already exists." : error.message);
+  const onConflict = (error: Error) => {
+    const mapped = applyOrpcFieldError(form, error, {
+      CONFLICT: { field: "uid", message: "A patient with this UID already exists." },
+    });
+    toast.error(mapped ? "A patient with this UID already exists." : error.message);
+  };
 
   const register = useMutation(
     orpc.patient.register.mutationOptions({

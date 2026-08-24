@@ -137,13 +137,16 @@ export const patientRouter = {
           : scoped,
       )
       .orderBy(desc(patients.createdAt), desc(patients.id))
-      .limit(input.limit);
+      .limit(input.limit + 1);
 
+    const hasNextPage = items.length > input.limit;
+    if (hasNextPage) {
+      items.pop();
+    }
     const last = items[items.length - 1];
     return {
       items,
-      nextCursor:
-        items.length === input.limit && last ? { createdAt: last.createdAt, id: last.id } : null,
+      nextCursor: hasNextPage && last ? { createdAt: last.createdAt, id: last.id } : null,
     };
   }),
 

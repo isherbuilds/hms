@@ -1,0 +1,17 @@
+{
+  "capturedAt": "2026-08-24T11:45:00.000Z",
+  "interaction": "catalog Active checkbox click -> aria-checked flip (MutationObserver)",
+  "page": "/mercy-general/settings/catalog",
+  "rows": 1000,
+  "network": "Chrome DevTools 'Slow 4G' emulation (~400 ms added RTT)",
+  "note": "Optimistic flip; server round trip at this latency is >= 800 ms. Before the row memo + stable callback fix the flip took ~143-156 ms median because every row re-rendered.",
+  "samplesMs": {
+    "beforeRowMemoFix": [176.4, 142.6, 146.1, 158.6, 155.7, 158.2, 164.2],
+    "afterRowMemoFixNoEmulation": [18, 20, 14, 16, 20, 19],
+    "afterRowMemoFixSlow4g": [8, 9, 4, 8, 7, 8]
+  },
+  "rollback": {
+    "method": "API server stopped, checkbox clicked",
+    "observed": "aria-checked flipped optimistically within 120 ms, rolled back after fetch failure, error toast shown"
+  }
+}

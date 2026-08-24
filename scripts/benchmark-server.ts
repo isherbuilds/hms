@@ -5,6 +5,7 @@ const API_URL = process.env.PERF_API_URL ?? "http://127.0.0.1:3100";
 const EMAIL = process.env.PERF_EMAIL;
 const PASSWORD = process.env.PERF_PASSWORD;
 const ROUND_COUNT = Number(process.env.PERF_ROUNDS ?? 3);
+const ROUTE = process.env.PERF_ROUTE ?? "/mercy-general/dashboard";
 
 if (!EMAIL || !PASSWORD) {
   throw new Error("Set PERF_EMAIL and PERF_PASSWORD to a benchmark fixture account");
@@ -40,7 +41,7 @@ async function signIn(): Promise<string> {
 }
 
 async function runRound(cookie: string, concurrency: number, requests: number): Promise<Round> {
-  const routeUrl = new URL("/mercy-general/dashboard", WEB_URL);
+  const routeUrl = new URL(ROUTE, WEB_URL);
   const durations: number[] = [];
   let failures = 0;
   let next = 0;
@@ -99,7 +100,7 @@ if (failureCount > 0) {
 const report = JSON.stringify(
   {
     capturedAt: new Date().toISOString(),
-    route: "/mercy-general/dashboard",
+    route: ROUTE,
     warmupRequests: 10,
     rounds,
   },

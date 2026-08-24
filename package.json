@@ -28,8 +28,8 @@
       "@types/react-dom": "^19.2.4",
       "drizzle-orm": "^0.45.2",
       "@types/pg": "^8.21.0",
-      "react-hook-form": "^7.85.0",
-      "@hookform/resolvers": "^5.8.0"
+      "react-hook-form": "^7.86.0",
+      "@hookform/resolvers": "^5.9.1"
     }
   },
   "type": "module",
@@ -46,8 +46,10 @@
     "db:generate": "turbo run db:generate -F @hms/db",
     "db:migrate": "turbo run db:migrate -F @hms/db",
     "db:seed": "bun scripts/seed.ts",
+    "db:seed:volume": "bun scripts/seed-volume.ts",
     "benchmark:browser": "bun scripts/benchmark-browser.ts",
     "benchmark:server": "bun scripts/benchmark-server.ts",
+    "benchmark:rpc": "bun scripts/benchmark-rpc.ts",
     "create-user": "bun scripts/create-user.ts",
     "create-founder": "bun scripts/create-founder.ts",
     "check": "oxlint && oxfmt --write"
@@ -60,6 +62,7 @@
     "@hms/auth": "workspace:*",
     "@hms/config": "workspace:*",
     "@hms/db": "workspace:*",
+    "@orpc/client": "^1.15.0",
     "@orpc/server": "^1.15.0",
     "@types/bun": "^1.4.0",
     "@types/pg": "^8.23.1",
@@ -72,6 +75,7 @@
     "typescript": "^7.0.2"
   },
   "overrides": {
+    "@tanstack/query-core": "5.101.4",
     "mermaid": "11.16.1",
     "nanoid": "3.3.18"
   },

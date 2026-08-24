@@ -30,14 +30,14 @@ import {
 } from "@hms/ui/components/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
-import { isConflictError } from "@/lib/orpc-error";
+import { applyOrpcFieldError } from "@/lib/orpc-error";
 
 export const Route = createFileRoute("/$orgSlug/settings/catalog")({
   head: () => ({ meta: [{ title: "Catalog · HMS" }] }),
@@ -100,10 +100,54 @@ const EMPTY_VALUES: CatalogFormValues = {
 
 function CatalogRoute() {
   const { orgSlug } = Route.useParams();
+  const queryClient = useQueryClient();
   const [category, setCategory] = useState<CatalogCategory | "">("");
   const [activeOnly, setActiveOnly] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<CatalogItem | null>(null);
+  const toggleActive = useMutation(
+    orpc.catalog.update.mutationOptions({
+      onMutate: async (variables) => {
+        const queryKey = orpc.catalog.list.key({ input: { orgSlug } });
+        await queryClient.cancelQueries({ queryKey });
+        const snapshot = queryClient.getQueriesData<CatalogItem[]>({ queryKey });
+
+        queryClient.setQueriesData<CatalogItem[]>({ queryKey }, (items) =>
+          items?.map((item) =>
+            item.id === variables.itemId ? { ...item, active: variables.active } : item,
+          ),
+        );
+
+        return { snapshot };
+      },
+      onError: (error, _variables, context) => {
+        for (const [queryKey, data] of context?.snapshot ?? []) {
+          queryClient.setQueryData(queryKey, data);
+        }
+        toast.error(error instanceof Error ? error.message : "Could not update catalog item");
+      },
+      onSettled: () =>
+        queryClient.invalidateQueries({
+          queryKey: orpc.catalog.list.key({ input: { orgSlug } }),
+        }),
+    }),
+  );
+  const mutateToggle = toggleActive.mutate;
+  const toggleItem = useCallback(
+    (item: CatalogItem) =>
+      mutateToggle({
+        orgSlug,
+        itemId: item.id,
+        name: item.name,
+        code: item.code,
+        category: item.category,
+        unitPrice: item.unitPrice,
+        taxRatePercent: item.taxRatePercent,
+        taxCode: item.taxCode,
+        active: !item.active,
+      }),
+    [mutateToggle, orgSlug],
+  );
   const catalog = useQuery(
     orpc.catalog.list.queryOptions({
       input: {
@@ -169,24 +213,13 @@ function CatalogRoute() {
               </TableHeader>
               <TableBody>
                 {catalog.data.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-mono text-xs">{item.code}</TableCell>
-                    <TableCell className="font-medium">{item.name}</TableCell>
-                    <TableCell>{CATEGORY_LABELS[item.category]}</TableCell>
-                    <TableCell>{item.unitPrice}</TableCell>
-                    <TableCell>{item.taxRatePercent}</TableCell>
-                    <TableCell>{item.taxCode || "—"}</TableCell>
-                    <TableCell>
-                      <Badge variant={item.active ? "secondary" : "muted"}>
-                        {item.active ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="xs" onClick={() => setEditing(item)}>
-                        Edit
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <CatalogRow
+                    key={item.id}
+                    item={item}
+                    pending={toggleActive.isPending && toggleActive.variables?.itemId === item.id}
+                    onToggle={toggleItem}
+                    onEdit={setEditing}
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -215,6 +248,48 @@ function CatalogRoute() {
     </>
   );
 }
+
+/** Memoized so an optimistic toggle re-renders one row, not the whole catalog. */
+const CatalogRow = memo(function CatalogRow({
+  item,
+  pending,
+  onToggle,
+  onEdit,
+}: {
+  item: CatalogItem;
+  pending: boolean;
+  onToggle: (item: CatalogItem) => void;
+  onEdit: (item: CatalogItem) => void;
+}) {
+  return (
+    <TableRow>
+      <TableCell className="font-mono text-xs">{item.code}</TableCell>
+      <TableCell className="font-medium">{item.name}</TableCell>
+      <TableCell>{CATEGORY_LABELS[item.category]}</TableCell>
+      <TableCell>{item.unitPrice}</TableCell>
+      <TableCell>{item.taxRatePercent}</TableCell>
+      <TableCell>{item.taxCode || "—"}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={item.active}
+            disabled={pending}
+            aria-label={`Set ${item.name} ${item.active ? "inactive" : "active"}`}
+            onCheckedChange={() => onToggle(item)}
+          />
+          <Badge variant={item.active ? "secondary" : "muted"}>
+            {item.active ? "Active" : "Inactive"}
+          </Badge>
+        </div>
+      </TableCell>
+      <TableCell className="text-right">
+        <Button variant="ghost" size="xs" onClick={() => onEdit(item)}>
+          Edit
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+});
 
 type CatalogItemDialogProps =
   | {
@@ -262,12 +337,16 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
   };
 
   const handleError = (error: unknown) => {
-    if (isConflictError(error)) {
-      form.setError("code", { message: "Code already in use" });
-      toast.error("Code already in use");
-      return;
-    }
-    toast.error(error instanceof Error ? error.message : "Could not save catalog item");
+    const mapped = applyOrpcFieldError(form, error, {
+      CONFLICT: { field: "code", message: "Code already in use" },
+    });
+    toast.error(
+      mapped
+        ? "Code already in use"
+        : error instanceof Error
+          ? error.message
+          : "Could not save catalog item",
+    );
   };
 
   const create = useMutation(

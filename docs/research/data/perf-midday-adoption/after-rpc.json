@@ -1,0 +1,43 @@
+{
+  "generatedAt": "2026-08-24T11:00:49.585Z",
+  "apiUrl": "http://localhost:3000",
+  "requestsPerScenario": 200,
+  "scenarios": [
+    {
+      "scenario": "patients_first_page",
+      "requests": 200,
+      "p50Ms": 5.306291000000101,
+      "p95Ms": 8.508874999999989,
+      "p99Ms": 9.51887499999998,
+      "meanMs": 5.511098354999997,
+      "failures": 0
+    },
+    {
+      "scenario": "patients_query_ra",
+      "requests": 200,
+      "p50Ms": 5.147334000000001,
+      "p95Ms": 7.53183399999989,
+      "p99Ms": 8.030790999999681,
+      "meanMs": 5.218594424999987,
+      "failures": 0
+    },
+    {
+      "scenario": "patients_phone_9876",
+      "requests": 200,
+      "p50Ms": 8.097334000000046,
+      "p95Ms": 9.989917000000332,
+      "p99Ms": 11.512125000000196,
+      "meanMs": 8.341172919999986,
+      "failures": 0
+    },
+    {
+      "scenario": "catalog_list",
+      "requests": 200,
+      "p50Ms": 10.895499999999629,
+      "p95Ms": 15.575000000000728,
+      "p99Ms": 18.711875000000873,
+      "meanMs": 11.44091435500001,
+      "failures": 0
+    }
+  ]
+}
