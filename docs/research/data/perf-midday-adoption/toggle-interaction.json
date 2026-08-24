@@ -4,11 +4,12 @@
   "page": "/mercy-general/settings/catalog",
   "rows": 1000,
   "network": "Chrome DevTools 'Slow 4G' emulation (~400 ms added RTT)",
-  "note": "Optimistic flip; server round trip at this latency is >= 800 ms. Before the row memo + stable callback fix the flip took ~143-156 ms median because every row re-rendered.",
+  "note": "Optimistic flip; server round trip at this latency is >= 800 ms. Before the row memo + stable callback fix the flip took ~143-156 ms median because every row re-rendered. afterReviewFixesSlow4g is the final change set (filter=null, guarded settle-invalidation).",
   "samplesMs": {
     "beforeRowMemoFix": [176.4, 142.6, 146.1, 158.6, 155.7, 158.2, 164.2],
     "afterRowMemoFixNoEmulation": [18, 20, 14, 16, 20, 19],
-    "afterRowMemoFixSlow4g": [8, 9, 4, 8, 7, 8]
+    "afterRowMemoFixSlow4g": [8, 9, 4, 8, 7, 8],
+    "afterReviewFixesSlow4g": [21, 5, 7, 6, 7, 7]
   },
   "rollback": {
     "method": "API server stopped, checkbox clicked",

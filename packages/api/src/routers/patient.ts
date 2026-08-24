@@ -2,7 +2,7 @@ import { db } from "@hms/db";
 import { nextCounter } from "@hms/db/counter";
 import { patients } from "@hms/db/schema/patients";
 import { ORPCError } from "@orpc/server";
-import { and, desc, eq, ilike, lt, or } from "drizzle-orm";
+import { and, desc, eq, ilike, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
@@ -103,7 +103,18 @@ export const patientRouter = {
     orgInput.extend({
       query: z.string().trim().optional(),
       phone: z.string().trim().min(4).max(20).optional(),
-      cursor: z.object({ createdAt: z.coerce.date(), id: z.string() }).optional(),
+      // The timestamp stays a Postgres text literal end to end: a JS Date
+      // truncates timestamptz to milliseconds, which silently drops rows
+      // that share the boundary millisecond with the cursor.
+      cursor: z
+        .object({
+          createdAt: z
+            .string()
+            .max(64)
+            .refine((value) => !Number.isNaN(Date.parse(value)), "Invalid cursor timestamp"),
+          id: z.string(),
+        })
+        .optional(),
       limit: z.number().int().min(1).max(100).default(20),
     }),
   ).handler(async ({ context, input }) => {
@@ -119,19 +130,17 @@ export const patientRouter = {
         : undefined,
     );
 
-    const items = await db
-      .select()
+    const cursorTimestamp = input.cursor ? sql`${input.cursor.createdAt}::timestamptz` : undefined;
+    const rows = await db
+      .select({ patient: patients, createdAtText: sql<string>`${patients.createdAt}::text` })
       .from(patients)
       .where(
-        input.cursor
+        input.cursor && cursorTimestamp
           ? and(
               scoped,
               or(
-                lt(patients.createdAt, input.cursor.createdAt),
-                and(
-                  eq(patients.createdAt, input.cursor.createdAt),
-                  lt(patients.id, input.cursor.id),
-                ),
+                lt(patients.createdAt, cursorTimestamp),
+                and(eq(patients.createdAt, cursorTimestamp), lt(patients.id, input.cursor.id)),
               ),
             )
           : scoped,
@@ -139,14 +148,15 @@ export const patientRouter = {
       .orderBy(desc(patients.createdAt), desc(patients.id))
       .limit(input.limit + 1);
 
-    const hasNextPage = items.length > input.limit;
+    const hasNextPage = rows.length > input.limit;
     if (hasNextPage) {
-      items.pop();
+      rows.pop();
     }
-    const last = items[items.length - 1];
+    const last = rows[rows.length - 1];
     return {
-      items,
-      nextCursor: hasNextPage && last ? { createdAt: last.createdAt, id: last.id } : null,
+      items: rows.map((row) => row.patient),
+      nextCursor:
+        hasNextPage && last ? { createdAt: last.createdAtText, id: last.patient.id } : null,
     };
   }),
 

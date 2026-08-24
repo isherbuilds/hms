@@ -287,9 +287,9 @@ Deviations accepted during implementation:
    second, newer core. Re-attempt the bump when oRPC ships TSQ-5.102-
    compatible types (this answers falsification #2 in the research memo).
 2. **Combobox hand-written on the existing Base UI package** — the registry
-   item carried a different component family. `filter={() => true}` is
-   required (`filter={null}` still applies the default filter in
-   @base-ui/react 1.6).
+   item carried a different component family. The installed @base-ui/react
+   1.7 documents `filter={null}` as the pass-all for externally filtered
+   lists, and our usage matches its official async-search example.
 3. **Checkbox, not Switch**, for the inline catalog toggle — the kit has no
    Switch primitive.
 4. **Catalog document weight flagged**: +1.27 MB wire at the seeded 1,000

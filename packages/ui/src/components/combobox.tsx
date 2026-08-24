@@ -6,10 +6,6 @@ import * as React from "react";
 import { Input } from "@hms/ui/components/input";
 import { cn } from "@hms/ui/lib/utils";
 
-type ComboboxEntry<T> =
-  | { kind: "item"; item: T; key: React.Key }
-  | { kind: "create"; key: "__create__" };
-
 type ComboboxProps<T> = {
   items: T[];
   getItemKey: (item: T) => React.Key;
@@ -20,8 +16,6 @@ type ComboboxProps<T> = {
   onSelect: (item: T) => void;
   isItemDisabled?: (item: T) => boolean;
   emptyContent?: React.ReactNode;
-  onCreate?: (inputValue: string) => void;
-  renderCreate?: (inputValue: string) => React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   disabled?: boolean;
@@ -49,8 +43,6 @@ function Combobox<T>({
   onSelect,
   isItemDisabled,
   emptyContent,
-  onCreate,
-  renderCreate,
   open,
   onOpenChange,
   disabled,
@@ -60,37 +52,27 @@ function Combobox<T>({
   popupClassName,
   itemClassName,
 }: ComboboxProps<T>) {
-  const canCreate = Boolean(onCreate && renderCreate && inputValue.trim());
-  const entries: ComboboxEntry<T>[] = [
-    ...items.map((item) => ({ kind: "item" as const, item, key: getItemKey(item) })),
-    ...(canCreate ? [{ kind: "create" as const, key: "__create__" as const }] : []),
-  ];
-
   return (
-    <ComboboxPrimitive.Root<ComboboxEntry<T>>
-      items={entries}
+    <ComboboxPrimitive.Root<T>
+      items={items}
       value={null}
       inputValue={inputValue}
       onInputValueChange={(value, { reason }) => {
         if (reason !== "item-press") onInputValueChange(value);
       }}
-      onValueChange={(entry) => {
-        if (!entry) return;
-        if (entry.kind === "create") onCreate?.(inputValue);
-        else onSelect(entry.item);
+      onValueChange={(item) => {
+        if (item != null) onSelect(item);
       }}
       open={open}
       onOpenChange={(nextOpen) => onOpenChange?.(nextOpen)}
-      itemToStringLabel={(entry) =>
-        entry.kind === "create" ? inputValue : (getItemLabel?.(entry.item) ?? String(entry.key))
+      itemToStringLabel={(item) => getItemLabel?.(item) ?? String(getItemKey(item))}
+      itemToStringValue={(item) => (item == null ? "" : String(getItemKey(item)))}
+      isItemEqualToValue={(item, value) =>
+        item != null && value != null && getItemKey(item) === getItemKey(value)
       }
-      itemToStringValue={(entry) => (entry == null ? "" : String(entry.key))}
-      isItemEqualToValue={(entry, value) =>
-        entry != null && value != null && entry.kind === value.kind && entry.key === value.key
-      }
-      // `filter={null}` still applies the default starts-with filter in
-      // @base-ui/react 1.6; an explicit pass-all keeps consumers in charge.
-      filter={() => true}
+      // Consumers own filtering; `filter={null}` is the documented pass-all
+      // for externally filtered lists in @base-ui/react 1.7.
+      filter={null}
       loopFocus
       disabled={disabled}
     >
@@ -110,7 +92,7 @@ function Combobox<T>({
             data-slot="combobox-content"
             className={cn(
               "z-50 w-(--anchor-width) max-w-(--available-width) overflow-hidden rounded-md bg-popover text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none",
-              emptyContent == null && !canCreate && "data-empty:hidden",
+              emptyContent == null && "data-empty:hidden",
               popupClassName,
             )}
           >
@@ -121,18 +103,18 @@ function Combobox<T>({
               data-slot="combobox-list"
               className="max-h-[min(18rem,var(--available-height))] overflow-y-auto overscroll-contain p-1 outline-none data-empty:p-0"
             >
-              {(entry: ComboboxEntry<T>) => (
+              {(item: T) => (
                 <ComboboxPrimitive.Item
-                  key={entry.kind === "create" ? "__combobox-create__" : `item-${entry.key}`}
-                  value={entry}
-                  disabled={entry.kind === "item" ? isItemDisabled?.(entry.item) : false}
+                  key={getItemKey(item)}
+                  value={item}
+                  disabled={isItemDisabled?.(item)}
                   data-slot="combobox-item"
                   className={cn(
                     "relative flex cursor-default items-center rounded-md px-2 py-2 text-xs outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50",
                     itemClassName,
                   )}
                 >
-                  {entry.kind === "create" ? renderCreate?.(inputValue) : renderItem(entry.item)}
+                  {renderItem(item)}
                 </ComboboxPrimitive.Item>
               )}
             </ComboboxPrimitive.List>

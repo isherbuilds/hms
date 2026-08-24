@@ -126,10 +126,18 @@ function CatalogRoute() {
         }
         toast.error(error instanceof Error ? error.message : "Could not update catalog item");
       },
-      onSettled: () =>
-        queryClient.invalidateQueries({
+      onSettled: () => {
+        // The settling mutation still counts as pending here, so >1 means a
+        // sibling catalog.update is in flight; refetching now would overwrite
+        // its optimistic patch. The last one to settle invalidates.
+        const pending = queryClient.isMutating({
+          mutationKey: orpc.catalog.update.mutationKey(),
+        });
+        if (pending > 1) return;
+        return queryClient.invalidateQueries({
           queryKey: orpc.catalog.list.key({ input: { orgSlug } }),
-        }),
+        });
+      },
     }),
   );
   const mutateToggle = toggleActive.mutate;

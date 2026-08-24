@@ -23,7 +23,7 @@ import { patientAgeYears } from "@/lib/patient-age";
 
 const patientSearchQuery = (orgSlug: string, query: string) =>
   orpc.patient.search.infiniteOptions({
-    input: (cursor: { createdAt: Date; id: string } | undefined) => ({
+    input: (cursor: { createdAt: string; id: string } | undefined) => ({
       orgSlug,
       query: query || undefined,
       cursor,
@@ -60,35 +60,31 @@ function PatientsRoute() {
   const { timeZone, today } = useOrgDateTime();
   const [query, setQuery] = useState(() => q ?? "");
   const debouncedQuery = useDebouncedValue(query.trim(), 300);
-  const lastWrittenQuery = useRef(q);
-  const syncingFromUrl = useRef(false);
+  const lastUrlQuery = useRef(q);
 
+  // An external URL change (Back, a shared link) adopts the new value; our own
+  // debounced writes are recorded in lastUrlQuery so they do not clobber
+  // whatever the user has typed since.
   useEffect(() => {
-    if (q !== lastWrittenQuery.current) {
-      lastWrittenQuery.current = q;
-      syncingFromUrl.current = true;
+    if (q !== lastUrlQuery.current) {
+      lastUrlQuery.current = q;
       setQuery(q ?? "");
     }
   }, [q]);
 
   useEffect(() => {
+    // A stale debounce (still catching up to the input) must not navigate:
+    // right after a Back-sync it would re-write the URL we just adopted.
+    if (debouncedQuery !== query.trim()) return;
     const nextQuery = debouncedQuery || undefined;
-    if (syncingFromUrl.current) {
-      if (nextQuery === q) {
-        syncingFromUrl.current = false;
-      }
-      return;
-    }
-    if (nextQuery === q) {
-      return;
-    }
+    if (nextQuery === q) return;
 
-    lastWrittenQuery.current = nextQuery;
+    lastUrlQuery.current = nextQuery;
     void navigate({
       search: (previous) => ({ ...previous, q: nextQuery }),
       replace: true,
     });
-  }, [debouncedQuery, navigate, q]);
+  }, [debouncedQuery, query, navigate, q]);
 
   const patients = useInfiniteQuery({
     ...patientSearchQuery(orgSlug, debouncedQuery),

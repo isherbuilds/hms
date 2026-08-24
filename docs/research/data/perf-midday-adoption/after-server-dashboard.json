@@ -1,54 +1,54 @@
 {
-  "capturedAt": "2026-08-24T11:01:02.876Z",
+  "capturedAt": "2026-08-24T12:07:18.901Z",
   "route": "/mercy-general/dashboard",
   "warmupRequests": 10,
   "rounds": [
     {
       "concurrency": 1,
       "requests": 100,
-      "requestsPerSecond": 107.27808492363637,
-      "p50Ms": 9.202540999999997,
-      "p95Ms": 12.805417000000034,
+      "requestsPerSecond": 112.76886568627376,
+      "p50Ms": 8.88779199999999,
+      "p95Ms": 11.881959000000052,
       "failures": 0
     },
     {
       "concurrency": 30,
       "requests": 300,
-      "requestsPerSecond": 211.9537124884982,
-      "p50Ms": 138.483792,
-      "p95Ms": 166.40587500000015,
+      "requestsPerSecond": 218.6666020385376,
+      "p50Ms": 133.241667,
+      "p95Ms": 173.1742079999999,
       "failures": 0
     },
     {
       "concurrency": 1,
       "requests": 100,
-      "requestsPerSecond": 129.3934395655111,
-      "p50Ms": 7.778459000000112,
-      "p95Ms": 10.194834000000355,
+      "requestsPerSecond": 132.04430939058122,
+      "p50Ms": 7.458125000000109,
+      "p95Ms": 10.11712499999976,
       "failures": 0
     },
     {
       "concurrency": 30,
       "requests": 300,
-      "requestsPerSecond": 225.29242241125544,
-      "p50Ms": 130.6446249999999,
-      "p95Ms": 150.11570800000027,
+      "requestsPerSecond": 226.71950437266318,
+      "p50Ms": 128.83979199999976,
+      "p95Ms": 156.9770840000001,
       "failures": 0
     },
     {
       "concurrency": 1,
       "requests": 100,
-      "requestsPerSecond": 136.10751462504848,
-      "p50Ms": 6.815625000000182,
-      "p95Ms": 10.229792000000089,
+      "requestsPerSecond": 138.76055156742007,
+      "p50Ms": 6.717459000000417,
+      "p95Ms": 9.764791999999943,
       "failures": 0
     },
     {
       "concurrency": 30,
       "requests": 300,
-      "requestsPerSecond": 232.9932334470164,
-      "p50Ms": 125.53508299999976,
-      "p95Ms": 148.64762500000052,
+      "requestsPerSecond": 235.71567896231684,
+      "p50Ms": 126.52787499999977,
+      "p95Ms": 145.26895800000057,
       "failures": 0
     }
   ]
