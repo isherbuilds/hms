@@ -129,7 +129,11 @@ known Charges, itemized supply document, Payments, Receipts, and journal entries
 as one transaction. The API requires a settlement object. A walk-in either
 settles or carries an explicit note; there is no unsettled walk-in path. Online
 advances and Emergency use separate policies. Financial state never drives
-later clinical state.
+later clinical state. A walk-in with no configured attendance fee and no selected
+service has nothing to settle: it commits only its checked-in appointment and
+token and returns no Invoice or Payment. It cannot accept a discount or payment.
+Non-zero UPI and card collections require their transaction reference so the
+payment can be reconciled against the day's settlement report; cash does not.
 
 ### D016 — OPD records only observable states
 
@@ -139,6 +143,12 @@ Columns `consultationStartedAt`, `completedAt`, and `leftUnseenAt` are dropped. 
 Stale `booked` rows close to `no_show` lazily when a past date is read. No background job is introduced.
 The reference memo's conclusion is preserved in the ledger row `OPD status mutation` in
 `docs/research/README.md`.
+
+### D017 — Immediate OPD fee omission needs no reason
+
+**Accepted 2026-08-25; amended 2026-08-25.** The server auto-adds the configured consultation or follow-up fee to an immediate quote. Reception removes it with `omitConsultFee: boolean`; no reason is required or recorded. The server selects the fee for every complete quote and again inside creation when omission is false. If no billable line remains, the quote returns zero totals and creation commits the checked-in appointment and token without creating a financial document. Selected additional services remain local editable state; their first preview uses the same dependency-free invoice math on the client, while the quote and creation own authoritative server verification and the consultation line.
+
+**Context:** A patient who attends only for a procedure, lab, or x-ray should not enter a fake discount workflow.
 
 ## Superseded sequence
 

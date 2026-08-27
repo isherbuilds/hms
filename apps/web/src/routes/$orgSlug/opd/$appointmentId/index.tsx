@@ -1,4 +1,5 @@
 import { Button } from "@hms/ui/components/button";
+import { Separator } from "@hms/ui/components/separator";
 import {
   Table,
   TableBody,
@@ -8,9 +9,9 @@ import {
   TableRow,
 } from "@hms/ui/components/table";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClientOnly, Link, createFileRoute } from "@tanstack/react-router";
-import { FileTextIcon, PrinterIcon, Trash2Icon, UploadIcon } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { ClientOnly, createFileRoute } from "@tanstack/react-router";
+import { PrinterIcon, Trash2Icon, UploadIcon } from "lucide-react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -18,11 +19,7 @@ import {
   RescheduleOpdAppointmentDialog,
 } from "@/components/opd-appointment-dialogs";
 import { useConfirm } from "@/components/confirm-dialog";
-import {
-  CancelOpdAppointmentDialog,
-  OpdAppointmentStatusBadge,
-  useOpdStatusActions,
-} from "@/components/opd-appointment";
+import { CancelOpdAppointmentDialog, useOpdStatusActions } from "@/components/opd-appointment";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { StaleDataNotice } from "@/components/stale-data-notice";
 import { formatMoney } from "@/lib/money";
@@ -31,7 +28,9 @@ import { formatFileSize, openOrgFile, uploadOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
 import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
-import { patientAgeYears } from "@/lib/patient-age";
+import { patientAgeLabel } from "@/lib/patient-age";
+
+import { OpdRecordDescription, OpdRecordFacts, OpdRecordSummary, OpdRecordTabs } from "./route";
 
 /** Extensions worth trusting when the browser reports an empty File.type. */
 const SCAN_EXTENSION_TYPES: Record<string, string> = {
@@ -89,15 +88,15 @@ function OpdAppointmentDetailRoute() {
   };
   const detail = useQuery(detailQuery);
   const settings = useQuery(orpc.settings.get.queryOptions({ input: { orgSlug } }));
-
   const { checkIn, markNoShow } = useOpdStatusActions(orgSlug);
   const changingStatus = checkIn.isPending || markNoShow.isPending;
 
   if (detail.isPending || settings.isPending) {
     return (
       <>
-        <PageHeader title="OPD appointment" />
-        <PageBody className="max-w-5xl" />
+        <PageHeader title="Outpatient appointment" />
+        <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
+        <PageBody className="mx-auto w-full max-w-5xl" />
       </>
     );
   }
@@ -106,123 +105,75 @@ function OpdAppointmentDetailRoute() {
     const error = detail.error ?? settings.error;
     return (
       <>
-        <PageHeader title="OPD appointment" />
-        <ErrorNote title="Could not load OPD appointment" detail={error?.message} inset />
+        <PageHeader title="Outpatient appointment" />
+        <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
+        <ErrorNote title="Could not load outpatient appointment" detail={error?.message} inset />
       </>
     );
   }
 
   const { appointment, patient, practitioner, department, charges, prescriptions } = detail.data;
   const consultCharge = charges.find((charge) => charge.sourceType === "consult_fee");
-  const ageYears = patient ? patientAgeYears(patient.dateOfBirth, patient.ageYears, today) : null;
-  const age = ageYears === null ? "Age not recorded" : `${ageYears} years`;
+  const age = patient
+    ? `${patientAgeLabel(patient.dateOfBirth, patient.dobEstimated, today)} years`
+    : null;
   // A booked appointment has no token or patient yet — both arrive at check-in.
   const hasToken = appointment.tokenNumber != null;
 
   return (
     <>
-      <div className="print:hidden">
+      <div className="flex min-h-0 flex-1 flex-col print:hidden">
         <PageHeader
-          title={hasToken ? `Token ${appointment.tokenNumber}` : "Booked appointment"}
-          description={
-            patient ? (
-              <Link
-                to="/$orgSlug/patients/$patientId"
-                params={{ orgSlug, patientId: patient.id }}
-                className="underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-              >
-                {`${patient.mrn} · ${patient.name}`}
-              </Link>
-            ) : (
-              `${appointment.callerName ?? "Unnamed caller"} · ${appointment.callerPhone ?? "No phone"}`
-            )
-          }
+          title="Outpatient appointment"
+          description={<OpdRecordDescription orgSlug={orgSlug} record={detail.data} />}
           action={
-            <div className="flex items-center gap-2">
+            <>
               <StaleDataNotice dataUpdatedAt={detail.dataUpdatedAt} />
-              {hasToken && patient ? (
-                <Button onClick={() => window.print()}>
-                  <PrinterIcon data-icon="inline-start" />
-                  Print slip
-                </Button>
-              ) : null}
-            </div>
+              <Button disabled={!hasToken || !patient} onClick={() => window.print()}>
+                <PrinterIcon data-icon="inline-start" />
+                Print slip
+              </Button>
+            </>
           }
         />
+        <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
 
-        <PageBody className="max-w-5xl">
-          <section className="grid gap-px bg-border ring-1 ring-border sm:grid-cols-4">
-            <DetailCell label="Token">
-              {hasToken ? (
-                // text-2xl deviates from the type scale: the token is what desk
-                // staff and patients match at a glance, so it reads as a headline.
-                <span className="font-mono text-2xl font-semibold tabular-nums">
-                  {appointment.tokenNumber}
-                </span>
-              ) : (
-                <span className="text-muted-foreground">Assigned at check-in</span>
-              )}
-            </DetailCell>
-            <DetailCell label="Status">
-              <OpdAppointmentStatusBadge status={appointment.status} />
-            </DetailCell>
-            {appointment.arrivedAt ? (
-              <DetailCell label="Arrived">
-                {formatDateTime(appointment.arrivedAt, timeZone)}
-              </DetailCell>
-            ) : appointment.scheduledFor ? (
-              <DetailCell label="Scheduled">
-                {formatDateTime(appointment.scheduledFor, timeZone)}
-              </DetailCell>
-            ) : (
-              <DetailCell label="Created">
-                {formatDateTime(appointment.createdAt, timeZone)}
-              </DetailCell>
-            )}
-            <DetailCell label="Actions">
-              <div className="flex flex-wrap gap-1">
-                {appointment.status === "booked" ? (
-                  <>
-                    <Button
-                      size="xs"
-                      disabled={changingStatus}
-                      onClick={() =>
-                        appointment.patientId
-                          ? checkIn.mutate({ orgSlug, appointmentId })
-                          : setCheckInOpen(true)
-                      }
-                    >
-                      Check in
-                    </Button>
-                    <Button size="xs" variant="ghost" onClick={() => setRescheduleOpen(true)}>
-                      Reschedule
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      disabled={changingStatus}
-                      onClick={() =>
-                        confirm({
-                          title: "Mark as no show?",
-                          description:
-                            "The caller did not arrive. A no show cannot be reopened — rebook if they turn up later.",
-                          confirmLabel: "Mark no show",
-                          run: () => markNoShow.mutate({ orgSlug, appointmentId }),
-                        })
-                      }
-                    >
-                      No show
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      disabled={changingStatus}
-                      onClick={() => setCancelOpen(true)}
-                    >
-                      Cancel
-                    </Button>
-                  </>
-                ) : appointment.status === "checked_in" ? (
+        <PageBody className="mx-auto w-full max-w-5xl">
+          <OpdRecordSummary
+            record={detail.data}
+            action={
+              appointment.status === "booked" ? (
+                <div className="flex flex-wrap gap-1">
+                  <Button
+                    size="xs"
+                    disabled={changingStatus}
+                    onClick={() =>
+                      appointment.patientId
+                        ? checkIn.mutate({ orgSlug, appointmentId })
+                        : setCheckInOpen(true)
+                    }
+                  >
+                    Check in
+                  </Button>
+                  <Button size="xs" variant="ghost" onClick={() => setRescheduleOpen(true)}>
+                    Reschedule
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    disabled={changingStatus}
+                    onClick={() =>
+                      confirm({
+                        title: "Mark as no show?",
+                        description:
+                          "The caller did not arrive. A no show cannot be reopened — rebook if they turn up later.",
+                        confirmLabel: "Mark no show",
+                        run: () => markNoShow.mutate({ orgSlug, appointmentId }),
+                      })
+                    }
+                  >
+                    No show
+                  </Button>
                   <Button
                     size="xs"
                     variant="ghost"
@@ -231,79 +182,30 @@ function OpdAppointmentDetailRoute() {
                   >
                     Cancel
                   </Button>
-                ) : (
-                  <span className="text-muted-foreground">No actions available</span>
-                )}
-              </div>
-            </DetailCell>
-          </section>
+                </div>
+              ) : appointment.status === "checked_in" ? (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  disabled={changingStatus}
+                  onClick={() => setCancelOpen(true)}
+                >
+                  Cancel
+                </Button>
+              ) : null
+            }
+          />
 
-          <section className="grid gap-px bg-border ring-1 ring-border sm:grid-cols-2">
-            {patient ? (
-              <DetailCell label="Patient">
-                <p className="font-medium">{patient.name}</p>
-                <p className="text-muted-foreground">
-                  {patient.mrn} · {patient.phone}
-                </p>
-                <p className="capitalize text-muted-foreground">
-                  {age} · {patient.sex}
-                </p>
-              </DetailCell>
-            ) : (
-              <DetailCell label="Caller">
-                <p className="font-medium">{appointment.callerName ?? "Unnamed caller"}</p>
-                <p className="text-muted-foreground">{appointment.callerPhone ?? "No phone"}</p>
-                <p className="text-muted-foreground">The patient record is linked at check-in.</p>
-              </DetailCell>
-            )}
-            <DetailCell label="Care team">
-              <p className="font-medium">{practitioner.name}</p>
-              <p className="text-muted-foreground">{department.name}</p>
-            </DetailCell>
-          </section>
+          <Separator />
+          <OpdRecordFacts record={detail.data} />
 
+          <Separator />
           <PrescriptionDocuments
             orgSlug={orgSlug}
             appointmentId={appointmentId}
             prescriptions={prescriptions}
             disabled={appointment.status === "cancelled"}
           />
-
-          <section className="flex flex-col gap-2">
-            <h2 className="text-sm font-medium">Charges</h2>
-            <div className="overflow-x-auto ring-1 ring-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Description</TableHead>
-                    <TableHead className="w-20 text-right">Qty</TableHead>
-                    <TableHead className="w-36 text-right">Unit price</TableHead>
-                    <TableHead className="w-28">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {charges.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
-                        No charges for this OPD appointment
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    charges.map((charge) => (
-                      <TableRow key={charge.id}>
-                        <TableCell className="font-medium">{charge.description}</TableCell>
-                        <TableCell className="text-right tabular-nums">{charge.qty}</TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatMoney(charge.unitPrice, settings.data.currency)}
-                        </TableCell>
-                        <TableCell className="capitalize">{charge.status}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </section>
         </PageBody>
       </div>
 
@@ -323,7 +225,7 @@ function OpdAppointmentDetailRoute() {
             <p className="mt-1 text-5xl font-bold tabular-nums">{appointment.tokenNumber}</p>
           </div>
           <dl className="grid grid-cols-[28mm_1fr] gap-x-3 gap-y-2 border-b border-black py-4">
-            <dt className="font-semibold">OPD appointment</dt>
+            <dt className="font-semibold">Outpatient appointment</dt>
             <dd>{formatDateTime(appointment.arrivedAt ?? appointment.createdAt, timeZone)}</dd>
             <dt className="font-semibold">Patient</dt>
             <dd>
@@ -462,14 +364,9 @@ function PrescriptionDocuments({
   };
 
   return (
-    <section className="ring-1 ring-border">
-      <div className="flex items-start justify-between gap-3 border-b p-3">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-sm font-medium">Paper prescription</h2>
-          <p className="text-xs text-muted-foreground">
-            Keep the doctor's signed image or PDF as the source record.
-          </p>
-        </div>
+    <section className="flex flex-col gap-2">
+      <div className="flex min-h-6 items-center justify-between gap-2">
+        <h2 className="min-w-0 truncate text-muted-foreground">Paper prescription</h2>
         <input
           ref={inputRef}
           type="file"
@@ -494,73 +391,59 @@ function PrescriptionDocuments({
       </div>
 
       {prescriptions.length === 0 ? (
-        <div className="flex items-center gap-2 p-3 text-xs text-muted-foreground">
-          <FileTextIcon className="size-4" />
-          No prescription scan attached.
-        </div>
+        <p className="text-muted-foreground">
+          No scan attached. Keep the doctor's signed image or PDF as the source record.
+        </p>
       ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>File</TableHead>
-                <TableHead className="w-24">Size</TableHead>
-                <TableHead className="w-44">Captured</TableHead>
-                <TableHead className="w-32 text-right">Actions</TableHead>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>File</TableHead>
+              <TableHead className="w-24">Size</TableHead>
+              <TableHead className="w-44">Captured</TableHead>
+              <TableHead className="w-28 text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {prescriptions.map((prescription) => (
+              <TableRow key={prescription.id}>
+                <TableCell>
+                  <p className="font-medium">{prescription.name}</p>
+                  <p className="text-muted-foreground">{prescription.mimeType}</p>
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">
+                  {formatFileSize(prescription.size)}
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">
+                  {formatDateTime(prescription.createdAt, timeZone)}
+                </TableCell>
+                <TableCell>
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="ghost"
+                      onClick={() => void open(prescription.fileId)}
+                    >
+                      Open
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon-xs"
+                      variant="ghost"
+                      aria-label={`Remove ${prescription.name}`}
+                      disabled={removingId !== null}
+                      onClick={() => void remove(prescription.id)}
+                    >
+                      <Trash2Icon />
+                    </Button>
+                  </div>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {prescriptions.map((prescription) => (
-                <TableRow key={prescription.id}>
-                  <TableCell>
-                    <p className="font-medium">{prescription.name}</p>
-                    <p className="text-muted-foreground">{prescription.mimeType}</p>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
-                    {formatFileSize(prescription.size)}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
-                    {formatDateTime(prescription.createdAt, timeZone)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="ghost"
-                        onClick={() => void open(prescription.fileId)}
-                      >
-                        Open
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon-xs"
-                        variant="ghost"
-                        aria-label={`Remove ${prescription.name}`}
-                        disabled={removingId !== null}
-                        onClick={() => void remove(prescription.id)}
-                      >
-                        <Trash2Icon />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+            ))}
+          </TableBody>
+        </Table>
       )}
     </section>
-  );
-}
-
-function DetailCell({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="min-h-16 bg-background p-3 text-xs">
-      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      {children}
-    </div>
   );
 }

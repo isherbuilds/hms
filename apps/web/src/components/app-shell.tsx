@@ -22,19 +22,11 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarRail,
-  SidebarTrigger,
 } from "@hms/ui/components/sidebar";
 import { TooltipProvider } from "@hms/ui/components/tooltip";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClientOnly, Link, useNavigate } from "@tanstack/react-router";
-import {
-  CheckIcon,
-  ChevronsUpDownIcon,
-  LogInIcon,
-  LogOutIcon,
-  PlusIcon,
-  SettingsIcon,
-} from "lucide-react";
+import { CheckIcon, ChevronsUpDownIcon, LogInIcon, LogOutIcon, SettingsIcon } from "lucide-react";
 import { type ReactNode } from "react";
 
 import { Monogram } from "@/components/monogram";
@@ -88,7 +80,6 @@ function OrgSwitcher({
           Join organization
         </DropdownMenuItem>
         <DropdownMenuItem render={<Link to="/create" />} className="gap-2">
-          <PlusIcon className="size-3.5" />
           Create organization
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -187,7 +178,9 @@ function OrgSidebar({ orgSlug }: { orgSlug: string }) {
                       <SidebarMenuButton
                         tooltip={label}
                         className="[&_svg]:text-muted-foreground data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-sidebar-accent-foreground data-[status=active]:[&_svg]:text-foreground"
-                        render={<Link to={to} params={{ orgSlug }} />}
+                        render={
+                          <Link to={to} params={{ orgSlug }} preload="intent" preloadDelay={0} />
+                        }
                       >
                         <Icon />
                         <span>{label}</span>
@@ -208,7 +201,14 @@ function OrgSidebar({ orgSlug }: { orgSlug: string }) {
               <SidebarMenuButton
                 tooltip="Settings"
                 className="data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-sidebar-accent-foreground data-[status=active]:[&_svg]:text-foreground"
-                render={<Link to="/$orgSlug/settings" params={{ orgSlug }} />}
+                render={
+                  <Link
+                    to="/$orgSlug/settings"
+                    params={{ orgSlug }}
+                    preload="intent"
+                    preloadDelay={0}
+                  />
+                }
               >
                 <SettingsIcon />
                 <span>Settings</span>
@@ -232,15 +232,11 @@ export function AppShell({ orgSlug, children }: { orgSlug: string; children: Rea
   return (
     <TooltipProvider>
       <SidebarProvider className="h-svh overflow-hidden print:h-auto print:overflow-visible">
-        <ClientOnly fallback={<div className="hidden w-64 shrink-0 bg-sidebar md:block" />}>
+        <ClientOnly fallback={<div className="hidden w-64 shrink-0 bg-sidebar lg:block" />}>
           <OrgSidebar orgSlug={orgSlug} />
         </ClientOnly>
         <SidebarInset className="min-w-0 overflow-hidden print:overflow-visible">
-          <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-2 print:hidden md:hidden">
-            <SidebarTrigger />
-          </header>
-
-          <div className="min-w-0 flex-1 overflow-y-auto print:overflow-visible">{children}</div>
+          {children}
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>

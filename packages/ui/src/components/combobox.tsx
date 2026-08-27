@@ -9,7 +9,7 @@ import { cn } from "@hms/ui/lib/utils";
 type ComboboxProps<T> = {
   items: T[];
   getItemKey: (item: T) => React.Key;
-  getItemLabel?: (item: T) => string;
+  getItemLabel: (item: T) => string;
   renderItem: (item: T) => React.ReactNode;
   inputValue: string;
   onInputValueChange: (value: string) => void;
@@ -64,8 +64,8 @@ function Combobox<T>({
         if (item != null) onSelect(item);
       }}
       open={open}
-      onOpenChange={(nextOpen) => onOpenChange?.(nextOpen)}
-      itemToStringLabel={(item) => getItemLabel?.(item) ?? String(getItemKey(item))}
+      onOpenChange={onOpenChange}
+      itemToStringLabel={getItemLabel}
       itemToStringValue={(item) => (item == null ? "" : String(getItemKey(item)))}
       isItemEqualToValue={(item, value) =>
         item != null && value != null && getItemKey(item) === getItemKey(value)
@@ -110,7 +110,8 @@ function Combobox<T>({
                   disabled={isItemDisabled?.(item)}
                   data-slot="combobox-item"
                   className={cn(
-                    "relative flex cursor-default items-center rounded-md px-2 py-2 text-xs outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50",
+                    // The inset bar keeps keyboard highlighting distinguishable from the popover.
+                    "relative flex cursor-default items-center rounded-md px-2 py-2 text-xs outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:shadow-[inset_2px_0_0_var(--foreground)] data-disabled:pointer-events-none data-disabled:opacity-50",
                     itemClassName,
                   )}
                 >

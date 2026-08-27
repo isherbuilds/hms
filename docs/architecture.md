@@ -141,9 +141,10 @@ it does not create a Visit/Encounter wrapper. Details live in the
 
 Booking and walk-in creation share one appointment table and one intake UI. They
 remain separate server procedures because `createWalkIn` is an atomic financial
-transaction that requires `billing:write`, while `book` is a plain appointment
-insert that requires `opd:create`. A merged contract would over-privilege booking
-staff or weaken the money path.
+transaction that requires `billing:write`, while `book` requires `opd:create`
+and may atomically snapshot optional selected services as pending Charges. Those
+booked Charges stay outside billing worklists and invoice issuance until check-in.
+A merged contract would over-privilege booking staff or weaken the money path.
 
 ## Audit
 
@@ -180,11 +181,27 @@ Receivables, GST Output, and category revenue accounts. A unique
 `(orgId, sourceType, sourceId)` prevents duplicate posting; all math uses integer
 paise while API/storage amounts remain decimal strings.
 
+Split collection is one tenant-scoped transaction containing up to four
+Payments. Every line gets its own Receipt and journal source; UPI and card lines
+fail before insertion when their reconciliation reference is absent. Catalog
+charges selected together are likewise verified under the same organization
+and inserted in one transaction rather than one request per item.
+
 Trial balance and billing-ledger balance sheet read journals. GST reporting
 reads immutable invoice/credit-note lines because document numbers, patients,
 rates, and HSN/SAC are document facts. The current GST surface is an intra-state
 outward register, not a filing-ready GSTR-1 export.
 
+Billing paper is rendered on the server from one guarded `billing.getInvoice`
+call. Preview, print, and download share that PDF endpoint; the document routes
+do not repeat the domain query. Templates read only the immutable source facts
+for the selected Invoice, Payment, Credit Note, or refund, so later balance
+activity cannot rewrite an issued document. The renderer and its WASM stay
+behind a server-only dynamic import, and its Unicode fonts are application
+assets rather than network dependencies.
+
 Business Date is the calendar date in the Organization timezone with a local
-midnight boundary. Stored token/document/journal dates do not move when the
-timezone setting later changes.
+midnight boundary. Invoice, Payment, Credit Note, and Refund rows snapshot it at
+issuance; paper renders that stored date rather than reinterpreting `createdAt`.
+Stored token/document/journal dates do not move when the timezone setting later
+changes.

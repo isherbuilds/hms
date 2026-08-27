@@ -1,6 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 
 import { drainAuditWrites } from "@hms/api/audit";
+import { localMinute } from "@hms/api/lib/business-date";
 import { appRouter, type AppRouterClient } from "@hms/api/routers/index";
 import { auth } from "@hms/auth";
 
@@ -13,7 +14,9 @@ import {
 } from "../support/auth";
 import { clientFor, eventually, expectAuthStatus, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
+import { shiftLocalMinute } from "../support/time";
 import { uniqueSuffix } from "../support/unique";
+
 beforeAll(async () => {
   await resetTestDatabase();
 });
@@ -144,7 +147,8 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
     name: "Today Patient",
     phone: "5553100",
     sex: "other",
-    ageYears: 41,
+    dateOfBirth: "1985-08-27",
+    dobEstimated: true,
     address: "Today Address",
   });
   const department = await api.staff.createDepartment({ orgSlug: one.slug, name: "Today Dept" });
@@ -172,10 +176,10 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
     unitPrice: "500.00",
     taxRatePercent: "0",
   });
-  await api.billing.addCharge({
+  await api.billing.addCharges({
     orgSlug: one.slug,
     appointmentId: appointment.id,
-    catalogItemId: consult.id,
+    lines: [{ catalogItemId: consult.id }],
   });
 
   // Same client, both orgs, concurrently: scope must come from the claim on
@@ -393,7 +397,8 @@ const GUARDED_CALLS = {
       name: "Intrusion",
       phone: "5550000",
       sex: "other",
-      ageYears: 30,
+      dateOfBirth: "1996-08-27",
+      dobEstimated: true,
     }),
   "patient.search": (api, claim) => api.patient.search({ ...claim, query: "intrusion" }),
   "patient.get": (api, claim) => api.patient.get({ ...claim, patientId: Bun.randomUUIDv7() }),
@@ -401,12 +406,19 @@ const GUARDED_CALLS = {
     api.patient.update({
       ...claim,
       patientId: Bun.randomUUIDv7(),
+      updatedAt: new Date(0).toISOString(),
       name: "Intrusion",
       phone: "5550000",
       sex: "other",
-      ageYears: 30,
+      dateOfBirth: "1996-08-27",
+      dobEstimated: true,
     }),
+  "patient.visits": (api, claim) => api.patient.visits({ ...claim, patientId: Bun.randomUUIDv7() }),
+  "patient.account": (api, claim) =>
+    api.patient.account({ ...claim, patientId: Bun.randomUUIDv7() }),
   "catalog.list": (api, claim) => api.catalog.list({ ...claim }),
+  "catalog.searchServices": (api, claim) =>
+    api.catalog.searchServices({ ...claim, query: "intrusion" }),
   "catalog.create": (api, claim) =>
     api.catalog.create({
       ...claim,
@@ -504,13 +516,14 @@ const GUARDED_CALLS = {
       attachmentId: Bun.randomUUIDv7(),
     }),
   "billing.worklist": (api, claim) => api.billing.worklist({ ...claim }),
+  "billing.openInvoices": (api, claim) => api.billing.openInvoices({ ...claim }),
   "billing.listPendingCharges": (api, claim) =>
     api.billing.listPendingCharges({ ...claim, appointmentId: Bun.randomUUIDv7() }),
-  "billing.addCharge": (api, claim) =>
-    api.billing.addCharge({
+  "billing.addCharges": (api, claim) =>
+    api.billing.addCharges({
       ...claim,
       appointmentId: Bun.randomUUIDv7(),
-      catalogItemId: Bun.randomUUIDv7(),
+      lines: [{ catalogItemId: Bun.randomUUIDv7(), qty: 1 }],
     }),
   "billing.voidCharge": (api, claim) =>
     api.billing.voidCharge({
@@ -520,12 +533,11 @@ const GUARDED_CALLS = {
     }),
   "billing.issueInvoice": (api, claim) =>
     api.billing.issueInvoice({ ...claim, appointmentId: Bun.randomUUIDv7() }),
-  "billing.recordPayment": (api, claim) =>
-    api.billing.recordPayment({
+  "billing.recordPayments": (api, claim) =>
+    api.billing.recordPayments({
       ...claim,
       invoiceId: Bun.randomUUIDv7(),
-      method: "cash",
-      amount: "1.00",
+      payments: [{ method: "cash", amount: "1.00" }],
     }),
   "billing.issueCreditNote": (api, claim) =>
     api.billing.issueCreditNote({
@@ -700,7 +712,8 @@ test("patient rows are invisible from another org through search or get", async 
     name: "Alpha Patient",
     phone,
     sex: "female",
-    ageYears: 42,
+    dateOfBirth: "1984-08-27",
+    dobEstimated: true,
   });
 
   const bobClient = clientFor(bob);
@@ -709,6 +722,26 @@ test("patient rows are invisible from another org through search or get", async 
     bobClient.patient.get({ orgSlug: beta.slug, patientId: patient.id }),
     "NOT_FOUND",
   );
+  // The record page's two child reads answer the same way. An empty visit list
+  // would confirm the id exists somewhere; absence must look like absence.
+  await expectORPCCode(
+    bobClient.patient.visits({ orgSlug: beta.slug, patientId: patient.id }),
+    "NOT_FOUND",
+  );
+  await expectORPCCode(
+    bobClient.patient.account({ orgSlug: beta.slug, patientId: patient.id }),
+    "NOT_FOUND",
+  );
+
+  // And they answer for a patient that is in scope.
+  const aliceClient = clientFor(alice);
+  const [visits, account] = await Promise.all([
+    aliceClient.patient.visits({ orgSlug: alpha.slug, patientId: patient.id }),
+    aliceClient.patient.account({ orgSlug: alpha.slug, patientId: patient.id }),
+  ]);
+  expect(visits.items).toHaveLength(0);
+  expect(account.invoices).toHaveLength(0);
+  expect(account.outstanding).toBe("0.00");
 });
 
 test("one client concurrently scopes patient calls to two organizations", async () => {
@@ -723,21 +756,22 @@ test("one client concurrently scopes patient calls to two organizations", async 
       name: "Patient In One",
       phone: "5551101",
       sex: "male",
-      ageYears: 20,
+      dateOfBirth: "2006-08-27",
+      dobEstimated: true,
     }),
     api.patient.register({
       orgSlug: two.slug,
       name: "Patient In Two",
       phone: "5551102",
       sex: "female",
-      ageYears: 21,
+      dateOfBirth: "2005-08-27",
+      dobEstimated: true,
     }),
   ]);
   const [seenInOne, seenInTwo] = await Promise.all([
     api.patient.search({ orgSlug: one.slug }),
     api.patient.search({ orgSlug: two.slug }),
   ]);
-
   expect(seenInOne.items.map((patient) => patient.id)).toEqual([inOne.id]);
   expect(seenInTwo.items.map((patient) => patient.id)).toEqual([inTwo.id]);
 });
@@ -855,7 +889,8 @@ test("OPD appointment rows are invisible from another org through queue or get",
     name: "Alpha OpdAppointment Patient",
     phone: "5552401",
     sex: "other",
-    ageYears: 30,
+    dateOfBirth: "1996-08-27",
+    dobEstimated: true,
     address: "",
   });
   const fee = await aliceClient.catalog.create({
@@ -876,6 +911,10 @@ test("OPD appointment rows are invisible from another org through queue or get",
     departmentId: department.id,
     consultFeeItemId: fee.id,
   });
+  const currentMinute = localMinute(
+    new Date(),
+    (await aliceClient.settings.get({ orgSlug: alpha.slug })).timeZone,
+  );
   const created = await aliceClient.opd.createWalkIn({
     orgSlug: alpha.slug,
     patientId: patient.id,
@@ -888,7 +927,7 @@ test("OPD appointment rows are invisible from another org through queue or get",
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    scheduledLocal: "2026-08-22T10:00",
+    scheduledLocal: shiftLocalMinute(currentMinute, 1),
   });
 
   const bob = await createTestUser("opd-scope-bob");
@@ -923,7 +962,8 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
       name: "OpdAppointment Patient One",
       phone: "5552402",
       sex: "other",
-      ageYears: 30,
+      dateOfBirth: "1996-08-27",
+      dobEstimated: true,
       address: "",
     }),
     api.patient.register({
@@ -931,7 +971,8 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
       name: "OpdAppointment Patient Two",
       phone: "5552403",
       sex: "other",
-      ageYears: 30,
+      dateOfBirth: "1996-08-27",
+      dobEstimated: true,
       address: "",
     }),
   ]);
@@ -992,6 +1033,7 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
     api.opd.day({ orgSlug: one.slug }),
     api.opd.day({ orgSlug: two.slug }),
   ]);
+  if (!inOne.invoice || !inTwo.invoice) throw new Error("Expected walk-ins to issue invoices");
 
   expect(seenInOne.items.map((appointment) => appointment.id)).toEqual([inOne.appointment.id]);
   expect(seenInTwo.items.map((appointment) => appointment.id)).toEqual([inTwo.appointment.id]);
@@ -1030,7 +1072,8 @@ async function createScopedInvoice(
     name: `${seed} Patient`,
     phone: "5553400",
     sex: "other",
-    ageYears: 30,
+    dateOfBirth: "1996-08-27",
+    dobEstimated: true,
     address: "",
   });
   const fee = await api.catalog.create({
@@ -1058,6 +1101,7 @@ async function createScopedInvoice(
     departmentId: department.id,
     settlement,
   });
+  if (!created.invoice) throw new Error("Expected walk-in to issue an invoice");
   return {
     appointment: created.appointment,
     invoice: created.invoice,
@@ -1173,11 +1217,10 @@ test("one client concurrently scopes report calls to two organizations", async (
     createScopedInvoice(api, one, "Report One", unpaid),
     createScopedInvoice(api, two, "Report Two", unpaid),
   ]);
-  await api.billing.recordPayment({
+  await api.billing.recordPayments({
     orgSlug: one.slug,
     invoiceId: inOne.invoice.id,
-    method: "cash",
-    amount: "40.00",
+    payments: [{ method: "cash", amount: "40.00" }],
   });
 
   const range = reportRange();

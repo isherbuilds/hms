@@ -19,7 +19,8 @@ function registration(orgSlug: string, name: string, phone: string) {
     name,
     phone,
     sex: "other" as const,
-    ageYears: 30,
+    dateOfBirth: "1996-08-27",
+    dobEstimated: true,
     address: "",
   };
 }
@@ -49,7 +50,7 @@ test("patient search only returns a cursor when another matching row exists", as
     limit,
   });
   expect(exactPage.items).toHaveLength(limit);
-  expect(exactPage.items.every((patient) => patient.orgId === exactOrganization.id)).toBe(true);
+  expect(exactPage.items.every((patient) => patient.name.startsWith("Exact Boundary"))).toBe(true);
   expect(exactPage.nextCursor).toBeNull();
 
   const firstOverflowPage = await api.patient.search({
@@ -59,7 +60,7 @@ test("patient search only returns a cursor when another matching row exists", as
   });
   expect(firstOverflowPage.items).toHaveLength(limit);
   expect(
-    firstOverflowPage.items.every((patient) => patient.orgId === overflowOrganization.id),
+    firstOverflowPage.items.every((patient) => patient.name.startsWith("Overflow Boundary")),
   ).toBe(true);
   expect(firstOverflowPage.nextCursor).not.toBeNull();
 
@@ -75,7 +76,7 @@ test("patient search only returns a cursor when another matching row exists", as
     cursor: nextCursor,
   });
   expect(secondOverflowPage.items).toHaveLength(1);
-  expect(secondOverflowPage.items[0]?.orgId).toBe(overflowOrganization.id);
+  expect(secondOverflowPage.items[0]?.name).toMatch(/^Overflow Boundary/);
   expect(secondOverflowPage.nextCursor).toBeNull();
 });
 
@@ -95,7 +96,8 @@ test("pagination keeps rows that share a creation millisecond", async () => {
     name: `Micro Boundary ${index}`,
     phone: `77700${index}`,
     sex: "other" as const,
-    ageYears: 30,
+    dateOfBirth: "1996-08-27",
+    dobEstimated: true,
     address: "",
     createdAt: sql`${`2026-08-24T05:00:00.500${String(index + 1).padStart(3, "0")}Z`}::timestamptz`,
   }));

@@ -1,6 +1,7 @@
 import * as React from "react";
 
-const MOBILE_BREAKPOINT = 768;
+// Keep the navigation and task overlays touch-first through tablet widths.
+const MOBILE_BREAKPOINT = 1024;
 const QUERY = `(max-width: ${MOBILE_BREAKPOINT - 1}px)`;
 
 /**

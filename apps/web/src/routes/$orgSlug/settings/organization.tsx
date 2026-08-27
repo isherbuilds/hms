@@ -21,8 +21,10 @@ import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 
+import { SettingsTabs } from "./route";
+
 export const Route = createFileRoute("/$orgSlug/settings/organization")({
-  head: () => ({ meta: [{ title: "Organization settings · HMS" }] }),
+  head: () => ({ meta: [{ title: "Organization · HMS" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     await queryClient.prefetchQuery(orpc.settings.get.queryOptions({ input: { orgSlug } }));
   },
@@ -88,9 +90,10 @@ function SettingsRoute() {
   return (
     <>
       <PageHeader
-        title="Settings"
+        title="Organization"
         description="Legal identity, currency, and document numbering for this organization"
       />
+      <SettingsTabs orgSlug={orgSlug} />
       <PageBody className="max-w-2xl">
         {settings.isError && (
           <ErrorNote title="Could not load settings" detail={settings.error.message} />

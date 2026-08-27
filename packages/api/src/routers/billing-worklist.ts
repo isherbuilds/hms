@@ -7,50 +7,70 @@ import { patients } from "@hms/db/schema/patients";
 import { payments } from "@hms/db/schema/payments";
 import { practitioners } from "@hms/db/schema/practitioners";
 import { refunds } from "@hms/db/schema/refunds";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gt, ilike, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
+import { businessDate, businessDayWindow } from "../lib/business-date";
 import { invoiceBalancesFor } from "../lib/invoice-balance";
+import { fromPaise, toPaise } from "../lib/invoice-math";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
 
 /**
- * The organization-wide money worklist: charges still waiting for an Invoice,
- * and issued Invoices still waiting for collection. The lists stay separate
- * because resolving them takes different actions and they have different row
- * shapes.
+ * The organization-wide money worklist, split by how it scales.
  *
- * Both lists filter before applying their oldest-first cap. The unpaid SQL
- * predicate only selects rows; displayed balances still come from
- * `invoiceBalancesFor`, which remains the source of truth for money on screen.
+ * `worklist` is bounded by the day: the charges still waiting for an invoice can
+ * only be as many as the patients currently in the building, and the four
+ * summary figures are aggregates rather than rows. It is the half that polls.
+ *
+ * `openInvoices` is the half that grows forever, so it pages on a keyset and
+ * filters in SQL. Nothing here returns a whole row: each select lists exactly
+ * the columns the billing screen draws, so widening the screen is a deliberate
+ * edit rather than a silent one.
  */
-export const billingWorklistRouter = {
-  worklist: orgProcedure(
-    { billing: ["read"] },
-    orgInput.extend({ limit: z.number().int().min(1).max(200).default(50) }),
-  ).handler(async ({ context, input }) => {
-    const { scope } = context;
-    const pendingValue = sql<string>`sum(${charges.unitPrice} * ${charges.qty})`;
-    const settled = sql`
-      ${invoices.grandTotal}
-      - coalesce((select sum(${creditNotes.total}) from ${creditNotes}
-          where ${creditNotes.orgId} = ${scope.orgId} and ${creditNotes.invoiceId} = ${invoices.id}), 0)
-      - coalesce((select sum(${payments.amount}) from ${payments}
-          where ${payments.orgId} = ${scope.orgId} and ${payments.invoiceId} = ${invoices.id}), 0)
-      + coalesce((select sum(${refunds.amount}) from ${refunds}
-          where ${refunds.orgId} = ${scope.orgId} and ${refunds.invoiceId} = ${invoices.id}), 0)`;
 
-    const [unbilled, openInvoices, settings] = await Promise.all([
-      db
+const OVERDUE_DAYS = 7;
+const STALE_DAYS = 30;
+
+const searchQuery = z.string().trim().min(1).max(100).optional();
+
+/** Everything still owed on an invoice: total, less credits and payments, plus refunds. */
+function settledExpression(orgId: string) {
+  return sql`
+    ${invoices.grandTotal}
+    - coalesce((select sum(${creditNotes.total}) from ${creditNotes}
+        where ${creditNotes.orgId} = ${orgId} and ${creditNotes.invoiceId} = ${invoices.id}), 0)
+    - coalesce((select sum(${payments.amount}) from ${payments}
+        where ${payments.orgId} = ${orgId} and ${payments.invoiceId} = ${invoices.id}), 0)
+    + coalesce((select sum(${refunds.amount}) from ${refunds}
+        where ${refunds.orgId} = ${orgId} and ${refunds.invoiceId} = ${invoices.id}), 0)`;
+}
+
+const daysAgo = (count: number) => new Date(Date.now() - count * 86_400_000);
+
+export const billingWorklistRouter = {
+  worklist: orgProcedure({ billing: ["read"] }, orgInput.extend({ query: searchQuery })).handler(
+    async ({ context, input }) => {
+      const { scope } = context;
+      const settings = await readOrgSettings(scope.orgId);
+      const today = businessDayWindow(
+        businessDate(new Date(), settings.timeZone),
+        settings.timeZone,
+      );
+      const settled = settledExpression(scope.orgId);
+      const staleBefore = daysAgo(STALE_DAYS);
+      const search = input.query;
+
+      const unbilled = await db
         .select({
           appointmentId: opdAppointments.id,
           tokenNumber: opdAppointments.tokenNumber,
-          opdStatus: opdAppointments.status,
           patientName: patients.name,
           patientMrn: patients.mrn,
+          patientPhone: patients.phone,
           practitionerName: practitioners.name,
           chargeCount: sql<number>`count(*)::integer`,
-          pendingValue,
+          pendingValue: sql<string>`sum(${charges.unitPrice} * ${charges.qty})`,
           oldestChargeAt: sql<Date>`min(${charges.createdAt})`,
         })
         .from(charges)
@@ -72,53 +92,132 @@ export const billingWorklistRouter = {
             eq(practitioners.id, opdAppointments.practitionerId),
           ),
         )
-        .where(and(eq(charges.orgId, scope.orgId), eq(charges.status, "pending")))
+        .where(
+          and(
+            eq(charges.orgId, scope.orgId),
+            eq(charges.status, "pending"),
+            eq(opdAppointments.status, "checked_in"),
+            search
+              ? or(ilike(patients.name, `%${search}%`), ilike(patients.mrn, `%${search}%`))
+              : undefined,
+          ),
+        )
         .groupBy(
           opdAppointments.id,
           opdAppointments.tokenNumber,
-          opdAppointments.status,
           patients.name,
           patients.mrn,
+          patients.phone,
           practitioners.name,
         )
-        .orderBy(sql`min(${charges.createdAt}) asc`, asc(opdAppointments.id))
-        .limit(input.limit),
-      db
+        // Oldest first: the patient who has waited longest is the one most likely
+        // to walk out unbilled.
+        .orderBy(sql`min(${charges.createdAt}) asc`, asc(opdAppointments.id));
+
+      // One scan of the invoice table answers all four figures. Splitting them
+      // into four procedures would be four scans on the same 10-second poll.
+      const [openMoney] = await db
         .select({
-          id: invoices.id,
-          invoiceNumber: invoices.invoiceNumber,
-          currency: invoices.currency,
-          grandTotal: invoices.grandTotal,
-          createdAt: invoices.createdAt,
-          patientName: invoices.patientName,
-          patientMrn: invoices.patientMrn,
-          appointmentId: opdAppointments.id,
-          tokenNumber: opdAppointments.tokenNumber,
+          outstanding: sql<string>`coalesce(sum(case when (${settled}) > 0 then (${settled}) else 0 end), 0)`,
+          openCount: sql<number>`count(*) filter (where (${settled}) > 0)::integer`,
+          staleTotal: sql<string>`coalesce(sum(case when (${settled}) > 0 and ${invoices.createdAt} < ${staleBefore} then (${settled}) else 0 end), 0)`,
+          staleCount: sql<number>`count(*) filter (where (${settled}) > 0 and ${invoices.createdAt} < ${staleBefore})::integer`,
         })
         .from(invoices)
-        .innerJoin(
-          opdAppointments,
-          and(
-            eq(opdAppointments.orgId, scope.orgId),
-            eq(opdAppointments.id, invoices.opdAppointmentId),
-          ),
-        )
-        .where(and(eq(invoices.orgId, scope.orgId), sql`${settled} > 0`))
-        .orderBy(asc(invoices.createdAt), asc(invoices.id))
-        .limit(input.limit),
-      readOrgSettings(scope.orgId),
-    ]);
+        .where(eq(invoices.orgId, scope.orgId));
 
-    const balances = await invoiceBalancesFor(db, scope.orgId, openInvoices);
+      const [collected] = await db
+        .select({
+          total: sql<string>`coalesce(sum(${payments.amount}), 0)`,
+          receiptCount: sql<number>`count(*)::integer`,
+        })
+        .from(payments)
+        .where(
+          and(
+            eq(payments.orgId, scope.orgId),
+            sql`${payments.createdAt} >= ${today.start}`,
+            sql`${payments.createdAt} < ${today.end}`,
+          ),
+        );
+
+      const toBillPaise = unbilled.reduce((sum, row) => sum + toPaise(row.pendingValue), 0);
+
+      return {
+        currency: settings.currency,
+        unbilled,
+        summary: {
+          toBillTotal: fromPaise(toBillPaise),
+          toBillCount: unbilled.length,
+          collectedToday: collected?.total ?? "0",
+          receiptCount: collected?.receiptCount ?? 0,
+          outstanding: openMoney?.outstanding ?? "0",
+          openCount: openMoney?.openCount ?? 0,
+          staleTotal: openMoney?.staleTotal ?? "0",
+          staleCount: openMoney?.staleCount ?? 0,
+        },
+      };
+    },
+  ),
+
+  openInvoices: orgProcedure(
+    { billing: ["read"] },
+    orgInput.extend({
+      query: searchQuery,
+      overdueOnly: z.boolean().default(false),
+      // Keyset on the UUIDv7 id alone, like `patient.search`: invoice ids are
+      // minted at issue so they order chronologically, and a timestamp cursor's
+      // millisecond truncation is unrepresentable.
+      cursor: z.string().optional(),
+      limit: z.number().int().min(1).max(100).default(25),
+    }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+    const search = input.query;
+    const rows = await db
+      .select({
+        id: invoices.id,
+        invoiceNumber: invoices.invoiceNumber,
+        appointmentId: invoices.opdAppointmentId,
+        patientName: invoices.patientName,
+        patientMrn: invoices.patientMrn,
+        patientPhone: invoices.patientPhone,
+        grandTotal: invoices.grandTotal,
+        createdAt: invoices.createdAt,
+      })
+      .from(invoices)
+      .where(
+        and(
+          eq(invoices.orgId, scope.orgId),
+          sql`(${settledExpression(scope.orgId)}) > 0`,
+          input.cursor ? gt(invoices.id, input.cursor) : undefined,
+          input.overdueOnly ? lt(invoices.createdAt, daysAgo(OVERDUE_DAYS)) : undefined,
+          search
+            ? or(
+                ilike(invoices.patientName, `%${search}%`),
+                ilike(invoices.patientMrn, `%${search}%`),
+                ilike(invoices.invoiceNumber, `%${search}%`),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(asc(invoices.id))
+      .limit(input.limit + 1);
+
+    const hasNextPage = rows.length > input.limit;
+    if (hasNextPage) rows.pop();
+
+    // The SQL predicate picks the rows; displayed money still comes from
+    // `invoiceBalancesFor`, which stays the single source of truth on screen.
+    const balances = await invoiceBalancesFor(db, scope.orgId, rows);
+    const last = rows[rows.length - 1];
 
     return {
-      currency: settings.currency,
-      unbilled,
-      unpaid: openInvoices.map((invoice) => {
+      items: rows.map((invoice) => {
         const balance = balances.get(invoice.id);
         if (!balance) throw new Error(`Balance missing for invoice ${invoice.id}`);
-        return { ...invoice, outstanding: balance.outstanding, paid: balance.paymentsTotal };
+        return { ...invoice, paid: balance.paymentsTotal, outstanding: balance.outstanding };
       }),
+      nextCursor: hasNextPage && last ? last.id : null,
     };
   }),
 };

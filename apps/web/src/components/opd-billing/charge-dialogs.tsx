@@ -1,4 +1,5 @@
 import { Button } from "@hms/ui/components/button";
+import { Combobox } from "@hms/ui/components/combobox";
 import {
   Dialog,
   DialogContent,
@@ -17,24 +18,21 @@ import {
   FormMessage,
 } from "@hms/ui/components/form";
 import { Input } from "@hms/ui/components/input";
-import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { Textarea } from "@hms/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SearchIcon, Trash2Icon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { useZodForm } from "@/hooks/use-zod-form";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { formatMoney, MONEY_INPUT_PATTERN } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
 import { toastOpdConflict } from "@/lib/opd-operational-query";
 
 import { useBillingInvalidation } from "./use-billing-invalidation";
-
-const addChargeSchema = z.object({
-  catalogItemId: z.string().min(1, "Choose a catalog item"),
-  qty: z.number().int().min(1, "Quantity from 1 to 999").max(999, "Quantity from 1 to 999"),
-});
 
 const voidSchema = z.object({ reason: z.string().trim().min(1, "Enter a reason").max(500) });
 
@@ -62,29 +60,36 @@ export function AddChargeDialog({
   currency: string;
 }) {
   const invalidate = useBillingInvalidation(orgSlug, appointmentId);
-  const catalog = useQuery(
-    orpc.catalog.list.queryOptions({ input: { orgSlug, activeOnly: true } }),
-  );
-  const form = useZodForm(addChargeSchema, {
-    defaultValues: {
-      catalogItemId: "",
-      qty: 1,
-    },
+  const [query, setQuery] = useState("");
+  const [comboOpen, setComboOpen] = useState(false);
+  const [selected, setSelected] = useState<
+    Array<{ catalogItemId: string; code: string; name: string; unitPrice: string; qty: number }>
+  >([]);
+  const normalizedQuery = query.trim();
+  const debouncedQuery = useDebouncedValue(normalizedQuery, 250);
+  const catalog = useQuery({
+    ...orpc.catalog.searchServices.queryOptions({
+      input: { orgSlug, query: debouncedQuery || undefined },
+    }),
+    enabled: debouncedQuery.length > 0 && debouncedQuery === normalizedQuery,
   });
   const mutation = useMutation(
-    orpc.billing.addCharge.mutationOptions({
+    orpc.billing.addCharges.mutationOptions({
       onSuccess: async () => {
         await invalidate();
-        toast.success("Charge added");
+        toast.success(selected.length === 1 ? "Charge added" : `${selected.length} charges added`);
         onOpenChange(false);
-        form.reset();
+        setQuery("");
+        setSelected([]);
       },
       onError: (error) => toast.error(error.message),
     }),
   );
-  const submit = form.handleSubmit((value) =>
-    mutation.mutate({ orgSlug, appointmentId, ...value }),
-  );
+  const selectedIds = new Set(selected.map((item) => item.catalogItemId));
+  const results =
+    debouncedQuery === normalizedQuery
+      ? (catalog.data ?? []).filter((item) => !selectedIds.has(item.id))
+      : [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -95,61 +100,140 @@ export function AddChargeDialog({
             Add an active service from the organization catalog.
           </DialogDescription>
         </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={submit} className="flex flex-col gap-3">
-            <FormField
-              control={form.control}
-              name="catalogItemId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Catalog item</FormLabel>
-                  <FormControl>
-                    <NativeSelect {...field} disabled={mutation.isPending || catalog.isPending}>
-                      <option value="">Choose an item</option>
-                      {(catalog.data ?? []).map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name} · {formatMoney(item.unitPrice, currency)}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="qty"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Quantity</FormLabel>
-                  <FormControl>
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (selected.length === 0) return;
+            mutation.mutate({
+              orgSlug,
+              appointmentId,
+              lines: selected.map(({ catalogItemId, qty }) => ({ catalogItemId, qty })),
+            });
+          }}
+        >
+          <label className="grid gap-1.5">
+            <span>Catalog items</span>
+            <div className="relative">
+              <SearchIcon className="pointer-events-none absolute top-2.5 left-2.5 z-10 size-3.5 text-muted-foreground" />
+              <Combobox
+                items={results}
+                getItemKey={(item) => item.id}
+                getItemLabel={(item) => item.name}
+                inputValue={query}
+                onInputValueChange={setQuery}
+                onSelect={(item) => {
+                  setSelected([
+                    ...selected,
+                    {
+                      catalogItemId: item.id,
+                      code: item.code,
+                      name: item.name,
+                      unitPrice: item.unitPrice,
+                      qty: 1,
+                    },
+                  ]);
+                  setQuery("");
+                  setComboOpen(false);
+                }}
+                open={comboOpen && normalizedQuery.length > 0}
+                onOpenChange={setComboOpen}
+                disabled={mutation.isPending}
+                inputClassName="pl-8"
+                inputProps={{
+                  autoComplete: "off",
+                  placeholder: "Search code, name or category",
+                  onFocus: () => {
+                    if (normalizedQuery) setComboOpen(true);
+                  },
+                }}
+                renderItem={(item) => (
+                  <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3">
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{item.name}</span>
+                      <span className="font-mono text-muted-foreground">{item.code}</span>
+                    </span>
+                    <span className="tabular-nums">{formatMoney(item.unitPrice, currency)}</span>
+                  </div>
+                )}
+                emptyContent={
+                  normalizedQuery ? (
+                    <p className="px-3 py-2 text-muted-foreground">
+                      {catalog.isError
+                        ? catalog.error.message
+                        : catalog.isPending || debouncedQuery !== normalizedQuery
+                          ? "Searching…"
+                          : "No unused item matches"}
+                    </p>
+                  ) : undefined
+                }
+              />
+            </div>
+          </label>
+          {selected.length > 0 ? (
+            <div className="divide-y divide-border border-y border-border">
+              {selected.map((item) => (
+                <div
+                  key={item.catalogItemId}
+                  className="grid grid-cols-[minmax(0,1fr)_5rem_1.75rem] items-end gap-2 py-2"
+                >
+                  <div className="min-w-0 self-center">
+                    <p className="truncate font-medium">{item.name}</p>
+                    <p className="font-mono text-muted-foreground">
+                      {item.code} · {formatMoney(item.unitPrice, currency)}
+                    </p>
+                  </div>
+                  <label className="grid gap-1">
+                    <span className="text-muted-foreground">Qty</span>
                     <Input
                       type="number"
                       min={1}
                       max={999}
-                      {...field}
-                      onChange={(event) => field.onChange(Number(event.target.value))}
+                      value={item.qty}
                       disabled={mutation.isPending}
+                      onChange={(event) => {
+                        const qty = Number(event.target.value);
+                        if (!Number.isInteger(qty) || qty < 1 || qty > 999) return;
+                        setSelected(
+                          selected.map((line) =>
+                            line.catalogItemId === item.catalogItemId ? { ...line, qty } : line,
+                          ),
+                        );
+                      }}
                     />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => onOpenChange(false)}
-                disabled={mutation.isPending}
-              >
-                Cancel
-              </Button>
-              <SubmitButton isSubmitting={mutation.isPending}>Add charge</SubmitButton>
-            </DialogFooter>
-          </form>
-        </Form>
+                  </label>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    disabled={mutation.isPending}
+                    aria-label={`Remove ${item.name}`}
+                    onClick={() =>
+                      setSelected(
+                        selected.filter((line) => line.catalogItemId !== item.catalogItemId),
+                      )
+                    }
+                  >
+                    <Trash2Icon />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              disabled={mutation.isPending}
+            >
+              Cancel
+            </Button>
+            <SubmitButton isSubmitting={mutation.isPending} disabled={selected.length === 0}>
+              Add {selected.length > 1 ? `${selected.length} charges` : "charge"}
+            </SubmitButton>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

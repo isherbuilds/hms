@@ -52,7 +52,10 @@ export function CheckInOpdAppointmentDialog({
         toast.success(`Checked in · Token ${appointment.tokenNumber}`);
         onClose();
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => {
+        if (toastOpdConflict(queryClient, error, orgSlug, appointmentId, "checkIn")) return;
+        toast.error(error.message);
+      },
     }),
   );
   const caller = [callerName, callerPhone].filter(Boolean).join(" · ");

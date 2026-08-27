@@ -28,7 +28,6 @@ import {
 } from "@hms/ui/components/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -38,6 +37,8 @@ import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
 import { isConflictError } from "@/lib/orpc-error";
+
+import { SettingsTabs } from "./route";
 
 export const Route = createFileRoute("/$orgSlug/settings/staff")({
   head: () => ({ meta: [{ title: "Staff · HMS" }] }),
@@ -145,24 +146,32 @@ function StaffRoute() {
         title="Staff"
         description="Manage clinical departments, practitioners, login links, and consultation fees"
       />
+      <SettingsTabs orgSlug={orgSlug} />
 
       <PageBody>
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-medium">Departments</h2>
-              <p className="text-xs text-muted-foreground">Organize practitioners by department.</p>
-            </div>
-            <Button size="sm" onClick={() => setDepartmentDialog({ mode: "create" })}>
-              <PlusIcon data-icon="inline-start" />
+        {/* Two genuine groups of rows, so two trays, in the same shell as the
+            OPD day list (docs/design.md §1). The heading lives in the tray's
+            label row rather than above it: one label per group, not two. */}
+        <section className="flex flex-col rounded-xl bg-muted p-1">
+          <div className="flex h-9 items-center justify-between gap-2 px-3 text-muted-foreground">
+            <h2 className="min-w-0 truncate">Departments</h2>
+            <Button size="xs" onClick={() => setDepartmentDialog({ mode: "create" })}>
               New department
             </Button>
           </div>
-
-          {departments.isPending ? null : departments.isError ? (
-            <ErrorNote title="Could not load departments" detail={departments.error.message} />
-          ) : (
-            <div className="ring-1 ring-border">
+          <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
+            {departments.isPending ? null : departments.isError ? (
+              <ErrorNote
+                title="Could not load departments"
+                detail={departments.error.message}
+                inset
+              />
+            ) : departments.data.length === 0 ? (
+              <div className="flex min-h-32 items-center justify-center px-4 text-center text-muted-foreground">
+                No departments yet. A department groups practitioners and carries the fee they
+                consult at.
+              </div>
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -173,64 +182,57 @@ function StaffRoute() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {departments.data.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">
-                        No departments yet
+                  {departments.data.map((department) => (
+                    <TableRow key={department.id}>
+                      <TableCell className="font-medium">{department.name}</TableCell>
+                      <TableCell>
+                        {department.defaultConsultFeeItemId
+                          ? (catalogById.get(department.defaultConsultFeeItemId)?.name ?? "—")
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">
+                        {formatDate(department.createdAt, timeZone)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => setDepartmentDialog({ mode: "edit", department })}
+                        >
+                          Edit
+                        </Button>
                       </TableCell>
                     </TableRow>
-                  ) : (
-                    departments.data.map((department) => (
-                      <TableRow key={department.id}>
-                        <TableCell className="font-medium">{department.name}</TableCell>
-                        <TableCell>
-                          {department.defaultConsultFeeItemId
-                            ? (catalogById.get(department.defaultConsultFeeItemId)?.name ?? "—")
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-muted-foreground">
-                          {formatDate(department.createdAt, timeZone)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            onClick={() => setDepartmentDialog({ mode: "edit", department })}
-                          >
-                            Edit
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
+                  ))}
                 </TableBody>
               </Table>
-            </div>
-          )}
+            )}
+          </div>
         </section>
 
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-medium">Practitioners</h2>
-              <p className="text-xs text-muted-foreground">
-                Link clinicians to departments, accounts, and consultation fees.
-              </p>
-            </div>
+        <section className="flex flex-col rounded-xl bg-muted p-1">
+          <div className="flex h-9 items-center justify-between gap-2 px-3 text-muted-foreground">
+            <h2 className="min-w-0 truncate">Practitioners</h2>
             <Button
-              size="sm"
+              size="xs"
               disabled={!departments.data?.length}
               onClick={() => setPractitionerDialog({ mode: "create" })}
             >
-              <PlusIcon data-icon="inline-start" />
               New practitioner
             </Button>
           </div>
-
-          {practitioners.isPending ? null : practitioners.isError ? (
-            <ErrorNote title="Could not load practitioners" detail={practitioners.error.message} />
-          ) : (
-            <div className="ring-1 ring-border">
+          <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
+            {practitioners.isPending ? null : practitioners.isError ? (
+              <ErrorNote
+                title="Could not load practitioners"
+                detail={practitioners.error.message}
+                inset
+              />
+            ) : practitioners.data.length === 0 ? (
+              <div className="flex min-h-32 items-center justify-center px-4 text-center text-muted-foreground">
+                No practitioners yet. Add the clinicians a patient can be booked with.
+              </div>
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -244,65 +246,57 @@ function StaffRoute() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {practitioners.data.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground">
-                        No practitioners yet
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    practitioners.data.map((practitioner) => {
-                      const linkedMember = practitioner.memberUserId
-                        ? memberByUserId.get(practitioner.memberUserId)
-                        : undefined;
-                      return (
-                        <TableRow key={practitioner.id}>
-                          <TableCell className="font-medium">{practitioner.name}</TableCell>
-                          <TableCell>
-                            {departmentById.get(practitioner.departmentId)?.name ?? "—"}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {practitioner.registrationNumber || "—"}
-                          </TableCell>
-                          <TableCell>
-                            {linkedMember ? (
-                              <div className="min-w-0">
-                                <div className="truncate">{linkedMember.name}</div>
-                                <div className="truncate text-muted-foreground">
-                                  {linkedMember.email}
-                                </div>
+                  {practitioners.data.map((practitioner) => {
+                    const linkedMember = practitioner.memberUserId
+                      ? memberByUserId.get(practitioner.memberUserId)
+                      : undefined;
+                    return (
+                      <TableRow key={practitioner.id}>
+                        <TableCell className="font-medium">{practitioner.name}</TableCell>
+                        <TableCell>
+                          {departmentById.get(practitioner.departmentId)?.name ?? "—"}
+                        </TableCell>
+                        <TableCell className="font-mono text-muted-foreground">
+                          {practitioner.registrationNumber || "—"}
+                        </TableCell>
+                        <TableCell>
+                          {linkedMember ? (
+                            <div className="min-w-0">
+                              <div className="truncate">{linkedMember.name}</div>
+                              <div className="truncate text-muted-foreground">
+                                {linkedMember.email}
                               </div>
-                            ) : (
-                              "—"
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {practitioner.consultFeeItemId
-                              ? (catalogById.get(practitioner.consultFeeItemId)?.name ?? "—")
-                              : "—"}
-                          </TableCell>
-                          <TableCell>
-                            {practitioner.followUpFeeItemId
-                              ? (catalogById.get(practitioner.followUpFeeItemId)?.name ?? "—")
-                              : "—"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              onClick={() => setPractitionerDialog({ mode: "edit", practitioner })}
-                            >
-                              Edit
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
+                            </div>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {practitioner.consultFeeItemId
+                            ? (catalogById.get(practitioner.consultFeeItemId)?.name ?? "—")
+                            : "—"}
+                        </TableCell>
+                        <TableCell>
+                          {practitioner.followUpFeeItemId
+                            ? (catalogById.get(practitioner.followUpFeeItemId)?.name ?? "—")
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={() => setPractitionerDialog({ mode: "edit", practitioner })}
+                          >
+                            Edit
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
-            </div>
-          )}
+            )}
+          </div>
         </section>
       </PageBody>
 

@@ -14,13 +14,30 @@ export function hasErrorCode(error: unknown, code: string): boolean {
   return false;
 }
 
+export function errorDataCode(error: unknown): string | undefined {
+  let current = error;
+  const seen = new Set<unknown>();
+
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const data = "data" in current ? current.data : undefined;
+    if (data && typeof data === "object" && "code" in data && typeof data.code === "string") {
+      return data.code;
+    }
+    current = "cause" in current ? current.cause : undefined;
+  }
+
+  return undefined;
+}
+
 export function applyOrpcFieldError<TFieldValues extends FieldValues, TContext, TTransformedValues>(
   form: UseFormReturn<TFieldValues, TContext, TTransformedValues>,
   error: unknown,
   map: Record<string, { field: string; message: string }>,
 ): boolean {
+  const dataCode = errorDataCode(error);
   for (const [code, fieldError] of Object.entries(map)) {
-    if (!hasErrorCode(error, code)) continue;
+    if (!hasErrorCode(error, code) && dataCode !== code) continue;
     form.setError(fieldError.field as FieldPath<TFieldValues>, { message: fieldError.message });
     return true;
   }

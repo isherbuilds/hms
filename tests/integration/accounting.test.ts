@@ -108,7 +108,8 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     name: `${seed} Patient`,
     phone: "5553800",
     sex: "other",
-    ageYears: 30,
+    dateOfBirth: "1996-08-27",
+    dobEstimated: true,
     address: `${seed} Patient Address`,
   });
   const department = await api.staff.createDepartment({
@@ -153,15 +154,17 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
       taxRatePercent,
       taxCode,
     });
-    return api.billing.addCharge({
+    const [charge] = await api.billing.addCharges({
       orgSlug: organization.slug,
       appointmentId,
-      catalogItemId: item.id,
+      lines: [{ catalogItemId: item.id }],
     });
+    if (!charge) throw new Error("expected a charge");
+    return charge;
   }
   /**
    * Consultation revenue can only enter through the real path: a practitioner
-   * configured with a consult fee, charged at check-in. `billing.addCharge`
+   * configured with a consult fee, charged at check-in. `billing.addCharges`
    * rejects consultation-category items by contract.
    */
   async function createConsultationAppointment(options: {
@@ -218,11 +221,12 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
       taxRatePercent: options.taxRatePercent,
       taxCode: options.taxCode,
     });
-    const charge = await api.billing.addCharge({
+    const [charge] = await api.billing.addCharges({
       orgSlug: organization.slug,
       appointmentId,
-      catalogItemId: item.id,
+      lines: [{ catalogItemId: item.id }],
     });
+    if (!charge) throw new Error("expected a charge");
     return { item, charge };
   }
 
@@ -394,19 +398,17 @@ test("zero-rated invoices omit GST and zero-total invoices do not post", async (
 test("payments, credit notes, and refunds post to their exact settlement accounts", async () => {
   const fixture = await createAccountingFixture("accounting-settlement");
   const issued = await issueConsultationInvoice(fixture, "Settlement");
-  const cash = await fixture.api.billing.recordPayment({
+  const [cash] = await fixture.api.billing.recordPayments({
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
-    method: "cash",
-    amount: "100.00",
+    payments: [{ method: "cash", amount: "100.00" }],
   });
-  const upi = await fixture.api.billing.recordPayment({
+  const [upi] = await fixture.api.billing.recordPayments({
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
-    method: "upi",
-    amount: "18.00",
-    reference: "UPI-LEDGER",
+    payments: [{ method: "upi", amount: "18.00", reference: "UPI-LEDGER" }],
   });
+  if (!cash || !upi) throw new Error("expected both payments");
 
   const cashJournal = await journalFor(fixture, "payment", cash.id);
   expect(cashJournal.entries).toHaveLength(1);

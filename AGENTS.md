@@ -49,5 +49,6 @@ database first when using them directly.
 ## UI
 
 - `packages/ui` is `shadcn` `base-lyra` on Base UI: `text-xs` body, compact controls, and the radius scale in `docs/design.md` §4 (`--radius` lives in `packages/ui/src/styles/globals.css`). Match it — don't introduce rounded, roomy components alongside it.
+- Base UI primitives emit their own state attributes (`data-pressed`, `data-checked`, `data-disabled`) — never Radix's `data-state="on"`. A `data-[state=…]:` Tailwind variant on a Base UI component silently styles nothing; use `data-pressed:` / `data-checked:`.
 - This is an all-day console, so motion is rationed: none on frequent or keyboard-driven actions, `ease-out` enter/exit under 200ms where it carries spatial continuity (dialogs). `prefers-reduced-motion` is honoured globally in `globals.css`.
 - Keyboard focus is guaranteed by an unlayered `:focus-visible` rule in `globals.css`, because component-level `focus-visible:ring-*` silently fails to paint on some primitives. Don't remove it. Hover effects are gated to `(hover: hover) and (pointer: fine)`.

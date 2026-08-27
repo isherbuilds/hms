@@ -1,5 +1,5 @@
 {
-  "id": "e909f902-d83b-403c-a464-3770f76996d5",
+  "id": "323edcf0-1465-414c-8fcf-6938037f1cdb",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -2352,13 +2352,14 @@
           "name": "date_of_birth",
           "type": "date",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "age_years": {
-          "name": "age_years",
-          "type": "integer",
+        "dob_estimated": {
+          "name": "dob_estimated",
+          "type": "boolean",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": false
         },
         "address": {
           "name": "address",
@@ -2411,7 +2412,7 @@
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "timestamp with time zone",
+          "type": "timestamp (3) with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
@@ -2530,17 +2531,9 @@
       },
       "policies": {},
       "checkConstraints": {
-        "patients_age_or_dob_check": {
-          "name": "patients_age_or_dob_check",
-          "value": "\"patients\".\"date_of_birth\" is not null or \"patients\".\"age_years\" is not null"
-        },
         "patients_sex_check": {
           "name": "patients_sex_check",
           "value": "\"patients\".\"sex\" in ('male', 'female', 'other', 'unknown')"
-        },
-        "patients_age_range_check": {
-          "name": "patients_age_range_check",
-          "value": "\"patients\".\"age_years\" is null or \"patients\".\"age_years\" between 0 and 150"
         },
         "patients_blood_group_check": {
           "name": "patients_blood_group_check",
@@ -2950,6 +2943,39 @@
               "expression": "id",
               "isExpression": false,
               "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "opd_appointments_org_patient_date_idx": {
+          "name": "opd_appointments_org_patient_date_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_date",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
               "nulls": "last"
             }
           ],

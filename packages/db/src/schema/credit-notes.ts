@@ -1,4 +1,5 @@
 import {
+  date,
   foreignKey,
   index,
   numeric,
@@ -27,6 +28,8 @@ export const creditNotes = pgTable(
     invoiceId: text("invoice_id").notNull(),
     creditNoteNumber: text("credit_note_number").notNull(),
     fiscalYear: text("fiscal_year").notNull(),
+    /** Organization-local accounting date snapshotted at issuance. */
+    businessDate: date("business_date").notNull(),
     reason: text("reason").notNull(),
     subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull(),
     taxTotal: numeric("tax_total", { precision: 12, scale: 2 }).notNull(),

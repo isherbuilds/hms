@@ -47,6 +47,26 @@ test("a reschedule leaves financial caches alone", async () => {
   expect(emitted.length).toBeGreaterThan(0);
   expect(emitted.some((key) => key.includes('"collections"'))).toBe(false);
   expect(emitted.some((key) => key.includes('"worklist"'))).toBe(false);
+  expect(emitted.some((key) => key.includes('"listPendingCharges"'))).toBe(false);
+});
+
+test("charge-changing appointment transitions invalidate pending charges", async () => {
+  for (const transition of ["billing", "checkIn", "cancel", "noShow"] as const) {
+    const { client, keys } = recordingInvalidator();
+    await invalidateOpdAppointmentState(client, "org-a", "appointment-1", transition);
+
+    const pendingCharges = serialize(keys).filter((key) => key.includes('"listPendingCharges"'));
+    expect(pendingCharges).toHaveLength(1);
+    expect(pendingCharges[0]).toContain('"orgSlug":"org-a"');
+    expect(pendingCharges[0]).toContain('"appointmentId":"appointment-1"');
+  }
+});
+
+test("check-in refreshes collections when booked charges become billable", async () => {
+  const { client, keys } = recordingInvalidator();
+  await invalidateOpdAppointmentState(client, "org-a", "appointment-1", "checkIn");
+
+  expect(serialize(keys).filter((key) => key.includes('"collections"'))).toHaveLength(1);
 });
 
 test("billing invalidation scopes every key to the given org", async () => {

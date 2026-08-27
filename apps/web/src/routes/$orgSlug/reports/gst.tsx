@@ -26,7 +26,7 @@ import {
 import { orgMonthToDate as defaultRange } from "@/lib/org-datetime";
 
 export const Route = createFileRoute("/$orgSlug/reports/gst")({
-  head: () => ({ meta: [{ title: "GST outward register · HMS" }] }),
+  head: () => ({ meta: [{ title: "GST register · HMS" }] }),
   // `.catch` keeps a hand-edited or truncated URL on the page: a date that does
   // not parse falls back to the default range instead of an error screen.
   validateSearch: z.object({
@@ -169,10 +169,7 @@ function GstReportRoute() {
 
   return (
     <>
-      <PageHeader
-        title="GST outward register"
-        description="Invoice and credit-note tax reporting"
-      />
+      <PageHeader title="GST register" description="Invoice and credit-note tax reporting" />
       <PageBody>
         <div className="flex flex-wrap items-end gap-2 print:hidden">
           <label className="grid gap-1">
@@ -229,14 +226,14 @@ function GstReportRoute() {
         ) : (
           <section data-report-print className="space-y-4">
             <header className="border-b pb-2">
-              <h1 className="text-sm font-semibold">GST outward register</h1>
+              <h1 className="text-sm font-medium">GST outward register</h1>
               <p className="text-muted-foreground">
                 {report.data.from} to {report.data.to} · CGST/SGST split assumes intra-state supply.
               </p>
             </header>
 
             <section className="space-y-2">
-              <h2 className="font-semibold uppercase tracking-wide">Documents</h2>
+              <h2 className="font-medium uppercase tracking-wide">Documents</h2>
               <div className="overflow-x-auto ring-1 ring-border">
                 <Table>
                   <TableHeader>
@@ -259,10 +256,10 @@ function GstReportRoute() {
                         <TableCell className="capitalize">
                           {row.docType.replace("_", " ")}
                         </TableCell>
-                        <TableCell className="font-medium tabular-nums">{row.number}</TableCell>
+                        <TableCell className="font-mono font-medium">{row.number}</TableCell>
                         <TableCell className="whitespace-nowrap tabular-nums">{row.date}</TableCell>
                         <TableCell>{row.patientName}</TableCell>
-                        <TableCell className="tabular-nums">{row.patientMrn}</TableCell>
+                        <TableCell className="font-mono">{row.patientMrn}</TableCell>
                         <TableCell className="text-right tabular-nums">
                           {money(row.taxableValue)}
                         </TableCell>
@@ -301,7 +298,7 @@ function GstReportRoute() {
 
             <div className="grid gap-3 lg:grid-cols-2">
               <section className="space-y-2">
-                <h2 className="font-semibold uppercase tracking-wide">Rate summary</h2>
+                <h2 className="font-medium uppercase tracking-wide">Rate summary</h2>
                 <div className="overflow-x-auto ring-1 ring-border">
                   <Table>
                     <TableHeader>
@@ -354,7 +351,7 @@ function GstReportRoute() {
               </section>
 
               <section className="space-y-2">
-                <h2 className="font-semibold uppercase tracking-wide">HSN/SAC summary</h2>
+                <h2 className="font-medium uppercase tracking-wide">HSN/SAC summary</h2>
                 <div className="overflow-x-auto ring-1 ring-border">
                   <Table>
                     <TableHeader>
@@ -368,7 +365,9 @@ function GstReportRoute() {
                     <TableBody>
                       {report.data.hsnSummary.map((row) => (
                         <TableRow key={`${row.taxCode}-${row.taxRatePercent}`}>
-                          <TableCell className="font-medium">{row.taxCode || "—"}</TableCell>
+                          <TableCell className="font-mono font-medium">
+                            {row.taxCode || "—"}
+                          </TableCell>
                           <TableCell className="tabular-nums">{row.taxRatePercent}%</TableCell>
                           <TableCell className="text-right tabular-nums">
                             {money(row.taxableValue)}

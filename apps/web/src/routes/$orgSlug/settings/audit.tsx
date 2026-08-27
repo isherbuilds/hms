@@ -1,6 +1,5 @@
 import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
-import { Empty, EmptyHeader } from "@hms/ui/components/empty";
 import {
   Table,
   TableBody,
@@ -13,9 +12,11 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { ScrollTextIcon } from "lucide-react";
 
-import { PageBody, PageHeader } from "@/components/page";
+import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { orpc } from "@/lib/orpc";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
+
+import { SettingsTabs } from "./route";
 
 const auditQuery = (orgSlug: string) =>
   orpc.audit.list.infiniteOptions({
@@ -43,33 +44,35 @@ function AuditRoute() {
     <>
       <PageHeader
         title="Audit"
-        description="Sensitive actions and every permission denial in this organization."
+        description="Sensitive actions and every permission denial in this organization"
       />
+      <SettingsTabs orgSlug={orgSlug} />
 
       <PageBody>
-        {audit.isPending ? null : audit.isError ? (
-          <Empty className="ring-1 ring-border">
-            <EmptyHeader>
-              <p className="text-sm font-medium">Could not load the audit trail</p>
-              <p className="text-xs text-muted-foreground">{audit.error.message}</p>
-            </EmptyHeader>
-            <Button variant="outline" onClick={() => audit.refetch()}>
-              Try again
-            </Button>
-          </Empty>
-        ) : entries.length === 0 ? (
-          <Empty className="ring-1 ring-border">
-            <EmptyHeader>
-              <ScrollTextIcon className="size-5 text-muted-foreground" />
-              <p className="text-sm font-medium">Nothing recorded yet</p>
-              <p className="text-xs text-muted-foreground">
-                Destructive actions and denied requests will appear here as they happen.
-              </p>
-            </EmptyHeader>
-          </Empty>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <div className="ring-1 ring-border">
+        {/* One tray for the trail, in the same shell as the OPD day list
+            (docs/design.md §1), so the two boards read as one product. */}
+        <section className="flex flex-col rounded-xl bg-muted p-1">
+          <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
+            <span className="min-w-0 truncate">Entries</span>
+          </div>
+          {/* The card holds its height through a pending read, a failed one and
+              an organization that has recorded nothing yet. */}
+          <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
+            {audit.isPending ? null : audit.isError ? (
+              <div className="flex min-h-32 flex-col items-start justify-center gap-3 p-4">
+                <ErrorNote title="Could not load the audit trail" detail={audit.error.message} />
+                <Button variant="outline" size="xs" onClick={() => audit.refetch()}>
+                  Try again
+                </Button>
+              </div>
+            ) : entries.length === 0 ? (
+              <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground">
+                <ScrollTextIcon className="size-5" />
+                <p className="max-w-sm">
+                  Nothing recorded yet. Actions and denials land here as they happen.
+                </p>
+              </div>
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -99,28 +102,33 @@ function AuditRoute() {
                           </>
                         ) : (
                           // The account is gone; the entry deliberately survives it.
-                          <span className="font-mono text-xs">{entry.actorId}</span>
+                          <span className="font-mono">{entry.actorId}</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{entry.target ?? "—"}</TableCell>
+                      {/* `entity:id`, read character by character when someone
+                          is matching a row against a document. */}
+                      <TableCell className="font-mono text-muted-foreground">
+                        {entry.target ?? "—"}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            </div>
-
-            {audit.hasNextPage && (
-              <Button
-                variant="outline"
-                className="self-start"
-                disabled={audit.isFetchingNextPage}
-                onClick={() => audit.fetchNextPage()}
-              >
-                {audit.isFetchingNextPage ? "Loading…" : "Load older entries"}
-              </Button>
             )}
           </div>
-        )}
+        </section>
+
+        {/* Under the list only: every other state is the card's business. */}
+        {!audit.isError && entries.length > 0 && audit.hasNextPage ? (
+          <Button
+            variant="outline"
+            className="self-start"
+            disabled={audit.isFetchingNextPage}
+            onClick={() => audit.fetchNextPage()}
+          >
+            {audit.isFetchingNextPage ? "Loading…" : "Load older entries"}
+          </Button>
+        ) : null}
       </PageBody>
     </>
   );

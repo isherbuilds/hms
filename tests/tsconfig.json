@@ -2,6 +2,13 @@
   "extends": "@hms/config/tsconfig.base.json",
   // Unit tests import browser modules from apps/web, so this project needs the
   // DOM lib the base config (server-side) leaves out.
-  "compilerOptions": { "lib": ["ESNext", "DOM"] },
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ESNext", "DOM"],
+    "paths": {
+      "@/*": ["../apps/web/src/*"],
+      "@hms/ui/*": ["../packages/ui/src/*"]
+    }
+  },
   "include": ["**/*.ts"]
 }

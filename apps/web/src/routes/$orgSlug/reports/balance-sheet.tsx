@@ -120,7 +120,7 @@ function BalanceSheetRoute() {
   return (
     <>
       <PageHeader
-        title="Billing ledger balance sheet"
+        title="Balance sheet"
         description="Financial position from transactions recorded in this HMS"
       />
       <PageBody>
@@ -152,7 +152,7 @@ function BalanceSheetRoute() {
         ) : (
           <section data-report-print className="space-y-3">
             <header className="border-b pb-2">
-              <h1 className="text-sm font-semibold">Billing ledger balance sheet</h1>
+              <h1 className="text-sm font-medium">Billing ledger balance sheet</h1>
               <p className="text-muted-foreground">
                 As of {report.data.asOf} · HMS-posted billing activity only; opening balances and
                 final accounts remain in the accountant's books.
@@ -162,7 +162,7 @@ function BalanceSheetRoute() {
             {mismatched ? (
               <div
                 role="alert"
-                className="border-2 border-destructive bg-destructive/10 p-3 font-semibold text-destructive"
+                className="border-2 border-destructive bg-destructive/10 p-3 font-medium text-destructive"
               >
                 Billing ledger mismatch: assets {money(report.data.totals.assets)} do not equal
                 liabilities and equity {money(report.data.totals.liabilitiesAndEquity)}.
@@ -171,7 +171,7 @@ function BalanceSheetRoute() {
 
             <div className="grid gap-3 lg:grid-cols-2">
               <section className="space-y-2">
-                <h2 className="font-semibold uppercase tracking-wide">Assets</h2>
+                <h2 className="font-medium uppercase tracking-wide">Assets</h2>
                 <div className="overflow-x-auto ring-1 ring-border">
                   <Table>
                     <TableHeader>
@@ -184,7 +184,7 @@ function BalanceSheetRoute() {
                     <TableBody>
                       {report.data.assets.map((row) => (
                         <TableRow key={row.code}>
-                          <TableCell className="font-medium tabular-nums">{row.code}</TableCell>
+                          <TableCell className="font-mono font-medium">{row.code}</TableCell>
                           <TableCell>{row.name}</TableCell>
                           <TableCell className="text-right tabular-nums">
                             {money(row.balance)}
@@ -203,7 +203,7 @@ function BalanceSheetRoute() {
               </section>
 
               <section className="space-y-2">
-                <h2 className="font-semibold uppercase tracking-wide">Liabilities and equity</h2>
+                <h2 className="font-medium uppercase tracking-wide">Liabilities and equity</h2>
                 <div className="overflow-x-auto ring-1 ring-border">
                   <Table>
                     <TableHeader>
@@ -216,7 +216,7 @@ function BalanceSheetRoute() {
                     <TableBody>
                       {report.data.liabilities.map((row) => (
                         <TableRow key={`liability-${row.code}`}>
-                          <TableCell className="font-medium tabular-nums">{row.code}</TableCell>
+                          <TableCell className="font-mono font-medium">{row.code}</TableCell>
                           <TableCell>{row.name}</TableCell>
                           <TableCell className="text-right tabular-nums">
                             {money(row.balance)}
@@ -225,7 +225,7 @@ function BalanceSheetRoute() {
                       ))}
                       {report.data.equity.map((row) => (
                         <TableRow key={`equity-${row.code}`}>
-                          <TableCell className="font-medium tabular-nums">{row.code}</TableCell>
+                          <TableCell className="font-mono font-medium">{row.code}</TableCell>
                           <TableCell>{row.name}</TableCell>
                           <TableCell className="text-right tabular-nums">
                             {money(row.balance)}

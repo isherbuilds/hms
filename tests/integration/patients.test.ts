@@ -13,7 +13,8 @@ function registration(orgSlug: string, name: string, phone: string) {
     name,
     phone,
     sex: "other" as const,
-    ageYears: 30,
+    dateOfBirth: "1996-08-27",
+    dobEstimated: true,
     address: "",
   };
 }
@@ -121,7 +122,8 @@ test("exact-phone dedupe returns every match in the caller's organization only",
 
   const matches = await api.patient.search({ orgSlug: one.slug, phone });
   expect(matches.items.map((patient) => patient.id).sort()).toEqual([first.id, second.id].sort());
-  expect(matches.items.every((patient) => patient.orgId === one.id)).toBe(true);
+  expect(matches.items.every((patient) => !("orgId" in patient))).toBe(true);
+  expect(matches.items.every((patient) => !("medicalHistory" in patient))).toBe(true);
 });
 
 test("search matches name and MRN substrings and keyset pagination has no duplicates or gaps", async () => {
@@ -175,11 +177,12 @@ test("update changes demographics without changing identity or consuming an MRN"
   const updated = await api.patient.update({
     orgSlug: organization.slug,
     patientId: original.id,
+    updatedAt: original.updatedAt.toISOString(),
     name: "After Update",
     phone: "5550401",
     sex: "female",
     dateOfBirth: "1990-04-05",
-    ageYears: null,
+    dobEstimated: false,
     address: "Updated address",
   });
 
@@ -191,12 +194,12 @@ test("update changes demographics without changing identity or consuming an MRN"
     phone: "5550401",
     sex: "female",
     dateOfBirth: "1990-04-05",
-    ageYears: null,
+    dobEstimated: false,
     address: "Updated address",
     createdBy: original.createdBy,
     createdAt: original.createdAt,
   });
-  expect(updated.updatedAt.getTime()).toBeGreaterThan(original.updatedAt.getTime());
+  expect(Date.parse(updated.updatedAt)).toBeGreaterThan(original.updatedAt.getTime());
 
   const next = await api.patient.register(
     registration(organization.slug, "After Counter Check", "5550402"),
@@ -212,26 +215,30 @@ test("update changes demographics without changing identity or consuming an MRN"
     api.patient.update({
       orgSlug: organization.slug,
       patientId: missingId,
+      updatedAt: new Date(0).toISOString(),
       name: "Missing",
       phone: "5550499",
       sex: "male",
-      ageYears: 40,
+      dateOfBirth: "1986-08-27",
+      dobEstimated: true,
       address: "",
     }),
     "NOT_FOUND",
   );
 });
 
-test("registration requires either date of birth or age", async () => {
+test("registration requires a date of birth", async () => {
   const owner = await createTestUser("patient-validation");
   const organization = await createOrganization(owner, "patient-validation");
 
   await expectORPCCode(
     clientFor(owner).patient.register({
       orgSlug: organization.slug,
-      name: "Missing Age",
+      name: "Missing Date of Birth",
       phone: "5550500",
       sex: "other",
+      dateOfBirth: "",
+      dobEstimated: false,
       address: "",
     }),
     "BAD_REQUEST",
@@ -313,10 +320,12 @@ test("register and update successes are written to the audit trail", async () =>
   await api.patient.update({
     orgSlug: organization.slug,
     patientId: patient.id,
+    updatedAt: patient.updatedAt.toISOString(),
     name: "Audited Patient Updated",
     phone: "5550601",
     sex: "male",
-    ageYears: 31,
+    dateOfBirth: "1995-08-27",
+    dobEstimated: true,
     address: "",
   });
 

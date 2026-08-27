@@ -26,14 +26,36 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.58 0.22 27);
+  /* Two states billing needs to name in colour: money not yet invoiced, and
+     money that has waited long enough to chase. Both always ship with a word
+     beside them (docs/design.md §5). */
+  --pending: oklch(0.55 0.14 250);
+  --overdue: oklch(0.6 0.16 42);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* Focus indicators must maintain 3:1 contrast; guarded by the theme contrast test. */
+  --ring: oklch(0.45 0 0);
   --chart-1: oklch(0.809 0.105 251.813);
   --chart-2: oklch(0.623 0.214 259.815);
   --chart-3: oklch(0.546 0.245 262.881);
   --chart-4: oklch(0.488 0.243 264.376);
   --chart-5: oklch(0.424 0.199 265.638);
+  /* Clinical severity. `docs/design.md` §5 says colour means state, and these
+     are the one clinical exception: what is dangerous about a patient
+     (allergies), what is chronic (history), what is settled, and what is
+     neutral identity. Never used decoratively — a hue here is a claim. */
+  --clinical-alert: oklch(0.52 0.19 27);
+  --clinical-alert-surface: oklch(0.962 0.024 27);
+  --clinical-alert-border: oklch(0.88 0.06 27);
+  --clinical-note: oklch(0.5 0.11 68);
+  --clinical-note-surface: oklch(0.965 0.03 80);
+  --clinical-note-border: oklch(0.89 0.06 75);
+  --clinical-info: oklch(0.5 0.13 253);
+  --clinical-info-surface: oklch(0.962 0.025 253);
+  --clinical-info-border: oklch(0.88 0.05 253);
+  --clinical-clear: oklch(0.47 0.11 155);
+  --clinical-clear-surface: oklch(0.958 0.03 155);
+  --clinical-clear-border: oklch(0.87 0.06 155);
   --radius: 0.625rem;
   --sidebar: oklch(0.978 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -42,7 +64,7 @@
   --sidebar-accent: oklch(0.928 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: oklch(0.45 0 0);
 }
 
 .dark {
@@ -61,9 +83,23 @@
   --accent: oklch(0.371 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  --pending: oklch(0.72 0.13 250);
+  --overdue: oklch(0.76 0.16 42);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
+  --clinical-alert: oklch(0.78 0.13 27);
+  --clinical-alert-surface: oklch(0.28 0.055 27);
+  --clinical-alert-border: oklch(0.4 0.08 27);
+  --clinical-note: oklch(0.83 0.11 80);
+  --clinical-note-surface: oklch(0.28 0.045 75);
+  --clinical-note-border: oklch(0.4 0.07 75);
+  --clinical-info: oklch(0.8 0.1 253);
+  --clinical-info-surface: oklch(0.28 0.05 253);
+  --clinical-info-border: oklch(0.4 0.07 253);
+  --clinical-clear: oklch(0.8 0.11 155);
+  --clinical-clear-surface: oklch(0.27 0.045 155);
+  --clinical-clear-border: oklch(0.39 0.07 155);
   --chart-1: oklch(0.809 0.105 251.813);
   --chart-2: oklch(0.623 0.214 259.815);
   --chart-3: oklch(0.546 0.245 262.881);
@@ -96,9 +132,23 @@
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
+  --color-clinical-alert: var(--clinical-alert);
+  --color-clinical-alert-surface: var(--clinical-alert-surface);
+  --color-clinical-alert-border: var(--clinical-alert-border);
+  --color-clinical-note: var(--clinical-note);
+  --color-clinical-note-surface: var(--clinical-note-surface);
+  --color-clinical-note-border: var(--clinical-note-border);
+  --color-clinical-info: var(--clinical-info);
+  --color-clinical-info-surface: var(--clinical-info-surface);
+  --color-clinical-info-border: var(--clinical-info-border);
+  --color-clinical-clear: var(--clinical-clear);
+  --color-clinical-clear-surface: var(--clinical-clear-surface);
+  --color-clinical-clear-border: var(--clinical-clear-border);
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-pending: var(--pending);
+  --color-overdue: var(--overdue);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -137,6 +187,15 @@
   body {
     height: 100%;
     overscroll-behavior: none;
+  }
+
+  select option {
+    background: var(--popover);
+    color: var(--popover-foreground);
+  }
+
+  select option:disabled {
+    color: var(--muted-foreground);
   }
 }
 

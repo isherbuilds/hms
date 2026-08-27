@@ -1,5 +1,6 @@
 import { authorize } from "@hms/auth/access";
 import { Button } from "@hms/ui/components/button";
+import { Separator } from "@hms/ui/components/separator";
 import {
   Table,
   TableBody,
@@ -9,10 +10,9 @@ import {
   TableRow,
 } from "@hms/ui/components/table";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { ClientOnly, Link, createFileRoute } from "@tanstack/react-router";
-import { useState, type ReactNode } from "react";
+import { ClientOnly, createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 
-import { OpdAppointmentStatusBadge } from "@/components/opd-appointment";
 import {
   AddChargeDialog,
   IssueInvoiceDialog,
@@ -25,6 +25,16 @@ import { formatMoney } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
 import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
+
+import {
+  OpdRecordDescription,
+  OpdRecordFacts,
+  OpdRecordSummary,
+  OpdRecordTabs,
+  RecordCard,
+  RecordEmpty,
+} from "./route";
+
 export const Route = createFileRoute("/$orgSlug/opd/$appointmentId/billing")({
   loader: async ({ context: { queryClient }, params: { orgSlug, appointmentId } }) => {
     const invoiceList = orpc.billing.listInvoices.queryOptions({
@@ -81,11 +91,14 @@ function BillingOpdAppointmentRoute() {
   const canCredit = authorize(membership.data.roles, { billing: ["creditNote"] });
   const currency = settings.data.currency;
 
+  // Both tabs render the same title band in every state, so a cashier switching
+  // views never sees the record's identity move.
   if (detail.isPending || pending.isPending || invoices.isPending) {
     return (
       <>
-        <PageHeader title="Billing" />
-        <PageBody className="max-w-7xl" />
+        <PageHeader title="Outpatient appointment" />
+        <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
+        <PageBody className="mx-auto w-full max-w-5xl" />
       </>
     );
   }
@@ -93,36 +106,22 @@ function BillingOpdAppointmentRoute() {
     const error = detail.error ?? pending.error ?? invoices.error;
     return (
       <>
-        <PageHeader title="Billing" />
-        <ErrorNote title="Could not load OPD billing" detail={error?.message} inset />
+        <PageHeader title="Outpatient appointment" />
+        <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
+        <ErrorNote title="Could not load outpatient billing" detail={error?.message} inset />
       </>
     );
   }
 
-  const { appointment, patient, practitioner } = detail.data;
+  const canChangeCharges = detail.data.appointment.status === "checked_in";
+
   return (
     <>
       <PageHeader
-        title={
-          appointment.tokenNumber != null
-            ? `Token ${appointment.tokenNumber}`
-            : "Booked appointment"
-        }
-        description={
-          patient ? (
-            <Link
-              to="/$orgSlug/patients/$patientId"
-              params={{ orgSlug, patientId: patient.id }}
-              className="underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-            >
-              {`${patient.name} · ${patient.mrn}`}
-            </Link>
-          ) : (
-            `${appointment.callerName ?? "Unnamed caller"} · ${appointment.callerPhone ?? "No phone"}`
-          )
-        }
+        title="Outpatient appointment"
+        description={<OpdRecordDescription orgSlug={orgSlug} record={detail.data} />}
         action={
-          <div className="flex flex-wrap items-center gap-1">
+          <>
             <StaleDataNotice
               dataUpdatedAt={Math.min(
                 detail.dataUpdatedAt,
@@ -130,82 +129,53 @@ function BillingOpdAppointmentRoute() {
                 invoices.dataUpdatedAt,
               )}
             />
-            <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
-              Add charge
-            </Button>
-            <Button
-              size="sm"
-              disabled={pending.data.length === 0}
-              onClick={() => setInvoiceOpen(true)}
-            >
-              Issue invoice
-            </Button>
-          </div>
+            {canChangeCharges ? (
+              <>
+                <Button variant="outline" onClick={() => setAddOpen(true)}>
+                  Add charge
+                </Button>
+                <Button disabled={pending.data.length === 0} onClick={() => setInvoiceOpen(true)}>
+                  Issue invoice
+                </Button>
+              </>
+            ) : null}
+          </>
         }
       />
-      <PageBody className="max-w-7xl">
-        <section className="grid gap-px bg-border ring-1 ring-border sm:grid-cols-4">
-          <Detail label="Patient">
-            {patient ? (
-              <>
-                <p className="font-medium">{patient.name}</p>
-                <p className="text-muted-foreground">
-                  {patient.mrn} · {patient.phone}
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="font-medium">{appointment.callerName ?? "Unnamed caller"}</p>
-                <p className="text-muted-foreground">
-                  {appointment.callerPhone ?? "No phone"} · Linked at check-in
-                </p>
-              </>
-            )}
-          </Detail>
-          <Detail label="Practitioner">{practitioner.name}</Detail>
-          <Detail label="Status">
-            <OpdAppointmentStatusBadge status={appointment.status} />
-          </Detail>
-          <Detail label="Token">
-            {appointment.tokenNumber != null ? (
-              // text-2xl deviates from the type scale: the token is what desk
-              // staff and patients match at a glance, so it reads as a headline.
-              <span className="font-mono text-2xl font-semibold tabular-nums">
-                {appointment.tokenNumber}
-              </span>
-            ) : (
-              <span className="text-muted-foreground">Assigned at check-in</span>
-            )}
-          </Detail>
-        </section>
+      <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
+      <PageBody className="mx-auto w-full max-w-5xl">
+        <OpdRecordSummary record={detail.data} />
 
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium">Pending charges</h2>
-          <div className="overflow-x-auto ring-1 ring-border">
+        <Separator />
+        <OpdRecordFacts record={detail.data} />
+
+        <Separator />
+        <RecordCard label="Pending charges">
+          {pending.data.length === 0 ? (
+            <RecordEmpty>No charge is waiting to be invoiced.</RecordEmpty>
+          ) : (
+            // The same grid as the clinical tab's Charges card, so the two
+            // views of one appointment's money line up column for column.
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Qty</TableHead>
-                  <TableHead className="text-right">Unit price</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
+                  <TableHead className="w-20 text-right">Qty</TableHead>
+                  <TableHead className="w-36 text-right">Unit price</TableHead>
+                  {canChangeCharges ? (
+                    <TableHead className="w-28 text-right">Action</TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pending.data.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
-                      No pending charges.
+                {pending.data.map((charge) => (
+                  <TableRow key={charge.id}>
+                    <TableCell className="font-medium">{charge.description}</TableCell>
+                    <TableCell className="text-right tabular-nums">{charge.qty}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatMoney(charge.unitPrice, currency)}
                     </TableCell>
-                  </TableRow>
-                ) : (
-                  pending.data.map((charge) => (
-                    <TableRow key={charge.id}>
-                      <TableCell className="font-medium">{charge.description}</TableCell>
-                      <TableCell className="text-right tabular-nums">{charge.qty}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatMoney(charge.unitPrice, currency)}
-                      </TableCell>
+                    {canChangeCharges ? (
                       <TableCell className="text-right">
                         <Button
                           size="xs"
@@ -217,67 +187,62 @@ function BillingOpdAppointmentRoute() {
                           Void
                         </Button>
                       </TableCell>
-                    </TableRow>
-                  ))
-                )}
+                    ) : null}
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
-          </div>
-        </section>
+          )}
+        </RecordCard>
 
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium">Invoices</h2>
+        {/* Each invoice already carries its own surface and its own actions, so
+            the list stays flat: a card around a stack of boxes is noise. The
+            hairline is what separates it from the tray above — the same rule the
+            clinical tab follows. */}
+        <section className="flex flex-col gap-2 border-t border-border pt-4">
+          <h2 className="flex min-h-6 items-center text-muted-foreground">Invoices</h2>
           {invoices.data.length === 0 ? (
-            <div className="border border-dashed px-4 py-8 text-center text-muted-foreground">
-              No invoices issued for this OPD appointment.
-            </div>
+            <p className="text-muted-foreground">No invoice issued for this appointment yet.</p>
           ) : (
-            invoices.data.map((invoice) => (
-              <InvoiceAccount
-                key={invoice.id}
-                orgSlug={orgSlug}
-                appointmentId={appointmentId}
-                invoice={invoice}
-                canCredit={canCredit}
-              />
-            ))
+            <div className="flex flex-col gap-3">
+              {invoices.data.map((invoice) => (
+                <InvoiceAccount
+                  key={invoice.id}
+                  orgSlug={orgSlug}
+                  appointmentId={appointmentId}
+                  invoice={invoice}
+                  canCredit={canCredit}
+                />
+              ))}
+            </div>
           )}
         </section>
       </PageBody>
-      <ClientOnly fallback={null}>
-        <AddChargeDialog
-          open={addOpen}
-          onOpenChange={setAddOpen}
-          orgSlug={orgSlug}
-          appointmentId={appointmentId}
-          currency={currency}
-        />
-        <IssueInvoiceDialog
-          open={invoiceOpen}
-          onOpenChange={setInvoiceOpen}
-          orgSlug={orgSlug}
-          appointmentId={appointmentId}
-        />
-        {voiding ? (
-          <VoidChargeDialog
-            charge={voiding}
+      {canChangeCharges ? (
+        <ClientOnly fallback={null}>
+          <AddChargeDialog
+            open={addOpen}
+            onOpenChange={setAddOpen}
             orgSlug={orgSlug}
             appointmentId={appointmentId}
-            onClose={() => setVoiding(null)}
+            currency={currency}
           />
-        ) : null}
-      </ClientOnly>
+          <IssueInvoiceDialog
+            open={invoiceOpen}
+            onOpenChange={setInvoiceOpen}
+            orgSlug={orgSlug}
+            appointmentId={appointmentId}
+          />
+          {voiding ? (
+            <VoidChargeDialog
+              charge={voiding}
+              orgSlug={orgSlug}
+              appointmentId={appointmentId}
+              onClose={() => setVoiding(null)}
+            />
+          ) : null}
+        </ClientOnly>
+      ) : null}
     </>
-  );
-}
-
-function Detail({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="bg-background p-3">
-      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      {children}
-    </div>
   );
 }

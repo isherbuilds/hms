@@ -85,14 +85,7 @@ function JoinOrganizationRoute() {
       eyebrow="OPEN ORGANIZATION"
       title="Continue where your hospital works."
       description="Accept an invitation or open an organization already connected to this account. The organization stays explicit in every tab's URL."
-      aside={
-        <p>
-          Founding operator?{" "}
-          <Link to="/create" className="text-foreground underline underline-offset-4">
-            Create an organization
-          </Link>
-        </p>
-      }
+      aside={null}
     >
       <div className="flex flex-col gap-6">
         <div>
@@ -179,6 +172,13 @@ function JoinOrganizationRoute() {
                 </div>
               </section>
             )}
+
+            <p className="border-t border-border pt-4 text-xs text-muted-foreground">
+              Founding operator?{" "}
+              <Link to="/create" className="text-foreground underline underline-offset-4">
+                Create an organization
+              </Link>
+            </p>
 
             {orderedInvitations.length === 0 && mine.length === 0 && !highlightedMissing && (
               <div className="border-l-2 border-border pl-3">

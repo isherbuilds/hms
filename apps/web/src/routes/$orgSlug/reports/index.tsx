@@ -31,7 +31,7 @@ function ReportsIndexRoute() {
                 <Icon className="size-3.5" />
                 {label}
               </span>
-              <span className="leading-relaxed text-muted-foreground">{description}</span>
+              <span className="text-muted-foreground">{description}</span>
             </Link>
           ))}
         </div>

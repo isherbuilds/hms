@@ -30,9 +30,6 @@ export function toastOpdConflict(
   void Promise.all([
     invalidateOpdAppointmentState(queryClient, orgSlug, appointmentId, transition),
     queryClient.invalidateQueries({
-      queryKey: orpc.billing.listPendingCharges.key({ input: { orgSlug, appointmentId } }),
-    }),
-    queryClient.invalidateQueries({
       queryKey: orpc.billing.listInvoices.key({ input: { orgSlug, appointmentId } }),
     }),
   ]);

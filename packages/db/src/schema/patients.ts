@@ -1,8 +1,8 @@
 import {
   check,
+  boolean,
   date,
   index,
-  integer,
   pgTable,
   text,
   timestamp,
@@ -36,8 +36,8 @@ export const patients = pgTable(
      * to avoid free-form values propagating past write boundaries.
      */
     sex: text("sex", { enum: ["male", "female", "other", "unknown"] }).notNull(),
-    dateOfBirth: date("date_of_birth", { mode: "string" }),
-    ageYears: integer("age_years"),
+    dateOfBirth: date("date_of_birth", { mode: "string" }).notNull(),
+    dobEstimated: boolean("dob_estimated").default(false).notNull(),
     /**
      * Address is required in this schema but callers pass/emit empty string when not
      * provided; no null semantics are needed for downstream rendering.
@@ -52,18 +52,10 @@ export const patients = pgTable(
     uid: text("uid"),
     createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
-    check(
-      "patients_age_or_dob_check",
-      sql`${table.dateOfBirth} is not null or ${table.ageYears} is not null`,
-    ),
     check("patients_sex_check", sql`${table.sex} in ('male', 'female', 'other', 'unknown')`),
-    check(
-      "patients_age_range_check",
-      sql`${table.ageYears} is null or ${table.ageYears} between 0 and 150`,
-    ),
     check(
       "patients_blood_group_check",
       sql`${table.bloodGroup} is null or ${table.bloodGroup} in ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')`,

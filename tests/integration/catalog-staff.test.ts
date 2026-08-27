@@ -134,6 +134,41 @@ test("plain members can read catalog and staff but cannot mutate either domain",
   );
 });
 
+test("service search returns only the first six active matching additional services", async () => {
+  const owner = await createTestUser("catalog-service-search-owner");
+  const organization = await createOrganization(owner, "catalog-service-search");
+  const api = clientFor(owner);
+  await Promise.all([
+    ...Array.from({ length: 7 }, (_, index) =>
+      api.catalog.create({
+        ...catalogItemInput(organization.slug, `LAB-${index}-${uniqueSuffix()}`, `Panel ${index}`),
+        category: "lab" as const,
+      }),
+    ),
+    api.catalog.create(
+      catalogItemInput(organization.slug, `CONS-${uniqueSuffix()}`, "Panel consultation"),
+    ),
+    api.catalog.create({
+      ...catalogItemInput(organization.slug, `PROC-${uniqueSuffix()}`, "Panel procedure"),
+      category: "procedure" as const,
+    }),
+  ]);
+
+  const results = await api.catalog.searchServices({
+    orgSlug: organization.slug,
+    query: "panel",
+    category: "lab",
+  });
+
+  expect(results).toHaveLength(6);
+  expect(results.every((item) => item.category === "lab" && item.name.startsWith("Panel"))).toBe(
+    true,
+  );
+  expect(Object.keys(results[0]!).sort()).toEqual(
+    ["category", "code", "id", "name", "taxRatePercent", "unitPrice"].sort(),
+  );
+});
+
 test("departments and practitioners support linked CRUD within an organization", async () => {
   const owner = await createTestUser("staff-crud-owner");
   const organization = await createOrganization(owner, "staff-crud");

@@ -1,5 +1,4 @@
 import { Button } from "@hms/ui/components/button";
-import { Empty, EmptyHeader } from "@hms/ui/components/empty";
 import {
   Table,
   TableBody,
@@ -14,7 +13,7 @@ import { DownloadIcon, FileIcon, Trash2, UploadIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { PageBody, PageHeader } from "@/components/page";
+import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { formatFileSize, openOrgFile, uploadOrgFile } from "@/lib/org-files";
@@ -97,7 +96,7 @@ function FilesRoute() {
     <>
       <PageHeader
         title="Files"
-        description="Stored privately. Links are signed and expire after 15 minutes."
+        description="Stored privately · links are signed and expire after 15 minutes"
         action={
           <>
             <input
@@ -113,7 +112,7 @@ function FilesRoute() {
               }}
             />
             <Button disabled={uploading !== null} onClick={() => inputRef.current?.click()}>
-              <UploadIcon />
+              <UploadIcon data-icon="inline-start" />
               {uploading ? "Uploading…" : "Upload"}
             </Button>
           </>
@@ -121,38 +120,36 @@ function FilesRoute() {
       />
 
       <PageBody>
-        {files.isPending ? null : files.isError ? (
-          <Empty className="ring-1 ring-border">
-            <EmptyHeader>
-              <p className="text-sm font-medium">Could not load files</p>
-              <p className="text-xs text-muted-foreground">{files.error.message}</p>
-            </EmptyHeader>
-            <Button variant="outline" onClick={() => files.refetch()}>
-              Try again
-            </Button>
-          </Empty>
-        ) : items.length === 0 ? (
-          <Empty className="ring-1 ring-border">
-            <EmptyHeader>
-              <FileIcon className="size-5 text-muted-foreground" />
-              <p className="text-sm font-medium">No files yet</p>
-              <p className="text-xs text-muted-foreground">
-                Upload one to share it with this organization.
-              </p>
-            </EmptyHeader>
-            <Button disabled={uploading !== null} onClick={() => inputRef.current?.click()}>
-              <UploadIcon />
-              {uploading ? "Uploading…" : "Upload a file"}
-            </Button>
-          </Empty>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <div className="ring-1 ring-border">
+        {/* Every stored file in the house card-in-card language
+            (docs/design.md §1): the tinted tray carries the label, the raised
+            card carries the rows, and it holds its height through a pending
+            read, a failed one and an organization that has uploaded nothing. */}
+        <section className="flex flex-col rounded-xl bg-muted p-1">
+          <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
+            <span className="min-w-0 truncate">Library</span>
+          </div>
+          <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
+            {files.isPending ? null : files.isError ? (
+              <div className="flex min-h-32 flex-col items-start justify-center gap-3 p-4">
+                <ErrorNote title="Could not load files" detail={files.error.message} />
+                <Button variant="outline" size="xs" onClick={() => files.refetch()}>
+                  Try again
+                </Button>
+              </div>
+            ) : items.length === 0 ? (
+              <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground">
+                <FileIcon className="size-5" />
+                <p>No files yet. Upload one to share it with this organization.</p>
+              </div>
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Size</TableHead>
+                    {/* The name takes the slack so the narrow columns hug
+                        their content; `max-w-0` on the cell below is what lets
+                        it truncate instead of widening the table. */}
+                    <TableHead className="w-full">Name</TableHead>
+                    <TableHead className="text-right">Size</TableHead>
                     <TableHead>Added</TableHead>
                     <TableHead className="w-16" />
                   </TableRow>
@@ -166,7 +163,7 @@ function FilesRoute() {
                           {file.mimeType ?? "unknown type"}
                         </div>
                       </TableCell>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
+                      <TableCell className="whitespace-nowrap text-right text-muted-foreground">
                         {formatFileSize(file.size)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-muted-foreground">
@@ -176,7 +173,7 @@ function FilesRoute() {
                         <div className="flex justify-end gap-1">
                           <Button
                             variant="ghost"
-                            size="icon-sm"
+                            size="icon-xs"
                             aria-label={`Download ${file.name}`}
                             onClick={() => download(file.id)}
                           >
@@ -184,7 +181,7 @@ function FilesRoute() {
                           </Button>
                           <Button
                             variant="ghost"
-                            size="icon-sm"
+                            size="icon-xs"
                             aria-label={`Delete ${file.name}`}
                             onClick={() =>
                               confirm({
@@ -204,20 +201,21 @@ function FilesRoute() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
-
-            {files.hasNextPage && (
-              <Button
-                variant="outline"
-                className="self-start"
-                disabled={files.isFetchingNextPage}
-                onClick={() => files.fetchNextPage()}
-              >
-                {files.isFetchingNextPage ? "Loading…" : "Load older files"}
-              </Button>
             )}
           </div>
-        )}
+        </section>
+
+        {/* Under the list only: every other state is the card's business. */}
+        {!files.isError && items.length > 0 && files.hasNextPage ? (
+          <Button
+            variant="outline"
+            className="self-start"
+            disabled={files.isFetchingNextPage}
+            onClick={() => files.fetchNextPage()}
+          >
+            {files.isFetchingNextPage ? "Loading…" : "Load older files"}
+          </Button>
+        ) : null}
       </PageBody>
       {confirmDialog}
     </>

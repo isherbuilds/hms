@@ -31,6 +31,10 @@ function localMinuteKey(instant: number, formatter: Intl.DateTimeFormat): string
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 }
 
+export function localMinute(instant: Date, timeZone: string): string {
+  return localMinuteKey(instant.getTime(), dateTimeFormatter(timeZone));
+}
+
 // Binary search, not offset arithmetic: in a zone that skips midnight for
 // daylight saving the day starts at 01:00, and no offset formula finds that.
 function localDateBoundary(date: string, formatter: Intl.DateTimeFormat): Date {

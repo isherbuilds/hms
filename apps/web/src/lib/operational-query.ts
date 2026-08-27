@@ -10,3 +10,16 @@ export const OPERATIONAL_REFETCH = {
   refetchOnWindowFocus: true,
   staleTime: 5_000,
 } as const;
+
+type InfiniteQueryLike = { state: { data?: { pages: unknown[] } | undefined } };
+
+/**
+ * TanStack refetches every loaded infinite-query page. Keep the live poll
+ * cheap on page one; deeper browsing refreshes only when staff ask for it.
+ */
+export const OPERATIONAL_INFINITE_REFETCH = {
+  ...OPERATIONAL_REFETCH,
+  refetchInterval: (query: InfiniteQueryLike) =>
+    (query.state.data?.pages.length ?? 0) <= 1 ? OPERATIONAL_REFETCH.refetchInterval : false,
+  refetchOnWindowFocus: (query: InfiniteQueryLike) => (query.state.data?.pages.length ?? 0) <= 1,
+} as const;

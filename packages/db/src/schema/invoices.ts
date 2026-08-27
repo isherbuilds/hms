@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  date,
   foreignKey,
   index,
   numeric,
@@ -33,6 +34,8 @@ export const invoices = pgTable(
     patientId: text("patient_id").notNull(),
     invoiceNumber: text("invoice_number").notNull(),
     fiscalYear: text("fiscal_year").notNull(),
+    /** Organization-local accounting date snapshotted at issuance. */
+    businessDate: date("business_date").notNull(),
     discountAmount: numeric("discount_amount", { precision: 12, scale: 2 }).notNull().default("0"),
     /**
      * Why this invoice looks the way it does — a discount, or the patient

@@ -24,8 +24,7 @@ practitioner dropdowns, so answering "where is Mrs Nair" means scanning a hundre
 
 ## Solution
 
-Reduce the OPD record to states a receptionist can actually observe, and make the day one screen
-they can search.
+Reduce the OPD record to states a receptionist can observe, and make the day one screen they can search. The day has one plus-leading action labelled **New appointment** into one intake screen.
 
 An appointment is `booked`, `checked_in`, `cancelled` or `no_show`. Check-in is the only step
 reception performs on a row; it already creates the token and the configured attendance Charge, so
@@ -37,10 +36,11 @@ Patient and Practitioner that reached `checked_in`, is still `checked_in`, and w
 falls inside the configured window. A cancelled appointment never earns the follow-up price.
 
 The Queue and Appointments tabs collapse into one day view: a single list ordered by time, with a
-booked slot and an arrived walk-in as rows in the same place. One search field over patient name,
-MRN, phone and token replaces both dropdowns. A row carries at most one action — Check in — plus a
-read-only balance flag. Everything else, including cancel and no-show, lives in a Sheet opened from
-the row.
+booked slot and an arrived walk-in as rows in the same place. The one **New appointment** action
+opens one intake screen. Its Date and time minute selects immediate or scheduled work. One day-list
+search field over patient name, MRN, phone and token replaces both dropdowns. A row carries at most
+one action — Check in — plus a read-only balance flag. Cancel and no-show live on the full record
+opened directly from the row.
 
 ## Validation / Evidence
 
@@ -99,13 +99,17 @@ decoration too and the day view should become a register over the billing record
 - `cancel` accepts `booked | checked_in` as its from-states and keeps its mandatory reason.
   `markNoShow` keeps `booked` alone. Both continue voiding pending Charges and emitting their audit
   events.
-- Scheduled work still starts `booked` and may hold caller details before a Patient is linked.
-  Check-in still atomically links or validates the Patient, records `arrivedAt`, allocates the daily
-  practitioner token, and creates the configured attendance Charge, idempotently under concurrency.
-- Walk-ins still require a Patient and start `checked_in` with arrival time, token, known Charges,
-  itemized document, Payments/Receipts and ledger posting created atomically (D015). The API requires
-  the settlement object. A walk-in either settles or carries an explicit note; the server has no
-  unsettled walk-in path.
+- Scheduled work starts `booked` and may hold caller details before a Patient is linked. **Later**
+  reveals an organization-local minute and calls `opd.book`. It has no consultation Charge, services, quote, or
+  settlement until check-in. Check-in atomically links or validates the Patient, records `arrivedAt`,
+  allocates the daily practitioner token, and creates the server-selected attendance Charge,
+  idempotently under concurrency.
+- **Now** calls `opd.createWalkIn` without a client time claim. It requires a Patient and starts
+  `checked_in` with the fresh server arrival time, token, known
+  Charges, itemized document, Payments/Receipts, and ledger posting created atomically (D015). The
+  API requires the settlement object. If the role cannot settle, the screen explains the permission
+  block and keeps **Now** selected. It never silently schedules the appointment. A **Later** value
+  that is not later than the fresh server organization-local minute is rejected before mutation.
 
 ### Stale booked rows
 
@@ -140,6 +144,17 @@ decoration too and the day view should become a register over the billing record
   escalate that grant for a daily action or bypass the guard internally. An administrator issues the
   credit note and refund from the existing billing screens using the existing `issueCreditNote` and
   `recordRefund` procedures.
+- Intake and later invoice collection both support up to four split Payment
+  lines in one transaction. Each non-cash line requires a reference and creates
+  its own Receipt. An issued Invoice remains immutable: the collection dialog
+  routes a later discount to the existing Credit Note workflow.
+- The server quote selects the trusted care fee and catalog prices once. The
+  intake applies discount allocation, tax, payable and payment-balance arithmetic
+  immediately in the client from that quote; `createWalkIn` re-reads prices and
+  validates the final settlement inside its transaction.
+- Post-intake catalog search is server-side, tenant-scoped, and capped at six
+  active non-consultation matches. Staff may stage multiple results and create
+  their Charges in one request; the server re-reads every catalog row and price.
 
 ### Day read
 
@@ -168,27 +183,36 @@ decoration too and the day view should become a register over the billing record
 
 ### Staff interface
 
-- Navigation label and URL remain **OPD** and `/$orgSlug/opd`.
+- Navigation label and URL remain **OPD** and `/$orgSlug/opd`; the page title uses
+  the expanded **Outpatient** label.
 - The `view` search param and the Queue/Appointments tab are removed. The date param stays, and the
-  day stepper stays.
+  day stepper lives in the header as the screen's active date context; the title does not repeat a
+  passive formatted date. Previous day, the native date field and next day are three independent
+  focus stops; each changes the register's single business date directly.
+- The day page has one text-first primary action, labelled **New appointment**, which opens
+  `/$orgSlug/opd/new`; compact screens show **New**. The dashboard does not repeat it. The intake has no
+  `mode` route or search state.
+- The intake page and meta title use **Appointment**. Successful intake navigates
+  directly to the Clinical record so the patient slip is immediately available,
+  with no success-only page.
 - One search input over name, MRN, phone and token replaces the department and practitioner
   dropdowns. It is debounced client-side using the existing `useDebouncedValue` hook, as
   `patients/index.tsx` already does.
-- A row shows time, token, patient name and MRN, practitioner, state, a read-only balance flag, and
-  at most one action button — **Check in**, on `booked` rows only. Closed rows show their outcome
-  where the action would sit.
+- Search and the closed-appointment filter form one toolbar. The appointment panel expands to hold
+  the remaining viewport when the day is empty instead of collapsing above unused whitespace.
+- Immediate settlement uses one header/content/footer composition in both its Dialog and Sheet
+  presentations. Summary, discount, payment lines, validation and note stay in the same order and
+  use the same compact type scale at every width.
+- A row leads with token, then patient name and MRN, time, practitioner, state, and a read-only balance flag.
+  There is no Action column; **Check in** replaces the state badge on `booked` rows.
 - The day is one flat list ordered by time, with no grouping. With the lifecycle gone there is no
   flow to visualise and no "next" to point at, so grouping would add structure that carries no
   information. Grouping by practitioner is the named alternative, deferred below.
-- Clicking a row opens a Sheet carrying the record summary and the off-happy-path actions: cancel
-  with a reason, mark no-show, and a link to the full record. The Sheet uses the same
-  `open`/`onOpenChange` contract and default `right` side as `PatientSheet`, at every width — below
-  `md` that side is already full-screen, so there is one behaviour to learn rather than one per
-  monitor.
-- `/$orgSlug/opd/$appointmentId` survives unchanged as the full record, exactly as
-  `patients/$patientId` coexists with `PatientSheet`.
-- Motion follows `AGENTS.md` §UI: the Sheet keeps its existing enter/exit; rows and list updates get
-  none, because this is a frequent all-day list.
+- Superseded on 2026-08-25: clicking a row now opens the full record directly at
+  `/$orgSlug/opd/$appointmentId`. Cancel and no-show live on that record. The OPD visit
+  Sheet was removed.
+- Motion follows `AGENTS.md` §UI: the day has no row or list-update animation, because this is a
+  frequent all-day list. Existing dialog and Sheet enter/exit behavior stays as-is.
 - Staff copy uses OPD, appointment, walk-in, check in, token, **Checked In**, **Cancelled** and
   **No show**. It does not expose table names or invented umbrella terms.
 
@@ -198,13 +222,12 @@ decoration too and the day view should become a register over the billing record
 implementer of this spec does not assume they are open:
 
 - Appointment `kind` does not exist. `arrivalMode` and `status` are the OPD dimensions.
-- Catalog item `category` remains `consultation | procedure | lab | radiology | other`. The
-  server-selected consultation or follow-up item remains a `consult_fee` Charge and is never part of
-  the editable additional-service selection.
-- `ServicePicker` keeps its client-side `All categories | Procedure | Lab | Radiology | Other`
+- Catalog item `category` remains `consultation | procedure | lab | radiology | other`. For immediate intake, the server-selected consultation or follow-up item appears in **Services** and materializes as a `consult_fee` Charge unless omitted. A zero-value walk-in is valid and creates no financial document. A scheduled appointment gets its consultation line only at check-in but may keep selected non-consultation services as dormant pending Charges from booking.
+- `ServicePicker` keeps `All categories | Procedure | Lab | Radiology | Other`
   filter, conjunctive with text search, not persisted anywhere, resetting with a new intake form.
-- Intake order remains Patient search or inline registration → Department/Practitioner → `Now | Later`
-  → searchable known services → one financial confirmation, at `/$orgSlug/opd/new`.
+- Intake order is Patient search or inline registration → Department/Practitioner → **When** →
+  Date and time for **Later** → optional searchable services in either mode → financial confirmation for non-zero **Now**,
+  at `/$orgSlug/opd/new`. The client never supplies a time for **Now**.
 - Only services known at intake go on the initial itemized document; later services become Charges on
   the same appointment. A billing line is never proof that clinical work was ordered, performed or
   resulted.
@@ -348,8 +371,10 @@ open, onOpenChange })` following `PatientSheet`'s prop contract.
 - Background jobs, schedulers, cron, or per-organization midnight sweeps.
 - Automatic credit notes or refunds on cancellation, and any widening of the `creditNote` grant.
 - Inline charge editing on the day view.
-- Changing intake at `/$orgSlug/opd/new`, the settlement boundary, or any invoice, receipt, payment
-  or journal rule.
+- This spec did not change intake or its billing boundary when it shipped. The later
+  [`core-screen-refinement.md`](./core-screen-refinement.md) supersedes that plan boundary for the
+  single entry action and datetime-derived immediate or scheduled path. D015 settlement, invoice,
+  receipt, payment, and journal rules remain unchanged.
 - Grouping the day by practitioner or department, and a public token display.
 - IPD and Emergency.
 

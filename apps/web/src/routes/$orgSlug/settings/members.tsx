@@ -26,7 +26,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@hms/ui/components/dropdown-menu";
-import { Empty, EmptyHeader } from "@hms/ui/components/empty";
 import { Input } from "@hms/ui/components/input";
 import {
   Table,
@@ -38,16 +37,18 @@ import {
 } from "@hms/ui/components/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
-import { CopyIcon, MoreHorizontalIcon, SearchIcon, UserPlusIcon, UsersIcon } from "lucide-react";
+import { CopyIcon, MoreHorizontalIcon, SearchIcon, UsersIcon } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { PageBody, PageHeader } from "@/components/page";
+import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useConfirm } from "@/components/confirm-dialog";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
+
+import { SettingsTabs } from "./route";
 
 const MEMBER_PAGE_LIMIT = 100;
 
@@ -288,13 +289,9 @@ function MembersRoute() {
             : `${people.length} ${people.length === 1 ? "person" : "people"}`) +
           (invitations.length > 0 ? ` · ${invitations.length} invited` : "")
         }
-        action={
-          <Button onClick={() => setInviteOpen(true)}>
-            <UserPlusIcon />
-            Invite
-          </Button>
-        }
+        action={<Button onClick={() => setInviteOpen(true)}>Invite</Button>}
       />
+      <SettingsTabs orgSlug={orgSlug} />
 
       <PageBody>
         <div className="relative max-w-xs">
@@ -309,158 +306,156 @@ function MembersRoute() {
           />
         </div>
 
-        {members.isPending ? null : members.isError ? (
-          <Empty className="ring-1 ring-border">
-            <EmptyHeader>
-              <p className="text-sm font-medium">Could not load members</p>
-              <p className="text-xs text-muted-foreground">{members.error.message}</p>
-            </EmptyHeader>
-            <Button variant="outline" onClick={() => members.refetch()}>
-              Try again
-            </Button>
-          </Empty>
-        ) : people.length === 0 && invitations.length === 0 && q ? (
-          <Empty className="ring-1 ring-border">
-            <EmptyHeader>
-              <SearchIcon className="size-5 text-muted-foreground" />
-              <p className="text-sm font-medium">No one matches “{q}”</p>
-              <p className="text-xs text-muted-foreground">
-                Search covers member names, emails, and invited addresses.
-              </p>
-            </EmptyHeader>
-          </Empty>
-        ) : people.length === 0 && invitations.length === 0 ? (
-          <Empty className="ring-1 ring-border">
-            <EmptyHeader>
-              <UsersIcon className="size-5 text-muted-foreground" />
-              <p className="text-sm font-medium">You are the only one here</p>
-              <p className="text-xs text-muted-foreground">
-                Accounts are created by an administrator. Invite a colleague to get them into this
-                organization.
-              </p>
-            </EmptyHeader>
-            <Button onClick={() => setInviteOpen(true)}>
-              <UserPlusIcon />
-              Invite someone
-            </Button>
-          </Empty>
-        ) : (
-          <div className="ring-1 ring-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Person</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-8" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {people.map((person) => (
-                  <TableRow key={person.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
+        {/* One tray, one list: an invitation is the same person a step earlier,
+            so both sit in the same board rather than in two boxes. Same shell
+            as the OPD day list (docs/design.md §1). */}
+        <section className="flex flex-col rounded-xl bg-muted p-1">
+          <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
+            <span className="min-w-0 truncate">People</span>
+          </div>
+          {/* The card holds its height through a pending read, a failed one and
+              a search that matches nobody, so the page keeps its shape. */}
+          <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
+            {members.isPending ? null : members.isError ? (
+              <div className="flex min-h-32 flex-col items-start justify-center gap-3 p-4">
+                <ErrorNote title="Could not load members" detail={members.error.message} />
+                <Button variant="outline" size="xs" onClick={() => members.refetch()}>
+                  Try again
+                </Button>
+              </div>
+            ) : people.length === 0 && invitations.length === 0 && q ? (
+              <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground">
+                <SearchIcon className="size-5" />
+                <p className="max-w-sm">
+                  Nobody matches “{q}”. Search covers names, email addresses and invitations.
+                </p>
+              </div>
+            ) : people.length === 0 && invitations.length === 0 ? (
+              <div className="flex min-h-32 flex-col items-center justify-center gap-3 px-4 text-center">
+                <UsersIcon className="size-5 text-muted-foreground" />
+                <p className="max-w-sm text-muted-foreground">
+                  You are the only one here. Accounts are created by an administrator, then invited
+                  into this organization.
+                </p>
+                <Button size="xs" onClick={() => setInviteOpen(true)}>
+                  Invite someone
+                </Button>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Person</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-8" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {people.map((person) => (
+                    <TableRow key={person.id}>
+                      <TableCell>
                         <div className="min-w-0">
                           <div className="truncate font-medium">{person.name}</div>
                           <div className="truncate text-muted-foreground">{person.email}</div>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <RoleBadge role={person.role} />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">active</TableCell>
-                    <TableCell>
-                      <ClientOnly fallback={null}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={<Button variant="ghost" size="icon-sm" />}
-                            aria-label={`Actions for ${person.name || person.email}`}
-                          >
-                            <MoreHorizontalIcon />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="min-w-40">
-                            <DropdownMenuGroup>
-                              <DropdownMenuLabel>Change role</DropdownMenuLabel>
-                              {ORG_ROLES.map((option) => (
-                                <DropdownMenuItem
-                                  key={option}
-                                  disabled={
-                                    parseRoles(person.role).includes(option) || updateRole.isPending
-                                  }
-                                  onClick={() =>
-                                    updateRole.mutate({
-                                      orgSlug,
-                                      memberId: person.id,
-                                      role: option,
-                                    })
-                                  }
-                                >
-                                  {option}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuGroup>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              disabled={removeMember.isPending}
-                              onClick={() =>
-                                confirm({
-                                  title: "Remove from organization?",
-                                  description: `${person.name || person.email} loses access to this organization immediately. Their audit history is kept.`,
-                                  confirmLabel: "Remove",
-                                  run: () => removeMember.mutate({ orgSlug, memberId: person.id }),
-                                })
-                              }
+                      </TableCell>
+                      <TableCell>
+                        <RoleBadge role={person.role} />
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">active</TableCell>
+                      <TableCell className="text-right">
+                        <ClientOnly fallback={null}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              render={<Button variant="ghost" size="icon-xs" />}
+                              aria-label={`Actions for ${person.name || person.email}`}
                             >
-                              Remove from organization
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </ClientOnly>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                              <MoreHorizontalIcon />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="min-w-40">
+                              <DropdownMenuGroup>
+                                <DropdownMenuLabel>Change role</DropdownMenuLabel>
+                                {ORG_ROLES.map((option) => (
+                                  <DropdownMenuItem
+                                    key={option}
+                                    disabled={
+                                      parseRoles(person.role).includes(option) ||
+                                      updateRole.isPending
+                                    }
+                                    onClick={() =>
+                                      updateRole.mutate({
+                                        orgSlug,
+                                        memberId: person.id,
+                                        role: option,
+                                      })
+                                    }
+                                  >
+                                    {option}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuGroup>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                disabled={removeMember.isPending}
+                                onClick={() =>
+                                  confirm({
+                                    title: "Remove from organization?",
+                                    description: `${person.name || person.email} loses access to this organization immediately. Their audit history is kept.`,
+                                    confirmLabel: "Remove",
+                                    run: () =>
+                                      removeMember.mutate({ orgSlug, memberId: person.id }),
+                                  })
+                                }
+                              >
+                                Remove from organization
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </ClientOnly>
+                      </TableCell>
+                    </TableRow>
+                  ))}
 
-                {invitations.map((invitation) => (
-                  <TableRow key={invitation.id} className="text-muted-foreground">
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="truncate">{invitation.email}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <RoleBadge role={invitation.role ?? "member"} />
-                    </TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-2">
-                        <Badge variant="outline">invited</Badge>
-                        expires {formatDate(invitation.expiresAt, timeZone)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={revoke.isPending}
-                        onClick={() =>
-                          confirm({
-                            title: "Revoke this invitation?",
-                            description: `The link sent to ${invitation.email} stops working. You can invite them again afterwards.`,
-                            confirmLabel: "Revoke",
-                            run: () => revoke.mutate({ orgSlug, invitationId: invitation.id }),
-                          })
-                        }
-                      >
-                        Revoke
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                  {invitations.map((invitation) => (
+                    <TableRow key={invitation.id} className="text-muted-foreground">
+                      <TableCell>
+                        <div className="truncate">{invitation.email}</div>
+                      </TableCell>
+                      <TableCell>
+                        <RoleBadge role={invitation.role ?? "member"} />
+                      </TableCell>
+                      <TableCell>
+                        <span className="flex items-center gap-2 whitespace-nowrap">
+                          <Badge variant="outline">invited</Badge>
+                          expires {formatDate(invitation.expiresAt, timeZone)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          disabled={revoke.isPending}
+                          onClick={() =>
+                            confirm({
+                              title: "Revoke this invitation?",
+                              description: `The link sent to ${invitation.email} stops working. You can invite them again afterwards.`,
+                              confirmLabel: "Revoke",
+                              run: () => revoke.mutate({ orgSlug, invitationId: invitation.id }),
+                            })
+                          }
+                        >
+                          Revoke
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
-        )}
+        </section>
       </PageBody>
 
       <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} orgSlug={orgSlug} />

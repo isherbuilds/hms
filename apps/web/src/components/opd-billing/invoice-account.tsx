@@ -30,17 +30,19 @@ import {
 import { Textarea } from "@hms/ui/components/textarea";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ClientOnly, Link } from "@tanstack/react-router";
+import { Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { useZodForm } from "@/hooks/use-zod-form";
-import { formatMoney, MONEY_INPUT_PATTERN } from "@/lib/money";
+import { formatMoney, MONEY_INPUT_PATTERN, parseMoneyInput } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
 
 import { useBillingInvalidation } from "./use-billing-invalidation";
 
-const paymentSchema = z.object({
+const paymentLineFields = z.object({
+  id: z.number(),
   method: z.enum(["cash", "upi", "card"]),
   amount: z
     .string()
@@ -49,7 +51,19 @@ const paymentSchema = z.object({
   reference: z.string().trim().max(100).optional(),
 });
 
-const refundSchema = paymentSchema.extend({
+const paymentLineSchema = paymentLineFields.superRefine((value, context) => {
+  if (value.method !== "cash" && !value.reference) {
+    context.addIssue({
+      code: "custom",
+      path: ["reference"],
+      message: `Enter the ${value.method === "upi" ? "UPI" : "card"} reference`,
+    });
+  }
+});
+
+const paymentSchema = z.object({ payments: z.array(paymentLineSchema).min(1).max(4) });
+
+const refundSchema = paymentLineFields.omit({ id: true }).extend({
   creditNoteId: z.string().min(1, "Choose a credit note"),
 });
 
@@ -121,7 +135,9 @@ export function InvoiceAccount({
   const isRefundDue = outstanding < 0;
 
   return (
-    <div className="flex flex-col gap-2 border p-3">
+    // Each invoice is its own card on the canvas: the billing tab lists them
+    // flat, so the surface comes from the row rather than from a tray around it.
+    <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <Link
@@ -226,13 +242,25 @@ export function InvoiceAccount({
         </div>
       ) : null}
       <ClientOnly fallback={null}>
-        <PaymentDialog
-          open={paymentOpen}
-          onOpenChange={setPaymentOpen}
-          orgSlug={orgSlug}
-          appointmentId={appointmentId}
-          invoiceId={invoice.id}
-        />
+        {paymentOpen ? (
+          <PaymentDialog
+            open
+            onOpenChange={setPaymentOpen}
+            orgSlug={orgSlug}
+            appointmentId={appointmentId}
+            invoiceId={invoice.id}
+            outstanding={invoice.outstanding}
+            currency={invoice.currency}
+            onApplyCredit={
+              canCredit && detail.data
+                ? () => {
+                    setPaymentOpen(false);
+                    setCreditOpen(true);
+                  }
+                : undefined
+            }
+          />
+        ) : null}
         {detail.data ? (
           <CreditDialog
             open={creditOpen}
@@ -266,22 +294,31 @@ function PaymentDialog({
   orgSlug,
   appointmentId,
   invoiceId,
+  outstanding,
+  currency,
+  onApplyCredit,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   orgSlug: string;
   appointmentId: string;
   invoiceId: string;
+  outstanding: string;
+  currency: string;
+  onApplyCredit?: () => void;
 }) {
   const invalidate = useBillingInvalidation(orgSlug, appointmentId);
   const form = useZodForm(paymentSchema, {
-    defaultValues: { method: "cash", amount: "", reference: "" },
+    defaultValues: {
+      payments: [{ id: 1, method: "cash", amount: outstanding, reference: "" }],
+    },
   });
+  const paymentLines = form.watch("payments");
   const mutation = useMutation(
-    orpc.billing.recordPayment.mutationOptions({
+    orpc.billing.recordPayments.mutationOptions({
       onSuccess: async () => {
         await invalidate(invoiceId);
-        toast.success("Payment recorded");
+        toast.success(paymentLines.length === 1 ? "Payment recorded" : "Split payment recorded");
         onOpenChange(false);
       },
       onError: (error) => toast.error(error.message),
@@ -293,65 +330,147 @@ function PaymentDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Record payment</DialogTitle>
-          <DialogDescription>Record funds received against this invoice.</DialogDescription>
+          <DialogDescription>
+            Record funds received against this invoice. Split across up to four methods.
+          </DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form
-            onSubmit={form.handleSubmit((value) =>
+            onSubmit={form.handleSubmit((value) => {
+              const totalPaise = value.payments.reduce(
+                (sum, payment) => sum + (parseMoneyInput(payment.amount) ?? 0),
+                0,
+              );
+              const outstandingPaise = parseMoneyInput(outstanding);
+              if (outstandingPaise !== null && totalPaise > outstandingPaise) {
+                form.setError("root", {
+                  message: `Payments exceed the outstanding ${formatMoney(outstanding, currency)}`,
+                });
+                return;
+              }
               mutation.mutate({
                 orgSlug,
                 invoiceId,
-                method: value.method,
-                amount: value.amount,
-                reference: value.reference || undefined,
-              }),
-            )}
+                payments: value.payments.map(({ id: _id, ...payment }) => ({
+                  ...payment,
+                  reference: payment.reference || undefined,
+                })),
+              });
+            })}
             className="flex flex-col gap-3"
           >
-            <FormField
-              control={form.control}
-              name="method"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Method</FormLabel>
-                  <FormControl>
-                    <NativeSelect {...field} disabled={mutation.isPending}>
-                      <option value="cash">Cash</option>
-                      <option value="upi">UPI</option>
-                      <option value="card">Card</option>
-                    </NativeSelect>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="amount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Amount</FormLabel>
-                  <FormControl>
-                    <Input {...field} inputMode="decimal" disabled={mutation.isPending} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="reference"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Reference</FormLabel>
-                  <FormControl>
-                    <Input {...field} disabled={mutation.isPending} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {paymentLines.map((payment, index) => (
+              <div key={payment.id} className="flex flex-wrap items-end gap-2">
+                <FormField
+                  control={form.control}
+                  name={`payments.${index}.method`}
+                  render={({ field }) => (
+                    <FormItem className="w-28">
+                      <FormLabel>{index === 0 ? "Payment" : "And"}</FormLabel>
+                      <FormControl>
+                        <NativeSelect {...field} disabled={mutation.isPending}>
+                          <option value="cash">Cash</option>
+                          <option value="upi">UPI</option>
+                          <option value="card">Card</option>
+                        </NativeSelect>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {payment.method !== "cash" ? (
+                  <FormField
+                    control={form.control}
+                    name={`payments.${index}.reference`}
+                    render={({ field }) => (
+                      <FormItem className="min-w-48 flex-1">
+                        <FormLabel>Reference *</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            value={field.value ?? ""}
+                            disabled={mutation.isPending}
+                            placeholder="Transaction reference"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : null}
+                <FormField
+                  control={form.control}
+                  name={`payments.${index}.amount`}
+                  render={({ field }) => (
+                    <FormItem className="ml-auto w-32">
+                      <FormLabel>Amount</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          inputMode="decimal"
+                          disabled={mutation.isPending}
+                          className="tabular-nums text-right"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {paymentLines.length > 1 ? (
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    disabled={mutation.isPending}
+                    aria-label={`Remove payment ${index + 1}`}
+                    onClick={() =>
+                      form.setValue(
+                        "payments",
+                        paymentLines.filter((line) => line.id !== payment.id),
+                        { shouldDirty: true, shouldValidate: true },
+                      )
+                    }
+                  >
+                    <Trash2Icon />
+                  </Button>
+                ) : null}
+              </div>
+            ))}
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="self-start"
+              disabled={mutation.isPending || paymentLines.length >= 4}
+              onClick={() =>
+                form.setValue(
+                  "payments",
+                  [
+                    ...paymentLines,
+                    {
+                      id: Math.max(...paymentLines.map((payment) => payment.id)) + 1,
+                      method: "upi",
+                      amount: "",
+                      reference: "",
+                    },
+                  ],
+                  { shouldDirty: true },
+                )
+              }
+            >
+              Split payment
+            </Button>
+            {form.formState.errors.root?.message ? (
+              <p role="alert" className="text-destructive">
+                {form.formState.errors.root.message}
+              </p>
+            ) : null}
             <DialogFooter>
+              {onApplyCredit ? (
+                <Button type="button" variant="outline" onClick={onApplyCredit}>
+                  Apply discount
+                </Button>
+              ) : null}
               <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>

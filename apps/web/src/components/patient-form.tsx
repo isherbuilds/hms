@@ -9,6 +9,7 @@ import {
 import { Button } from "@hms/ui/components/button";
 import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
+import { SheetFooter } from "@hms/ui/components/sheet";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { Textarea } from "@hms/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -20,8 +21,10 @@ import { z } from "zod";
 
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useZodForm } from "@/hooks/use-zod-form";
+import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { applyOrpcFieldError } from "@/lib/orpc-error";
+import { applyOrpcFieldError, errorDataCode } from "@/lib/orpc-error";
+import { ageYearsToEstimatedDateOfBirth, patientAgeYears } from "@/lib/patient-age";
 
 /**
  * A patient record, as one plain column of labels and fields — the same form
@@ -34,18 +37,32 @@ import { applyOrpcFieldError } from "@/lib/orpc-error";
  */
 
 /** What editing needs from an existing record. `patient.get` returns a superset. */
-export type EditablePatient = z.input<typeof patientFormSchema> & { id: string };
+export type EditablePatient = {
+  id: string;
+  updatedAt: string;
+  name: string;
+  phone: string;
+  sex: "male" | "female" | "other" | "unknown";
+  dateOfBirth: string;
+  dobEstimated: boolean;
+  address: string;
+  email: string | null;
+  bloodGroup: "A+" | "A-" | "B+" | "B-" | "AB+" | "AB-" | "O+" | "O-" | null;
+  allergies: string | null;
+  medicalHistory: string | null;
+  uid: string | null;
+};
 
 const patientFormSchema = z
   .object({
     name: z.string().trim().min(1, "Enter the patient's name").max(200),
     phone: z.string().trim().min(4, "Enter at least 4 characters").max(20),
-    sex: z.enum(["male", "female", "other", "unknown"]),
+    sex: z.enum(["male", "female", "other", "unknown"], { error: "Choose sex" }),
     dateOfBirth: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date")
       .nullable(),
-    ageYears: z.number().int().min(0).max(150).nullable(),
+    age: z.number().int().min(0).max(150).nullable(),
     address: z.string().trim().max(500).default(""),
     email: z.email("Enter a valid email address").nullable(),
     bloodGroup: z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]).nullable(),
@@ -53,7 +70,7 @@ const patientFormSchema = z
     medicalHistory: z.string().nullable(),
     uid: z.string().trim().min(1).max(100).nullable(),
   })
-  .refine((values) => values.dateOfBirth !== null || values.ageYears !== null, {
+  .refine((values) => values.dateOfBirth !== null || values.age !== null, {
     message: "Enter a date of birth or age",
     path: ["dateOfBirth"],
   });
@@ -96,20 +113,35 @@ export function PatientForm({
   const isEdit = patient !== undefined;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { today } = useOrgDateTime();
   const form = useZodForm(patientFormSchema, {
-    defaultValues: patient ?? {
-      name: seed?.name ?? "",
-      phone: seed?.phone ?? "",
-      sex: "other",
-      dateOfBirth: null,
-      ageYears: null,
-      address: "",
-      email: null,
-      bloodGroup: null,
-      allergies: null,
-      medicalHistory: null,
-      uid: null,
-    },
+    defaultValues: patient
+      ? {
+          name: patient.name,
+          phone: patient.phone,
+          sex: patient.sex,
+          dateOfBirth: patient.dobEstimated ? null : patient.dateOfBirth,
+          age: patient.dobEstimated ? patientAgeYears(patient.dateOfBirth, today) : null,
+          address: patient.address,
+          email: patient.email,
+          bloodGroup: patient.bloodGroup,
+          allergies: patient.allergies,
+          medicalHistory: patient.medicalHistory,
+          uid: patient.uid,
+        }
+      : {
+          name: seed?.name ?? "",
+          phone: seed?.phone ?? "",
+          sex: undefined,
+          dateOfBirth: null,
+          age: null,
+          address: "",
+          email: null,
+          bloodGroup: null,
+          allergies: null,
+          medicalHistory: null,
+          uid: null,
+        },
   });
 
   const phone = form.watch("phone");
@@ -122,8 +154,28 @@ export function PatientForm({
   });
 
   const onConflict = (error: Error) => {
+    if (patient && errorDataCode(error) === "STALE_RECORD") {
+      toast.error(error.message, {
+        action: {
+          label: "Refresh",
+          onClick: async () => {
+            await queryClient.invalidateQueries({
+              queryKey: orpc.patient.get.key({
+                input: { orgSlug, patientId: patient.id },
+              }),
+            });
+            onSaved();
+          },
+        },
+      });
+      return;
+    }
+
     const mapped = applyOrpcFieldError(form, error, {
-      CONFLICT: { field: "uid", message: "A patient with this UID already exists." },
+      UID_TAKEN: {
+        field: "uid",
+        message: "A patient with this UID already exists.",
+      },
     });
     toast.error(mapped ? "A patient with this UID already exists." : error.message);
   };
@@ -159,7 +211,9 @@ export function PatientForm({
         // list are fresh — otherwise the sheet closes over stale rows.
         await Promise.all([
           queryClient.invalidateQueries({
-            queryKey: orpc.patient.get.key({ input: { orgSlug, patientId: patient!.id } }),
+            queryKey: orpc.patient.get.key({
+              input: { orgSlug, patientId: patient!.id },
+            }),
           }),
           queryClient.invalidateQueries({
             queryKey: orpc.patient.search.key({ input: { orgSlug } }),
@@ -173,11 +227,33 @@ export function PatientForm({
   );
 
   const pending = isEdit ? update.isPending : register.isPending;
-  const onSubmit = form.handleSubmit((values) =>
-    isEdit
-      ? update.mutate({ orgSlug, patientId: patient.id, ...values })
-      : register.mutate({ orgSlug, ...values }),
-  );
+  const onSubmit = form.handleSubmit((values) => {
+    const { age, ...fields } = values;
+    const dateOfBirth =
+      fields.dateOfBirth ??
+      (age === null
+        ? null
+        : patient?.dobEstimated && !form.formState.dirtyFields.age
+          ? patient.dateOfBirth
+          : ageYearsToEstimatedDateOfBirth(age, today));
+    if (dateOfBirth === null) {
+      form.setError("dateOfBirth", { message: "Enter a date of birth or age" });
+      return;
+    }
+
+    const birth = { dateOfBirth, dobEstimated: age !== null };
+    if (isEdit) {
+      update.mutate({
+        orgSlug,
+        patientId: patient.id,
+        updatedAt: patient.updatedAt,
+        ...fields,
+        ...birth,
+      });
+      return;
+    }
+    register.mutate({ orgSlug, ...fields, ...birth });
+  });
   const matches =
     phone.trim() === debouncedPhone && debouncedPhone.length >= 4
       ? // A patient being edited always matches its own number; warning about
@@ -278,9 +354,18 @@ export function PatientForm({
                 name="sex"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Sex</FormLabel>
+                    <FormLabel>
+                      Sex <span className="text-destructive">*</span>
+                    </FormLabel>
                     <FormControl>
-                      <NativeSelect {...field}>
+                      <NativeSelect
+                        value={field.value ?? ""}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      >
+                        <option value="">Choose sex</option>
                         <option value="male">Male</option>
                         <option value="female">Female</option>
                         <option value="other">Other</option>
@@ -303,7 +388,11 @@ export function PatientForm({
                         type="date"
 
                         value={field.value ?? ""}
-                        onChange={(event) => field.onChange(event.target.value || null)}
+                        onChange={(event) => {
+                          const value = event.target.value || null;
+                          field.onChange(value);
+                          if (value !== null) form.setValue("age", null);
+                        }}
                         onBlur={field.onBlur}
                         name={field.name}
                         ref={field.ref}
@@ -316,23 +405,23 @@ export function PatientForm({
 
               <FormField
                 control={form.control}
-                name="ageYears"
+                name="age"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Age in years</FormLabel>
+                    <FormLabel>Age in years, if birth date is unknown</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
                         min={0}
                         max={150}
-                        placeholder="Only if the date of birth is unknown"
-
+                        placeholder="Enter an estimated age"
                         value={field.value ?? ""}
-                        onChange={(event) =>
-                          field.onChange(
-                            event.target.value === "" ? null : Number(event.target.value),
-                          )
-                        }
+                        onChange={(event) => {
+                          const value =
+                            event.target.value === "" ? null : Number(event.target.value);
+                          field.onChange(value);
+                          if (value !== null) form.setValue("dateOfBirth", null);
+                        }}
                         onBlur={field.onBlur}
                         name={field.name}
                         ref={field.ref}
@@ -482,7 +571,7 @@ export function PatientForm({
             </div>
           </div>
 
-          <footer className="flex shrink-0 items-center gap-2 bg-popover p-4 text-xs">
+          <SheetFooter>
             {problems > 0 ? (
               <span className="min-w-0 truncate text-destructive">
                 {problems} {problems === 1 ? "field needs" : "fields need"} fixing
@@ -496,7 +585,7 @@ export function PatientForm({
                 {isEdit ? "Save changes" : "Save"}
               </SubmitButton>
             </div>
-          </footer>
+          </SheetFooter>
         </fieldset>
       </form>
     </Form>

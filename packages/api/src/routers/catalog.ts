@@ -1,7 +1,7 @@
 import { db } from "@hms/db";
 import { CATALOG_CATEGORIES, catalogItems } from "@hms/db/schema/catalog-items";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, ilike, ne, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
@@ -20,6 +20,43 @@ const catalogFields = z.object({
 });
 
 export const catalogRouter = {
+  searchServices: orgProcedure(
+    { catalog: ["read"] },
+    orgInput.extend({
+      query: z.string().trim().max(100).optional(),
+      category: z.enum(["procedure", "lab", "radiology", "other"]).optional(),
+    }),
+  ).handler(async ({ context, input }) => {
+    const pattern = input.query ? `%${input.query}%` : undefined;
+    return db
+      .select({
+        id: catalogItems.id,
+        code: catalogItems.code,
+        name: catalogItems.name,
+        category: catalogItems.category,
+        unitPrice: catalogItems.unitPrice,
+        taxRatePercent: catalogItems.taxRatePercent,
+      })
+      .from(catalogItems)
+      .where(
+        and(
+          eq(catalogItems.orgId, context.scope.orgId),
+          eq(catalogItems.active, true),
+          ne(catalogItems.category, "consultation"),
+          input.category ? eq(catalogItems.category, input.category) : undefined,
+          pattern
+            ? or(
+                ilike(catalogItems.code, pattern),
+                ilike(catalogItems.name, pattern),
+                ilike(catalogItems.category, pattern),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(asc(catalogItems.name), asc(catalogItems.id))
+      .limit(6);
+  }),
+
   list: orgProcedure(
     { catalog: ["read"] },
     orgInput.extend({

@@ -172,7 +172,7 @@ function TrialBalanceRoute() {
         ) : (
           <section data-report-print className="space-y-3">
             <header className="border-b pb-2">
-              <h1 className="text-sm font-semibold">Trial balance</h1>
+              <h1 className="text-sm font-medium">Trial balance</h1>
               <p className="text-muted-foreground">
                 {report.data.from} to {report.data.to}
               </p>
@@ -195,7 +195,7 @@ function TrialBalanceRoute() {
                 <TableBody>
                   {report.data.rows.map((row) => (
                     <TableRow key={row.accountId}>
-                      <TableCell className="font-medium tabular-nums">{row.code}</TableCell>
+                      <TableCell className="font-mono font-medium">{row.code}</TableCell>
                       <TableCell>{row.name}</TableCell>
                       <TableCell className="capitalize text-muted-foreground">{row.type}</TableCell>
                       <TableCell className="text-right tabular-nums">

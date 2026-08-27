@@ -10,8 +10,8 @@ import {
 } from "@hms/ui/components/table";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { PlusIcon, SearchIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { SearchIcon } from "lucide-react";
+import { useState } from "react";
 import { z } from "zod";
 
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
@@ -19,7 +19,7 @@ import { PatientSheet } from "@/components/patient-sheet";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { patientAgeYears } from "@/lib/patient-age";
+import { patientAgeLabel } from "@/lib/patient-age";
 
 const patientSearchQuery = (orgSlug: string, query: string) =>
   orpc.patient.search.infiniteOptions({
@@ -39,52 +39,20 @@ export const Route = createFileRoute("/$orgSlug/patients/")({
   // its open state lives in the URL: the link is shareable and Back closes it.
   validateSearch: z.object({
     create: z.boolean().optional().catch(undefined),
-    q: z
-      .string()
-      .trim()
-      .optional()
-      .catch(undefined)
-      .transform((value) => value || undefined),
   }),
-  loaderDeps: ({ search }) => ({ q: search.q }),
-  loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {
-    await queryClient.prefetchInfiniteQuery(patientSearchQuery(orgSlug, deps.q ?? ""));
+  loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
+    await queryClient.prefetchInfiniteQuery(patientSearchQuery(orgSlug, ""));
   },
   component: PatientsRoute,
 });
 
 function PatientsRoute() {
   const { orgSlug } = Route.useParams();
-  const { create, q } = Route.useSearch();
+  const { create } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const { timeZone, today } = useOrgDateTime();
-  const [query, setQuery] = useState(() => q ?? "");
+  const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query.trim(), 300);
-  const lastUrlQuery = useRef(q);
-
-  // An external URL change (Back, a shared link) adopts the new value; our own
-  // debounced writes are recorded in lastUrlQuery so they do not clobber
-  // whatever the user has typed since.
-  useEffect(() => {
-    if (q !== lastUrlQuery.current) {
-      lastUrlQuery.current = q;
-      setQuery(q ?? "");
-    }
-  }, [q]);
-
-  useEffect(() => {
-    // A stale debounce (still catching up to the input) must not navigate:
-    // right after a Back-sync it would re-write the URL we just adopted.
-    if (debouncedQuery !== query.trim()) return;
-    const nextQuery = debouncedQuery || undefined;
-    if (nextQuery === q) return;
-
-    lastUrlQuery.current = nextQuery;
-    void navigate({
-      search: (previous) => ({ ...previous, q: nextQuery }),
-      replace: true,
-    });
-  }, [debouncedQuery, query, navigate, q]);
 
   const patients = useInfiniteQuery({
     ...patientSearchQuery(orgSlug, debouncedQuery),
@@ -96,11 +64,11 @@ function PatientsRoute() {
     <>
       <PageHeader
         title="Patients"
+        description="Every patient registered in this organization"
         action={
           <Button
             onClick={() => navigate({ search: (previous) => ({ ...previous, create: true }) })}
           >
-            <PlusIcon />
             Register patient
           </Button>
         }
@@ -118,15 +86,22 @@ function PatientsRoute() {
           />
         </div>
 
-        {patients.isPending ? null : patients.isError ? (
-          <ErrorNote title="Could not load patients" detail={patients.error.message} />
-        ) : items.length === 0 ? (
-          <div className="border border-dashed px-4 py-8 text-center text-xs text-muted-foreground">
-            {debouncedQuery ? "No patients match this search." : "No patients registered yet."}
+        {/* The registry in the house card-in-card language (docs/design.md
+            §1): the tinted tray carries the label, the raised card carries the
+            rows, and it holds its height through a pending read, a failed one
+            and a search that matches nobody. */}
+        <section className="flex flex-col rounded-xl bg-muted p-1">
+          <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
+            <span className="min-w-0 truncate">Registry</span>
           </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <div className="ring-1 ring-border">
+          <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
+            {patients.isPending ? null : patients.isError ? (
+              <ErrorNote title="Could not load patients" detail={patients.error.message} inset />
+            ) : items.length === 0 ? (
+              <div className="flex min-h-32 items-center justify-center px-4 text-center text-muted-foreground">
+                {debouncedQuery ? "No patients match this search." : "No patients registered yet."}
+              </div>
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -134,47 +109,50 @@ function PatientsRoute() {
                     <TableHead>Name</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Sex</TableHead>
-                    <TableHead>Age</TableHead>
+                    <TableHead className="w-16 text-right">Age</TableHead>
                     <TableHead>Created</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.map((patient) => (
                     <TableRow key={patient.id}>
-                      <TableCell className="font-mono text-xs">{patient.mrn}</TableCell>
+                      <TableCell className="font-mono">{patient.mrn}</TableCell>
                       <TableCell>
                         <Link
                           to="/$orgSlug/patients/$patientId"
                           params={{ orgSlug, patientId: patient.id }}
-                          className="font-medium underline-offset-4 hover:underline"
+                          className="font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                         >
                           {patient.name}
                         </Link>
                       </TableCell>
-                      <TableCell>{patient.phone}</TableCell>
+                      <TableCell className="font-mono tabular-nums">{patient.phone}</TableCell>
                       <TableCell className="capitalize">{patient.sex}</TableCell>
-                      <TableCell>
-                        {patientAgeYears(patient.dateOfBirth, patient.ageYears, today) ?? "—"}
+                      <TableCell className="text-right">
+                        {patientAgeLabel(patient.dateOfBirth, patient.dobEstimated, today)}
                       </TableCell>
-                      <TableCell>{formatDate(patient.createdAt, timeZone)}</TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">
+                        {formatDate(patient.createdAt, timeZone)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            </div>
-
-            {patients.hasNextPage ? (
-              <Button
-                variant="outline"
-                className="self-start"
-                disabled={patients.isFetchingNextPage}
-                onClick={() => patients.fetchNextPage()}
-              >
-                {patients.isFetchingNextPage ? "Loading…" : "Load more"}
-              </Button>
-            ) : null}
+            )}
           </div>
-        )}
+        </section>
+
+        {/* Under the list only: every other state is the card's business. */}
+        {!patients.isError && items.length > 0 && patients.hasNextPage ? (
+          <Button
+            variant="outline"
+            className="self-start"
+            disabled={patients.isFetchingNextPage}
+            onClick={() => patients.fetchNextPage()}
+          >
+            {patients.isFetchingNextPage ? "Loading…" : "Load more"}
+          </Button>
+        ) : null}
       </PageBody>
 
       <PatientSheet

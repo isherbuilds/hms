@@ -25,8 +25,8 @@ function OrganizationOnboardingRoute() {
   return (
     <>
       <PageHeader
-        title={`Set up ${organizationName}`}
-        description="Start with the details that shape daily work"
+        title="Setup"
+        description={`${organizationName} · start with the details that shape daily work`}
       />
       <PageBody className="max-w-3xl">
         <section aria-labelledby="setup-path">

@@ -110,6 +110,14 @@ export const opdAppointments = pgTable(
       table.dayOrderAt,
       table.id,
     ),
+    // The patient record lists one person's visits newest first, keyset on
+    // (business_date, id) — so the index carries that exact order.
+    index("opd_appointments_org_patient_date_idx").on(
+      table.orgId,
+      table.patientId,
+      table.businessDate.desc(),
+      table.id.desc(),
+    ),
     index("opd_appointments_org_patient_arrived_idx")
       .on(table.orgId, table.patientId, table.practitionerId, table.arrivedAt)
       .where(sql`${table.status} = 'checked_in'`),

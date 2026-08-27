@@ -32,7 +32,7 @@ export function invalidateOpdAppointmentState(
     }),
   ];
 
-  if (transition === "create" || transition === "cancel") {
+  if (transition === "create" || transition === "checkIn" || transition === "cancel") {
     invalidations.push(
       queryClient.invalidateQueries({
         queryKey: orpc.dashboard.collections.key({ input: { orgSlug } }),
@@ -43,6 +43,21 @@ export function invalidateOpdAppointmentState(
     invalidations.push(
       queryClient.invalidateQueries({
         queryKey: orpc.billing.worklist.key({ input: { orgSlug } }),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: orpc.billing.openInvoices.key({ input: { orgSlug } }),
+      }),
+    );
+  }
+  if (
+    transition === "billing" ||
+    transition === "checkIn" ||
+    transition === "cancel" ||
+    transition === "noShow"
+  ) {
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: orpc.billing.listPendingCharges.key({ input: { orgSlug, appointmentId } }),
       }),
     );
   }
@@ -67,12 +82,19 @@ export function invalidateBillingState(
       queryKey: orpc.opd.get.key({ input: { orgSlug, appointmentId } }),
     }),
     queryClient.invalidateQueries({
+      queryKey: orpc.patient.account.key({ input: { orgSlug } }),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: orpc.patient.visits.key({ input: { orgSlug } }),
+    }),
+    queryClient.invalidateQueries({
       queryKey: orpc.dashboard.collections.key({ input: { orgSlug } }),
     }),
-    // The organization-wide worklist counts this appointment in one of its two
-    // lists whatever just happened to it, so every billing write moves it.
     queryClient.invalidateQueries({
       queryKey: orpc.billing.worklist.key({ input: { orgSlug } }),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: orpc.billing.openInvoices.key({ input: { orgSlug } }),
     }),
     ...(invoiceId
       ? [

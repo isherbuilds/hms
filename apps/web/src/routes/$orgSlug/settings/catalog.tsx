@@ -39,6 +39,8 @@ import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 import { applyOrpcFieldError } from "@/lib/orpc-error";
 
+import { SettingsTabs } from "./route";
+
 export const Route = createFileRoute("/$orgSlug/settings/catalog")({
   head: () => ({ meta: [{ title: "Catalog · HMS" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
@@ -173,6 +175,7 @@ function CatalogRoute() {
         description="Manage billable services, prices, and tax details"
         action={<Button onClick={() => setCreateOpen(true)}>New item</Button>}
       />
+      <SettingsTabs orgSlug={orgSlug} />
 
       <PageBody>
         <div className="flex flex-wrap items-end gap-3">
@@ -196,43 +199,56 @@ function CatalogRoute() {
           </label>
         </div>
 
-        {catalog.isPending ? null : catalog.isError ? (
-          <ErrorNote title="Could not load service catalog" detail={catalog.error.message} />
-        ) : catalog.data.length === 0 ? (
-          <div className="border border-dashed px-4 py-8 text-center text-xs text-muted-foreground">
-            {category || activeOnly
-              ? "No catalog items match these filters."
-              : "No catalog items yet."}
+        {/* One tray for the catalog, in the same shell as the OPD day list
+            (docs/design.md §1), so the boards read as one product. */}
+        <section className="flex flex-col rounded-xl bg-muted p-1">
+          <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
+            <span className="min-w-0 truncate">Items</span>
           </div>
-        ) : (
-          <div className="ring-1 ring-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Unit price</TableHead>
-                  <TableHead>Tax %</TableHead>
-                  <TableHead>Tax code</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {catalog.data.map((item) => (
-                  <CatalogRow
-                    key={item.id}
-                    item={item}
-                    pending={toggleActive.isPending && toggleActive.variables?.itemId === item.id}
-                    onToggle={toggleItem}
-                    onEdit={setEditing}
-                  />
-                ))}
-              </TableBody>
-            </Table>
+          {/* The card holds its height through a pending read, a failed one and
+              a filter that matches nothing. */}
+          <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
+            {catalog.isPending ? null : catalog.isError ? (
+              <ErrorNote
+                title="Could not load service catalog"
+                detail={catalog.error.message}
+                inset
+              />
+            ) : catalog.data.length === 0 ? (
+              <div className="flex min-h-32 items-center justify-center px-4 text-center text-muted-foreground">
+                {category || activeOnly
+                  ? "No catalog items match these filters."
+                  : "No catalog items yet."}
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead className="text-right">Unit price</TableHead>
+                    <TableHead className="text-right">Tax %</TableHead>
+                    <TableHead>Tax code</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {catalog.data.map((item) => (
+                    <CatalogRow
+                      key={item.id}
+                      item={item}
+                      pending={toggleActive.isPending && toggleActive.variables?.itemId === item.id}
+                      onToggle={toggleItem}
+                      onEdit={setEditing}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
-        )}
+        </section>
       </PageBody>
 
       <CatalogItemDialog
@@ -271,12 +287,12 @@ const CatalogRow = memo(function CatalogRow({
 }) {
   return (
     <TableRow>
-      <TableCell className="font-mono text-xs">{item.code}</TableCell>
+      <TableCell className="font-mono">{item.code}</TableCell>
       <TableCell className="font-medium">{item.name}</TableCell>
       <TableCell>{CATEGORY_LABELS[item.category]}</TableCell>
-      <TableCell>{item.unitPrice}</TableCell>
-      <TableCell>{item.taxRatePercent}</TableCell>
-      <TableCell>{item.taxCode || "—"}</TableCell>
+      <TableCell className="text-right">{item.unitPrice}</TableCell>
+      <TableCell className="text-right">{item.taxRatePercent}</TableCell>
+      <TableCell className="font-mono">{item.taxCode || "—"}</TableCell>
       <TableCell>
         <div className="flex items-center gap-2">
           <Checkbox

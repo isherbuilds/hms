@@ -87,13 +87,13 @@ export function PatientSheet({
       <ClientOnly fallback={null}>
         <Sheet open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
           <SheetContent ref={panel}>
-            <SheetHeader className="border-b border-border">
+            <SheetHeader>
               <SheetTitle>{patient ? "Edit patient" : "Register patient"}</SheetTitle>
             </SheetHeader>
             <PatientForm
               // The seed is part of the identity: reopening the sheet after a
               // different search must not keep the previous defaults.
-              key={`${patient?.id ?? "new"}:${seed?.name ?? ""}:${seed?.phone ?? ""}:${open}`}
+              key={`${patient?.id ?? "new"}:${patient?.updatedAt ?? ""}:${seed?.name ?? ""}:${seed?.phone ?? ""}:${open}`}
               orgSlug={orgSlug}
               patient={patient}
               seed={seed}

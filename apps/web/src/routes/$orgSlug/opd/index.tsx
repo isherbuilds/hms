@@ -17,21 +17,15 @@ import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, SearchIcon } from "lucide-
 import { useEffect, useState } from "react";
 import { z } from "zod";
 
-import {
-  OPD_STATUS_LABELS,
-  OpdAppointmentStatusBadge,
-  useOpdStatusActions,
-} from "@/components/opd-appointment";
+import { OpdAppointmentStatusBadge, useOpdStatusActions } from "@/components/opd-appointment";
 import { CheckInOpdAppointmentDialog } from "@/components/opd-appointment-dialogs";
-import { OpdVisitSheet } from "@/components/opd-visit-sheet";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { StaleDataNotice } from "@/components/stale-data-notice";
 import { formatMoney } from "@/lib/money";
-import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
+import { OPERATIONAL_INFINITE_REFETCH } from "@/lib/operational-query";
 import { formatBusinessDate, formatTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 
-/** Moves the day one business date at a time without a date picker popup. */
 function DayStepper({
   date,
   today,
@@ -50,7 +44,7 @@ function DayStepper({
   return (
     <div className="flex items-center gap-1">
       <Button
-        size="xs"
+        size="icon-sm"
         variant="ghost"
         aria-label="Previous day"
         onClick={() => onChange(shift(-1))}
@@ -58,18 +52,23 @@ function DayStepper({
         <ChevronLeftIcon />
       </Button>
       {date !== today && (
-        <Button size="xs" variant="ghost" onClick={() => onChange(today)}>
+        <Button size="sm" variant="ghost" onClick={() => onChange(today)}>
           Today
         </Button>
       )}
       <Input
         type="date"
-        aria-label="OPD date"
+        aria-label="Outpatient date"
         value={date}
         onChange={(event) => onChange(event.target.value || today)}
         className="h-7 w-32"
       />
-      <Button size="xs" variant="ghost" aria-label="Next day" onClick={() => onChange(shift(1))}>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label="Next day"
+        onClick={() => onChange(shift(1))}
+      >
         <ChevronRightIcon />
       </Button>
     </div>
@@ -91,24 +90,19 @@ function OpdSearchInput({ onDebouncedChange }: { onDebouncedChange: (value: stri
         value={value}
         onChange={(event) => setValue(event.target.value)}
         placeholder="Search name, MRN, phone or token"
-        aria-label="Search the OPD day"
+        aria-label="Search outpatient appointments"
         className="pl-8"
       />
     </div>
   );
 }
 
-/**
- * The date is a search param, not a hard-coded "today", so yesterday's list and
- * tomorrow's bookings are a filter change rather than a second page. Search and
- * `includeClosed` stay local: they are how one person reads this list right
- * now, not a place worth returning to.
- */
 const opdDaySearchSchema = z.object({
   date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
+  includeClosed: z.boolean().optional().catch(undefined),
 });
 
 const dayQuery = (orgSlug: string, date: string | undefined, q: string, includeClosed: boolean) =>
@@ -127,23 +121,25 @@ const dayQuery = (orgSlug: string, date: string | undefined, q: string, includeC
   });
 
 export const Route = createFileRoute("/$orgSlug/opd/")({
-  head: () => ({ meta: [{ title: "OPD · HMS" }] }),
+  head: () => ({ meta: [{ title: "Outpatient · HMS" }] }),
   validateSearch: opdDaySearchSchema,
-  loaderDeps: ({ search: { date } }) => ({ date }),
-  loader: async ({ context: { queryClient }, deps: { date }, params: { orgSlug } }) => {
-    await queryClient.prefetchInfiniteQuery(dayQuery(orgSlug, date, "", false));
+  loaderDeps: ({ search: { date, includeClosed } }) => ({ date, includeClosed }),
+  loader: async ({
+    context: { queryClient },
+    deps: { date, includeClosed },
+    params: { orgSlug },
+  }) => {
+    await queryClient.prefetchInfiniteQuery(dayQuery(orgSlug, date, "", includeClosed ?? false));
   },
   component: OpdRoute,
 });
 
 function OpdRoute() {
   const { orgSlug } = Route.useParams();
-  const { date } = Route.useSearch();
+  const { date, includeClosed } = Route.useSearch();
   const navigate = useNavigate();
   const { timeZone, today } = useOrgDateTime();
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [includeClosed, setIncludeClosed] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [checkingIn, setCheckingIn] = useState<{
     id: string;
     callerName: string | null;
@@ -153,50 +149,28 @@ function OpdRoute() {
   const membership = useQuery(orpc.member.me.queryOptions({ input: { orgSlug } }));
   const roles = membership.data?.roles;
   const currency = membership.data?.currency;
-  // Registering the patient is part of the same dialog, so both grants are
+  // Registering the patient is part of the same intake, so both grants are
   // required before offering it. Hidden until roles land, so the action never
   // appears and then disappears.
   const canCreateOpdAppointments = roles
     ? authorize(roles, { opd: ["create"] }) && authorize(roles, { patient: ["read"] })
     : false;
-  const canSettleWalkIn =
-    canCreateOpdAppointments && Boolean(roles && authorize(roles, { billing: ["write"] }));
   const shownDate = date ?? today;
 
   const day = useInfiniteQuery({
-    ...dayQuery(orgSlug, date, debouncedSearch, includeClosed),
-    ...OPERATIONAL_REFETCH,
-    // TanStack refetches every loaded infinite-query page. Keep the live poll
-    // cheap on page one; deeper browsing refreshes only when staff ask for it.
-    refetchInterval: (query) =>
-      (query.state.data?.pages.length ?? 0) <= 1 ? OPERATIONAL_REFETCH.refetchInterval : false,
-    refetchOnWindowFocus: (query) => (query.state.data?.pages.length ?? 0) <= 1,
+    ...dayQuery(orgSlug, date, debouncedSearch, includeClosed ?? false),
+    ...OPERATIONAL_INFINITE_REFETCH,
   });
   const items = day.data?.pages.flatMap((page) => page.items) ?? [];
-  // Read back out of the list rather than held aside, so the panel follows the
-  // poll — and closes by itself when the row it was opened on leaves the day.
-  const selected = items.find((item) => item.id === selectedId) ?? null;
 
   const { checkIn } = useOpdStatusActions(orgSlug);
 
   return (
     <>
       <PageHeader
-        title="OPD"
-        description={shownDate === today ? "Today" : formatBusinessDate(shownDate)}
+        title="Outpatient"
         action={
-          <div className="flex items-center gap-2">
-            <StaleDataNotice dataUpdatedAt={day.dataUpdatedAt} />
-            {(day.data?.pages.length ?? 0) > 1 ? (
-              <Button
-                size="xs"
-                variant="ghost"
-                disabled={day.isFetching}
-                onClick={() => void day.refetch()}
-              >
-                Refresh
-              </Button>
-            ) : null}
+          <>
             <DayStepper
               date={shownDate}
               today={today}
@@ -204,121 +178,146 @@ function OpdRoute() {
                 void navigate({
                   to: "/$orgSlug/opd",
                   params: { orgSlug },
-                  search: { date: next === today ? undefined : next },
+                  search: {
+                    date: next === today ? undefined : next,
+                    includeClosed,
+                  },
                 })
               }
             />
-            {canSettleWalkIn ? (
-              <Link className={buttonVariants()} to="/$orgSlug/opd/new" params={{ orgSlug }}>
-                <PlusIcon />
-                New walk-in
-              </Link>
-            ) : null}
             {canCreateOpdAppointments ? (
               <Link
-                className={buttonVariants({ variant: canSettleWalkIn ? "outline" : "default" })}
+                className={buttonVariants()}
                 to="/$orgSlug/opd/new"
                 params={{ orgSlug }}
-                search={{ mode: "scheduled" }}
+                search={{ includeClosed: includeClosed ? true : undefined }}
               >
-                Book appointment
+                <PlusIcon data-icon="inline-start" />
+                <span className="sm:hidden">New</span>
+                <span className="hidden sm:inline">New appointment</span>
               </Link>
             ) : null}
-          </div>
+          </>
         }
       />
       <PageBody>
-        {/* One field over everything the counter might be told: a name, a card,
-            a phone, or "I'm token 4". */}
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap items-center gap-2">
           <OpdSearchInput onDebouncedChange={setDebouncedSearch} />
-          <label className="flex h-8 items-center gap-2 font-medium">
-            <Checkbox checked={includeClosed} onCheckedChange={setIncludeClosed} />
+          <label className="flex h-8 shrink-0 items-center gap-2 rounded-md border border-border bg-background px-2.5 font-medium">
+            <Checkbox
+              checked={includeClosed ?? false}
+              onCheckedChange={(checked) =>
+                void navigate({
+                  to: "/$orgSlug/opd",
+                  params: { orgSlug },
+                  search: { date, includeClosed: checked ? true : undefined },
+                  replace: true,
+                })
+              }
+            />
             Include cancelled and no shows
           </label>
+          <div className="ml-auto flex items-center gap-2">
+            <StaleDataNotice dataUpdatedAt={day.dataUpdatedAt} />
+            {(day.data?.pages.length ?? 0) > 1 ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={day.isFetching}
+                onClick={() => void day.refetch()}
+              >
+                Refresh
+              </Button>
+            ) : null}
+          </div>
         </div>
 
-        {day.isPending ? null : day.isError ? (
-          <ErrorNote title="Could not load the OPD day" detail={day.error.message} />
-        ) : items.length === 0 ? (
-          <div className="border border-dashed px-4 py-8 text-center text-xs text-muted-foreground">
-            {debouncedSearch
-              ? "Nobody in the OPD day matches this search."
-              : shownDate === today
-                ? "No OPD patients yet today."
-                : `No OPD patients on ${formatBusinessDate(shownDate)}.`}
+        <section className="flex min-h-64 flex-1 flex-col rounded-xl bg-muted p-1">
+          <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
+            <span className="min-w-0 truncate">Appointments</span>
           </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <div className="ring-1 ring-border">
+          <div className="min-h-64 flex-1 overflow-x-auto rounded-lg border border-border bg-card">
+            {day.isPending ? null : day.isError ? (
+              <ErrorNote
+                title="Could not load the outpatient day"
+                detail={day.error.message}
+                inset
+              />
+            ) : items.length === 0 ? (
+              <div className="flex min-h-64 items-center justify-center px-4 text-center text-muted-foreground">
+                {debouncedSearch
+                  ? "No appointments match this search."
+                  : shownDate === today
+                    ? "No appointments today."
+                    : `No appointments on ${formatBusinessDate(shownDate)}.`}
+              </div>
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-20">Time</TableHead>
                     <TableHead className="w-16">Token</TableHead>
                     <TableHead>Patient</TableHead>
+                    <TableHead className="w-20">Time</TableHead>
                     <TableHead>Practitioner</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Balance</TableHead>
-                    <TableHead className="w-28 text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.map((appointment) => (
                     <TableRow
                       key={appointment.id}
-                      // Pointing anywhere on the row opens the panel; the
-                      // patient's name is the same target for the keyboard.
-                      onClick={() => setSelectedId(appointment.id)}
+                      tabIndex={0}
+                      onClick={() =>
+                        void navigate({
+                          to: "/$orgSlug/opd/$appointmentId",
+                          params: { orgSlug, appointmentId: appointment.id },
+                        })
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") return;
+                        event.preventDefault();
+                        void navigate({
+                          to: "/$orgSlug/opd/$appointmentId",
+                          params: { orgSlug, appointmentId: appointment.id },
+                        });
+                      }}
                       className="cursor-pointer"
                     >
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {formatTime(appointment.dayOrderAt ?? appointment.createdAt, timeZone)}
-                      </TableCell>
                       <TableCell>
                         {appointment.tokenNumber === null ? (
                           <span className="text-muted-foreground">·</span>
                         ) : (
-                          // text-sm deviates from the type scale: the token is
-                          // what desk staff and patients match at a glance.
                           <span className="font-mono text-sm font-semibold">
                             {appointment.tokenNumber}
                           </span>
                         )}
                       </TableCell>
                       <TableCell>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedId(appointment.id)}
+                        <Link
+                          to="/$orgSlug/opd/$appointmentId"
+                          params={{ orgSlug, appointmentId: appointment.id }}
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => event.stopPropagation()}
                           className="text-left font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                         >
                           {appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
-                        </button>
+                        </Link>
                         <p className="text-muted-foreground">
                           {appointment.patientMrn ?? appointment.callerPhone ?? "No phone"}
                         </p>
                       </TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">
+                        {formatTime(appointment.dayOrderAt ?? appointment.createdAt, timeZone)}
+                      </TableCell>
                       <TableCell>{appointment.practitionerName}</TableCell>
                       <TableCell>
-                        <OpdAppointmentStatusBadge status={appointment.status} />
-                      </TableCell>
-                      {/* Read-only on purpose: settling is a decision that
-                          belongs on the record, not on a list row. */}
-                      <TableCell className="text-right">
-                        {currency && Number(appointment.balanceDue) > 0 ? (
-                          <Badge variant="destructive">
-                            {formatMoney(appointment.balanceDue, currency)} due
-                          </Badge>
-                        ) : null}
-                      </TableCell>
-                      <TableCell className="text-right">
                         {appointment.status === "booked" ? (
                           <Button
                             size="xs"
                             disabled={checkIn.isPending}
+                            onKeyDown={(event) => event.stopPropagation()}
                             onClick={(event) => {
-                              // The row behind opens the panel; checking in is
-                              // not that.
                               event.stopPropagation();
                               if (appointment.patientId) {
                                 checkIn.mutate({ orgSlug, appointmentId: appointment.id });
@@ -333,40 +332,37 @@ function OpdRoute() {
                           >
                             Check in
                           </Button>
-                        ) : appointment.status === "checked_in" ? null : (
-                          <span className="text-muted-foreground">
-                            {OPD_STATUS_LABELS[appointment.status]}
-                          </span>
+                        ) : (
+                          <OpdAppointmentStatusBadge status={appointment.status} />
                         )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {currency && Number(appointment.balanceDue) > 0 ? (
+                          <Badge variant="destructive">
+                            {formatMoney(appointment.balanceDue, currency)} due
+                          </Badge>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            </div>
-
-            {day.hasNextPage ? (
-              <Button
-                variant="outline"
-                className="self-start"
-                disabled={day.isFetchingNextPage}
-                onClick={() => day.fetchNextPage()}
-              >
-                {day.isFetchingNextPage ? "Loading…" : "Load more"}
-              </Button>
-            ) : null}
+            )}
           </div>
-        )}
+        </section>
+
+        {!day.isError && items.length > 0 && day.hasNextPage ? (
+          <Button
+            variant="outline"
+            className="self-start"
+            disabled={day.isFetchingNextPage}
+            onClick={() => day.fetchNextPage()}
+          >
+            {day.isFetchingNextPage ? "Loading…" : "Load more"}
+          </Button>
+        ) : null}
       </PageBody>
 
-      <OpdVisitSheet
-        orgSlug={orgSlug}
-        appointment={selected}
-        open={selected !== null}
-        onOpenChange={(open) => {
-          if (!open) setSelectedId(null);
-        }}
-      />
       <ClientOnly fallback={null}>
         {checkingIn ? (
           <CheckInOpdAppointmentDialog

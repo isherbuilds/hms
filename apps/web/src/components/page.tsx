@@ -1,4 +1,5 @@
 import { cn } from "@hms/ui/lib/utils";
+import { SidebarTrigger } from "@hms/ui/components/sidebar";
 import { type ReactNode } from "react";
 
 /**
@@ -18,7 +19,8 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+    <div className="z-10 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-card px-3 lg:pr-4 lg:pl-6 print:h-auto print:px-4 print:py-3">
+      <SidebarTrigger className="print:hidden lg:hidden" />
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <div className="flex min-w-0 items-baseline gap-2">
           <h1 className="truncate text-sm font-medium">{title}</h1>
@@ -49,7 +51,13 @@ export function PageBody({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-col gap-4 text-xs", bleed ? "py-4" : "p-4", className)}>
+    <div
+      className={cn(
+        "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto text-xs print:overflow-visible",
+        bleed ? "py-4" : "p-4",
+        className,
+      )}
+    >
       {children}
     </div>
   );

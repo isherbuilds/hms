@@ -236,8 +236,8 @@ CREATE TABLE "patients" (
 	"name" text NOT NULL,
 	"phone" text NOT NULL,
 	"sex" text NOT NULL,
-	"date_of_birth" date,
-	"age_years" integer,
+	"date_of_birth" date NOT NULL,
+	"dob_estimated" boolean DEFAULT false NOT NULL,
 	"address" text NOT NULL,
 	"email" text,
 	"blood_group" text,
@@ -246,11 +246,9 @@ CREATE TABLE "patients" (
 	"uid" text,
 	"created_by" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp (3) with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "patients_org_id_id_unique" UNIQUE("org_id","id"),
-	CONSTRAINT "patients_age_or_dob_check" CHECK ("patients"."date_of_birth" is not null or "patients"."age_years" is not null),
 	CONSTRAINT "patients_sex_check" CHECK ("patients"."sex" in ('male', 'female', 'other', 'unknown')),
-	CONSTRAINT "patients_age_range_check" CHECK ("patients"."age_years" is null or "patients"."age_years" between 0 and 150),
 	CONSTRAINT "patients_blood_group_check" CHECK ("patients"."blood_group" is null or "patients"."blood_group" in ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'))
 );
 --> statement-breakpoint
@@ -498,6 +496,7 @@ CREATE INDEX "practitioners_org_name_idx" ON "practitioners" USING btree ("org_i
 CREATE INDEX "practitioners_org_department_idx" ON "practitioners" USING btree ("org_id","department_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "opd_appointments_org_practitioner_date_token_uq" ON "opd_appointments" USING btree ("org_id","practitioner_id","business_date","token_number") WHERE "opd_appointments"."token_number" is not null;--> statement-breakpoint
 CREATE INDEX "opd_appointments_org_date_day_order_idx" ON "opd_appointments" USING btree ("org_id","business_date","day_order_at","id");--> statement-breakpoint
+CREATE INDEX "opd_appointments_org_patient_date_idx" ON "opd_appointments" USING btree ("org_id","patient_id","business_date" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "opd_appointments_org_patient_arrived_idx" ON "opd_appointments" USING btree ("org_id","patient_id","practitioner_id","arrived_at") WHERE "opd_appointments"."status" = 'checked_in';--> statement-breakpoint
 CREATE UNIQUE INDEX "invoices_org_number_idx" ON "invoices" USING btree ("org_id","invoice_number");--> statement-breakpoint
 CREATE INDEX "invoices_org_opd_appointment_idx" ON "invoices" USING btree ("org_id","opd_appointment_id","created_at");--> statement-breakpoint

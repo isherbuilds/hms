@@ -5,8 +5,29 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1787501620190,
-      "tag": "0000_fantastic_ego",
+      "when": 1787803736702,
+      "tag": "0000_square_magma",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787812196040,
+      "tag": "0001_romantic_ares",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787812201182,
+      "tag": "0002_billing-business-date-backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787812228451,
+      "tag": "0003_wet_centennial",
       "breakpoints": true
     }
   ]

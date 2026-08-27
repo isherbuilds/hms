@@ -24,16 +24,18 @@ function HomeRoute() {
   const reachable = health.data === "OK";
 
   return (
-    <div className="mx-auto flex min-h-svh w-full max-w-sm flex-col justify-center gap-4 p-4">
+    <div className="mx-auto flex min-h-svh w-full max-w-sm flex-col justify-center gap-4 p-4 text-xs">
       <div className="flex flex-col gap-1">
         <h1 className="text-sm font-medium">HMS</h1>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-muted-foreground">
           A multi-tenant base for data-intensive internal software. Every record belongs to exactly
           one organization, and every request proves membership.
         </p>
       </div>
 
-      <div className="flex items-center gap-2 p-3 text-xs ring-1 ring-border">
+      {/* One status line groups nothing, so it earns hairlines rather than a
+          box or a tray: flat is the default (docs/design.md §1). */}
+      <div className="flex min-h-9 items-center gap-2 border-y border-border">
         {/* Colour is reserved for tenant identity, so a healthy state is
             neutral — only a genuine fault earns the destructive tone. */}
         <span
@@ -51,7 +53,7 @@ function HomeRoute() {
         </span>
       </div>
 
-      <Button nativeButton={false} render={<Link to="/join" />}>
+      <Button size="sm" nativeButton={false} render={<Link to="/join" />}>
         Open an organization
       </Button>
     </div>

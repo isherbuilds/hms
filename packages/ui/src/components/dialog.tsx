@@ -24,11 +24,8 @@ function DialogContent({
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
-          // `min-w-0` on the flex children is what keeps long unbroken content
-          // (a URL, a token) from forcing the dialog wider than its max-width.
-          "fixed top-1/2 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-lg bg-popover p-4 text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none [&>*]:min-w-0",
-          // Enter/exit only — the dialog is a rare, deliberate moment and the
-          // movement carries spatial continuity from the trigger.
+          // Portal content cannot inherit PageBody's text size.
+          "fixed top-1/2 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto overscroll-contain rounded-lg bg-popover p-4 text-xs text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none [&>*]:min-w-0",
           "duration-150 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           "motion-reduce:duration-0 motion-reduce:data-open:animate-none motion-reduce:data-closed:animate-none",
           className,
@@ -74,7 +71,7 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn("cn-font-heading text-sm font-medium", className)}
+      className={cn("cn-font-heading text-base font-medium text-balance", className)}
       {...props}
     />
   );

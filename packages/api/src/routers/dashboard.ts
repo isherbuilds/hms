@@ -86,10 +86,22 @@ export const dashboardRouter = {
           coalesce(sum(${payments.amount}) filter (where ${payments.method} = 'cash'), 0)::text as "cash",
           coalesce(sum(${payments.amount}) filter (where ${payments.method} = 'upi'), 0)::text as "upi",
           coalesce(sum(${payments.amount}) filter (where ${payments.method} = 'card'), 0)::text as "card",
-          (select coalesce(sum(${charges.unitPrice} * ${charges.qty}), 0)::text from ${charges}
-            where ${charges.orgId} = ${orgId} and ${charges.status} = 'pending') as "unbilled",
-          (select count(distinct ${charges.opdAppointmentId})::integer from ${charges}
-            where ${charges.orgId} = ${orgId} and ${charges.status} = 'pending') as "unbilledOpdAppointments"
+          (select coalesce(sum(${charges.unitPrice} * ${charges.qty}), 0)::text
+            from ${charges}
+            inner join ${opdAppointments}
+              on ${opdAppointments.orgId} = ${charges.orgId}
+             and ${opdAppointments.id} = ${charges.opdAppointmentId}
+            where ${charges.orgId} = ${orgId}
+              and ${charges.status} = 'pending'
+              and ${opdAppointments.status} = 'checked_in') as "unbilled",
+          (select count(distinct ${charges.opdAppointmentId})::integer
+            from ${charges}
+            inner join ${opdAppointments}
+              on ${opdAppointments.orgId} = ${charges.orgId}
+             and ${opdAppointments.id} = ${charges.opdAppointmentId}
+            where ${charges.orgId} = ${orgId}
+              and ${charges.status} = 'pending'
+              and ${opdAppointments.status} = 'checked_in') as "unbilledOpdAppointments"
         from ${payments}
         where ${payments.orgId} = ${orgId}
           and ${payments.createdAt} >= ${start} and ${payments.createdAt} < ${end}

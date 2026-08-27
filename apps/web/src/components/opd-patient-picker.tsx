@@ -1,3 +1,4 @@
+import { normalizePhone } from "@hms/api/lib/phone";
 import { Button } from "@hms/ui/components/button";
 import { Combobox } from "@hms/ui/components/combobox";
 import {
@@ -16,30 +17,32 @@ import { PatientSheet } from "@/components/patient-sheet";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { patientAgeYears } from "@/lib/patient-age";
+import { patientAgeLabel } from "@/lib/patient-age";
 
-/**
- * A walk-in desk has a person and a phone number, not a record id. So one field
- * searches, warns about duplicates, and offers registration, because at a front
- * desk those are the same question — "have we seen you before?".
- *
- * Shared by check-in and the OPD intake page. Registering a patient opens the
- * patient sheet over a page rather than stacking a second modal.
- */
 export type SelectedPatient = { id: string; name: string; mrn: string };
 
-/** Digits, spaces, `+` and `-` only — what a phone number looks like at a desk. */
-const LOOKS_LIKE_PHONE = /^[\d+\s-]+$/;
+const HAS_LETTERS = /\p{L}/u;
 
-/**
- * Debounced patient search behind one free-text box. Digits mean a phone;
- * anything else is a name. Phone is an exact-prefix column match, so routing
- * it correctly is what makes one field do both jobs.
- */
+function phoneQuery(value: string) {
+  const digits = normalizePhone(value);
+  const hasLetters = HAS_LETTERS.test(value);
+  return {
+    isPhone: !hasLetters && digits.length >= 4,
+    incomplete: !hasLetters && digits.length < 4,
+  };
+}
+
+function callerSeed(value: string): { name?: string; phone?: string } {
+  const classification = phoneQuery(value);
+  if (classification.isPhone) return { phone: value };
+  if (classification.incomplete) return {};
+  return { name: value };
+}
+
 function usePatientMatches(orgSlug: string, raw: string) {
   const trimmed = raw.trim();
   const debounced = useDebouncedValue(trimmed, 300);
-  const isPhone = /^[\d+\s-]+$/.test(debounced) && debounced.replace(/\D/g, "").length >= 4;
+  const { isPhone, incomplete } = phoneQuery(debounced);
 
   const results = useQuery({
     ...orpc.patient.search.queryOptions({
@@ -47,18 +50,16 @@ function usePatientMatches(orgSlug: string, raw: string) {
         ? { orgSlug, phone: debounced, limit: 20 }
         : { orgSlug, query: debounced, limit: 20 },
     }),
-    enabled: debounced.length >= 2,
+    enabled: debounced.length > 0 && !incomplete,
   });
 
   return {
-    isPhone,
     matches: trimmed === debounced ? (results.data?.items ?? []) : [],
-    searched: debounced.length >= 2 && results.isSuccess && trimmed === debounced,
+    searched: !incomplete && debounced.length > 0 && results.isSuccess && trimmed === debounced,
     error: results.isError ? results.error : null,
   };
 }
 
-/** The shared desk search-and-register interaction used by check-in and intake. */
 export function OpdPatientSearch({
   orgSlug,
   initialQuery,
@@ -72,19 +73,13 @@ export function OpdPatientSearch({
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState(initialQuery ?? "");
   const [open, setOpen] = useState(false);
-  /**
-   * Held rather than derived, so the sheet keeps the values the desk had typed
-   * at the moment it opened even if the box is edited behind it.
-   */
   const [seed, setSeed] = useState<{ name?: string; phone?: string } | null>(null);
   const trimmed = query.trim();
   const { matches, searched, error } = usePatientMatches(orgSlug, query);
 
-  // Digits are a phone, anything else is a name — the same split the search box
-  // already makes, so whatever was typed lands in the right field.
   const openRegistration = () => {
     setOpen(false);
-    setSeed(LOOKS_LIKE_PHONE.test(trimmed) ? { phone: trimmed } : { name: trimmed });
+    setSeed(callerSeed(trimmed));
   };
 
   return (
@@ -96,10 +91,7 @@ export function OpdPatientSearch({
           getItemKey={(match) => match.id}
           getItemLabel={(match) => match.name}
           inputValue={query}
-          onInputValueChange={(value) => {
-            setQuery(value);
-            setOpen(value.trim().length >= 2);
-          }}
+          onInputValueChange={setQuery}
           onSelect={(match) => {
             setOpen(false);
             onSelect({ id: match.id, name: match.name, mrn: match.mrn });
@@ -109,25 +101,33 @@ export function OpdPatientSearch({
           inputRef={searchRef}
           inputClassName="pl-8"
           inputProps={{
+            id: "patient-search",
             "aria-label": "Phone or name",
             placeholder: "Phone or name",
-            autoFocus: true,
             autoComplete: "off",
+            autoFocus: true,
             onFocus: () => {
-              if (trimmed.length >= 2) setOpen(true);
+              if (trimmed.length > 0) setOpen(true);
+            },
+            onKeyDown: (event) => {
+              if (event.key !== "Enter" || !searched || matches.length > 0) return;
+              event.preventDefault();
+              openRegistration();
             },
           }}
-          itemClassName="items-baseline gap-2 rounded-none border-b border-border px-3 py-2 last:border-b-0"
+          itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-none border-b border-border px-3 py-2 last:border-b-0"
           renderItem={(match) => {
-            const age = patientAgeYears(match.dateOfBirth, match.ageYears, today);
+            const age = patientAgeLabel(match.dateOfBirth, match.dobEstimated, today);
             return (
               <>
-                <span className="font-medium">{match.name}</span>
-                <span className="text-muted-foreground">
-                  {match.mrn} · {match.phone}
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{match.name}</span>
+                  <span className="block truncate text-muted-foreground">
+                    {match.mrn} · <span className="font-mono tabular-nums">{match.phone}</span>
+                  </span>
                 </span>
-                <span className="ml-auto shrink-0 capitalize text-muted-foreground">
-                  {age === null ? "Age —" : `${age}y`} · {match.sex}
+                <span className="shrink-0 capitalize text-muted-foreground">
+                  {age}y · {match.sex}
                 </span>
               </>
             );
@@ -137,11 +137,7 @@ export function OpdPatientSearch({
               <Empty>
                 <EmptyHeader>
                   <EmptyTitle>No patient matches “{trimmed}”</EmptyTitle>
-                  <EmptyDescription>
-                    {LOOKS_LIKE_PHONE.test(trimmed)
-                      ? "Register them and this number is filled in for you."
-                      : "Register them and this name is filled in for you."}
-                  </EmptyDescription>
+                  <EmptyDescription>No existing record uses these details.</EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
                   <Button type="button" onClick={openRegistration}>
@@ -156,14 +152,6 @@ export function OpdPatientSearch({
 
       {error ? <ErrorNote title="Could not search patients" detail={error.message} /> : null}
 
-      {searched && matches.length === 0 ? null : (
-        <Button type="button" variant="outline" className="self-start" onClick={openRegistration}>
-          Register new patient
-        </Button>
-      )}
-
-      {/* The real registration form, not a second copy of it: address, blood
-          group and history are all here, and the walk-in is still underneath. */}
       <PatientSheet
         orgSlug={orgSlug}
         seed={seed ?? undefined}

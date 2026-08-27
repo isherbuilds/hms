@@ -13,13 +13,21 @@ Three greys, and they must stay distinguishable. This is the single most
 important rule in the document, because the card language is built on it and it
 collapses silently when two of them drift together.
 
-| Surface | Token                       | What it is                                          |
-| ------- | --------------------------- | --------------------------------------------------- |
-| Canvas  | `bg-background`             | The page. Nothing sits directly on it except cards. |
-| Shell   | `bg-muted`                  | The tinted wrapper that carries a card's label.     |
-| Card    | `bg-card` + `border-border` | The raised surface that carries the content.        |
+| Surface | Token                       | What it is                                                 |
+| ------- | --------------------------- | ---------------------------------------------------------- |
+| Canvas  | `bg-background`             | The page. Flat sections and rationed card trays sit on it. |
+| Shell   | `bg-muted`                  | The tinted wrapper that carries a card's label.            |
+| Card    | `bg-card` + `border-border` | The raised surface that carries the content.               |
 
-**The card-in-card pattern** is the house style for anything with a label:
+**Card trays are rationed against stacking, not against use.** An operational
+list — a table of rows staff work through — gets exactly one tray. That is the
+standard list treatment, not an exception: the OPD day list, the patients
+registry, and record Charges or Billing tables all use it. Rationing means a
+screen does not stack many trays and boxes in one composition: flat sections
+with typographic hierarchy and hairlines are the default for everything that is
+not a row group. A tray uses `rounded-xl bg-muted p-1`, an `h-9` label row, and
+a raised `rounded-lg border bg-card` body. Never nest a card inside an
+already-raised surface, such as a Sheet or popover.
 
 ```
 ┌ shell (bg-muted, rounded-xl, p-1) ──────────┐
@@ -30,8 +38,7 @@ collapses silently when two of them drift together.
 └─────────────────────────────────────────────┘
 ```
 
-The shell is what makes a grid of cards read as one instrument rather than as
-six unrelated boxes. Do not nest a shell inside a shell.
+The shell groups related rows. Do not nest a shell inside a shell.
 
 **Do not tune these values per page.** If a shell is invisible, the token is
 wrong, not the page — fix `--muted` in `packages/ui/src/styles/globals.css`.
@@ -60,12 +67,13 @@ One scale. Five steps carry everything:
 
 A dense data surface. `text-xs` is the body size, not a small size.
 
-| Size                            | Where                                                                  |
-| ------------------------------- | ---------------------------------------------------------------------- |
-| `text-xs` (12px)                | Default: table cells, labels, body copy, buttons, inputs               |
-| `text-sm` (14px)                | Page and section titles                                                |
-| `text-3xl` (30px)               | The headline number on a stat card — where the number _is_ the content |
-| `text-base`/`text-lg`/`text-xl` | Public pages only (`/login`). Never inside the org shell.              |
+| Size                  | Where                                                     |
+| --------------------- | --------------------------------------------------------- |
+| `text-xs` (12px)      | Default: table cells, labels, body copy, buttons, inputs  |
+| `text-sm` (14px)      | Page and section titles                                   |
+| `text-base` (16px)    | Dialog and Sheet task titles                              |
+| `text-2xl`/`text-3xl` | The headline number on a dashboard stat card only         |
+| `text-lg`/`text-xl`   | Public pages only (`/login`). Never inside the org shell. |
 
 - **No `text-[13px]`-style values.** A missing step means the design is wrong, not
   the scale. The only arbitrary sizes live in print documents, measured in `mm`
@@ -80,8 +88,9 @@ A dense data surface. `text-xs` is the body size, not a small size.
   it a live-updating figure jitters.
 
 **Fonts.** Inter Variable (UI) and JetBrains Mono (identifiers), both self-hosted
-via `@fontsource-variable/*`. No CDN: the app must work on a hospital LAN with no
-outbound internet. Two families, no more.
+via `@fontsource-variable/*`. Billing PDFs pair Takumi's shipped Latin sans with
+static Noto Sans Devanagari subsets for fixed metrics and script coverage. No
+CDN: the app must work on a hospital LAN with no outbound internet.
 
 ## 4. Radius
 
@@ -90,6 +99,7 @@ Set by the component layer, never at a call site.
 | Radius         | Where                                                        |
 | -------------- | ------------------------------------------------------------ |
 | `rounded-md`   | Controls: buttons, inputs, menu items, badges                |
+| `rounded-sm`   | Checkbox indicator only                                      |
 | `rounded-lg`   | Cards, dialogs, popovers, the login context panel            |
 | `rounded-xl`   | The card shell                                               |
 | `rounded-full` | `Button shape="pill"` only — currently the sign-in CTA alone |
@@ -109,9 +119,18 @@ Theme tokens only: `bg-background`, `bg-card`, `bg-muted`, `text-foreground`,
   in dark mode, which is how a screen ends up unreadable in one theme.
 - **Both themes are shipped, not one flipped.** Every screen is checked in light
   and dark before it is done.
-- **Two documented exceptions.** Print documents (`bg-white text-black
-border-black` — paper is white with black ink in every theme), and the login
-  context panel, a fixed dark surface in both themes by design.
+- **Three documented exceptions.** Print documents (`bg-white text-black
+border-black` — paper is white with black ink in every theme), the login
+  context panel, a fixed dark surface in both themes by design, and the
+  **clinical severity tokens**.
+- **Clinical severity** is the one place hue carries meaning beyond tenancy
+  state: `--clinical-alert` for what is dangerous about a patient (allergies, a
+  balance still owed), `--clinical-note` for what is chronic (medical history),
+  `--clinical-clear` for what is settled or explicitly absent, `--clinical-info`
+  for neutral identity such as a blood group. Each has a `-surface` and a
+  `-border` companion and is defined in both themes in `globals.css`. A hue here
+  is a claim about the patient, never decoration — and the word is still
+  present, so the meaning survives for a reader who cannot see the colour.
 - **Colour means one thing: state.** `text-destructive` for a failure the user must
   act on. Status is carried by a `Badge`, never by colour alone — the word is
   always present.
@@ -142,6 +161,12 @@ content panel is the card that rises off it. The rail is not a card.
   indistinguishable from whatever the pointer is passing over.
 - **Nav icons are `text-muted-foreground` until the row is active.** This is the
   one place secondary colour is applied to an icon rather than to text.
+- At widths below `lg` (including tablets), the rail is an off-canvas Sheet.
+  `PageHeader` owns its trigger; pages and fixed footers never compensate for a
+  collapsed desktop rail themselves.
+- Primary and Settings destinations use zero-delay intent preloading. Pointer
+  hover or keyboard focus warms route code and query data without eagerly
+  running every sidebar destination loader when the shell mounts.
 
 Keyboard focus is the global unlayered `:focus-visible` rule in `globals.css`;
 do not remove or replace it with component-only rings. Hover effects are gated
@@ -155,7 +180,48 @@ Reach for these before writing a `div` with padding. All in
 - **`PageBody`** — the page container: `p-4`, `gap-4`, `text-xs`. Every page inside
   the org shell starts with one.
 - **`PageHeader`** — title, optional description, optional action. It renders the
-  page's single title band, so a page never adds a second one.
+  page's single 48 px title band, including the off-canvas sidebar trigger. A
+  page never adds a second title or mobile trigger. It stays pinned to the top
+  of the shell's content scroller; the body scrolls beneath it. Horizontal
+  padding is `px-3` below `lg`, with `gap-3` between its menu trigger and title.
+  Once the desktop rail is visible, the title uses `pl-6` for the small optical
+  inset it needs beside the raised content panel.
+
+**Page-header grammar.** Every page uses `PageHeader`. The title is a static noun
+of at most two words. Never put data in the title. Put durable context in the
+description: `MRN · Name` or `Token N` identity on record pages, or a short phrase
+with no trailing period. A date appears only when it is an interactive part of
+the screen: operational day navigation belongs in the header action area, while
+screens fixed to today (such as Dashboard) do not repeat today's date. Actions
+align to the right in the header. Tab strips render below the header. Sibling record
+tab pages — views of one entity, like the OPD record's Clinical and Billing —
+share one title and description, so switching tabs does not shift the layout.
+Section tabs over distinct pages, like Settings, keep their own titles.
+
+Page-header actions use the default 32 px control height (`icon` when icon-only),
+including secondary actions and operational date navigation. This keeps sibling
+pages aligned without route-specific height overrides. In-body section and row
+actions use `size="xs"`.
+Creation actions are text-first. Labels such as `New`, `Add`, `Register`,
+`Invite`, and `Create` do not repeat their meaning with a leading plus icon.
+Button labels render in Title Case through the shared button primitive; routes
+do not add one-off text transforms.
+Every section label — flat or in a tray — is muted `text-xs` at plain weight, so
+no section label competes with the page title. Flat section label rows carry
+`min-h-6`, so a section with an action and one without are the same height.
+
+**Two surfaces are exempt from the org-shell rules.** Public entry pages
+(`login`, `join`, `create`, the root screen) do not use `PageHeader`; they may
+use `text-base` and larger, sentence titles, and the fixed dark context panel.
+Paper uses a separate black-on-white document system: billing documents are
+server-rendered PDFs shown in an iframe, while the OPD slip remains the
+`data-opd-slip` print article. Paper keeps bold weights and physical
+measurements by design; do not "fix" it toward app-shell conventions. Billing
+PDFs use native semantic HTML/CSS in Takumi, including `<thead>` for repeated
+page headings, and only application-bundled fonts. Money and other changing
+numerals stay aligned because ragged digit columns are a document defect, not a
+style choice.
+
 - **`ErrorNote`** — the one way a page reports a failed read.
 
 A new bespoke layout wrapper is a signal that one of these is missing a prop.
@@ -172,7 +238,27 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
   empty until the data lands. The panel's `min-h-*` makes that blank region read
   as an empty panel, not a collapsed page.
 
-## 10. Charts
+## 10. Task overlays
+
+- Mobile and tablet navigation use the same shared Sheet primitive; there is no
+  breakpoint-specific duplicate. Every Sheet is inset from the viewport, uses
+  the large radius, and carries a 2 px muted boundary around its full perimeter.
+- Focused forms use the same header, scrollable content and footer composition
+  in both Dialog and Sheet presentations. Their content column is capped at
+  `max-w-lg`; switching presentation must not rearrange the form.
+- Overlay task titles are `text-base`; descriptions, labels, controls and errors
+  are `text-xs`. Financial totals use weight and tabular numerals for hierarchy,
+  not an additional display-size type scale.
+- Sheet and dialog chrome owns its spacing. Headers, bodies and footers use
+  `p-4`; feature forms compose `SheetHeader`/`SheetFooter` or
+  `DialogHeader`/`DialogFooter` rather than recreating their borders and padding.
+- Forms compose `FieldGroup`, `Field`, `FieldSet` and `FieldError`. Sets of two
+  to five choices use `ToggleGroup`, and section boundaries use `Separator`.
+- Sheet motion is limited to the existing 150 ms opacity and directional
+  transform transition. It communicates where the occasional overlay came from;
+  frequent list and keyboard interactions remain static.
+
+## 11. Charts
 
 - **Pick the form from the data's job**, not from what looks good. Magnitude over
   time → bars. A single headline → a stat card, not a chart.
@@ -186,7 +272,7 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
 - **A bar chart is interactive by default**: per-bar hover, a readout that does not
   reflow the plot, hit targets the full column height.
 
-## 11. Motion
+## 12. Motion
 
 - **Entrances `ease-out`, never `ease-in`.** Keep UI motion under 200ms.
 - **`transform` and `opacity` only.** No animating width, height, or top.
@@ -195,7 +281,7 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
 - **`prefers-reduced-motion` is handled globally** in `globals.css`; do not
   re-implement it per component.
 
-## 12. Money and numbers
+## 13. Money and numbers
 
 - **Amounts cross the wire as `numeric` strings**, never JS numbers — rounding money
   through a float is a bug waiting to happen.
@@ -204,7 +290,8 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
 
 ## Checklist before calling a screen done
 
-- [ ] Canvas, shell and card are three visibly distinct surfaces.
+- [ ] When a card tray is used, canvas, shell and card are three visibly distinct surfaces.
+- [ ] Card trays group related rows only; flat sections use hairlines and typography, and no card sits inside a raised surface.
 - [ ] No arbitrary values outside print documents.
 - [ ] Every colour is a token; checked in light **and** dark.
 - [ ] Spacing uses the scale; no margins on children where a gap would do.

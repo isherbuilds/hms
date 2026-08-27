@@ -1,6 +1,5 @@
 import { authorize } from "@hms/auth/access";
 import { Badge } from "@hms/ui/components/badge";
-import { buttonVariants } from "@hms/ui/components/button";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
@@ -10,7 +9,6 @@ import {
   StethoscopeIcon,
   WalletIcon,
   type LucideIcon,
-  PlusIcon,
 } from "lucide-react";
 import { type ReactNode } from "react";
 
@@ -154,11 +152,6 @@ function DashboardRoute() {
   // not money still gets the clinical half rather than an error page.
   const canReadOpdAppointments = authorize(roles, { opd: ["read"] });
   const canReadBilling = authorize(roles, { billing: ["read"] });
-  // Registering the patient is part of the same dialog, so both grants are
-  // required before offering it.
-  const canCreateOpdAppointments =
-    authorize(roles, { opd: ["create"] }) && authorize(roles, { patient: ["read"] });
-
   const today = useQuery({
     ...orpc.dashboard.today.queryOptions({ input: { orgSlug } }),
     enabled: canReadOpdAppointments,
@@ -254,9 +247,7 @@ function DashboardRoute() {
             {canReadOpdAppointments && (
               <Panel label="Queue mix by department">
                 {!today.isPending && mixTotal === 0 && (
-                  <p className="m-auto text-muted-foreground">
-                    No OPD appointments registered today yet.
-                  </p>
+                  <p className="m-auto text-muted-foreground">No appointments today.</p>
                 )}
                 {mixTotal > 0 && (
                   <>
@@ -293,16 +284,6 @@ function DashboardRoute() {
             minHeight="min-h-64"
             action={
               <div className="flex items-center gap-2">
-                {canCreateOpdAppointments && (
-                  <Link
-                    className={buttonVariants({ size: "xs" })}
-                    to="/$orgSlug/opd/new"
-                    params={{ orgSlug }}
-                  >
-                    <PlusIcon />
-                    New OPD appointment
-                  </Link>
-                )}
                 <Link
                   to="/$orgSlug/opd"
                   params={{ orgSlug }}

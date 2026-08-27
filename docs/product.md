@@ -94,9 +94,16 @@ Financial vocabulary is precise:
 - booking money taken before supply is an **Advance Receipt/Credit**, not
   Appointment payment state, and remains a liability until allocation.
 
+One collection may be split across at most four Payment methods. Each non-cash
+line requires its reconciliation reference and produces its own Receipt. After
+an Invoice is issued, a discount is represented by a Credit Note; recording a
+Payment never rewrites the immutable Invoice.
+
 Never label a Payment Receipt as the itemized bill. Qualifying exempt health
 care, taxable supplies, and advances have different document requirements. The
 pilot's chartered accountant must approve classifications and printed fields.
+Until that approval lands, the printed itemized document uses the neutral label
+**Invoice** and makes no Tax Invoice or Bill of Supply claim.
 
 The Billing Ledger is a code-owned double-entry projection of HMS source
 documents. It is not a general accounting product: no manual journals, bank

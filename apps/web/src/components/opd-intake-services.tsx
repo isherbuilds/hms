@@ -3,6 +3,7 @@ import { Button } from "@hms/ui/components/button";
 import { Combobox } from "@hms/ui/components/combobox";
 import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
+import { Separator } from "@hms/ui/components/separator";
 import {
   Table,
   TableBody,
@@ -12,49 +13,35 @@ import {
   TableRow,
 } from "@hms/ui/components/table";
 import { SearchIcon, Trash2Icon } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { toPaise } from "@hms/api/lib/invoice-math";
 
 import { formatMoney } from "@/lib/money";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { type WalkInQuote } from "@/lib/opd-service-preview";
+import { orpc } from "@/lib/orpc";
 
-export type ServiceLine = { catalogItemId: string; qty: number };
-
-export type CatalogItem = {
-  id: string;
+export type ServiceLine = {
+  catalogItemId: string;
   code: string;
   name: string;
   category: string;
   unitPrice: string;
+  taxRatePercent: string;
+  qty: number;
 };
 
-export type WalkInQuote = {
-  currency: string;
-  lines: Array<{
-    chargeId: string;
-    source: "consultation" | "service";
-    description: string;
-    category: string;
-    qty: number;
-    unitPrice: string;
-    taxRatePercent: string;
-    gross: string;
-  }>;
-  subtotal: string;
-  discountAmount: string;
-  taxTotal: string;
-  grandTotal: string;
-};
-
-export function FinancialSummary({ quote }: { quote?: WalkInQuote }) {
-  const currency = quote?.currency ?? "INR";
+export function FinancialSummary({ quote }: { quote: WalkInQuote }) {
+  const { currency } = quote;
   return (
     <dl className="grid gap-2">
       <div className="flex justify-between">
         <dt className="text-muted-foreground">Subtotal</dt>
-        <dd className="tabular-nums">{quote ? formatMoney(quote.subtotal, currency) : "—"}</dd>
+        <dd className="tabular-nums">{formatMoney(quote.subtotal, currency)}</dd>
       </div>
-      {quote && toPaise(quote.discountAmount) > 0 ? (
+      {toPaise(quote.discountAmount) > 0 ? (
         <div className="flex justify-between">
           <dt className="text-muted-foreground">Discount</dt>
           <dd className="tabular-nums">-{formatMoney(quote.discountAmount, currency)}</dd>
@@ -62,24 +49,25 @@ export function FinancialSummary({ quote }: { quote?: WalkInQuote }) {
       ) : null}
       <div className="flex justify-between">
         <dt className="text-muted-foreground">Tax</dt>
-        <dd className="tabular-nums">{quote ? formatMoney(quote.taxTotal, currency) : "—"}</dd>
+        <dd className="tabular-nums">{formatMoney(quote.taxTotal, currency)}</dd>
       </div>
-      <div className="flex items-baseline justify-between border-t border-border pt-2 text-sm font-medium">
+      <Separator />
+      <div className="flex items-baseline justify-between pt-1 text-sm font-medium">
         <dt>Payable</dt>
-        <dd className="tabular-nums">{quote ? formatMoney(quote.grandTotal, currency) : "—"}</dd>
+        <dd className="tabular-nums">{formatMoney(quote.grandTotal, currency)}</dd>
       </div>
     </dl>
   );
 }
 
 export function ServicePicker({
-  catalog,
+  orgSlug,
   services,
   currency,
   disabled,
   onChange,
 }: {
-  catalog: CatalogItem[];
+  orgSlug: string;
   services: ServiceLine[];
   currency: string;
   disabled: boolean;
@@ -90,26 +78,29 @@ export function ServicePicker({
     "all",
   );
   const [open, setOpen] = useState(false);
-  const normalized = query.trim().toLowerCase();
-  const selectedIds = new Set(services.map((service) => service.catalogItemId));
-  // A chosen category browses the catalog even before staff type a query.
+  const normalized = query.trim();
+  const debouncedQuery = useDebouncedValue(normalized, 250);
   const searching = normalized.length > 0 || category !== "all";
-  const results = searching
-    ? catalog
-        .filter((item) => item.category !== "consultation")
-        .filter((item) => category === "all" || item.category === category)
-        .filter(
-          (item) =>
-            !selectedIds.has(item.id) &&
-            `${item.code} ${item.name} ${item.category}`.toLowerCase().includes(normalized),
-        )
-        .slice(0, 8)
-    : [];
+  const search = useQuery({
+    ...orpc.catalog.searchServices.queryOptions({
+      input: {
+        orgSlug,
+        query: debouncedQuery || undefined,
+        category: category === "all" ? undefined : category,
+      },
+    }),
+    enabled: searching && debouncedQuery === normalized,
+  });
+  const selectedIds = new Set(services.map((service) => service.catalogItemId));
+  const results =
+    debouncedQuery === normalized
+      ? (search.data ?? []).filter((item) => !selectedIds.has(item.id))
+      : [];
 
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-      <label className="flex w-full flex-col gap-2 text-xs font-medium sm:w-48">
-        Category
+      <label className="flex w-full flex-col gap-2 sm:w-48">
+        <span className="text-muted-foreground">Category</span>
         <NativeSelect
           value={category}
           disabled={disabled}
@@ -132,12 +123,20 @@ export function ServicePicker({
           getItemKey={(item) => item.id}
           getItemLabel={(item) => item.name}
           inputValue={query}
-          onInputValueChange={(value) => {
-            setQuery(value);
-            setOpen(true);
-          }}
+          onInputValueChange={setQuery}
           onSelect={(item) => {
-            onChange([...services, { catalogItemId: item.id, qty: 1 }]);
+            onChange([
+              ...services,
+              {
+                catalogItemId: item.id,
+                code: item.code,
+                name: item.name,
+                category: item.category,
+                unitPrice: item.unitPrice,
+                taxRatePercent: item.taxRatePercent,
+                qty: 1,
+              },
+            ]);
             setQuery("");
             setOpen(false);
           }}
@@ -152,6 +151,9 @@ export function ServicePicker({
             placeholder: "Search service code, name or category",
             onFocus: () => {
               if (searching) setOpen(true);
+            },
+            onKeyDown: (event) => {
+              if (event.key === "Enter" && normalized.length > 0) event.preventDefault();
             },
             "aria-label": "Search services",
           }}
@@ -169,7 +171,13 @@ export function ServicePicker({
           )}
           emptyContent={
             searching ? (
-              <p className="px-3 py-2 text-muted-foreground">No unused service matches.</p>
+              <p className="px-3 py-2 text-muted-foreground">
+                {search.isError
+                  ? search.error.message
+                  : search.isPending || debouncedQuery !== normalized
+                    ? "Searching…"
+                    : "No unused service matches"}
+              </p>
             ) : undefined
           }
         />
@@ -183,14 +191,15 @@ export function ServiceLines({
   services,
   disabled,
   onChange,
+  onRemoveConsult,
 }: {
-  quote?: WalkInQuote;
+  quote: WalkInQuote;
   services: ServiceLine[];
   disabled: boolean;
   onChange: (services: ServiceLine[]) => void;
+  onRemoveConsult: () => void;
 }) {
-  const currency = quote?.currency ?? "INR";
-  const lines = quote?.lines ?? [];
+  const { currency } = quote;
   const remove = (catalogItemId: string) =>
     onChange(services.filter((service) => service.catalogItemId !== catalogItemId));
   const setQty = (catalogItemId: string, qty: number) =>
@@ -199,9 +208,14 @@ export function ServiceLines({
         service.catalogItemId === catalogItemId ? { ...service, qty } : service,
       ),
     );
+  const commitQty = (catalogItemId: string, input: HTMLInputElement) => {
+    const qty = Math.min(999, Math.max(1, input.valueAsNumber || 1));
+    input.value = String(qty);
+    setQty(catalogItemId, qty);
+  };
 
-  if (lines.length === 0) {
-    return <p className="text-muted-foreground">Choose the patient and care team to load fees.</p>;
+  if (quote.lines.length === 0) {
+    return <p className="text-muted-foreground">No services selected</p>;
   }
 
   return (
@@ -222,7 +236,7 @@ export function ServiceLines({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {lines.map((line) => (
+            {quote.lines.map((line) => (
               <TableRow key={`${line.source}:${line.chargeId}`}>
                 <TableCell className="font-medium">{line.description}</TableCell>
                 <TableCell>
@@ -233,16 +247,20 @@ export function ServiceLines({
                 <TableCell>
                   {line.source === "service" ? (
                     <Input
+                      key={`${line.chargeId}:${line.qty}`}
                       type="number"
                       min={1}
                       max={999}
-                      value={line.qty}
+                      defaultValue={line.qty}
                       disabled={disabled}
                       aria-label={`${line.description} quantity`}
                       className="w-16 tabular-nums"
-                      onChange={(event) =>
-                        setQty(line.chargeId, Math.max(1, event.target.valueAsNumber || 1))
-                      }
+                      onBlur={(event) => commitQty(line.chargeId, event.currentTarget)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") return;
+                        event.preventDefault();
+                        commitQty(line.chargeId, event.currentTarget);
+                      }}
                     />
                   ) : (
                     <span className="tabular-nums">1</span>
@@ -258,18 +276,18 @@ export function ServiceLines({
                   {formatMoney(line.gross, currency)}
                 </TableCell>
                 <TableCell>
-                  {line.source === "service" ? (
-                    <Button
-                      type="button"
-                      size="icon-xs"
-                      variant="ghost"
-                      aria-label={`Remove ${line.description}`}
-                      disabled={disabled}
-                      onClick={() => remove(line.chargeId)}
-                    >
-                      <Trash2Icon />
-                    </Button>
-                  ) : null}
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost"
+                    aria-label={`Remove ${line.description}`}
+                    disabled={disabled}
+                    onClick={() =>
+                      line.source === "service" ? remove(line.chargeId) : onRemoveConsult()
+                    }
+                  >
+                    <Trash2Icon />
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -278,7 +296,7 @@ export function ServiceLines({
       </div>
 
       <div className="grid gap-2 md:hidden">
-        {lines.map((line) => (
+        {quote.lines.map((line) => (
           <article
             key={`${line.source}:${line.chargeId}`}
             className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-lg border border-border p-3"
@@ -299,16 +317,20 @@ export function ServiceLines({
               {line.source === "service" ? (
                 <div className="flex items-center gap-1">
                   <Input
+                    key={`${line.chargeId}:${line.qty}`}
                     type="number"
                     min={1}
                     max={999}
-                    value={line.qty}
+                    defaultValue={line.qty}
                     disabled={disabled}
                     aria-label={`${line.description} quantity`}
                     className="w-16 tabular-nums"
-                    onChange={(event) =>
-                      setQty(line.chargeId, Math.max(1, event.target.valueAsNumber || 1))
-                    }
+                    onBlur={(event) => commitQty(line.chargeId, event.currentTarget)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      commitQty(line.chargeId, event.currentTarget);
+                    }}
                   />
                   <Button
                     type="button"
@@ -321,7 +343,26 @@ export function ServiceLines({
                     <Trash2Icon />
                   </Button>
                 </div>
-              ) : null}
+              ) : (
+                <div className="flex items-center gap-1">
+                  <span
+                    className="flex h-8 w-16 items-center px-2 tabular-nums"
+                    aria-label={`${line.description} quantity`}
+                  >
+                    1
+                  </span>
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost"
+                    aria-label={`Remove ${line.description}`}
+                    disabled={disabled}
+                    onClick={onRemoveConsult}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                </div>
+              )}
             </div>
           </article>
         ))}

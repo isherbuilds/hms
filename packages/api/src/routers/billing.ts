@@ -15,7 +15,7 @@ import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
-import { businessDateAnchor } from "../lib/business-date";
+import { businessDate, businessDateAnchor } from "../lib/business-date";
 import { invoiceBalanceFor, invoiceBalancesFor } from "../lib/invoice-balance";
 import {
   calculateInvoiceBalance,
@@ -45,10 +45,18 @@ const paymentMethod = z.enum(["cash", "upi", "card"]);
 // closed rows must not accumulate charges.
 const BILLABLE_STATUSES: (typeof opdAppointments.$inferSelect)["status"][] = ["checked_in"];
 
-const addChargeInput = orgInput.extend({
-  appointmentId: z.string(),
+const chargeLineInput = z.object({
   catalogItemId: z.string(),
   qty: z.number().int().min(1).max(999).default(1),
+});
+
+const addChargesInput = orgInput.extend({
+  appointmentId: z.string(),
+  lines: z
+    .array(chargeLineInput)
+    .min(1)
+    .max(20)
+    .refine((lines) => new Set(lines.map((line) => line.catalogItemId)).size === lines.length),
 });
 
 const creditLineInput = z.union([
@@ -106,7 +114,7 @@ export async function issueInvoiceTx(
   // Held here rather than in the procedure, so every caller obeys it — a
   // discount without a stated reason is not something any entry point may do.
   if (toPaise(args.discountAmount) > 0 && !args.note) {
-    throw new ORPCError("BAD_REQUEST");
+    throw new ORPCError("BAD_REQUEST", { message: "Add a reason for the discount" });
   }
   const [appointmentAndPatient] = await tx
     .select({
@@ -164,7 +172,9 @@ export async function issueInvoiceTx(
     0,
   );
   if (toPaise(args.discountAmount) > subtotalPaise) {
-    throw new ORPCError("BAD_REQUEST");
+    throw new ORPCError("BAD_REQUEST", {
+      message: "The charges changed. Review the invoice and try again",
+    });
   }
 
   const computed = computeInvoiceLines(pendingCharges, args.discountAmount);
@@ -189,6 +199,7 @@ export async function issueInvoiceTx(
       patientId: appointmentAndPatient.patientId,
       invoiceNumber,
       fiscalYear,
+      businessDate: businessDate(now, settings.timeZone),
       discountAmount: args.discountAmount,
       note: args.note ?? null,
       subtotal: computed.subtotal,
@@ -294,6 +305,11 @@ export async function recordPaymentTx(
   },
 ) {
   const { scope, settings, now, fiscalYear, paymentId } = args;
+  if (args.method !== "cash" && !args.reference?.trim()) {
+    throw new ORPCError("BAD_REQUEST", {
+      message: "Add a transaction reference for this payment",
+    });
+  }
   const invoice = await lockInvoice(tx, scope.orgId, args.invoiceId);
 
   const balance = await invoiceBalanceFor(tx, scope.orgId, invoice);
@@ -315,6 +331,7 @@ export async function recordPaymentTx(
       reference: args.reference ?? null,
       receiptNumber,
       fiscalYear,
+      businessDate: businessDate(now, settings.timeZone),
       receivedBy: scope.userId,
       createdAt: now,
     })
@@ -336,6 +353,79 @@ export async function recordPaymentTx(
       { account: "patient_receivables", credit: inserted.amount },
     ],
   });
+  return inserted;
+}
+
+async function addChargesTx(
+  tx: DbTransaction,
+  args: {
+    scope: { orgId: string; userId: string };
+    appointmentId: string;
+    lines: Array<{ catalogItemId: string; qty: number }>;
+  },
+) {
+  const { scope } = args;
+  // Cancellation updates this row before voiding pending charges. Taking the
+  // same lock makes the state check and all inserts one serial decision.
+  const [appointment] = await tx
+    .select({ status: opdAppointments.status, id: opdAppointments.id })
+    .from(opdAppointments)
+    .where(and(eq(opdAppointments.orgId, scope.orgId), eq(opdAppointments.id, args.appointmentId)))
+    .limit(1)
+    .for("update");
+
+  if (!appointment) throw new ORPCError("NOT_FOUND");
+  if (!BILLABLE_STATUSES.includes(appointment.status)) throw new ORPCError("CONFLICT");
+
+  const requestedIds = args.lines.map((line) => line.catalogItemId);
+  const catalog = await tx
+    .select({
+      id: catalogItems.id,
+      name: catalogItems.name,
+      category: catalogItems.category,
+      unitPrice: catalogItems.unitPrice,
+      taxRatePercent: catalogItems.taxRatePercent,
+      taxCode: catalogItems.taxCode,
+    })
+    .from(catalogItems)
+    .where(
+      and(
+        eq(catalogItems.orgId, scope.orgId),
+        inArray(catalogItems.id, requestedIds),
+        eq(catalogItems.active, true),
+        ne(catalogItems.category, "consultation"),
+      ),
+    );
+
+  if (catalog.length !== requestedIds.length) throw new ORPCError("NOT_FOUND");
+  const catalogById = new Map(catalog.map((item) => [item.id, item]));
+  const inserted = await tx
+    .insert(charges)
+    .values(
+      args.lines.map((line) => {
+        const item = catalogById.get(line.catalogItemId);
+        if (!item) throw new ORPCError("NOT_FOUND");
+        return {
+          id: Bun.randomUUIDv7(),
+          orgId: scope.orgId,
+          opdAppointmentId: appointment.id,
+          catalogItemId: item.id,
+          description: item.name,
+          qty: line.qty,
+          unitPrice: item.unitPrice,
+          taxRatePercent: item.taxRatePercent,
+          taxCode: item.taxCode,
+          revenueCategory: item.category,
+          sourceType: "catalog" as const,
+          sourceId: null,
+          status: "pending" as const,
+          createdBy: scope.userId,
+        };
+      }),
+    )
+    .returning();
+
+  if (inserted.length !== args.lines.length) throw new ORPCError("INTERNAL_SERVER_ERROR");
   return inserted;
 }
 
@@ -371,83 +461,15 @@ export const billingRouter = {
       .orderBy(asc(charges.createdAt));
   }),
 
-  addCharge: orgProcedure({ billing: ["write"] }, addChargeInput).handler(
+  addCharges: orgProcedure({ billing: ["write"] }, addChargesInput).handler(
     async ({ context, input }) => {
-      const { scope } = context;
-      return db.transaction(async (tx) => {
-        // Cancellation updates this row before voiding pending charges. Taking
-        // the same lock makes the state check and insert one serial decision.
-        const [appointment] = await tx
-          .select({
-            status: opdAppointments.status,
-            id: opdAppointments.id,
-          })
-          .from(opdAppointments)
-          .where(
-            and(
-              eq(opdAppointments.orgId, scope.orgId),
-              eq(opdAppointments.id, input.appointmentId),
-            ),
-          )
-          .limit(1)
-          .for("update");
-
-        if (!appointment) {
-          throw new ORPCError("NOT_FOUND");
-        }
-        if (!BILLABLE_STATUSES.includes(appointment.status)) {
-          throw new ORPCError("CONFLICT");
-        }
-
-        const [catalogItem] = await tx
-          .select({
-            id: catalogItems.id,
-            name: catalogItems.name,
-            category: catalogItems.category,
-            unitPrice: catalogItems.unitPrice,
-            taxRatePercent: catalogItems.taxRatePercent,
-            taxCode: catalogItems.taxCode,
-          })
-          .from(catalogItems)
-          .where(
-            and(
-              eq(catalogItems.orgId, scope.orgId),
-              eq(catalogItems.id, input.catalogItemId),
-              eq(catalogItems.active, true),
-              ne(catalogItems.category, "consultation"),
-            ),
-          )
-          .limit(1);
-
-        if (!catalogItem) {
-          throw new ORPCError("NOT_FOUND");
-        }
-
-        const [charge] = await tx
-          .insert(charges)
-          .values({
-            id: Bun.randomUUIDv7(),
-            orgId: scope.orgId,
-            opdAppointmentId: appointment.id,
-            catalogItemId: catalogItem.id,
-            description: catalogItem.name,
-            qty: input.qty,
-            unitPrice: catalogItem.unitPrice,
-            taxRatePercent: catalogItem.taxRatePercent,
-            taxCode: catalogItem.taxCode,
-            revenueCategory: catalogItem.category,
-            sourceType: "catalog",
-            sourceId: null,
-            status: "pending",
-            createdBy: scope.userId,
-          })
-          .returning();
-
-        if (!charge) {
-          throw new ORPCError("INTERNAL_SERVER_ERROR");
-        }
-        return charge;
-      });
+      return db.transaction((tx) =>
+        addChargesTx(tx, {
+          scope: context.scope,
+          appointmentId: input.appointmentId,
+          lines: input.lines,
+        }),
+      );
     },
   ),
 
@@ -514,31 +536,53 @@ export const billingRouter = {
     return result;
   }),
 
-  recordPayment: orgProcedure(
+  recordPayments: orgProcedure(
     { billing: ["write"] },
     orgInput.extend({
       invoiceId: z.string(),
-      method: paymentMethod,
-      amount: positiveMoney,
-      reference: z.string().optional(),
+      payments: z
+        .array(
+          z.object({
+            method: paymentMethod,
+            amount: positiveMoney,
+            reference: z.string().trim().min(1).max(100).optional(),
+          }),
+        )
+        .min(1)
+        .max(4),
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
-    const paymentId = Bun.randomUUIDv7();
-
-    const payment = await db.transaction((tx) =>
-      recordPaymentTx(tx, { ...input, scope, settings, now, fiscalYear, paymentId }),
-    );
-
-    audit({
-      action: "payment.record",
-      actorId: scope.userId,
-      orgId: scope.orgId,
-      target: `payment:${paymentId}`,
-      meta: { receiptNumber: payment.receiptNumber, amount: payment.amount },
+    const paymentIds = input.payments.map(() => Bun.randomUUIDv7());
+    const recorded = await db.transaction(async (tx) => {
+      const result = [];
+      for (const [index, payment] of input.payments.entries()) {
+        result.push(
+          await recordPaymentTx(tx, {
+            ...payment,
+            scope,
+            invoiceId: input.invoiceId,
+            settings,
+            now,
+            fiscalYear,
+            paymentId: paymentIds[index]!,
+          }),
+        );
+      }
+      return result;
     });
-    return payment;
+
+    for (const payment of recorded) {
+      audit({
+        action: "payment.record",
+        actorId: scope.userId,
+        orgId: scope.orgId,
+        target: `payment:${payment.id}`,
+        meta: { receiptNumber: payment.receiptNumber, amount: payment.amount },
+      });
+    }
+    return recorded;
   }),
 
   issueCreditNote: orgProcedure(
@@ -552,7 +596,7 @@ export const billingRouter = {
     const { scope } = context;
     const requestedIds = input.lines.map((line) => line.invoiceLineId);
     if (new Set(requestedIds).size !== requestedIds.length) {
-      throw new ORPCError("BAD_REQUEST");
+      throw new ORPCError("BAD_REQUEST", { message: "Credit each invoice line once" });
     }
 
     const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
@@ -679,6 +723,7 @@ export const billingRouter = {
           invoiceId: input.invoiceId,
           creditNoteNumber,
           fiscalYear,
+          businessDate: businessDate(now, settings.timeZone),
           reason: input.reason,
           subtotal: fromPaise(subtotalPaise),
           taxTotal: fromPaise(taxTotalPaise),
@@ -807,6 +852,7 @@ export const billingRouter = {
           reference: input.reference ?? null,
           refundNumber,
           fiscalYear,
+          businessDate: businessDate(now, settings.timeZone),
           refundedBy: scope.userId,
           createdAt: now,
         })

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  date,
   foreignKey,
   index,
   numeric,
@@ -29,6 +30,8 @@ export const refunds = pgTable(
     reference: text("reference"),
     refundNumber: text("refund_number").notNull(),
     fiscalYear: text("fiscal_year").notNull(),
+    /** Organization-local accounting date snapshotted when the refund is recorded. */
+    businessDate: date("business_date").notNull(),
     /** Attribution only; authorization always comes from the request's organization scope. */
     refundedBy: text("refunded_by")
       .notNull()

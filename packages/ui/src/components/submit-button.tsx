@@ -3,12 +3,6 @@ import { cn } from "@hms/ui/lib/utils";
 import { LoaderCircleIcon } from "lucide-react";
 import type * as React from "react";
 
-/**
- * Submit affordance in the midday-ai shape: the label goes invisible (not
- * removed, so the button keeps its width) and a spinner overlays it while the
- * mutation is in flight. Callers additionally pass `disabled` for their own
- * gates, e.g. a pristine form.
- */
 export function SubmitButton({
   children,
   isSubmitting,
