@@ -119,7 +119,6 @@ function findDocument(data: InvoiceBundle, request: BillingDocumentRequest) {
   }
 }
 
-/** Renders one immutable billing document with application-owned fonts. */
 export async function renderBillingPdf(
   request: BillingDocumentRequest & { data: InvoiceBundle },
 ): Promise<{ bytes: Uint8Array; fileName: string }> {

@@ -11,14 +11,16 @@ shared Base UI/shadcn components (`packages/ui`).
 browser ──HTTP──▶ apps/server/Hono ──▶ oRPC handler ──┐
                     └─ /api/auth                      │
                                                      ├─▶ appRouter
+browser ──HTTP──▶ apps/web billing-PDF route ─────────┤
 apps/web SSR ──in-process router client───────────────┤
 tests ─────────in-process router client───────────────┘
 ```
 
-Every entry point builds the same request context. SSR and integration tests
-therefore exercise the same router and authorization guard as HTTP. The server
-also exposes development-only API reference pages; they never mount in
-production. RPC bodies are limited to 1 MiB before expensive context work.
+Every router entry point builds the same request context. SSR, billing-document
+routes, and integration tests therefore exercise the same router and
+authorization guard as HTTP. The API server also exposes development-only
+reference pages; they never mount in production. RPC bodies are limited to 1 MiB
+before expensive context work.
 
 Source-of-truth code:
 
@@ -91,9 +93,26 @@ organizations, timezone, and currency. Base UI popups remain behind
 `ClientOnly` because of their current SSR store behavior.
 
 TanStack Query is the sole cache. Loaders prime it and components subscribe with
-the identical `queryOptions`; loaders do not carry query data as a second cache.
-Independent reads run in parallel. Required failures reach route error/not-found
-boundaries; secondary prefetches may fail into component-level states.
+the identical `queryOptions`; loaders do not carry query data as a second cache,
+and a loader's return value is not a channel for handing data down as props —
+`useMembership` in `apps/web/src/lib/membership.ts` is how a component asks for
+the one slice of `member.me` it draws. Independent reads run in parallel.
+Required failures reach route error/not-found boundaries; secondary prefetches
+may fail into component-level states.
+
+A route gated by a permission resolves it in the loader through
+`requireOrgPermission` and redirects somewhere the role can use. The gate names
+every grant the page needs to reach a submitted state, not just the one its name
+suggests: a page that renders and then 403s on save is the same denial arriving
+later. Actions that a role cannot perform on an otherwise readable page are
+hidden with `useCan` instead.
+
+Shared chrome for a tabbed record lives in its layout route, so switching tabs
+re-renders the body alone. A React context shared between sibling routes must be
+declared **outside** the route tree: TanStack Start splits a route file into
+separate chunks, so a context created in `route.tsx` and imported from a sibling
+route resolves to two different objects — the provider publishes into one and the
+tab reads the other. `apps/web/src/lib/opd-record.ts` is why.
 
 Every query identity includes `orgSlug`. Growing lists use keysets containing
 all stable ordering columns and select `limit + 1` base rows through a
@@ -108,9 +127,12 @@ WebSocket/SSE layer.
 
 ## Data and migrations
 
-- Tables use `uuid` primary keys, `createdAt`, `updatedAt`, and `orgId` for every
-  domain/infrastructure row. Cross-row invariants are database constraints when
-  PostgreSQL can express them.
+- Every Organization-owned domain or infrastructure row has `orgId NOT NULL`.
+  Keys and timestamps follow the record's job: UUIDv7 text ids and paired
+  `createdAt`/`updatedAt` are common, but counters use composite keys, immutable
+  documents may have only `createdAt`, and a file id is its validated object
+  key. Do not infer a field contract from convention. Cross-row invariants are
+  database constraints when PostgreSQL can express them.
 - Tenant-leading indexes follow the actual filter/order/keyset shape. Descending
   nullable cursor columns specify matching null ordering explicitly.
 - Use scoped `UPDATE/DELETE ... RETURNING` instead of select-then-write.
@@ -129,6 +151,18 @@ Patient MRNs use an organization-scoped transactional counter plus configured
 prefix. The MRN is a local display identifier, not primary identity or a
 national ID.
 
+A Patient stores one date of birth plus `dobEstimated`; age is always derived
+against the Organization-local date, and an estimate is displayed with a `~`
+prefix. Registration requires an explicit sex choice. Phone matching and input
+classification compare digits only, while the stored and displayed phone text
+keeps the operator's formatting.
+
+Patient edits are an Organization-scoped compare-and-swap against the loaded,
+millisecond-exact `updatedAt`. A zero-row update performs a second scoped
+existence read: an existing Patient is a stale-record `CONFLICT`, while an
+absent or foreign Patient is `NOT_FOUND`. The server does not retry a stale
+write.
+
 The catalog is a flat chargeable-item registry. Charges snapshot name/code,
 category, unit price, tax rate, and tax code so later catalog edits never
 rewrite financial history. New/follow-up attendance pricing is configured per
@@ -136,8 +170,7 @@ practitioner; a configured zero-price item represents intentional free care.
 
 One OPD Appointment is the parent for its Patient link, queue lifecycle,
 Charges, Invoices, and prescription attachments. Check-in enriches a booked row;
-it does not create a Visit/Encounter wrapper. Details live in the
-[OPD spec](./specs/opd.md).
+it does not create a Visit/Encounter wrapper. Details live in [OPD](./opd.md).
 
 Booking and walk-in creation share one appointment table and one intake UI. They
 remain separate server procedures because `createWalkIn` is an atomic financial
@@ -146,6 +179,11 @@ and may atomically snapshot optional selected services as pending Charges. Those
 booked Charges stay outside billing worklists and invoice issuance until check-in.
 A merged contract would over-privilege booking staff or weaken the money path.
 
+Each care setting owns its operational billing route and desk workflow, over one
+shared finance domain: immutable documents, collection, corrections, accounting,
+and authorization (D019). Shared care-setting UI is extracted only after a
+second shipped desk proves the same interaction and state model.
+
 ## Audit
 
 `audit()` is fire-and-forget. It records verified role denials centrally and
@@ -153,9 +191,10 @@ sensitive/destructive successes such as membership changes, file deletion, and
 financial corrections. Do not audit lists, reads, or every ordinary mutation.
 
 A foreign membership claim cannot insert into the claimed tenant's audit log.
-Presigned URLs, tokens, secrets, and caller-controlled object keys never enter
-audit metadata. Tests use `eventually` for positive assertions and
-`drainAuditWrites()` before negative assertions.
+Presigned URLs, tokens, and secrets never enter audit metadata. A verified file
+deletion records the stored in-scope object key; an unverified or foreign
+caller-supplied key is recorded only as a digest. Tests use `eventually` for
+positive assertions and `drainAuditWrites()` before negative assertions.
 
 Accounting differs: journals commit atomically with their source financial
 document. Audit availability must not fail an operational action; ledger drift
@@ -187,6 +226,12 @@ fail before insertion when their reconciliation reference is absent. Catalog
 charges selected together are likewise verified under the same organization
 and inserted in one transaction rather than one request per item.
 
+A care record owns a monotonically increasing `chargeRevision` for its Charge
+set. Voids and Invoice issuance advance it in the same transaction; settlement
+locks the record and must match both the revision the desk reviewed and the
+reviewed grand total after trusted repricing (D020). It is an
+optimistic-concurrency token and nothing else — see [OPD](./opd.md#billing-workspace-and-concurrency).
+
 Trial balance and billing-ledger balance sheet read journals. GST reporting
 reads immutable invoice/credit-note lines because document numbers, patients,
 rates, and HSN/SAC are document facts. The current GST surface is an intra-state
@@ -198,7 +243,7 @@ do not repeat the domain query. Templates read only the immutable source facts
 for the selected Invoice, Payment, Credit Note, or refund, so later balance
 activity cannot rewrite an issued document. The renderer and its WASM stay
 behind a server-only dynamic import, and its Unicode fonts are application
-assets rather than network dependencies.
+assets rather than network dependencies (D021).
 
 Business Date is the calendar date in the Organization timezone with a local
 midnight boundary. Invoice, Payment, Credit Note, and Refund rows snapshot it at

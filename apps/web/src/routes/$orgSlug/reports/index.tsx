@@ -1,6 +1,8 @@
+import { authorize } from "@hms/auth/access";
 import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { PageBody, PageHeader } from "@/components/page";
+import { useMembership } from "@/lib/membership";
 import { REPORT_LINKS } from "@/lib/navigation";
 
 export const Route = createFileRoute("/$orgSlug/reports/")({
@@ -10,6 +12,10 @@ export const Route = createFileRoute("/$orgSlug/reports/")({
 
 function ReportsIndexRoute() {
   const { orgSlug } = Route.useParams();
+  // The sidebar and settings strip filter the same way; this hub was the one list
+  // that offered destinations it could not open.
+  const roles = useMembership(orgSlug, (membership) => membership.roles);
+  const visible = REPORT_LINKS.filter(({ permission }) => authorize(roles, permission));
 
   return (
     <>
@@ -20,7 +26,7 @@ function ReportsIndexRoute() {
           activity, and final accounts remain in the accountant's books.
         </p>
         <div className="grid gap-3 lg:grid-cols-3">
-          {REPORT_LINKS.map(({ to, label, description, icon: Icon }) => (
+          {visible.map(({ to, label, description, icon: Icon }) => (
             <Link
               key={to}
               to={to}

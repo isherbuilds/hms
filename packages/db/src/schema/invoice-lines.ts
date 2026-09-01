@@ -16,11 +16,7 @@ import { CATALOG_CATEGORIES } from "./catalog-items";
 import { charges } from "./charges";
 import { invoices } from "./invoices";
 
-/**
- * Immutable snapshot-of-record for every issued invoice line. Description,
- * quantity, price, discount allocation, taxable value, tax, and gross are fixed
- * at issuance; invoice header totals are sums of these stored line values.
- */
+// Fixed at issuance; invoice header totals are sums of these stored line values.
 export const invoiceLines = pgTable(
   "invoice_lines",
   {

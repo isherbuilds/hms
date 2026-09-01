@@ -14,25 +14,18 @@ import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { conflict } from "../lib/conflict";
 import { orgInput, orgProcedure, type Scope } from "../lib/procedures/factory";
 const keyInput = orgInput.extend({ key: z.string().min(1) });
 
-/**
- * The `key` is caller-controlled and rejected before any database work. It is
- * also written to the audit trail — but never verbatim: a caller could hand a
- * presigned URL as the key and get a live bearer credential persisted. Only a
- * short digest goes into the record; the key itself authorizes nothing.
- */
+// Never audit the key verbatim: a caller could hand a presigned URL as the key and
+// get a live bearer credential persisted.
 function keyDigest(key: string): string {
   return createHash("sha256").update(key).digest("hex").slice(0, 16);
 }
 
-/**
- * Every key begins with its owning org (`<orgId>/<uuid>/<name>`), so a key from
- * another tenant is rejected before any database work — and recorded, because a
- * probe for a foreign tenant's key is exactly what an audit trail is for. The
- * queries below still carry the org predicate as defence in depth.
- */
+// Every key begins with its owning org, so a foreign key is rejected before any
+// database work — and recorded, because probing for one is what audit is for.
 function assertKeyInScope(key: string, scope: Scope, action: string): void {
   if (key.startsWith(`${scope.orgId}/`)) {
     return;
@@ -49,11 +42,8 @@ function assertKeyInScope(key: string, scope: Scope, action: string): void {
   });
 }
 
-/**
- * Sanitizes a user-supplied name into a safe object-key segment. Keeps only
- * letters, digits, dots, underscores and hyphens so the key can never produce
- * nested keys (`/`), path traversal (`..`), or break URL building (`%`, `#`).
- */
+// Letters, digits, dots, underscores and hyphens only, so a name can never produce
+// nested keys, path traversal, or break URL building.
 export function sanitizeKeyName(name: string): string {
   const sanitized = name
     .trim()
@@ -66,14 +56,9 @@ export function sanitizeKeyName(name: string): string {
 }
 
 export const fileRouter = {
-  /**
-   * The org's ready files, newest first. Keyset pagination on `createdAt` +
-   * `id`: no OFFSET scan as the table grows, and the pair is unique so a
-   * page boundary can never skip or repeat a row. The cursor timestamp stays
-   * a Postgres text literal end to end — `created_at` is `defaultNow()`, so
-   * it stores microseconds a JS Date cursor would truncate, silently
-   * dropping rows that share the boundary millisecond.
-   */
+  // Keyset on (createdAt, id): the pair is unique, so a page boundary cannot skip or
+  // repeat. The cursor stays a text literal — `created_at` holds microseconds a JS
+  // Date would truncate, silently dropping rows on the boundary millisecond.
   list: orgProcedure(
     { file: ["read"] },
     orgInput.extend({
@@ -128,12 +113,9 @@ export const fileRouter = {
     };
   }),
 
-  /**
-   * Issues a presigned PUT URL so the browser streams the file straight to
-   * SeaweedFS. The app server never buffers the payload. The metadata row is
-   * created as `pending`; `finalizeUpload` marks it `ready`, so an abandoned
-   * upload never surfaces as readable.
-   */
+  // The browser streams straight to storage; the app server never buffers the
+  // payload. The row is `pending` until `finalizeUpload`, so an abandoned upload
+  // never becomes readable.
   createUpload: orgProcedure(
     { file: ["upload"] },
     orgInput.extend({
@@ -169,11 +151,7 @@ export const fileRouter = {
     return { key, uploadUrl, expiresIn: uploadExpiresIn };
   }),
 
-  /**
-   * Flips the metadata row to `ready`, making it readable. Scoped
-   * `UPDATE ... RETURNING`: one round trip, and no window between the
-   * authorization check and the write.
-   */
+  // Scoped `UPDATE ... RETURNING`: no window between the check and the write.
   finalizeUpload: orgProcedure({ file: ["upload"] }, keyInput).handler(
     async ({ context, input }) => {
       assertKeyInScope(input.key, context.scope, "file.upload");
@@ -199,11 +177,6 @@ export const fileRouter = {
     },
   ),
 
-  /**
-   * Resolves a short-lived presigned read URL. Every object is private; there
-   * is no unsigned path (see `@hms/storage`). Pending uploads are not
-   * readable.
-   */
   getReadUrl: orgProcedure({ file: ["read"] }, keyInput).handler(async ({ context, input }) => {
     assertKeyInScope(input.key, context.scope, "file.read");
 
@@ -223,20 +196,14 @@ export const fileRouter = {
     };
   }),
 
-  /**
-   * Deletes the metadata row first, then drops the object. Ordering matters:
-   * dropping the object first could leave a `ready` row pointing at nothing.
-   * The reverse failure — deleted row, surviving object — is an orphan with no
-   * key anyone can resolve, so it is logged, not retried: the audit row
-   * commits regardless of storage availability, and the caller is never told
-   * a deletion failed when it committed.
-   */
+  // Row first, then the object: the reverse could leave a `ready` row pointing at
+  // nothing. A surviving object is an orphan no key resolves, so it is logged rather
+  // than retried — the caller is never told a committed delete failed.
   delete: orgProcedure({ file: ["delete"] }, keyInput).handler(async ({ context, input }) => {
     assertKeyInScope(input.key, context.scope, "file.delete");
 
-    // Lock the file before checking dependants. `appointment.attachPrescription`
-    // takes a compatible key-share lock before inserting the FK, so attach and
-    // delete serialize without a raw constraint error escaping to the caller.
+    // `attachPrescription` takes a compatible key-share lock before inserting the FK,
+    // so attach and delete serialize instead of raising a constraint error.
     await db.transaction(async (tx) => {
       const [lockedFile] = await tx
         .select({ id: fileTable.id })
@@ -256,9 +223,10 @@ export const fileRouter = {
         .limit(1);
 
       if (attached) {
-        throw new ORPCError("CONFLICT", {
-          message: "This file is attached to a record. Detach it there before deleting it.",
-        });
+        throw conflict(
+          "duplicate",
+          "This file is attached to a record. Detach it there before deleting it.",
+        );
       }
 
       const [deleted] = await tx
@@ -273,9 +241,8 @@ export const fileRouter = {
       return deleted;
     });
 
-    // Fire-and-forget (decision D004) and issued right after the committed
-    // delete, so no storage failure can sit between the delete and its
-    // record.
+    // Issued right after the committed delete, so no storage failure can sit between
+    // the delete and its record (D004).
     audit({
       action: "file.delete",
       actorId: context.scope.userId,

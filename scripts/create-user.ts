@@ -1,16 +1,9 @@
 import { createUserWithPassword } from "@hms/auth/manual-user";
 import { runMigrations } from "@hms/db/migrate";
 
-/**
- * Operator CLI: creates one account directly, bypassing the disabled public
- * sign-up endpoint.
- *
- *   bun run create-user <email> <name> <password>
- *
- * The password is hashed by Better Auth's own algorithm, so the account signs
- * in exactly like a registered one. Create the account first, then invite it
- * into an organization from the Members page (or assign it via the database).
- */
+// bun run create-user <email> <name> <password>
+// Creates one account directly, bypassing the disabled public sign-up endpoint.
+// Then invite it into an organization from the Members page.
 const [, , email, name, password] = process.argv;
 
 if (!email || !name || !password) {

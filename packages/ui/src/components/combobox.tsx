@@ -11,8 +11,8 @@ type ComboboxProps<T> = {
   getItemKey: (item: T) => React.Key;
   getItemLabel: (item: T) => string;
   renderItem: (item: T) => React.ReactNode;
-  inputValue: string;
-  onInputValueChange: (value: string) => void;
+  defaultInputValue?: string;
+  onInputValueChange?: (value: string) => void;
   onSelect: (item: T) => void;
   isItemDisabled?: (item: T) => boolean;
   emptyContent?: React.ReactNode;
@@ -29,16 +29,17 @@ type ComboboxProps<T> = {
   itemClassName?: string;
 };
 
-/**
- * A compact action combobox. Consumers own filtering and selection state; this
- * component only supplies the accessible input, popup, and keyboard behavior.
- */
+const ITEM_CLASS =
+  "relative flex cursor-default items-center rounded-md px-2 py-2 text-xs outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:shadow-[inset_2px_0_0_var(--foreground)] data-disabled:pointer-events-none data-disabled:opacity-50";
+
+// Consumers own filtering and selection; this supplies the accessible input, popup
+// and keyboard behaviour only.
 function Combobox<T>({
   items,
   getItemKey,
   getItemLabel,
   renderItem,
-  inputValue,
+  defaultInputValue,
   onInputValueChange,
   onSelect,
   isItemDisabled,
@@ -52,13 +53,18 @@ function Combobox<T>({
   popupClassName,
   itemClassName,
 }: ComboboxProps<T>) {
+  const itemClass = cn(ITEM_CLASS, itemClassName);
+
   return (
     <ComboboxPrimitive.Root<T>
       items={items}
+      // Consumers already filtered; handing the same list back is the documented way to
+      // skip Base UI's own pass. `filter={null}` still walks every item.
+      filteredItems={items}
       value={null}
-      inputValue={inputValue}
+      defaultInputValue={defaultInputValue}
       onInputValueChange={(value, { reason }) => {
-        if (reason !== "item-press") onInputValueChange(value);
+        if (reason !== "item-press") onInputValueChange?.(value);
       }}
       onValueChange={(item) => {
         if (item != null) onSelect(item);
@@ -66,13 +72,6 @@ function Combobox<T>({
       open={open}
       onOpenChange={onOpenChange}
       itemToStringLabel={getItemLabel}
-      itemToStringValue={(item) => (item == null ? "" : String(getItemKey(item)))}
-      isItemEqualToValue={(item, value) =>
-        item != null && value != null && getItemKey(item) === getItemKey(value)
-      }
-      // Consumers own filtering; `filter={null}` is the documented pass-all
-      // for externally filtered lists in @base-ui/react 1.7.
-      filter={null}
       loopFocus
       disabled={disabled}
     >
@@ -109,11 +108,7 @@ function Combobox<T>({
                   value={item}
                   disabled={isItemDisabled?.(item)}
                   data-slot="combobox-item"
-                  className={cn(
-                    // The inset bar keeps keyboard highlighting distinguishable from the popover.
-                    "relative flex cursor-default items-center rounded-md px-2 py-2 text-xs outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:shadow-[inset_2px_0_0_var(--foreground)] data-disabled:pointer-events-none data-disabled:opacity-50",
-                    itemClassName,
-                  )}
+                  className={itemClass}
                 >
                   {renderItem(item)}
                 </ComboboxPrimitive.Item>

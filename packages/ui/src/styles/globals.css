@@ -173,6 +173,17 @@
 }
 
 @layer base {
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: gray;
+    border-radius: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
@@ -237,6 +248,27 @@
 :focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
+}
+
+/*
+ * Autofilled fields keep the app's own colours.
+ *
+ * Chrome, Edge and Safari paint an autofilled input with a fixed yellow (blue
+ * in dark mode) that no `background-color` rule can beat — it is a UA-internal
+ * style. The transition does reach it: give the colour change a delay measured
+ * in days and the field never arrives, so the input keeps the background it
+ * already had. Firefox tints with a `filter` instead, hence the reset.
+ *
+ * Unlayered on purpose: `transition-colors` sits in the `utilities` layer and
+ * would otherwise outrank the delay.
+ */
+input:autofill,
+textarea:autofill,
+select:autofill {
+  -webkit-text-fill-color: var(--foreground);
+  filter: none;
+  transition-property: background-color;
+  transition-delay: 600000s;
 }
 
 @media (prefers-reduced-motion: reduce) {

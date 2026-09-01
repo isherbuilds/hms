@@ -5,7 +5,7 @@ function encode5987(value: string): string {
   );
 }
 
-/** A fixed ASCII fallback plus RFC 5987 keeps arbitrary stored numbers header-safe. */
+/** A fixed ASCII fallback plus RFC 5987 keeps arbitrary stored names header-safe. */
 export function pdfContentDisposition(fileName: string, download: boolean): string {
   const disposition = download ? "attachment" : "inline";
   const safeFileName = Array.from(fileName, (character) => {

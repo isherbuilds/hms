@@ -4,11 +4,6 @@ import { createOrganization, createTestUser, joinOrganization } from "../support
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
 
-/**
- * Exercises the real presigned round trip against the SeaweedFS in
- * `packages/db/docker-compose.dev.yaml`. The point is that bytes travel
- * browser <-> storage directly and that no unsigned path exists.
- */
 beforeAll(async () => {
   await resetTestDatabase();
 });
@@ -34,14 +29,11 @@ test("a file is uploaded, finalized, read only via a signature, and deleted", as
     size: body.length,
   });
 
-  // The key is tenant-prefixed, which is what makes a foreign key detectable
-  // without a database round trip.
   expect(upload.key.startsWith(`${org.id}/`)).toBe(true);
 
   const put = await putBytes(upload.uploadUrl, body, "text/plain");
   expect(put.status).toBe(200);
 
-  // Not readable or listed until finalized.
   await expectORPCCode(api.file.getReadUrl({ orgSlug: org.slug, key: upload.key }), "NOT_FOUND");
   expect((await api.file.list({ orgSlug: org.slug })).items).toHaveLength(0);
 
@@ -51,7 +43,6 @@ test("a file is uploaded, finalized, read only via a signature, and deleted", as
   });
   expect(finalized.status).toBe("ready");
 
-  // A ready file cannot be re-finalized — the pending row is gone.
   await expectORPCCode(
     api.file.finalizeUpload({ orgSlug: org.slug, key: upload.key }),
     "NOT_FOUND",
@@ -66,9 +57,8 @@ test("a file is uploaded, finalized, read only via a signature, and deleted", as
   expect(fetched.status).toBe(200);
   expect(await fetched.text()).toBe(body);
 
-  // Strip the signature from the presigned URL: what remains is the plain
-  // object URL that a "public files" feature would have handed out, and the
-  // storage gateway must refuse it.
+  // Unsigned: what a "public files" feature would have handed out. The gateway
+  // must refuse it.
   const signed = new URL(read.url);
   const unsigned = await fetch(`${signed.origin}${signed.pathname}`);
   expect(unsigned.status).toBeGreaterThanOrEqual(400);
@@ -106,7 +96,6 @@ test("another org's file key is FORBIDDEN, not merely missing", async () => {
     "FORBIDDEN",
   );
 
-  // Alice's file is untouched.
   expect((await aliceApi.file.list({ orgSlug: alpha.slug })).items.map((f) => f.id)).toContain(
     upload.key,
   );

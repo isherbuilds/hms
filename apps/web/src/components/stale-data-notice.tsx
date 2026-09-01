@@ -1,18 +1,12 @@
 import { useEffect, useState } from "react";
 
-/**
- * Polling screens look identical whether their 10s refetch is succeeding or
- * silently failing, and a front desk acting on a dead queue is worse than one
- * that knows the connection dropped. This surfaces only the failure case: it
- * renders nothing while data is fresher than three poll intervals, then names
- * the age of what is on screen. Mounted-only ticking keeps it out of SSR HTML,
- * so it can never cause a hydration mismatch.
- */
+// Renders nothing until data is older than three poll intervals, then names its
+// age. Mounted-only ticking keeps it out of SSR HTML, so it cannot cause a
+// hydration mismatch.
 export function StaleDataNotice({
   dataUpdatedAt,
   intervalMs = 10_000,
 }: {
-  /** Oldest `dataUpdatedAt` among the queries that feed the screen. */
   dataUpdatedAt: number;
   intervalMs?: number;
 }) {

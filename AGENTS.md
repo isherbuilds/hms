@@ -11,28 +11,21 @@ change as code.
 - [Development](./docs/development.md) and [Operations](./docs/operations.md)
 - [Decision log](./docs/decisions.md) — **check before revisiting an architectural choice**
 - [Design](./docs/design.md) — **the UI source of truth**
-- Active specs: [OPD intake](./docs/specs/opd.md), [OPD desk lifecycle](./docs/specs/opd-desk-lifecycle.md), [reports](./docs/specs/reports.md), [remove loading placeholders](./docs/specs/remove-loading-placeholders.md), [midday adoption](./docs/specs/midday-adoption.md)
+- [Current work registry](./docs/README.md#work-lifecycle) — the only list of unfinished documentation-backed work
 - [Research ledger](./docs/research/README.md) — evidence, not product authority
 - Skills: [`org-scoped-feature`](./.agents/skills/org-scoped-feature/SKILL.md) to add an org-scoped domain, [`tenancy-review`](./.agents/skills/tenancy-review/SKILL.md) to audit a diff for cross-tenant leaks
 
 ## Commands
 
-- `bun run check-types` — typechecks every TypeScript package, plus `tests/`. Two deliberate exceptions: `packages/config` ships no TypeScript, and `apps/fumadocs` is an Astro docs site checked by its own build. `apps/web/server/` is excluded because Nitro's auto-imports are resolved by its builder, not `tsc`.
-- `bun run test` — integration tests against real Postgres (`packages/db/docker-compose.dev.yaml`; uses and wipes the `hms_test` database).
-- `bun run check` — oxlint + oxfmt.
-- `bun run db:generate` / `db:migrate` — drizzle-kit migrations in `packages/db/src/migrations/`.
-- `bun run db:up` — starts the dev Postgres + SeaweedFS stack, waiting for health; no-op if already running.
-- `bun run db:seed` — development accounts and two organizations; `-- --reset` wipes first. Prints the credentials. Refuses to run against `NODE_ENV=production`.
-
-`bun run dev` runs `db:up` and `db:migrate` before starting all apps.
-`dev:web` and `dev:server` run only the selected Turbo task, so start/migrate the
-database first when using them directly.
+Use the canonical setup and command table in [Development](./docs/development.md#commands).
+Two commands mutate local state by design: `bun run check` writes formatting,
+and `bun run test` wipes the `hms_test` database.
 
 ## Hard rules
 
 1. **Every domain row belongs to exactly one org (`orgId NOT NULL`), and every query carries the tenant predicate `eq(orgId, scope.orgId)`.** This includes infrastructure tables (`audit_log`, `file`), not just domain tables. `userId` columns are attribution, never scope.
 2. **Org context is explicit procedure input, proven by the permission guard.** Org pages pass their `/:orgSlug` route param as `input.orgSlug` through the single `/rpc` client. Framework adapters supply only request dependencies (`session`, `headers`, and the request's own membership map); `orgProcedure(permission, input)` resolves membership directly in its internal guard and turns the claim into verified `context.scope`. The permission is a required constructor argument and the raw builder is not exported, so an org procedure cannot omit the guard. Handlers use only scope for authorization and SQL. Membership resolves once per request and is shared only within that request, never across requests — the permission check and its denial audit still run on every call — and there is no fallback to `session.activeOrganizationId`.
-   - Org pages live under `apps/web/src/routes/$orgSlug/` and import the singleton `orpc`. Organization choices use normal route links. Every org query, mutation, direct call, and tenant-specific invalidation includes `orgSlug`, so generated query keys cannot reuse another tenant's data. Organization slugs are validated by `@hms/auth/organization-slug`: at least four characters, URL-safe, and outside the public/system root namespace. URLs make selection per-tab. The layout server-renders; its loader fetches `member.me` (always on the server, where the cache is request-local; a client navigation may reuse a ≤60 s-fresh result for the shell only), and Base UI popups stay behind `ClientOnly` (decision D008).
+   - Org pages live under `apps/web/src/routes/$orgSlug/` and import the singleton `orpc`. Organization choices use normal route links. Every org query, mutation, direct call, and tenant-specific invalidation includes `orgSlug`, so generated query keys cannot reuse another tenant's data. Organization slugs are validated by `@hms/auth/organization-slug`: at least four characters, URL-safe, and outside the public/system root namespace. URLs make selection per-tab. The layout server-renders; its initial loader fetches `member.me` through the request-local server client, while client navigation may reuse a ≤60 s-fresh result or refetch through `/rpc`. Base UI popups stay behind `ClientOnly` (decision D008).
    - Sign-up is disabled: accounts are created by an operator via `createUserWithPassword` / `scripts/create-user.ts`, never through a public endpoint. Organization creation is restricted to the `FOUNDING_EMAIL` account alone — no role grants it, not even owners (decision D006 and `scripts/create-founder.ts`).
    - A member's roles are stored comma-joined and authorize as a **union** (Better Auth's own semantics). Use `parseRoles`/`authorize` from `@hms/auth/access`; never read `role.split(",")[0]`.
 3. **Audit sensitive actions, not everything.** `audit()` is fire-and-forget — it can never slow a response or turn one into a 500. Role denials are audited centrally in `orgProcedure`'s internal guard; routers call `audit()` only for sensitive/destructive mutations (e.g. `file.delete`). Patient mutations also keep this fire-and-forget behavior; do not move audit writes into domain transactions without a separately approved decision.
@@ -45,6 +38,47 @@ database first when using them directly.
 
 - YAGNI/KISS: extract a helper only at the second real call site; delete unused exports.
 - Fail loud on config, auth, money, and data-integrity errors — no defaults or broad catches.
+
+## How to work
+
+Ship the minimal sufficient change. Plan aggressively, execute lightly. Anything
+you cannot prove is needed is not built by default — abstractions, config layers,
+compatibility shims, and tests included.
+
+- Before touching code, restate in a few lines: what the user wants, the scope of
+  this change, what you will explicitly not do, and what counts as done.
+- Read the code that owns the behaviour. Don't assemble a conclusion out of grep hits.
+- Fix the root cause once. No stacked patches, dual code paths, or a second
+  implementation kept alongside the old one.
+- Stop and shrink the plan the moment you catch yourself adding an abstraction the
+  requirement doesn't need, designing for a future caller, adding constraints to
+  satisfy earlier constraints, or editing many unrelated files.
+- One thread per task. Split work across parallel agents only after a single pass
+  shows it is too big. Load only the skills the task needs.
+- Reserve deep reasoning for planning; drop to a lighter model for the edit-and-test
+  loop. If the executing model starts growing architecture or scope, stop and rewrite
+  the minimal plan.
+- Irreversible operations require the user's explicit confirmation immediately
+  before execution. Git revert, rollback, and branch switch, moves into the
+  repo's backup directory, running tests, and read-only analysis are not irreversible.
+- Before calling it done: intent and acceptance restated, minimal file set touched,
+  related existing tests run, diff small, no debug leftovers, nothing built only to
+  look complete.
+
+## Testing
+
+Tests prove this change. They do not fill historical coverage gaps or build a future
+test system.
+
+- Run the existing tests that cover the change first. If they prove it correct, add nothing.
+- Add a test only when this change alters behaviour nothing covers, or the user asks for
+  one. At most one happy path, plus one key failure path if it earns its place.
+- No new test frameworks, dependencies, directories, large snapshots, parameter matrices,
+  or end-to-end suites.
+- Never reshape product behaviour to satisfy a test you wrote first, and never treat a
+  green suite as licence for more abstraction.
+- If the test is longer or trickier than the implementation, it is over-engineered — cut
+  the test or shrink the implementation.
 
 ## UI
 

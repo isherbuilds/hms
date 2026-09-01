@@ -1,0 +1,61 @@
+---
+title: Administration and handover
+description: Configure an organization and use files, audit, and reports safely
+---
+
+## Set up the organization
+
+Follow the in-app **Setup path**, then return to **Staff** after the catalog and
+members are ready:
+
+1. **Organization** — confirm legal name, address, tax identifier, currency,
+   timezone, fiscal-year start, and document prefixes. These values shape money,
+   business dates, MRNs, and printed document numbers.
+2. **Staff** — create departments and practitioners. Leave member links and
+   attendance fee assignments until their required records exist.
+3. **Catalog** — create the active consultation and follow-up items, then
+   maintain every service's code, name, category, price, tax rate, tax code, and
+   active state.
+4. **Members** — invite existing operator-created accounts and assign the role
+   they need. You can change a member's role, remove a member, or revoke a pending
+   invitation when authorized.
+5. **Staff again** — link practitioners to member logins when applicable and
+   assign the existing consultation and follow-up fee items.
+
+Review identifiers, currency, timezone, prices, and taxes with the responsible
+operator before live use. Changing configuration later does not rewrite already
+issued financial documents.
+
+## Files and prescription scans
+
+**Files** stores organization documents privately. Downloads use signed links
+that expire after 15 minutes. A file attached to an appointment must be detached
+from that record before it can be deleted from Files. Treat a signed link as a
+temporary bearer link and do not place it in messages or logs.
+
+The OPD clinical tab is the correct place to attach a signed prescription scan to
+its appointment. The general Files page does not create that clinical link.
+
+## Audit
+
+The Audit settings tab records selected sensitive or destructive actions and
+permission denials. It is not a history of every read or every ordinary edit.
+Use it to investigate who performed a recorded action; use the source record and
+financial documents for the business history itself.
+
+## Reports and handover
+
+The available reports are derived only from transactions recorded in HMS:
+
+- **GST outward register** — Invoice and Credit Note tax reporting for a period.
+- **Trial balance** — opening, movement, and closing balances by billing-ledger account.
+- **Balance sheet** — financial position produced by the HMS billing ledger.
+
+Filter the required period or date, review the result, then print or export it for
+handover. These views do not include expenses, payroll, inventory accounting,
+manual journals, bank reconciliation, period close, or final accounts. The GST
+register is not a filing return. Reconcile daily and have the pilot's accountant
+approve classifications and statutory fields before relying on an export.
+
+Return to [Billing and corrections](/billing-and-corrections) when a discrepancy
+comes from an Invoice, Payment, Credit Note, or Refund rather than setup.

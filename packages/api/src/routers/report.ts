@@ -26,15 +26,9 @@ const asOfInput = orgInput.extend({ asOf: reportDate });
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
-/**
- * Trial balance and balance sheet return one row per account whatever the
- * range, so a wide period is a bigger scan, not a bigger answer — refusing
- * "since inception" would refuse a question accountants legitimately ask, and
- * the pool's statement timeout already bounds a scan that runs long.
- *
- * `maxDays` therefore belongs only to reports whose row count grows with the
- * period. The GST register returns a row per document, and is filed monthly.
- */
+// `maxDays` belongs only to reports whose row count grows with the period. Trial
+// balance and balance sheet return one row per account whatever the range, and the
+// pool's statement timeout already bounds a long scan.
 const MAX_FILING_DAYS = 366;
 
 function assertValidPeriod(from: string, to: string, maxDays?: number): void {

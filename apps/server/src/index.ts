@@ -38,12 +38,10 @@ app.use(
     allowMethods: ["GET", "POST", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
     credentials: true,
-    // Cache preflight responses so cross-origin RPCs don't pay an OPTIONS
-    // round trip per endpoint per navigation.
+    // Cache preflight responses so cross-origin RPCs don't pay an OPTIONS round trip.
     maxAge: 86400,
   }),
 );
-// Compress JSON RPC payloads.
 app.use("/*", compress());
 
 app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
@@ -66,10 +64,8 @@ async function createLoggedRequestContext(
   return requestContext;
 }
 
-/**
- * Expected outcomes reach here too — a duplicate patient is a `CONFLICT`, not a
- * fault. Logging those buries the genuine 500s they outnumber.
- */
+// Expected outcomes reach here too — a duplicate patient is a CONFLICT, not a
+// fault. Logging those buries the genuine 500s they outnumber.
 function logORPCError(error: unknown): void {
   if (error instanceof ORPCError && error.status < 500) {
     return;
@@ -84,8 +80,8 @@ const rpcHandler = new RPCHandler(appRouter, {
   interceptors: [onError(logORPCError)],
 });
 
-// Reject oversized requests before session resolution. The oRPC plugin repeats
-// the limit at the protocol adapter boundary for callers mounted elsewhere.
+// Before session resolution. The oRPC plugin repeats the limit at the protocol
+// adapter boundary for callers mounted elsewhere.
 app.use(
   "/rpc/*",
   bodyLimit({
@@ -132,10 +128,8 @@ if (!isProduction) {
   });
 }
 
-/**
- * Readiness, not liveness: a process that answers while Postgres is unreachable
- * reports healthy through an outage in which every request fails.
- */
+// Readiness, not liveness: a process that answers while Postgres is unreachable
+// reports healthy through an outage in which every request fails.
 app.get("/", async (c) => {
   try {
     await db.execute(sql`select 1`);

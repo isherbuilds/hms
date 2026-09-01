@@ -10,18 +10,12 @@ import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
 
 export const dashboardRouter = {
-  /**
-   * The organization's local clinical day: how many patients checked in and
-   * how many booked patients have not arrived.
-   */
   today: orgProcedure({ opd: ["read"] }, orgInput).handler(async ({ context }) => {
     const { orgId } = context.scope;
     const { timeZone } = await readOrgSettings(orgId);
     const currentDay = businessDate(new Date(), timeZone);
 
-    // Both queries window on `businessDate`, which check-in (or walk-in
-    // creation) sets to the arrival day — a booking created yesterday for
-    // today belongs to today, and a booking for next week does not.
+    // `businessDate` is the arrival day, so a booking made yesterday for today counts today.
     const [counts, mix] = await Promise.all([
       db.execute<{ checkedIn: number; booked: number }>(
         sql`
@@ -33,7 +27,6 @@ export const dashboardRouter = {
             and ${opdAppointments.businessDate} = ${currentDay}
         `,
       ),
-      // The mix counts attended appointments only.
       db.execute<{ department: string; count: number }>(sql`
           select coalesce(${departments.name}, 'Unassigned') as "department",
                  count(*)::integer as "count"
@@ -56,22 +49,16 @@ export const dashboardRouter = {
     return { ...totals, mix: mix.rows };
   }),
 
-  /**
-   * What the desk has taken on the organization's local day and what is still
-   * owed. Amounts are strings because Postgres stores them as `numeric`.
-   * Converting them through a JavaScript float would cause money errors.
-   */
+  // Amounts stay strings: Postgres stores them as `numeric`, and a JavaScript float
+  // would cause money errors.
   collections: orgProcedure({ billing: ["read"] }, orgInput).handler(async ({ context }) => {
     const { orgId } = context.scope;
     const { timeZone } = await readOrgSettings(orgId);
     const currentDay = businessDate(new Date(), timeZone);
     const { start, end } = businessDayWindow(currentDay, timeZone);
 
-    // The two statements are independent, so they go out together. The totals
-    // split the day's takings by method with `filter` clauses instead of one
-    // subselect per method, so `payments` is scanned once rather than four
-    // times. The charges subselects stay scalar: they read another table and a
-    // different predicate (pending, no date window).
+    // `filter` clauses split the day's takings by method in one scan of `payments`
+    // rather than a subselect per method.
     const [result, trend] = await Promise.all([
       db.execute<{
         collected: string;
@@ -106,8 +93,7 @@ export const dashboardRouter = {
         where ${payments.orgId} = ${orgId}
           and ${payments.createdAt} >= ${start} and ${payments.createdAt} < ${end}
       `),
-      // Fourteen days including today, gap-filled: a day with no payments must
-      // plot as a zero-height bar, not vanish and silently compress the axis.
+      // Gap-filled: a day with no payments must plot as zero, not compress the axis.
       db.execute<{ day: string; amount: string }>(sql`
         with days as (
           select (${currentDay}::date - series.days_ago)::date as day

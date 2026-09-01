@@ -16,18 +16,13 @@ import { formatMoney } from "@/lib/money";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 
-/**
- * Every invoice raised for this patient, with what is still open on each.
- * Invoices are issued per attendance, so before `patient.account` the only way
- * to answer "does this person owe anything" was to open each visit in turn.
- */
 export function PatientBilling({ orgSlug, patientId }: { orgSlug: string; patientId: string }) {
   const { timeZone } = useOrgDateTime();
   const account = useQuery(orpc.patient.account.queryOptions({ input: { orgSlug, patientId } }));
 
   if (account.isPending) return null;
   if (account.isError) {
-    return <ErrorNote title="Could not load billing" detail={account.error.message} />;
+    return <ErrorNote title="Could not load billing" error={account.error} />;
   }
 
   const { invoices, outstanding, openCount } = account.data;

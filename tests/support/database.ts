@@ -3,11 +3,6 @@ import pg from "pg";
 import { drainAuditWrites } from "@hms/api/audit";
 import { runMigrations } from "@hms/db/migrate";
 
-/**
- * Drops and recreates the public schema of the test database, then applies
- * all migrations. Call once per test file — tests inside a file share the
- * database and must create their own users/orgs for isolation.
- */
 export async function resetTestDatabase(): Promise<void> {
   await drainAuditWrites();
 
@@ -37,8 +32,7 @@ export async function resetTestDatabase(): Promise<void> {
   const client = new pg.Client({ connectionString: url.toString() });
   await client.connect();
   try {
-    // The migration journal lives in the "drizzle" schema — drop it too, or
-    // the migrator considers everything applied against the empty database.
+    // Drop the "drizzle" schema too, or the migrator considers everything applied.
     await client.query(
       "drop schema public cascade; create schema public; drop schema if exists drizzle cascade;",
     );

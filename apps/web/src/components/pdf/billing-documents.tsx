@@ -52,7 +52,7 @@ function formatBusinessDate(value: string): string {
   }).format(new Date(`${value}T00:00:00Z`));
 }
 
-/** Display-only grouping: all persisted arithmetic remains exact decimal-string math. */
+/** Display-only grouping; persisted arithmetic stays exact decimal-string math. */
 function money(value: string | number, currency: string): string {
   const amount = Number(value);
   const grouped = new Intl.NumberFormat("en-IN", {

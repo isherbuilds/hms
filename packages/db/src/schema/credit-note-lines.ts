@@ -4,10 +4,7 @@ import { organization } from "./auth";
 import { creditNotes } from "./credit-notes";
 import { invoiceLines } from "./invoice-lines";
 
-/**
- * Immutable value snapshots for each credited invoice line. Credit-note header
- * totals are sums of these taxable value, tax, and gross amounts.
- */
+// Credit-note header totals are sums of these stored line values.
 export const creditNoteLines = pgTable(
   "credit_note_lines",
   {

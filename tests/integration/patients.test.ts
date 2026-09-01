@@ -1,5 +1,14 @@
 import { beforeAll, expect, test } from "bun:test";
 
+import { drainAuditWrites } from "@hms/api/audit";
+import type { ConflictReason } from "@hms/api/lib/conflict";
+import { db } from "@hms/db";
+import { auditLog } from "@hms/db/schema/audit";
+import { counter } from "@hms/db/schema/counter";
+import { file } from "@hms/db/schema/file";
+import { patients } from "@hms/db/schema/patients";
+import { and, eq, sql } from "drizzle-orm";
+
 import { createOrganization, createTestUser, joinOrganization } from "../support/auth";
 import { clientFor, eventually, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
@@ -7,7 +16,7 @@ beforeAll(async () => {
   await resetTestDatabase();
 });
 
-function registration(orgSlug: string, name: string, phone: string) {
+function registration(orgSlug: string, name: string, phone: string, uid?: string) {
   return {
     orgSlug,
     name,
@@ -16,6 +25,7 @@ function registration(orgSlug: string, name: string, phone: string) {
     dateOfBirth: "1996-08-27",
     dobEstimated: true,
     address: "",
+    ...(uid ? { uid } : {}),
   };
 }
 
@@ -337,4 +347,417 @@ test("register and update successes are written to the audit trail", async () =>
   });
   expect(updated.actorId).toBe(owner.user.id);
   expect(updated.orgId).toBe(organization.id);
+});
+
+test("phone lookup ignores formatting and preserves stored display text", async () => {
+  const owner = await createTestUser("patient-phone-format");
+  const organization = await createOrganization(owner, "patient-phone-format");
+  const api = clientFor(owner);
+  const storedPhone = "98765-43210";
+  const patient = await api.patient.register(
+    registration(organization.slug, "Formatted Phone", storedPhone),
+  );
+
+  for (const phone of ["9876543210", "98765 43210", "(98765) 43210"]) {
+    const result = await api.patient.search({ orgSlug: organization.slug, phone });
+    expect(result.items.map((item) => item.id)).toContain(patient.id);
+    expect(result.items.find((item) => item.id === patient.id)?.phone).toBe(storedPhone);
+  }
+
+  const generic = await api.patient.search({
+    orgSlug: organization.slug,
+    query: "98765 43210",
+  });
+  expect(generic.items.map((item) => item.id)).toContain(patient.id);
+
+  const loaded = await api.patient.get({ orgSlug: organization.slug, patientId: patient.id });
+  expect(loaded.phone).toBe(storedPhone);
+});
+
+test("short normalized values reject explicit lookup and skip generic phone matching", async () => {
+  const owner = await createTestUser("patient-phone-short");
+  const organization = await createOrganization(owner, "patient-phone-short");
+  const api = clientFor(owner);
+  await api.patient.register(registration(organization.slug, "Boundary Patient", "12-3456"));
+
+  await expectORPCCode(
+    api.patient.search({ orgSlug: organization.slug, phone: "--12--" }),
+    "BAD_REQUEST",
+  );
+
+  const shortDigits = await api.patient.search({ orgSlug: organization.slug, query: "12" });
+  expect(shortDigits.items).toHaveLength(0);
+
+  const emptyNormalized = await api.patient.search({ orgSlug: organization.slug, query: "--" });
+  expect(emptyNormalized.items).toHaveLength(0);
+});
+
+test("patient registration persists one birth model and exposes no legacy age", async () => {
+  const owner = await createTestUser("patient-age-model");
+  const organization = await createOrganization(owner, "patient-age-model");
+  const api = clientFor(owner);
+
+  const registered = await api.patient.register({
+    orgSlug: organization.slug,
+    name: "Estimated Birth Patient",
+    phone: "555-1200",
+    sex: "female",
+    dateOfBirth: "1992-08-27",
+    dobEstimated: true,
+    address: "",
+  });
+
+  expect(registered).toMatchObject({
+    dateOfBirth: "1992-08-27",
+    dobEstimated: true,
+  });
+  expect("ageYears" in registered).toBe(false);
+
+  const [stored] = await db
+    .select({
+      dateOfBirth: patients.dateOfBirth,
+      dobEstimated: patients.dobEstimated,
+    })
+    .from(patients)
+    .where(and(eq(patients.orgId, organization.id), eq(patients.id, registered.id)))
+    .limit(1);
+  expect(stored).toEqual({ dateOfBirth: "1992-08-27", dobEstimated: true });
+
+  const loaded = await api.patient.get({
+    orgSlug: organization.slug,
+    patientId: registered.id,
+  });
+  expect(loaded).toMatchObject({ dateOfBirth: "1992-08-27", dobEstimated: true });
+  expect("ageYears" in loaded).toBe(false);
+});
+
+test("patient search only returns a cursor when another matching row exists", async () => {
+  const owner = await createTestUser("patient-search-boundary");
+  const exactOrganization = await createOrganization(owner, "patient-search-exact");
+  const overflowOrganization = await createOrganization(owner, "patient-search-overflow");
+  const api = clientFor(owner);
+  const limit = 5;
+
+  for (let index = 0; index < limit; index++) {
+    await api.patient.register(
+      registration(exactOrganization.slug, `Exact Boundary ${index}`, `55510${index}`),
+    );
+  }
+
+  for (let index = 0; index < limit + 1; index++) {
+    await api.patient.register(
+      registration(overflowOrganization.slug, `Overflow Boundary ${index}`, `55520${index}`),
+    );
+  }
+
+  const exactPage = await api.patient.search({
+    orgSlug: exactOrganization.slug,
+    query: "Exact Boundary",
+    limit,
+  });
+  expect(exactPage.items).toHaveLength(limit);
+  expect(exactPage.items.every((patient) => patient.name.startsWith("Exact Boundary"))).toBe(true);
+  expect(exactPage.nextCursor).toBeNull();
+
+  const firstOverflowPage = await api.patient.search({
+    orgSlug: overflowOrganization.slug,
+    query: "Overflow Boundary",
+    limit,
+  });
+  expect(firstOverflowPage.items).toHaveLength(limit);
+  expect(
+    firstOverflowPage.items.every((patient) => patient.name.startsWith("Overflow Boundary")),
+  ).toBe(true);
+  expect(firstOverflowPage.nextCursor).not.toBeNull();
+
+  const nextCursor = firstOverflowPage.nextCursor;
+  if (!nextCursor) {
+    throw new Error("Expected another page for limit + 1 matching patients");
+  }
+
+  const secondOverflowPage = await api.patient.search({
+    orgSlug: overflowOrganization.slug,
+    query: "Overflow Boundary",
+    limit,
+    cursor: nextCursor,
+  });
+  expect(secondOverflowPage.items).toHaveLength(1);
+  expect(secondOverflowPage.items[0]?.name).toMatch(/^Overflow Boundary/);
+  expect(secondOverflowPage.nextCursor).toBeNull();
+});
+
+test("pagination keeps rows that share a creation millisecond", async () => {
+  const owner = await createTestUser("patient-search-microsecond");
+  const organization = await createOrganization(owner, "patient-search-micros");
+  const api = clientFor(owner);
+
+  // `defaultNow()` stores microseconds; the id-only keyset never compares
+  // timestamps, so same-millisecond rows can neither vanish nor repeat.
+  const ids = [1, 2, 3].map(() => Bun.randomUUIDv7());
+  const rows = ids.map((id, index) => ({
+    id,
+    orgId: organization.id,
+    mrn: `MICRO-${index}`,
+    name: `Micro Boundary ${index}`,
+    phone: `77700${index}`,
+    sex: "other" as const,
+    dateOfBirth: "1996-08-27",
+    dobEstimated: true,
+    address: "",
+    createdAt: sql`${`2026-08-24T05:00:00.500${String(index + 1).padStart(3, "0")}Z`}::timestamptz`,
+  }));
+  await db.insert(patients).values(rows);
+
+  const seen: string[] = [];
+  let cursor: string | null = null;
+  do {
+    const page = await api.patient.search({
+      orgSlug: organization.slug,
+      query: "Micro Boundary",
+      limit: 1,
+      ...(cursor ? { cursor } : {}),
+    });
+    seen.push(...page.items.map((patient) => patient.id));
+    cursor = page.nextCursor;
+  } while (cursor);
+
+  expect(seen).toEqual([...ids].sort().reverse());
+});
+
+test("file list only returns a cursor when another row exists and keeps same-millisecond rows", async () => {
+  const owner = await createTestUser("file-list-boundary");
+  const organization = await createOrganization(owner, "file-list-boundary");
+  const api = clientFor(owner);
+
+  // Uploads burst inside one millisecond, so the createdAt cursor must not
+  // round-trip through a JS Date.
+  await db.insert(file).values(
+    [1, 2, 3].map((microseconds) => ({
+      id: `${organization.id}/boundary-${microseconds}`,
+      orgId: organization.id,
+      name: `scan-${microseconds}.pdf`,
+      size: 1000,
+      status: "ready",
+      createdAt: sql`${`2026-08-24T06:00:00.250${microseconds.toString().padStart(3, "0")}Z`}::timestamptz`,
+    })),
+  );
+
+  const seen: string[] = [];
+  let cursor: { createdAt: string; id: string } | null = null;
+  do {
+    const page = await api.file.list({
+      orgSlug: organization.slug,
+      limit: 1,
+      ...(cursor ? { cursor } : {}),
+    });
+    seen.push(...page.items.map((item) => item.name));
+    cursor = page.nextCursor;
+  } while (cursor);
+
+  expect(seen).toEqual(["scan-3.pdf", "scan-2.pdf", "scan-1.pdf"]);
+
+  const exact = await api.file.list({ orgSlug: organization.slug, limit: 3 });
+  expect(exact.items).toHaveLength(3);
+  expect(exact.nextCursor).toBeNull();
+});
+
+function updateInput(
+  orgSlug: string,
+  patientId: string,
+  updatedAt: string,
+  name: string,
+  uid?: string,
+) {
+  return {
+    orgSlug,
+    patientId,
+    updatedAt,
+    name,
+    phone: "555-2200",
+    sex: "female" as const,
+    dateOfBirth: "1991-02-03",
+    dobEstimated: false,
+    address: "Updated address",
+    ...(uid ? { uid } : {}),
+  };
+}
+
+type RejectedCall = {
+  code?: string;
+  data?: { reason?: ConflictReason };
+  message?: string;
+};
+
+async function rejected(call: Promise<unknown>): Promise<RejectedCall> {
+  try {
+    await call;
+  } catch (error) {
+    return error as RejectedCall;
+  }
+  throw new Error("Expected patient call to reject");
+}
+
+test("fresh CAS succeeds while stale and missing updates emit no success audit", async () => {
+  const owner = await createTestUser("patient-cas");
+  const organization = await createOrganization(owner, "patient-cas");
+  const api = clientFor(owner);
+  const registered = await api.patient.register(
+    registration(organization.slug, "Before CAS", "555-2100"),
+  );
+  const loaded = await api.patient.get({
+    orgSlug: organization.slug,
+    patientId: registered.id,
+  });
+
+  const updated = await api.patient.update(
+    updateInput(organization.slug, registered.id, loaded.updatedAt, "Winning Update"),
+  );
+  expect(updated.name).toBe("Winning Update");
+  expect(updated.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  expect(updated.updatedAt).not.toBe(loaded.updatedAt);
+
+  const stale = await rejected(
+    api.patient.update(
+      updateInput(organization.slug, registered.id, loaded.updatedAt, "Stale Update"),
+    ),
+  );
+  expect(stale.code).toBe("CONFLICT");
+  expect(stale.message).toBe("This patient changed after you opened it.");
+  expect(stale.data?.reason).toBe("stale_record");
+
+  const missing = await rejected(
+    api.patient.update(
+      updateInput(
+        organization.slug,
+        Bun.randomUUIDv7(),
+        "2026-08-27T00:00:00.000Z",
+        "Missing Update",
+      ),
+    ),
+  );
+  expect(missing.code).toBe("NOT_FOUND");
+
+  const winner = await api.patient.get({
+    orgSlug: organization.slug,
+    patientId: registered.id,
+  });
+  expect(winner.name).toBe("Winning Update");
+
+  await drainAuditWrites();
+  const updateAudits = await db
+    .select({ action: auditLog.action })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.orgId, organization.id),
+        eq(auditLog.action, "patient.update"),
+        eq(auditLog.target, `patient:${registered.id}`),
+      ),
+    );
+  expect(updateAudits).toHaveLength(1);
+});
+
+test("the millisecond floor gives consecutive successful writes distinct tokens", async () => {
+  const owner = await createTestUser("patient-cas-floor");
+  const organization = await createOrganization(owner, "patient-cas-floor");
+  const api = clientFor(owner);
+  const registered = await api.patient.register(
+    registration(organization.slug, "Token Floor", "555-2300"),
+  );
+
+  const futureToken = "2099-01-01T00:00:00.000Z";
+  await db
+    .update(patients)
+    .set({ updatedAt: new Date(futureToken) })
+    .where(and(eq(patients.orgId, organization.id), eq(patients.id, registered.id)));
+
+  const first = await api.patient.update(
+    updateInput(organization.slug, registered.id, futureToken, "First Floor Update"),
+  );
+  const second = await api.patient.update(
+    updateInput(organization.slug, registered.id, first.updatedAt, "Second Floor Update"),
+  );
+
+  expect(first.updatedAt).toBe("2099-01-01T00:00:00.001Z");
+  expect(second.updatedAt).toBe("2099-01-01T00:00:00.002Z");
+});
+
+test("a legacy microsecond timestamp is exposed and compared as a millisecond token", async () => {
+  const owner = await createTestUser("patient-cas-legacy-token");
+  const organization = await createOrganization(owner, "patient-cas-legacy-token");
+  const api = clientFor(owner);
+  const registered = await api.patient.register(
+    registration(organization.slug, "Legacy Token", "555-2400"),
+  );
+
+  await db.execute(sql`
+    update ${patients}
+    set updated_at = '2026-08-27T10:11:12.123456Z'::timestamptz
+    where ${patients.orgId} = ${organization.id} and ${patients.id} = ${registered.id}
+  `);
+  const loaded = await api.patient.get({
+    orgSlug: organization.slug,
+    patientId: registered.id,
+  });
+  expect(loaded.updatedAt).toBe("2026-08-27T10:11:12.123Z");
+
+  const updated = await api.patient.update(
+    updateInput(organization.slug, registered.id, loaded.updatedAt, "Normalized Token Update"),
+  );
+  expect(updated.name).toBe("Normalized Token Update");
+  expect(updated.updatedAt).toMatch(/\.\d{3}Z$/);
+});
+
+test("only the patient UID constraint receives the uid_taken discriminator", async () => {
+  const owner = await createTestUser("patient-uid-conflict");
+  const organization = await createOrganization(owner, "patient-uid-conflict");
+  const api = clientFor(owner);
+  const first = await api.patient.register(
+    registration(organization.slug, "First UID", "555-2500", "SHARED-UID"),
+  );
+
+  const createConflict = await rejected(
+    api.patient.register(registration(organization.slug, "Second UID", "555-2501", "SHARED-UID")),
+  );
+  expect(createConflict.code).toBe("CONFLICT");
+  expect(createConflict.message).toBe("A patient with this UID already exists.");
+  expect(createConflict.data?.reason).toBe("uid_taken");
+
+  await db
+    .update(counter)
+    .set({ value: 0 })
+    .where(and(eq(counter.orgId, organization.id), eq(counter.key, "mrn")));
+  const otherConstraint = await rejected(
+    api.patient.register(
+      registration(organization.slug, "MRN Collision", "555-2503", "UNIQUE-UID"),
+    ),
+  );
+  expect(otherConstraint.code).toBe("CONFLICT");
+  expect(otherConstraint.data?.reason).toBe("duplicate");
+  await db
+    .update(counter)
+    .set({ value: 1 })
+    .where(and(eq(counter.orgId, organization.id), eq(counter.key, "mrn")));
+
+  const second = await api.patient.register(
+    registration(organization.slug, "Update UID", "555-2502", "OTHER-UID"),
+  );
+  const loaded = await api.patient.get({
+    orgSlug: organization.slug,
+    patientId: second.id,
+  });
+  const updateConflict = await rejected(
+    api.patient.update(
+      updateInput(organization.slug, second.id, loaded.updatedAt, "Update UID", "SHARED-UID"),
+    ),
+  );
+  expect(updateConflict.code).toBe("CONFLICT");
+  expect(updateConflict.message).toBe("A patient with this UID already exists.");
+  expect(updateConflict.data?.reason).toBe("uid_taken");
+
+  const unchanged = await api.patient.get({
+    orgSlug: organization.slug,
+    patientId: first.id,
+  });
+  expect(unchanged.uid).toBe("SHARED-UID");
 });

@@ -6,25 +6,35 @@
 Local development uses the single `packages/env/.env`, copied from the example.
 Real process variables win over the file; no `.env` is copied into an image.
 
-| Variable                                                  | Used by               | Requirement                                                  |
-| --------------------------------------------------------- | --------------------- | ------------------------------------------------------------ |
-| `DATABASE_URL`                                            | server + web SSR      | PostgreSQL URL; test harness accepts only a `_test` database |
-| `BETTER_AUTH_SECRET`                                      | server + web SSR      | At least 32 characters; identical on both runtimes           |
-| `BETTER_AUTH_URL`                                         | server + web SSR      | Public API/auth origin                                       |
-| `BETTER_AUTH_COOKIE_DOMAIN`                               | split-host production | Shared parent domain so SSR receives the auth cookie         |
-| `CORS_ORIGIN`                                             | server + web SSR      | Exact web origin; also invitation-link base                  |
-| `FOUNDING_EMAIL`                                          | server + web SSR      | Sole Organization-creation account                           |
-| `NODE_ENV`                                                | both                  | `development`, `production`, or `test`                       |
-| `VITE_SERVER_URL`                                         | web build             | Public API origin used by browser RPC                        |
-| `SEAWEEDFS_ENDPOINT`                                      | server                | Publicly reachable S3 gateway for direct browser transfer    |
-| `SEAWEEDFS_BUCKET`                                        | server                | Private bucket name                                          |
-| `SEAWEEDFS_ACCESS_KEY_ID` / `SEAWEEDFS_SECRET_ACCESS_KEY` | server                | S3 credentials                                               |
-| `SEAWEEDFS_MAX_UPLOAD_BYTES`                              | server                | Optional positive integer; default 100 MiB                   |
-| `SKIP_ENV_VALIDATION`                                     | build only            | Never set on a running application                           |
+| Variable                                                  | Used by              | Requirement                                                  |
+| --------------------------------------------------------- | -------------------- | ------------------------------------------------------------ |
+| `DATABASE_URL`                                            | server + web SSR     | PostgreSQL URL; test harness accepts only a `_test` database |
+| `BETTER_AUTH_SECRET`                                      | server + web SSR     | At least 32 characters; identical on both runtimes           |
+| `BETTER_AUTH_URL`                                         | server + web SSR     | Public API/auth origin                                       |
+| `BETTER_AUTH_COOKIE_DOMAIN`                               | split-host web + API | Shared parent domain so web SSR receives the API cookie      |
+| `CORS_ORIGIN`                                             | server + web SSR     | Exact web origin; also invitation-link base                  |
+| `FOUNDING_EMAIL`                                          | server + web SSR     | Sole Organization-creation account                           |
+| `NODE_ENV`                                                | both                 | `development`, `production`, or `test`                       |
+| `VITE_SERVER_URL`                                         | web build            | Public API origin used by browser RPC                        |
+| `SEAWEEDFS_ENDPOINT`                                      | server + web SSR     | Publicly reachable S3 gateway for direct browser transfer    |
+| `SEAWEEDFS_BUCKET`                                        | server + web SSR     | Private bucket name                                          |
+| `SEAWEEDFS_ACCESS_KEY_ID` / `SEAWEEDFS_SECRET_ACCESS_KEY` | server + web SSR     | S3 credentials                                               |
+| `SEAWEEDFS_MAX_UPLOAD_BYTES`                              | server + web SSR     | Optional positive integer; default 100 MiB                   |
+| `SKIP_ENV_VALIDATION`                                     | build only           | Never set on a running application                           |
 
 Add a variable to the narrowest Zod schema in `packages/env`, the example file,
 and deployment configuration. Optional is valid only when the feature fails with
 a clear named error or degrades cleanly.
+
+The four core storage values—endpoint, bucket, access key, and secret—are
+optional only as a complete group. Omitting all four leaves valid-sized upload
+and read-URL operations unavailable with a named configuration error; metadata
+listing still works. Supplying only part of the group produces the same error
+when the storage client is first used. Upload-size validation runs before client
+creation, so an oversized request may fail with the size error even when storage
+is unconfigured; `SEAWEEDFS_MAX_UPLOAD_BYTES` controls that independent guard.
+File deletion commits metadata before best-effort object cleanup, so missing
+storage cannot roll that deletion back.
 
 No secret or server module reaches browser assets. For a production build,
 inspect `.output/public` for server imports and actual secret values; library
@@ -42,6 +52,17 @@ SeaweedFS resources:
 | PostgreSQL                | provider-defined | private to web/server                                     |
 | SeaweedFS S3 gateway      | provider-defined | public for signed browser PUT/GET; bucket remains private |
 
+These are the container defaults, not the development ports. The web
+Dockerfile sets `PORT=3001` for Nitro; a platform-provided `PORT` may override
+it. The API exports its Hono app and lets Bun use `PORT` when supplied,
+otherwise Bun listens on 3000. Its Dockerfile's `EXPOSE 3000` documents that
+default but does not configure the listener.
+
+The portless proxy is development tooling and never runs in production. It is a
+dev dependency, it appears only in each app's `dev` script, and the named
+`*.hms.localhost` hosts in [Development](./development.md#development-urls) have
+no production counterpart.
+
 There is no production Compose file. The local
 `packages/db/docker-compose.dev.yaml` is development-only. Both app containers
 receive the server environment because web SSR imports auth/database code. The
@@ -52,6 +73,32 @@ failure exits startup; concurrent starters serialize through the advisory lock.
 Rolling releases require migrations compatible with the previous application
 until old instances drain. Use expand-and-contract for destructive production
 changes.
+
+The D020 `chargeRevision` release is a coordinated cutover, not a rolling
+release: `settleCharges` changes shape and old writers do not advance the
+revision. Pause financial writes, drain the old web and API instances, apply the
+migration, deploy both applications together, and then resume traffic. Do not
+add a second compatibility contract for this one-time transition.
+
+## Production hardening
+
+Before public traffic:
+
+1. Replace the development-wide `member` grant with the approved reception,
+   cashier, accountant, and administrator split; walk the resulting role map
+   with the pilot shift lead.
+2. Add CSP, HSTS, frame restriction, `nosniff`, referrer, and permissions-policy
+   headers at the proxy or application middleware and verify them on both public
+   hosts.
+3. Replace the single-stage production images with runtime-only images and
+   record their digests, sizes, startup health, and migration behavior.
+4. Add a tenant-safe, age-bounded cleanup procedure for abandoned `pending`
+   uploads and unreachable storage objects, with a dry run and recorded result
+   before deletion is enabled.
+
+This work closes only when the release evidence records all four outcomes and
+the production verification below passes against the resulting images and role
+configuration.
 
 ## Release verification
 
@@ -67,10 +114,36 @@ changes.
 7. Verify a real printer against the itemized bill and payment receipt before
    pilot cutover.
 
-The server must set credentialed CORS only for `CORS_ORIGIN`; session cookies
-are HTTP-only, secure, and SameSite Lax. Add standard security headers at the
-proxy or middleware before public traffic: CSP, HSTS, frame restriction,
-`nosniff`, referrer, and permissions policy.
+The server sets credentialed CORS only for `CORS_ORIGIN`; session cookies are
+HTTP-only, secure, and SameSite Lax.
+
+## Pilot readiness
+
+Do not schedule the first live shift until one named pilot owner has recorded
+all of these as complete:
+
+1. The active [operational reports](./specs/reports.md) acceptance is met, or a
+   time-bounded manual handover procedure and owner covers each remaining gap.
+2. Every pilot staff member has an operator-created account and the least
+   privileged role needed for reception, billing, correction, reporting, or
+   administration; the role map has been walked with the shift lead.
+3. Organization, staff, catalog, tax, timezone, currency, and document-prefix
+   configuration has been reviewed against representative real records.
+4. The pilot accountant has approved representative classifications and
+   statutory fields, and a real A4 and 80 mm printer has produced representative
+   Invoice, Receipt, Credit Note, and refund documents with the scripts used at
+   the hospital.
+5. Reception and cashier staff have rehearsed Now, Later, check-in, cancellation,
+   no-show, partial/split collection, credit, refund, and end-of-shift handover.
+6. A production-like backup and joint PostgreSQL/object-storage restore has been
+   timed and verified as described below, with a named cutover and rollback owner.
+7. Qualified advisers have recorded the state-specific clinical-establishment,
+   GST, DPDP, retention, and other duties applicable to the pilot's live scope,
+   including the owner and evidence for each required control.
+
+Record evidence and exceptions with the release, not in a permanent parallel
+checklist. Re-run only the affected gate after a configuration or workflow
+change.
 
 ## Accounts and Organizations
 
@@ -96,7 +169,3 @@ Before go-live and after any data-rewriting migration:
 3. Sign in, open an org and Patient/OPD record, download a private file, and
    run a billing/GST report.
 4. Record the restore date, duration, and failures.
-
-Known production gaps to close before public traffic: standard security
-headers, oversized single-stage container images, and cleanup of abandoned
-`pending` uploads/orphaned objects.

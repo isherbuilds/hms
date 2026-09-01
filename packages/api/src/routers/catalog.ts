@@ -1,10 +1,15 @@
 import { db } from "@hms/db";
-import { CATALOG_CATEGORIES, catalogItems } from "@hms/db/schema/catalog-items";
+import {
+  CATALOG_CATEGORIES,
+  catalogItems,
+  OPD_BILLABLE_CATEGORIES,
+} from "@hms/db/schema/catalog-items";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq, ilike, ne, or } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, ne, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { conflict } from "../lib/conflict";
 import { isUniqueViolation } from "../lib/db-errors";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 const catalogFields = z.object({
@@ -20,11 +25,13 @@ const catalogFields = z.object({
 });
 
 export const catalogRouter = {
+  // Consultations require an explicit opt-in from immediate intake or billing;
+  // scheduled intake cannot surface them.
   searchServices: orgProcedure(
     { catalog: ["read"] },
     orgInput.extend({
       query: z.string().trim().max(100).optional(),
-      category: z.enum(["procedure", "lab", "radiology", "other"]).optional(),
+      includeConsultation: z.boolean(),
     }),
   ).handler(async ({ context, input }) => {
     const pattern = input.query ? `%${input.query}%` : undefined;
@@ -42,8 +49,10 @@ export const catalogRouter = {
         and(
           eq(catalogItems.orgId, context.scope.orgId),
           eq(catalogItems.active, true),
-          ne(catalogItems.category, "consultation"),
-          input.category ? eq(catalogItems.category, input.category) : undefined,
+          // `findActiveServiceItems` refuses the rest anyway; showing it would be an
+          // invitation to fail.
+          inArray(catalogItems.category, [...OPD_BILLABLE_CATEGORIES]),
+          input.includeConsultation ? undefined : ne(catalogItems.category, "consultation"),
           pattern
             ? or(
                 ilike(catalogItems.code, pattern),
@@ -105,8 +114,7 @@ export const catalogRouter = {
           actorId: scope.userId,
           orgId: scope.orgId,
           target: `catalogItem:${id}`,
-          // Origin entry of the price timeline; catalog.update meta carries
-          // every subsequent change.
+          // Origin entry of the price timeline; catalog.update meta carries every change after.
           meta: {
             unitPrice: item.unitPrice,
             taxRatePercent: item.taxRatePercent,
@@ -117,7 +125,7 @@ export const catalogRouter = {
         return item;
       } catch (error) {
         if (isUniqueViolation(error)) {
-          throw new ORPCError("CONFLICT");
+          throw conflict("duplicate", "A catalog item with this code already exists.");
         }
         throw error;
       }
@@ -147,7 +155,7 @@ export const catalogRouter = {
         .returning();
 
       if (!item) {
-        throw new ORPCError("NOT_FOUND");
+        throw new ORPCError("NOT_FOUND", { message: "That catalog item no longer exists." });
       }
 
       audit({
@@ -155,10 +163,8 @@ export const catalogRouter = {
         actorId: scope.userId,
         orgId: scope.orgId,
         target: `catalogItem:${itemId}`,
-        // Written values make the audit trail double as the price-change
-        // history (see docs/research/README.md) — the
-        // reference systems keep a dedicated BillItemPriceHistory table;
-        // successive catalog.update entries reconstruct the same timeline.
+        // Written values make the audit trail double as the price-change history, so
+        // successive entries reconstruct the timeline without a dedicated table.
         meta: {
           unitPrice: item.unitPrice,
           taxRatePercent: item.taxRatePercent,
@@ -169,7 +175,7 @@ export const catalogRouter = {
       return item;
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw new ORPCError("CONFLICT");
+        throw conflict("duplicate", "A catalog item with this code already exists.");
       }
       throw error;
     }

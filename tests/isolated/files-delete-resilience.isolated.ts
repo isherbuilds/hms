@@ -1,9 +1,7 @@
 import { beforeAll, expect, mock, test } from "bun:test";
 
-// Storage is replaced *before* the routers import it, so `deleteObject` throws
-// like it would during a SeaweedFS outage. Bun runs each test file in its own
-// process. package.json runs this file in a fresh Bun process after the normal
-// suite, so the destructive module mock cannot contaminate real storage tests.
+// Replaced before the routers import it. package.json runs this file in a fresh
+// Bun process so the destructive mock cannot reach real storage tests.
 mock.module("@hms/storage", () => ({
   createUploadUrl: async () => "http://storage.invalid/upload",
   createReadUrl: async () => "http://storage.invalid/read",
@@ -23,11 +21,7 @@ const { eq } = await import("drizzle-orm");
 import { createOrganization, createTestUser } from "../support/auth";
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
-/**
- * Pins the deletion contract: the audit row commits with the row delete, not
- * after object cleanup, so an unreachable store can neither swallow the record
- * nor turn a committed delete into a reported failure.
- */
+// The audit row commits with the row delete, not after object cleanup.
 beforeAll(async () => {
   await resetTestDatabase();
 });
@@ -68,8 +62,7 @@ test("an out-of-scope key is denied and recorded as a digest, not the raw key", 
   const org = await createOrganization(owner, "digest");
   const api = clientFor(owner);
 
-  // A foreign tenant's key — or a presigned URL passed as the key — must never
-  // be persisted verbatim in the audit trail.
+  // A presigned URL passed as the key must never be persisted verbatim.
   const hostile = `${Bun.randomUUIDv7()}/x.txt`;
   await expectORPCCode(api.file.delete({ orgSlug: org.slug, key: hostile }), "FORBIDDEN");
 

@@ -20,15 +20,8 @@ import { formatBusinessDate, formatDateTime, useOrgDateTime } from "@/lib/org-da
 import { formatFileSize, openOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
 
-/**
- * A patient's visits. The list carries only what tells one visit from another;
- * opening a row fetches that appointment on its own, so the page costs a short
- * list on load rather than every visit's charges and files up front.
- *
- * The expanded panel is a read: every action on a visit still belongs to the
- * outpatient record, which the panel links to. Two places to check a patient in
- * would be two places to get it wrong.
- */
+// A row carries only what tells visits apart; opening one fetches that appointment
+// on its own. Every action on a visit belongs to the outpatient record.
 const visitsQuery = (orgSlug: string, patientId: string) =>
   orpc.patient.visits.infiniteOptions({
     input: (cursor: { businessDate: string; id: string } | undefined) => ({
@@ -57,7 +50,7 @@ function VisitPanel({
     return <p className="text-muted-foreground">Loading visit…</p>;
   }
   if (detail.isError) {
-    return <ErrorNote title="Could not load this visit" detail={detail.error.message} />;
+    return <ErrorNote title="Could not load this visit" error={detail.error} />;
   }
 
   const { charges, prescriptions } = detail.data;
@@ -242,7 +235,7 @@ export function PatientVisits({
 
   if (visits.isPending) return null;
   if (visits.isError) {
-    return <ErrorNote title="Could not load visits" detail={visits.error.message} />;
+    return <ErrorNote title="Could not load visits" error={visits.error} />;
   }
 
   const rows = visits.data.pages.flatMap((page) => page.items);

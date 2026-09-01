@@ -18,6 +18,8 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { formatFileSize, openOrgFile, uploadOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
+import { errorMessage } from "@/lib/orpc-error";
+import { useCan } from "@/lib/membership";
 
 const filesQuery = (orgSlug: string) =>
   orpc.file.list.infiniteOptions({
@@ -33,7 +35,7 @@ const filesQuery = (orgSlug: string) =>
 export const Route = createFileRoute("/$orgSlug/files")({
   head: () => ({ meta: [{ title: "Files · HMS" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
-    await queryClient.prefetchInfiniteQuery(filesQuery(orgSlug));
+    await queryClient.infiniteQuery(filesQuery(orgSlug)).catch(() => {});
   },
   component: FilesRoute,
 });
@@ -45,6 +47,8 @@ function FilesRoute() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<string | null>(null);
   const [confirm, confirmDialog] = useConfirm();
+
+  const canDelete = useCan(orgSlug, { file: ["delete"] });
 
   const files = useInfiniteQuery(filesQuery(orgSlug));
 
@@ -61,22 +65,23 @@ function FilesRoute() {
 
   const upload = async (file: File) => {
     setUploading(file.name);
+    // Cleared after the catch, not in a `finally`: React Compiler cannot lower one, and
+    // it would leave this whole component unmemoized.
     try {
       await uploadOrgFile(orgSlug, file);
       await refresh();
       toast.success(`Uploaded ${file.name}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Upload failed");
-    } finally {
-      setUploading(null);
+      toast.error(errorMessage(error, "Upload failed"));
     }
+    setUploading(null);
   };
 
   const download = async (key: string) => {
     try {
       await openOrgFile(orgSlug, key);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not open that file");
+      toast.error(errorMessage(error, "Could not open that file"));
     }
   };
 
@@ -86,7 +91,7 @@ function FilesRoute() {
       await refresh();
       toast.success(`Deleted ${name}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not delete that file");
+      toast.error(errorMessage(error, "Could not delete that file"));
     }
   };
 
@@ -131,7 +136,7 @@ function FilesRoute() {
           <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
             {files.isPending ? null : files.isError ? (
               <div className="flex min-h-32 flex-col items-start justify-center gap-3 p-4">
-                <ErrorNote title="Could not load files" detail={files.error.message} />
+                <ErrorNote title="Could not load files" error={files.error} />
                 <Button variant="outline" size="xs" onClick={() => files.refetch()}>
                   Try again
                 </Button>
@@ -179,22 +184,24 @@ function FilesRoute() {
                           >
                             <DownloadIcon />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            aria-label={`Delete ${file.name}`}
-                            onClick={() =>
-                              confirm({
-                                title: `Delete ${file.name}?`,
-                                description:
-                                  "The file and its stored object are removed permanently. This cannot be undone.",
-                                confirmLabel: "Delete",
-                                run: () => void remove(file.id, file.name),
-                              })
-                            }
-                          >
-                            <Trash2 />
-                          </Button>
+                          {canDelete ? (
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              aria-label={`Delete ${file.name}`}
+                              onClick={() =>
+                                confirm({
+                                  title: `Delete ${file.name}?`,
+                                  description:
+                                    "The file and its stored object are removed permanently. This cannot be undone.",
+                                  confirmLabel: "Delete",
+                                  run: () => void remove(file.id, file.name),
+                                })
+                              }
+                            >
+                              <Trash2 />
+                            </Button>
+                          ) : null}
                         </div>
                       </TableCell>
                     </TableRow>

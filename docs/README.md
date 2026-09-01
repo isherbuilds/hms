@@ -3,19 +3,35 @@
 These pages are the repository's living sources of truth. Keep a fact in one
 place and link to it elsewhere.
 
-| Document                                                           | Owns                                                                 |
-| ------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| [Product](./product.md)                                            | Scope, vocabulary, roadmap gates, and product invariants             |
-| [Architecture](./architecture.md)                                  | Runtime shape, tenancy, authorization, data, storage, and accounting |
-| [Development](./development.md)                                    | Local setup, code style, tests, and contribution rules               |
-| [Operations](./operations.md)                                      | Environment, deployment, backups, and release checks                 |
-| [Design](./design.md)                                              | UI tokens, density, layout, motion, and completion checklist         |
-| [Decisions](./decisions.md)                                        | Accepted and superseded architectural decisions                      |
-| [OPD intake spec](./specs/opd.md)                                  | Catalog-led outpatient intake and additional services                |
-| [OPD lifecycle spec](./specs/opd-desk-lifecycle.md)                | Desk lifecycle and the OPD day view                                  |
-| [Loading placeholder spec](./specs/remove-loading-placeholders.md) | Active removal and verification work                                 |
-| [Reports spec](./specs/reports.md)                                 | Remaining pre-pilot report and worklist work                         |
-| [Research ledger](./research/README.md)                            | Evidence summaries and unresolved validation questions               |
+| Document                                | Owns                                                                 |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| [Product](./product.md)                 | Scope, vocabulary, roadmap gates, and product invariants             |
+| [OPD](./opd.md)                         | Shipped intake, queue, record, and care-setting billing behavior     |
+| [Architecture](./architecture.md)       | Runtime shape, tenancy, authorization, data, storage, and accounting |
+| [Development](./development.md)         | Local setup, code style, tests, and contribution rules               |
+| [Operations](./operations.md)           | Environment, deployment, backups, and release checks                 |
+| [Design](./design.md)                   | UI tokens, density, layout, motion, and completion checklist         |
+| [Decisions](./decisions.md)             | Accepted and superseded architectural decisions                      |
+| [Research ledger](./research/README.md) | Evidence summaries and unresolved validation questions               |
+
+## Work lifecycle
+
+This is the sole registry for unfinished documentation-backed work. Each linked
+file owns its contract or evidence; lifecycle is recorded only here. **Active**
+means implementation remains, **Blocked** means a named prerequisite prevents
+progress, and **Verification** means implementation is complete but its exit
+evidence is not. Product roadmap items remain evidence-gated—not active work—
+until their trigger is met and they enter this registry.
+
+| Work                                                                                     | Lifecycle    | Exit condition                                                                                            |
+| ---------------------------------------------------------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------- |
+| [Operational reports](./specs/reports.md)                                                | Active       | Remaining pre-pilot reports and billing-exception work is shipped                                         |
+| [Production hardening](./operations.md#production-hardening)                             | Active       | Pilot roles, headers, images, and abandoned-object cleanup pass the recorded release gates                |
+| [Pilot readiness](./operations.md#pilot-readiness)                                       | Active       | A named owner records every operational, accounting, print, restore, and compliance gate complete         |
+| [Invoice granularity (D025)](./decisions.md)                                             | Blocked      | Decided before the first non-OPD invoice exists; blocked on a second billing domain being gated open      |
+| [Frontend pattern items](./research/frontend-patterns.md#remaining-work)                 | Active       | The three unbuilt items are profiled and either landed or dropped                                         |
+| [Midday adoption performance exceptions](./research/data/perf-midday-adoption/README.md) | Verification | A named owner accepts the three bound misses as ambient drift, or re-measures them within bounds          |
+| [Blank data regions](./design.md#9-density-and-emptiness)                                | Verification | Slow-4G cold-open and screen-reader checks confirm no collapsed region and no ambiguous silent navigation |
 
 End-user help belongs in `apps/fumadocs`, not here. Code is authoritative for
 exact APIs, schemas, permissions, and environment validation; these docs explain

@@ -6,67 +6,99 @@ import * as React from "react";
 import {
   Controller,
   FormProvider,
+  get,
   useFormContext,
   useFormState,
   type ControllerProps,
+  type FieldError,
   type FieldPath,
   type FieldValues,
+  type RegisterOptions,
+  type UseFormRegisterReturn,
 } from "react-hook-form";
 
-/**
- * React Hook Form wiring in the midday-ai shape: `Form` is the provider,
- * `FormField` a named `Controller`, and the item components share generated
- * ids so labels, descriptions, and error messages stay associated for
- * assistive tech without hand-written `htmlFor`/`aria-*` plumbing.
- */
 const Form = FormProvider;
 
-type FormFieldContextValue<
-  TFieldValues extends FieldValues = FieldValues,
-  TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
-> = {
-  name: TName;
-};
+// The error alone: carrying the whole `fieldState` also subscribed every field to
+// `dirtyFields`, `touchedFields` and `validatingFields`, which nothing renders.
+type FormFieldContextValue = { error?: FieldError };
 
 const FormFieldContext = React.createContext<FormFieldContextValue | null>(null);
 
 function FormField<
   TFieldValues extends FieldValues = FieldValues,
   TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
->(props: ControllerProps<TFieldValues, TName>) {
+  // Carried through so a schema whose output differs from its input still type-checks.
+  TTransformedValues = TFieldValues,
+>({ render, ...props }: ControllerProps<TFieldValues, TName, TTransformedValues>) {
   return (
-    <FormFieldContext.Provider value={{ name: props.name }}>
-      <Controller {...props} />
+    <Controller
+      {...props}
+      render={(state) => (
+        // `fieldState` is lazy getters, so naming `error` subscribes to that slice alone.
+        <FormFieldContext.Provider value={{ error: state.fieldState.error }}>
+          {render(state)}
+        </FormFieldContext.Provider>
+      )}
+    />
+  );
+}
+
+type RegisteredFormFieldProps<
+  TFieldValues extends FieldValues,
+  TName extends FieldPath<TFieldValues>,
+> = {
+  name: TName;
+  rules?: RegisterOptions<TFieldValues, TName>;
+  render: (props: { field: UseFormRegisterReturn<TName> }) => React.ReactElement;
+};
+
+/**
+ * The DOM holds the value, so the form re-renders only where it must.
+ * Use `FormField` instead for anything whose displayed value can change after
+ * mount — an external widget needing value/onChange, or a `<select>` whose options
+ * arrive from a query. `register` writes the DOM value once, when the ref attaches.
+ */
+function RegisteredFormField<
+  TFieldValues extends FieldValues = FieldValues,
+  TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
+>({ name, rules, render }: RegisteredFormFieldProps<TFieldValues, TName>) {
+  const { control, register } = useFormContext<TFieldValues>();
+  // Not `getFieldState`: it reads four slices of `formState` eagerly.
+  const { errors } = useFormState({ control, name, exact: true });
+
+  return (
+    <FormFieldContext.Provider value={{ error: get(errors, name) }}>
+      {render({ field: register(name, rules) })}
     </FormFieldContext.Provider>
   );
 }
 
-type FormItemContextValue = { id: string };
+/** Disables its fields while the form submits, without waking the form around it. */
+function FormFieldset(props: React.ComponentProps<"fieldset">) {
+  const { control } = useFormContext();
+  const { isSubmitting } = useFormState({ control });
 
-const FormItemContext = React.createContext<FormItemContextValue | null>(null);
+  return <fieldset disabled={isSubmitting} {...props} />;
+}
+
+const FormItemContext = React.createContext<string | null>(null);
 
 function useFormField() {
-  const fieldContext = React.useContext(FormFieldContext);
-  const itemContext = React.useContext(FormItemContext);
-  if (!fieldContext) {
-    throw new Error("useFormField must be used within <FormField>");
+  const field = React.useContext(FormFieldContext);
+  const id = React.useContext(FormItemContext);
+  if (!field) {
+    throw new Error("useFormField must be used within <FormField> or <RegisteredFormField>");
   }
-  if (!itemContext) {
+  if (!id) {
     throw new Error("useFormField must be used within <FormItem>");
   }
 
-  const { getFieldState } = useFormContext();
-  const formState = useFormState({ name: fieldContext.name });
-  const fieldState = getFieldState(fieldContext.name, formState);
-
-  const { id } = itemContext;
   return {
-    id,
-    name: fieldContext.name,
     formItemId: `${id}-form-item`,
     formDescriptionId: `${id}-form-item-description`,
     formMessageId: `${id}-form-item-message`,
-    ...fieldState,
+    error: field.error,
   };
 }
 
@@ -74,7 +106,7 @@ function FormItem({ className, ...props }: React.ComponentProps<"div">) {
   const id = React.useId();
 
   return (
-    <FormItemContext.Provider value={{ id }}>
+    <FormItemContext.Provider value={id}>
       <div data-slot="form-item" className={cn("grid gap-1.5", className)} {...props} />
     </FormItemContext.Provider>
   );
@@ -94,10 +126,7 @@ function FormLabel({ className, ...props }: React.ComponentProps<typeof Label>) 
   );
 }
 
-/**
- * Attaches the field's id and aria state to its single child control, so
- * `<FormControl><Input … /></FormControl>` works for any input-like element.
- */
+// Attaches the field's id and aria state to its single child control.
 function FormControl({ children }: { children: React.ReactElement }) {
   const { error, formItemId, formDescriptionId, formMessageId } = useFormField();
 
@@ -133,8 +162,6 @@ function FormMessage({ className, children, ...props }: React.ComponentProps<"p"
       data-slot="form-message"
       id={formMessageId}
       className={cn(
-        // Fades in rather than appearing: the message is new information,
-        // and 150ms is short enough not to delay reading it.
         "animate-in text-xs text-destructive duration-150 fade-in-0 ease-out",
         className,
       )}
@@ -145,4 +172,14 @@ function FormMessage({ className, children, ...props }: React.ComponentProps<"p"
   );
 }
 
-export { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage };
+export {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormFieldset,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  RegisteredFormField,
+};

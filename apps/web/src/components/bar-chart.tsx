@@ -1,15 +1,6 @@
 import { useId, useState } from "react";
 
-/**
- * A single-series bar chart for magnitude over time.
- *
- * Deliberately dependency-free SVG: one series, one ink, no axes library. A
- * single series needs no legend — the panel title names it. Marks follow the
- * house spec: 2px gap between bars, rounded data-ends anchored to the baseline,
- * a recessive baseline rule, and labels on the extremes only rather than a
- * number over every bar. Colour is `currentColor`, so it inverts with the theme
- * instead of being flipped by hand.
- */
+// Dependency-free SVG: one series, one ink, no axes library. Mark spec in docs/design.md.
 export type BarDatum = { label: string; value: number; caption: string };
 
 export function BarChart({
@@ -27,8 +18,7 @@ export function BarChart({
   const max = Math.max(...data.map((d) => d.value), 0);
   const peak = data.reduce((best, d, i) => (d.value > (data[best]?.value ?? -1) ? i : best), 0);
 
-  // An empty period still draws its axis and its fourteen slots, so the panel
-  // is the same shape whether or not money came in.
+  // An empty period still draws its axis and slots, so the panel keeps its shape.
   if (data.length === 0 || max === 0) {
     return (
       <div className="flex flex-1 flex-col justify-end gap-2" id={headingId}>
@@ -64,8 +54,7 @@ export function BarChart({
           <button
             key={datum.label}
             type="button"
-            // The hit target is the full column height, not the drawn bar — a
-            // 2px bar on a quiet day would otherwise be unhoverable.
+            // The hit target is the full column, not the drawn bar: a 2px bar would be unhoverable.
             className="group flex h-full flex-1 items-end"
             onMouseEnter={() => setActive(index)}
             onFocus={() => setActive(index)}

@@ -21,7 +21,6 @@ test("an invoice PDF uses its business date and ignores later account activity",
     ...source,
     invoice: {
       ...source.invoice,
-      // The accounting date is the immutable printed fact, not a timezone-sensitive instant.
       createdAt: new Date("2026-08-28T23:59:00.000Z"),
     },
     payments: [

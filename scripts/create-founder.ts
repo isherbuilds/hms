@@ -5,16 +5,9 @@ import { createUserWithPassword } from "@hms/auth/manual-user";
 import { runMigrations } from "@hms/db/migrate";
 import { eq } from "drizzle-orm";
 
-/**
- * Operator CLI: provisions the account identified by FOUNDING_EMAIL — the one
- * that may create the very first organization while none exist.
- *
- *   bun run create-founder <name> <password>
- *
- * FOUNDING_EMAIL must be set (it is validated at boot like every other server
- * env var). The script is idempotent: if the account already exists it prints
- * so and exits 0.
- */
+// bun run create-founder <name> <password>
+// Provisions the FOUNDING_EMAIL account — the only one that may create an
+// organization. Idempotent: prints and exits 0 if the account already exists.
 const [, , name, password] = process.argv;
 
 if (!name || !password) {

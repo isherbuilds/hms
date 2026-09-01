@@ -52,10 +52,13 @@ function catalogItemInput(orgSlug: string, code: string, name: string, unitPrice
   };
 }
 
-const unpaidSettlement = {
-  payments: [],
-  note: "Integration test leaves this walk-in unpaid",
-};
+function unpaidSettlement(expectedGrandTotal = "157.50") {
+  return {
+    expectedGrandTotal,
+    payments: [],
+    note: "Integration test leaves this walk-in unpaid",
+  };
+}
 
 async function createOpdAppointmentSetup(seed: string, withDefaultFee = true) {
   const owner = await createTestUser(`${seed}-owner`);
@@ -192,7 +195,7 @@ test("walk-in creation uses the fresh server time without a client time claim", 
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement(),
   };
 
   const before = businessDate(new Date(), settings.timeZone);
@@ -215,8 +218,8 @@ test("walk-in creation requires patient read and denial writes nothing", async (
   const operator = await createTestUser("opd-without-patient-read");
   await joinOrganization(operator, organization.id);
   const operatorApi = clientFor(operator);
-  // Every production role grants patient:read. The serial test runner lets this
-  // test temporarily fabricate the otherwise unreachable denial branch.
+  // Every production role grants patient:read; the serial runner lets this test
+  // fabricate the otherwise unreachable denial branch.
   const memberStatements = roles.member.statements as unknown as {
     patient: Array<"create" | "read" | "update">;
   };
@@ -230,7 +233,7 @@ test("walk-in creation requires patient read and denial writes nothing", async (
         patientId: patient.id,
         practitionerId: practitioner.id,
         departmentId: department.id,
-        settlement: unpaidSettlement,
+        settlement: unpaidSettlement(),
       }),
       "FORBIDDEN",
     );
@@ -272,21 +275,21 @@ test("OPD appointment tokens increment per practitioner and reset for another pr
     patientId: patient.id,
     practitionerId: firstPractitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement(),
   });
   const second = await api.opd.createWalkIn({
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: firstPractitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement(),
   });
   const other = await api.opd.createWalkIn({
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: secondPractitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement(),
   });
 
   expect(first.appointment.tokenNumber).toBe(1);
@@ -313,7 +316,7 @@ test("a practitioner consult fee creates an immutable snapshot charge", async ()
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement("288.75"),
   });
   expect(created.charge).toMatchObject({
     catalogItemId: fee.id,
@@ -341,6 +344,8 @@ test("a practitioner consult fee creates an immutable snapshot charge", async ()
     orgSlug: organization.slug,
     appointmentId: created.appointment.id,
   });
+  expect(created.appointment.chargeRevision).toBe(1);
+  expect(created.appointment.chargeRevision).toBe(readBack.appointment.chargeRevision);
   expect(readBack.charges).toHaveLength(1);
   expect(readBack.charges[0]).toMatchObject({
     description: "Initial Consultation",
@@ -373,7 +378,7 @@ test("a walk-in creates the configured consultation charge", async () => {
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement("341.25"),
   });
 
   expect(created.appointment).not.toHaveProperty("kind");
@@ -406,7 +411,7 @@ test("the department default fee is used when the practitioner has no consult fe
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement(),
   });
 
   expect(created.charge).toMatchObject({
@@ -437,7 +442,7 @@ test("a practitioner without a configured fee creates a zero-value walk-in", asy
   const quote = await api.opd.quoteWalkIn(input);
   expect(quote).toMatchObject({ lines: [], subtotal: "0.00", grandTotal: "0.00" });
 
-  const created = await api.opd.createWalkIn({ ...input, settlement: unpaidSettlement });
+  const created = await api.opd.createWalkIn({ ...input, settlement: unpaidSettlement("0.00") });
   expect(created).toMatchObject({ charge: null, invoice: null, payments: [] });
 });
 
@@ -468,7 +473,7 @@ test("follow-up pricing excludes a cancelled prior attendance", async () => {
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement("315.00"),
   });
   await api.opd.cancel({
     orgSlug: organization.slug,
@@ -480,7 +485,7 @@ test("follow-up pricing excludes a cancelled prior attendance", async () => {
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement("315.00"),
   });
 
   expect(first.charge?.catalogItemId).toBe(consultFee.id);
@@ -520,7 +525,7 @@ test("follow-up fees honor the organization window and a practitioner override",
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement("315.00"),
   });
   expect(first.appointment.status).toBe("checked_in");
   const second = await api.opd.createWalkIn({
@@ -528,7 +533,7 @@ test("follow-up fees honor the organization window and a practitioner override",
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement("105.00"),
   });
   expect(first.charge?.catalogItemId).toBe(consultFee.id);
   expect(second.charge?.catalogItemId).toBe(followUpFee.id);
@@ -552,7 +557,7 @@ test("follow-up fees honor the organization window and a practitioner override",
     patientId: overridePatient.id,
     practitionerId: overridePractitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement("315.00"),
   });
   await db
     .update(opdAppointments)
@@ -566,7 +571,7 @@ test("follow-up fees honor the organization window and a practitioner override",
     patientId: overridePatient.id,
     practitionerId: overridePractitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement("315.00"),
   });
   expect(outsideOverride.charge?.catalogItemId).toBe(consultFee.id);
 });
@@ -608,7 +613,7 @@ test("an inactive practitioner fee falls through to the active department fee", 
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement(),
   });
   expect(created.charge?.catalogItemId).toBe(fallback.id);
 });
@@ -628,7 +633,7 @@ test("OPD appointment commands enforce the four-status state machine", async () 
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement(),
   });
   expect(checkedIn.appointment.status).toBe("checked_in");
   await expectORPCCode(
@@ -684,7 +689,7 @@ test("staff attach and detach the doctor's paper prescription from an OPD appoin
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement(),
   });
   const upload = await api.file.createUpload({
     orgSlug: organization.slug,
@@ -699,7 +704,6 @@ test("staff attach and detach the doctor's paper prescription from an OPD appoin
     appointmentId: created.appointment.id,
     fileId: upload.key,
   });
-  // The prescription hangs directly off this OPD appointment.
   expect(attached).toMatchObject({
     targetType: "prescription",
     targetId: created.appointment.id,
@@ -810,7 +814,7 @@ test("prescription attachment rechecks cancellation after waiting on the OPD row
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement(),
   });
   const upload = await api.file.createUpload({
     orgSlug: organization.slug,
@@ -926,7 +930,7 @@ test("OPD appointment creation rejects a practitioner paired with another same-o
       patientId: patient.id,
       practitionerId: practitioner.id,
       departmentId: otherDepartment.id,
-      settlement: unpaidSettlement,
+      settlement: unpaidSettlement(),
     }),
     "NOT_FOUND",
   );
@@ -973,7 +977,7 @@ test("OPD appointment creation rejects patient, practitioner, and department ids
       patientId: betaPatient.id,
       practitionerId: alphaPractitioner.id,
       departmentId: alphaDepartment.id,
-      settlement: unpaidSettlement,
+      settlement: unpaidSettlement(),
     }),
     "NOT_FOUND",
   );
@@ -983,7 +987,7 @@ test("OPD appointment creation rejects patient, practitioner, and department ids
       patientId: alphaPatient.id,
       practitionerId: betaPractitioner.id,
       departmentId: alphaDepartment.id,
-      settlement: unpaidSettlement,
+      settlement: unpaidSettlement(),
     }),
     "NOT_FOUND",
   );
@@ -993,7 +997,7 @@ test("OPD appointment creation rejects patient, practitioner, and department ids
       patientId: alphaPatient.id,
       practitionerId: alphaPractitioner.id,
       departmentId: betaDepartment.id,
-      settlement: unpaidSettlement,
+      settlement: unpaidSettlement(),
     }),
     "NOT_FOUND",
   );
@@ -1008,7 +1012,7 @@ test("sensitive OPD creation is audited while routine care transitions are not",
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement(),
   });
 
   const booked = await api.opd.book({
@@ -1062,7 +1066,7 @@ test("clinical cancellation preserves an already-issued invoice", async () => {
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement("420.00"),
   });
   const issued = requireInvoice(created);
 
@@ -1109,8 +1113,6 @@ test("a caller-only booking becomes the same queued appointment at check-in", as
     tokenNumber: null,
   });
   expect(booked).not.toHaveProperty("kind");
-  // The booked row already has a detail view: no patient or token yet, but
-  // the caller details carried on the appointment itself.
   const bookedDetail = await api.opd.get({
     orgSlug: organization.slug,
     appointmentId: booked.id,
@@ -1223,6 +1225,34 @@ test("a scheduled appointment creates the configured consultation charge at chec
   });
 });
 
+test("an outpatient appointment refuses a charge it may not carry", async () => {
+  const { organization, api, patient, department } =
+    await createOpdAppointmentSetup("opd-billable-categories");
+  const practitioner = await createPractitioner(
+    api,
+    organization.slug,
+    department.id,
+    "Dr. Categories",
+  );
+  const labPanel = await api.catalog.create({
+    ...catalogItemInput(organization.slug, `LAB-${uniqueSuffix()}`, "Lipid panel", "400.00"),
+    category: "lab" as const,
+  });
+
+  await expectORPCCode(
+    api.opd.book({
+      orgSlug: organization.slug,
+      patientId: patient.id,
+      practitionerId: practitioner.id,
+      departmentId: department.id,
+      scheduledLocal: "2030-04-02T09:30",
+      services: [{ catalogItemId: labPanel.id, qty: 1 }],
+    }),
+    "NOT_FOUND",
+  );
+  expect((await api.opd.day({ orgSlug: organization.slug, date: "2030-04-02" })).items).toEqual([]);
+});
+
 test("a scheduled appointment keeps selected services until check-in", async () => {
   const { organization, api, patient, department } =
     await createOpdAppointmentSetup("opd-scheduled-services");
@@ -1230,10 +1260,10 @@ test("a scheduled appointment keeps selected services until check-in", async () 
     ...catalogItemInput(
       organization.slug,
       `SCHEDULED-SERVICE-${uniqueSuffix()}`,
-      "Booked laboratory panel",
+      "Booked dressing",
       "350.00",
     ),
-    category: "lab" as const,
+    category: "procedure" as const,
   });
   const practitioner = await createPractitioner(
     api,
@@ -1308,7 +1338,7 @@ test("day keyset pagination traverses checked-in arrivals once", async () => {
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement(),
   });
   const createdIds = [first.appointment.id];
   const arrivedAt = first.appointment.arrivedAt!;
@@ -1419,7 +1449,7 @@ test("day interleaves visits, searches patient keys, returns balances, and close
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: unpaidSettlement,
+    settlement: unpaidSettlement("210.00"),
   });
   await db
     .update(opdAppointments)
@@ -1453,7 +1483,7 @@ test("day interleaves visits, searches patient keys, returns balances, and close
   });
 
   const day = await api.opd.day({ orgSlug: organization.slug, date: currentDay });
-  expect(day.items.map((row) => row.id)).toEqual([scheduledId, arrived.appointment.id]);
+  expect(day.items.map((row) => row.id)).toEqual([arrived.appointment.id, scheduledId]);
   expect(day.items.find((row) => row.id === arrived.appointment.id)?.balanceDue).toBe("210.00");
   for (const q of [bookedPatient.name.toLowerCase(), bookedPatient.mrn, bookedPatient.phone]) {
     expect(
@@ -1503,7 +1533,7 @@ test("day interleaves visits, searches patient keys, returns balances, and close
   const pastDay = yesterday.toISOString().slice(0, 10);
   const plannedService = await api.catalog.create({
     ...catalogItemInput(organization.slug, `PAST-SERVICE-${uniqueSuffix()}`, "Past booked service"),
-    category: "lab",
+    category: "procedure",
   });
   const pastBooking = await api.opd.book({
     orgSlug: organization.slug,
@@ -1651,8 +1681,8 @@ test("marking a booking no-show voids its pending charges and audits the write-o
     departmentId: department.id,
     scheduledLocal: "2030-05-01T09:00",
   });
-  // The API no longer accepts charges before check-in, so plant a pending
-  // charge directly: the no-show write-off must clear money however it landed.
+  // Charges are refused before check-in, so plant one directly: the write-off must
+  // clear money however it landed.
   await db.insert(charges).values({
     id: Bun.randomUUIDv7(),
     orgId: organization.id,
@@ -1730,7 +1760,10 @@ test("a walk-in settled at the desk creates the token, invoice and receipt in on
       patientId: patient.id,
       practitionerId: practitioner.id,
       departmentId: department.id,
-      settlement: { payments: [{ method: "upi", amount: "210.00" }] },
+      settlement: {
+        expectedGrandTotal: "210.00",
+        payments: [{ method: "upi", amount: "210.00" }],
+      },
     }),
     "BAD_REQUEST",
   );
@@ -1740,8 +1773,8 @@ test("a walk-in settled at the desk creates the token, invoice and receipt in on
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    // 5% tax on 200 is 210 — split across two modes to prove a mixed tender.
     settlement: {
+      expectedGrandTotal: "210.00",
       payments: [
         { method: "cash", amount: "150.00" },
         { method: "upi", amount: "60.00", reference: "UPI-SETTLED-TEST" },
@@ -1851,20 +1884,31 @@ test("leaving a walk-in unpaid needs a note, and so does a discount", async () =
   await expectORPCCode(api.opd.createWalkIn(walkIn as never), "BAD_REQUEST");
 
   await expectORPCCode(
-    api.opd.createWalkIn({ ...walkIn, settlement: { payments: [] } }),
+    api.opd.createWalkIn({
+      ...walkIn,
+      settlement: { expectedGrandTotal: "105.00", payments: [] },
+    }),
     "BAD_REQUEST",
   );
   await expectORPCCode(
     api.opd.createWalkIn({
       ...walkIn,
-      settlement: { discountAmount: "10.00", payments: [{ method: "cash", amount: "95.00" }] },
+      settlement: {
+        discountAmount: "10.00",
+        expectedGrandTotal: "94.50",
+        payments: [{ method: "cash", amount: "95.00" }],
+      },
     }),
     "BAD_REQUEST",
   );
 
   const credited = await api.opd.createWalkIn({
     ...walkIn,
-    settlement: { payments: [], note: "Staff member, paying on Friday" },
+    settlement: {
+      expectedGrandTotal: "105.00",
+      payments: [],
+      note: "Staff member, paying on Friday",
+    },
   });
   expect(requireInvoice(credited).note).toBe("Staff member, paying on Friday");
   const invoices = await api.billing.listInvoices({
@@ -1905,6 +1949,7 @@ test("a discounted walk-in persists its reason and settles the discounted total"
     departmentId: department.id,
     settlement: {
       discountAmount: "10.00",
+      expectedGrandTotal: "94.50",
       note,
       payments: [{ method: "cash", amount: "94.50" }],
     },
@@ -1947,18 +1992,20 @@ test("a walk-in that fails to settle leaves no token behind", async () => {
     { consultFeeItemId: fee.id },
   );
 
-  // Overpaying is refused by the payment step, which runs after the token and
-  // the invoice have been written — so this only passes if the whole commit
-  // rolls back together.
+  // Overpaying is refused after the token and invoice are written, so this passes
+  // only if the whole commit rolls back.
   await expectORPCCode(
     api.opd.createWalkIn({
       orgSlug: organization.slug,
       patientId: patient.id,
       practitionerId: practitioner.id,
       departmentId: department.id,
-      settlement: { payments: [{ method: "cash", amount: "999.00" }] },
+      settlement: {
+        expectedGrandTotal: "105.00",
+        payments: [{ method: "cash", amount: "999.00" }],
+      },
     }),
-    "CONFLICT",
+    "BAD_REQUEST",
   );
 
   expect(
@@ -1987,7 +2034,10 @@ test("a walk-in that fails to settle leaves no token behind", async () => {
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: { payments: [{ method: "cash", amount: "105.00" }] },
+    settlement: {
+      expectedGrandTotal: "105.00",
+      payments: [{ method: "cash", amount: "105.00" }],
+    },
   });
   expect(valid.appointment.tokenNumber).toBe(1);
   expect(requireInvoice(valid).invoiceNumber.endsWith("/1")).toBe(true);
@@ -2018,7 +2068,6 @@ test("services chosen at the desk are charged in the same commit as the token", 
     { consultFeeItemId: fee.id },
   );
 
-  // 100 + (50 x 2) = 200, plus 5% tax = 210.
   const quote = await api.opd.quoteWalkIn({
     orgSlug: organization.slug,
     patientId: patient.id,
@@ -2036,6 +2085,7 @@ test("services chosen at the desk are charged in the same commit as the token", 
     departmentId: department.id,
     settlement: {
       services: [{ catalogItemId: dressing.id, qty: 2 }],
+      expectedGrandTotal: "210.00",
       payments: [{ method: "cash", amount: "210.00" }],
     },
   });
@@ -2107,6 +2157,7 @@ test("a walk-in can omit the consultation fee while settling selected services",
     settlement: {
       services,
       omitConsultFee: true,
+      expectedGrandTotal: "105.00",
       payments: [{ method: "cash", amount: "105.00" }],
     },
   });
@@ -2163,7 +2214,7 @@ test("a walk-in without billable services creates no financial document", async 
 
   const created = await api.opd.createWalkIn({
     ...walkIn,
-    settlement: { ...unpaidSettlement, omitConsultFee: true },
+    settlement: { ...unpaidSettlement("0.00"), omitConsultFee: true },
   });
   expect(created).toMatchObject({ invoice: null, payments: [] });
   expect(created.appointment.status).toBe("checked_in");
@@ -2171,7 +2222,7 @@ test("a walk-in without billable services creates no financial document", async 
     api.opd.createWalkIn({
       ...walkIn,
       settlement: {
-        ...unpaidSettlement,
+        ...unpaidSettlement("0.00"),
         omitConsultFee: true,
         payments: [{ method: "cash", amount: "1.00" }],
       },
@@ -2228,6 +2279,19 @@ test("a walk-in reprices selected services after a stale quote", async () => {
     taxCode: service.taxCode,
     active: true,
   });
+  await expect(
+    api.opd.createWalkIn({
+      orgSlug: organization.slug,
+      patientId: patient.id,
+      practitionerId: practitioner.id,
+      departmentId: department.id,
+      settlement: {
+        services,
+        expectedGrandTotal: quote.grandTotal,
+        payments: [{ method: "cash", amount: quote.grandTotal }],
+      },
+    }),
+  ).rejects.toMatchObject({ code: "CONFLICT", data: { reason: "catalog_price_changed" } });
   const created = await api.opd.createWalkIn({
     orgSlug: organization.slug,
     patientId: patient.id,
@@ -2235,6 +2299,7 @@ test("a walk-in reprices selected services after a stale quote", async () => {
     departmentId: department.id,
     settlement: {
       services,
+      expectedGrandTotal: "262.50",
       payments: [{ method: "cash", amount: "262.50" }],
     },
   });
@@ -2256,11 +2321,93 @@ test("a walk-in reprices selected services after a stale quote", async () => {
   });
 });
 
-test("consultation catalog items cannot be selected as additional walk-in services", async () => {
+test("a discounted walk-in keeps fee-first quote ordering through settlement", async () => {
+  const { organization, api, patient, department } = await createOpdAppointmentSetup(
+    "opd-walk-in-charge-order",
+    false,
+  );
+  const fee = await api.catalog.create({
+    ...catalogItemInput(
+      organization.slug,
+      `ORDER-FEE-${uniqueSuffix()}`,
+      "Zero-rated consultation",
+      "300.00",
+    ),
+    taxRatePercent: "0",
+    taxCode: undefined,
+  });
+  const fivePercent = await api.catalog.create({
+    ...catalogItemInput(
+      organization.slug,
+      `ORDER-FIVE-${uniqueSuffix()}`,
+      "Five-percent service",
+      "300.00",
+    ),
+    category: "procedure" as const,
+  });
+  const smaller = await api.catalog.create({
+    ...catalogItemInput(
+      organization.slug,
+      `ORDER-SMALL-${uniqueSuffix()}`,
+      "Smaller zero-rated service",
+      "250.00",
+    ),
+    category: "procedure" as const,
+    taxRatePercent: "0",
+    taxCode: undefined,
+  });
+  const practitioner = await createPractitioner(
+    api,
+    organization.slug,
+    department.id,
+    "Dr. Charge Order",
+    { consultFeeItemId: fee.id },
+  );
+  const services = [
+    { catalogItemId: fivePercent.id, qty: 1 },
+    { catalogItemId: smaller.id, qty: 1 },
+  ];
+  const quote = await api.opd.quoteWalkIn({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    departmentId: department.id,
+    services,
+    discountAmount: "2.00",
+  });
+  expect(quote.grandTotal).toBe("862.96");
+
+  const created = await api.opd.createWalkIn({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    departmentId: department.id,
+    settlement: {
+      services,
+      discountAmount: "2.00",
+      expectedGrandTotal: quote.grandTotal,
+      payments: [{ method: "cash", amount: quote.grandTotal }],
+      note: "Package discount",
+    },
+  });
+
+  expect(created.invoice?.grandTotal).toBe("862.96");
+  const invoice = await api.billing.getInvoice({
+    orgSlug: organization.slug,
+    invoiceId: requireInvoice(created).id,
+  });
+  expect(invoice.lines.map((line) => line.description)).toEqual([
+    fee.name,
+    fivePercent.name,
+    smaller.name,
+  ]);
+});
+
+test("a walk-in can bill a selected consultation instead of the ladder fee", async () => {
   const { organization, api, patient, department } = await createOpdAppointmentSetup(
     "opd-walk-in-consult-service",
   );
-  const fee = await api.catalog.create(
+  const ladderFee = await api.catalog.create(
     catalogItemInput(
       organization.slug,
       `PRIMARY-${uniqueSuffix()}`,
@@ -2268,11 +2415,11 @@ test("consultation catalog items cannot be selected as additional walk-in servic
       "100.00",
     ),
   );
-  const extraConsultation = await api.catalog.create(
+  const selectedConsultation = await api.catalog.create(
     catalogItemInput(
       organization.slug,
-      `EXTRA-CONSULT-${uniqueSuffix()}`,
-      "Extra Consultation",
+      `SELECTED-CONSULT-${uniqueSuffix()}`,
+      "Selected Consultation",
       "50.00",
     ),
   );
@@ -2280,8 +2427,8 @@ test("consultation catalog items cannot be selected as additional walk-in servic
     api,
     organization.slug,
     department.id,
-    "Dr. Consultation Filter",
-    { consultFeeItemId: fee.id },
+    "Dr. Selected Consultation",
+    { consultFeeItemId: ladderFee.id },
   );
   const walkIn = {
     orgSlug: organization.slug,
@@ -2289,17 +2436,109 @@ test("consultation catalog items cannot be selected as additional walk-in servic
     practitionerId: practitioner.id,
     departmentId: department.id,
   };
-  const services = [{ catalogItemId: extraConsultation.id, qty: 1 }];
+  const services = [{ catalogItemId: selectedConsultation.id, qty: 1 }];
 
-  await expectORPCCode(api.opd.quoteWalkIn({ ...walkIn, services }), "NOT_FOUND");
+  const quote = await api.opd.quoteWalkIn({
+    ...walkIn,
+    services,
+    omitConsultFee: true,
+  });
+  expect(quote.lines).toEqual([
+    expect.objectContaining({
+      chargeId: selectedConsultation.id,
+      source: "service",
+    }),
+  ]);
+
+  const created = await api.opd.createWalkIn({
+    ...walkIn,
+    settlement: {
+      services,
+      omitConsultFee: true,
+      expectedGrandTotal: "52.50",
+      payments: [],
+      note: "Selected consultation remains unpaid",
+    },
+  });
+  expect(created.charge).toBeNull();
+  const detail = await api.opd.get({
+    orgSlug: organization.slug,
+    appointmentId: created.appointment.id,
+  });
+  expect(detail.charges).toEqual([
+    expect.objectContaining({
+      catalogItemId: selectedConsultation.id,
+      revenueCategory: "consultation",
+      sourceType: "catalog",
+    }),
+  ]);
+  expect(detail.charges.some((charge) => charge.sourceType === "consult_fee")).toBe(false);
+});
+
+test("booking rejects a consultation catalog item as a selected service", async () => {
+  const { organization, api, patient, department } = await createOpdAppointmentSetup(
+    "opd-book-consult-service",
+  );
+  const consultation = await api.catalog.create(
+    catalogItemInput(
+      organization.slug,
+      `BOOK-CONSULT-${uniqueSuffix()}`,
+      "Booked Consultation",
+      "50.00",
+    ),
+  );
+  const practitioner = await createPractitioner(
+    api,
+    organization.slug,
+    department.id,
+    "Dr. Booked Consultation",
+  );
+
   await expectORPCCode(
-    api.opd.createWalkIn({
-      ...walkIn,
-      settlement: {
-        services,
-        payments: [],
-        note: "This request must not create an invoice",
-      },
+    api.opd.book({
+      orgSlug: organization.slug,
+      patientId: patient.id,
+      practitionerId: practitioner.id,
+      departmentId: department.id,
+      scheduledLocal: "2030-03-15T14:00",
+      services: [{ catalogItemId: consultation.id, qty: 1 }],
+    }),
+    "NOT_FOUND",
+  );
+});
+
+test("walk-in quotes hide consultation items from another organization", async () => {
+  const { organization, api, patient, department } = await createOpdAppointmentSetup(
+    "opd-consult-service-tenant",
+  );
+  const practitioner = await createPractitioner(
+    api,
+    organization.slug,
+    department.id,
+    "Dr. Consultation Tenant",
+  );
+  const otherOwner = await createTestUser("opd-consult-service-tenant-other");
+  const otherOrganization = await createOrganization(
+    otherOwner,
+    "opd-consult-service-tenant-other",
+  );
+  const foreignConsultation = await clientFor(otherOwner).catalog.create(
+    catalogItemInput(
+      otherOrganization.slug,
+      `FOREIGN-CONSULT-${uniqueSuffix()}`,
+      "Foreign Consultation",
+      "50.00",
+    ),
+  );
+
+  await expectORPCCode(
+    api.opd.quoteWalkIn({
+      orgSlug: organization.slug,
+      patientId: patient.id,
+      practitionerId: practitioner.id,
+      departmentId: department.id,
+      services: [{ catalogItemId: foreignConsultation.id, qty: 1 }],
+      omitConsultFee: true,
     }),
     "NOT_FOUND",
   );
@@ -2333,6 +2572,7 @@ test("an unknown service leaves no token behind", async () => {
       departmentId: department.id,
       settlement: {
         services: [{ catalogItemId: Bun.randomUUIDv7(), qty: 1 }],
+        expectedGrandTotal: "105.00",
         payments: [],
         note: "Should never be written",
       },

@@ -9,4 +9,5 @@ Run the development server from the repository root:
 bun run --cwd apps/fumadocs dev
 ```
 
-Run `bun run --cwd apps/fumadocs build` for the production and type check.
+Run `bun run --cwd apps/fumadocs build` to build the production documentation
+site and validate that its content renders.

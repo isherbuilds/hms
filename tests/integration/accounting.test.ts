@@ -13,6 +13,7 @@ import { journalLines } from "@hms/db/schema/journal-lines";
 import { and, eq } from "drizzle-orm";
 
 import { createOrganization, createTestUser } from "../support/auth";
+import { addPendingCatalogCharge, settlePendingCharges } from "../support/billing";
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
 import { uniqueSuffix } from "../support/unique";
@@ -71,12 +72,15 @@ type AccountingFixture = {
     appointmentId: string,
     options: {
       name: string;
-      category: "procedure" | "lab" | "radiology" | "other";
+      category: "consultation" | "procedure" | "lab" | "radiology" | "other";
       unitPrice: string;
       taxRatePercent: string;
       taxCode?: string;
     },
-  ) => Promise<unknown>;
+  ) => Promise<{
+    item: { id: string };
+    charge: { sourceType: string; revenueCategory: string };
+  }>;
   createConsultationAppointment: (options: {
     name: string;
     unitPrice: string;
@@ -154,19 +158,14 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
       taxRatePercent,
       taxCode,
     });
-    const [charge] = await api.billing.addCharges({
-      orgSlug: organization.slug,
+    const charge = await addPendingCatalogCharge({
+      orgId: organization.id,
+      userId: owner.user.id,
       appointmentId,
-      lines: [{ catalogItemId: item.id }],
+      catalogItemId: item.id,
     });
-    if (!charge) throw new Error("expected a charge");
     return charge;
   }
-  /**
-   * Consultation revenue can only enter through the real path: a practitioner
-   * configured with a consult fee, charged at check-in. `billing.addCharges`
-   * rejects consultation-category items by contract.
-   */
   async function createConsultationAppointment(options: {
     name: string;
     unitPrice: string;
@@ -206,7 +205,7 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     appointmentId: string,
     options: {
       name: string;
-      category: "procedure" | "lab" | "radiology" | "other";
+      category: "consultation" | "procedure" | "lab" | "radiology" | "other";
       unitPrice: string;
       taxRatePercent: string;
       taxCode?: string;
@@ -221,12 +220,12 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
       taxRatePercent: options.taxRatePercent,
       taxCode: options.taxCode,
     });
-    const [charge] = await api.billing.addCharges({
-      orgSlug: organization.slug,
+    const charge = await addPendingCatalogCharge({
+      orgId: organization.id,
+      userId: owner.user.id,
       appointmentId,
-      lines: [{ catalogItemId: item.id }],
+      catalogItemId: item.id,
     });
-    if (!charge) throw new Error("expected a charge");
     return { item, charge };
   }
 
@@ -245,10 +244,8 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
 test("dashboard collection trend labels the organization's Business Dates", async () => {
   const now = new Date();
   const utcDate = now.toISOString().slice(0, 10);
-  // These fixed-offset extremes overlap around UTC noon, so at least one is
-  // always on a different calendar date. America/Adak's daylight offset left
-  // a one-hour window where the previous pair matched UTC and made this test
-  // depend on its wall-clock start time.
+  // These fixed-offset extremes overlap around UTC noon, so one is always on a
+  // different calendar date. America/Adak's DST offset made this time-dependent.
   const timeZone = ["Pacific/Kiritimati", "Etc/GMT+12"].find(
     (candidate) => businessDate(now, candidate) !== utcDate,
   );
@@ -321,7 +318,7 @@ async function issueConsultationInvoice(fixture: AccountingFixture, seed: string
     taxRatePercent: "18.00",
     taxCode: "SVC18",
   });
-  const issued = await fixture.api.billing.issueInvoice({
+  const issued = await settlePendingCharges(fixture.api, {
     orgSlug: fixture.organization.slug,
     appointmentId: appointment.id,
   });
@@ -338,7 +335,7 @@ test("issuing an invoice posts one balanced entry split across receivables, reve
   });
   await fixture.addOtherCharge(appointment.id, "50.00", "0", "Other Service");
 
-  const issued = await fixture.api.billing.issueInvoice({
+  const issued = await settlePendingCharges(fixture.api, {
     orgSlug: fixture.organization.slug,
     appointmentId: appointment.id,
   });
@@ -370,11 +367,38 @@ test("issuing an invoice posts one balanced entry split across receivables, reve
   });
 });
 
+test("a desk-added consultation charge posts to consultation revenue", async () => {
+  const fixture = await createAccountingFixture("accounting-desk-consultation");
+  const appointment = await fixture.createOpdAppointment();
+  const { charge } = await fixture.addCatalogCharge(appointment.id, {
+    name: "Desk Consultation",
+    category: "consultation",
+    unitPrice: "75.00",
+    taxRatePercent: "0",
+  });
+  expect(charge).toMatchObject({
+    sourceType: "catalog",
+    revenueCategory: "consultation",
+  });
+
+  const issued = await settlePendingCharges(fixture.api, {
+    orgSlug: fixture.organization.slug,
+    appointmentId: appointment.id,
+  });
+  const journal = await journalFor(fixture, "invoice", issued.invoice.id);
+  expect(lineByCode(journal.lines, "4100")).toMatchObject({
+    debit: "0.00",
+    credit: "75.00",
+  });
+  expect(journal.lines.map((line) => line.code)).not.toContain("4900");
+  expectBalanced(journal.lines);
+});
+
 test("zero-rated invoices omit GST and zero-total invoices do not post", async () => {
   const fixture = await createAccountingFixture("accounting-zero");
   const zeroRateOpdAppointment = await fixture.createOpdAppointment();
   await fixture.addOtherCharge(zeroRateOpdAppointment.id, "25.00", "0", "Zero-rated Service");
-  const zeroRate = await fixture.api.billing.issueInvoice({
+  const zeroRate = await settlePendingCharges(fixture.api, {
     orgSlug: fixture.organization.slug,
     appointmentId: zeroRateOpdAppointment.id,
   });
@@ -387,7 +411,7 @@ test("zero-rated invoices omit GST and zero-total invoices do not post", async (
 
   const zeroTotalOpdAppointment = await fixture.createOpdAppointment();
   await fixture.addOtherCharge(zeroTotalOpdAppointment.id, "0.00", "0", "No-charge Service");
-  const zeroTotal = await fixture.api.billing.issueInvoice({
+  const zeroTotal = await settlePendingCharges(fixture.api, {
     orgSlug: fixture.organization.slug,
     appointmentId: zeroTotalOpdAppointment.id,
   });
@@ -444,6 +468,7 @@ test("payments, credit notes, and refunds post to their exact settlement account
     creditNoteId: credited.creditNote.id,
     method: "upi",
     amount: "59.00",
+    reference: "UPI-REFUND-LEDGER",
   });
   const refundJournal = await journalFor(fixture, "refund", refund.id);
   expect(refundJournal.entries).toHaveLength(1);
@@ -539,7 +564,7 @@ test("GST register reconciles invoice and credit-note documents, rates, HSN, and
     taxCode: "SVC18",
   });
   await fixture.addOtherCharge(appointment.id, "50.00", "0", "Nil-rated Service", "NIL");
-  const issued = await fixture.api.billing.issueInvoice({
+  const issued = await settlePendingCharges(fixture.api, {
     orgSlug: fixture.organization.slug,
     appointmentId: appointment.id,
     discountAmount: "15.00",
@@ -558,7 +583,7 @@ test("GST register reconciles invoice and credit-note documents, rates, HSN, and
 
   const outsideOpdAppointment = await fixture.createOpdAppointment();
   await fixture.addOtherCharge(outsideOpdAppointment.id, "25.00", "0", "Outside-range Service");
-  const outside = await fixture.api.billing.issueInvoice({
+  const outside = await settlePendingCharges(fixture.api, {
     orgSlug: fixture.organization.slug,
     appointmentId: outsideOpdAppointment.id,
   });
@@ -659,7 +684,7 @@ test("invoice and credit note keep the revenue category captured when the charge
     taxCode: item.taxCode,
     active: item.active,
   });
-  const issued = await fixture.api.billing.issueInvoice({
+  const issued = await settlePendingCharges(fixture.api, {
     orgSlug: fixture.organization.slug,
     appointmentId: appointment.id,
   });
@@ -695,11 +720,11 @@ test("concurrent first invoices seed one complete chart and both post", async ()
   await fixture.addOtherCharge(secondOpdAppointment.id, "20.00");
 
   const [first, second] = await Promise.all([
-    fixture.api.billing.issueInvoice({
+    settlePendingCharges(fixture.api, {
       orgSlug: fixture.organization.slug,
       appointmentId: firstOpdAppointment.id,
     }),
-    fixture.api.billing.issueInvoice({
+    settlePendingCharges(fixture.api, {
       orgSlug: fixture.organization.slug,
       appointmentId: secondOpdAppointment.id,
     }),
@@ -752,7 +777,7 @@ test("posting failure rolls back the invoice and charge transition", async () =>
   });
 
   await expect(
-    fixture.api.billing.issueInvoice({
+    settlePendingCharges(fixture.api, {
       orgSlug: fixture.organization.slug,
       appointmentId: appointment.id,
     }),
@@ -779,7 +804,7 @@ test("GST summaries reconcile odd-paise tax buckets", async () => {
   for (const suffix of ["first", "second"]) {
     const appointment = await fixture.createOpdAppointment();
     await fixture.addOtherCharge(appointment.id, "1.00", "5.00", `${suffix} odd-paise tax service`);
-    await fixture.api.billing.issueInvoice({
+    await settlePendingCharges(fixture.api, {
       orgSlug: fixture.organization.slug,
       appointmentId: appointment.id,
     });

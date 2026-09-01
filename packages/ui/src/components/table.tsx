@@ -33,8 +33,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
       data-slot="table-row"
       className={cn(
         "border-b border-border/60 data-[state=selected]:bg-muted",
-        // Row hover is a pointing affordance, not decoration — gate it to real
-        // pointers so it never sticks on touch.
+        // Hover is a pointing affordance: gate it to real pointers so it never sticks on touch.
         "[@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/40",
         className,
       )}

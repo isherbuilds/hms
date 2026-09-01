@@ -32,8 +32,8 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
     ],
     links: [
       {
-        // Declare an icon explicitly so the browser does not probe
-        // `/favicon.ico`, which would otherwise enter the `/$orgSlug` route.
+        // Declared explicitly so the browser does not probe `/favicon.ico`, which would
+        // otherwise enter the `/$orgSlug` route.
         rel: "icon",
         href: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E",
       },
@@ -49,11 +49,19 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 
 function RootDocument() {
   return (
-    // `suppressHydrationWarning`: the theme class is written onto <html> by
-    // next-themes before React hydrates, so the server markup deliberately
-    // differs by that one attribute.
+    // The theme class is written onto <html> by next-themes before React hydrates, so
+    // the server markup deliberately differs by that one attribute.
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Deliberately blocking: React Scan can only instrument renders if it
+            runs before React does. Dev only, so it never ships. */}
+        {import.meta.env.DEV && (
+          <script
+            crossOrigin="anonymous"
+            integrity="sha384-DDZCsimcjpG92OUulxf7DHi4rGS/fNIW7lC5DT8+5ftaTDiUKfzIq+pDTUbPjC86"
+            src="https://unpkg.com/react-scan@0.5.7/dist/auto.global.js"
+          />
+        )}
         <HeadContent />
       </head>
       <body>

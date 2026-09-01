@@ -6,11 +6,6 @@ import { z } from "zod";
 
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 
-/**
- * Org-scoped audit trail, visible to `audit: ["read"]` holders (admins and
- * owners). Keyset pagination on the identity id: no OFFSET scan, no COUNT(*)
- * over a table that only ever grows.
- */
 export const auditRouter = {
   list: orgProcedure(
     { audit: ["read"] },
@@ -21,9 +16,8 @@ export const auditRouter = {
   ).handler(async ({ context, input }) => {
     const orgFilter = eq(auditLog.orgId, context.scope.orgId);
 
-    // LEFT JOIN, not a foreign key: entries deliberately outlive the accounts
-    // and orgs they name, so an actor who has since been deleted still shows
-    // up as a row — just without a name.
+    // LEFT JOIN, not a foreign key: entries outlive the accounts they name, so a
+    // deleted actor still shows up as a row.
     const rows = await db
       .select({
         entry: auditLog,

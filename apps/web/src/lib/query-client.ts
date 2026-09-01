@@ -7,8 +7,7 @@ function statusOf(error: unknown): unknown {
 }
 
 // Pages render their own errors; only an expired session needs global recovery.
-// Both caches call this so the redirect policy has a single owner — a form-only
-// screen fails through mutations alone and would otherwise toast forever.
+// Both caches call this, so a form-only screen does not toast forever.
 function recoverFromExpiredSession(error: unknown): void {
   if (environmentManager.isServer() || statusOf(error) !== 401) {
     return;

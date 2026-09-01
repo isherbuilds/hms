@@ -1,0 +1,96 @@
+{
+  "tool": "react-scan@0.5.7",
+  "configuration": {
+    "animationSpeed": "off",
+    "showToolbar": true,
+    "trackUnnecessaryRenders": true
+  },
+  "method": "Fresh route load; install React Scan onRender callback; focus the named native input; type the exact text with Puppeteer keyboard; wait 100 ms; aggregate render.count by component name.",
+  "before": {
+    "loginEmail": {
+      "typed": "ada@test.com",
+      "characters": 12,
+      "components": {
+        "LoginForm": 12,
+        "Field": 12,
+        "Eye": 2,
+        "Button": 2
+      }
+    },
+    "createOrganizationName": {
+      "typed": "Profile Draft",
+      "characters": 13,
+      "derivedSlug": "profile-draft",
+      "components": {
+        "CreateOrganizationForm": 13,
+        "Input": 50,
+        "Button": 8
+      }
+    }
+  },
+  "after": {
+    "loginEmail": {
+      "typed": "ada@test.com",
+      "characters": 12,
+      "components": {},
+      "note": "No target component rendered while typing. The browser-owned registered input retained the value."
+    },
+    "createOrganizationName": {
+      "typed": "Profile Draft",
+      "characters": 13,
+      "derivedSlug": "profile-draft",
+      "components": {
+        "CreateOrganizationForm": 0,
+        "OrganizationSlugField": 12,
+        "CreateOrganizationButton": 13,
+        "Input": 14,
+        "Button": 8
+      },
+      "note": "The parent form stopped rendering. The dependent slug metadata and submit eligibility remain subscribed."
+    },
+    "organizationSettingsLegalName": {
+      "characters": 4,
+      "components": {
+        "SettingsForm": 1,
+        "RegisteredFormField": 11,
+        "Input": 8,
+        "FormLabel": 11,
+        "FormMessage": 11,
+        "Button": 4
+      },
+      "note": "The first character changed form dirty state once. Later characters caused no further form-owner render."
+    },
+    "patientRegistrationName": {
+      "characters": 4,
+      "components": {
+        "PatientForm": 1,
+        "RegisteredFormField": 11,
+        "Input": 10,
+        "FormLabel": 11,
+        "FormMessage": 11,
+        "Button": 10
+      },
+      "note": "The first character changed form dirty state once. Later characters caused no further form-owner render."
+    }
+  },
+  "staticCounts": {
+    "reactUseStateCallsBeforeOwnershipWork": 67,
+    "reactUseStateCallsAfterFormMigration": 54,
+    "reactUseStateCallsCurrent": 53,
+    "reactUseStateCallsRemovedByFormMigration": 11,
+    "reactUseStateCallsRemovedTotal": 14,
+    "reactUseStateCountMethod": "Parse every apps/web/src .ts and .tsx file with Babel; count CallExpression nodes whose callee is the useState identifier in the staged baseline and current tree.",
+    "registeredNativeFields": 50,
+    "retainedControlledFields": 3,
+    "retainedControlledReasons": [
+      "Credit full-line Base UI Checkbox requires checked/onCheckedChange.",
+      "Catalog active Base UI Checkbox requires checked/onCheckedChange.",
+      "Invitation role button group requires controlled value/onChange."
+    ]
+  },
+  "limits": [
+    "Render counts are React Scan development instrumentation counts, not production wall-clock latency.",
+    "Appointment billing and invoice correction forms had no populated local rows, so their behavior was typechecked and source-reviewed but not assigned runtime render numbers.",
+    "No form mutation was submitted during render measurement."
+  ]
+}

@@ -11,6 +11,7 @@ import { and, asc, count, desc, eq, ilike, inArray, lt, or, sql } from "drizzle-
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { conflict } from "../lib/conflict";
 import { isUniqueViolation, uniqueViolationConstraint } from "../lib/db-errors";
 import { invoiceBalancesFor } from "../lib/invoice-balance";
 import { fromPaise, toPaise } from "../lib/invoice-math";
@@ -39,11 +40,8 @@ const updateInput = orgInput.extend({
   ...patientFields.shape,
 });
 
-/**
- * A patient id from another tenant must read as absent, not as a patient with
- * no visits and no invoices. Both child reads below filter by `orgId` anyway;
- * this is what turns a foreign id into `NOT_FOUND` rather than an empty list.
- */
+// A foreign patient id must read as absent, not as a patient with no visits — this
+// is what turns it into NOT_FOUND rather than an empty list.
 async function assertPatientInScope(orgId: string, patientId: string): Promise<void> {
   const [patient] = await db
     .select({ id: patients.id })
@@ -52,7 +50,7 @@ async function assertPatientInScope(orgId: string, patientId: string): Promise<v
     .limit(1);
 
   if (!patient) {
-    throw new ORPCError("NOT_FOUND");
+    throw new ORPCError("NOT_FOUND", { message: "That patient no longer exists." });
   }
 }
 
@@ -62,7 +60,7 @@ export const patientRouter = {
       const { scope } = context;
       const { orgSlug: _claim, ...fields } = input;
       const id = Bun.randomUUIDv7();
-      // Prefix is read through the settings cache; bounded staleness is acceptable for numbering and keeps the counter lock window minimal.
+      // Bounded staleness is acceptable for numbering and keeps the counter lock window minimal.
       const settings = await readOrgSettings(scope.orgId);
 
       let patient: typeof patients.$inferSelect;
@@ -98,13 +96,10 @@ export const patientRouter = {
         });
       } catch (error) {
         if (uniqueViolationConstraint(error) === "patients_org_uid_idx") {
-          throw new ORPCError("CONFLICT", {
-            message: "A patient with this UID already exists.",
-            data: { code: "UID_TAKEN" },
-          });
+          throw conflict("uid_taken", "A patient with this UID already exists.");
         }
         if (isUniqueViolation(error)) {
-          throw new ORPCError("CONFLICT");
+          throw conflict("duplicate", "Those details match a patient who already exists.");
         }
         throw error;
       }
@@ -132,10 +127,8 @@ export const patientRouter = {
           message: "Phone must contain at least 4 digits",
         })
         .optional(),
-      // Keyset on the UUIDv7 id alone (like audit.list): ids are minted at
-      // registration so they order chronologically, `unique(org_id, id)`
-      // backs the scan, and a timestamp cursor's millisecond truncation
-      // (JS Date vs timestamptz microseconds) is unrepresentable.
+      // Keyset on the UUIDv7 id alone: ids are minted at registration so they order
+      // chronologically, and a timestamp cursor's millisecond truncation loses rows.
       cursor: z.string().optional(),
       limit: z.number().int().min(1).max(100).default(20),
     }),
@@ -156,9 +149,8 @@ export const patientRouter = {
         : undefined,
     );
 
-    // Search is a directory boundary, not a lightweight version of `get`.
-    // Return only the fields its registry and patient pickers render; clinical
-    // history, contact extras and attribution stay behind the record endpoint.
+    // A directory boundary, not a lightweight `get`: clinical history and contact
+    // extras stay behind the record endpoint.
     const items = await db
       .select({
         id: patients.id,
@@ -186,21 +178,14 @@ export const patientRouter = {
     };
   }),
 
-  /**
-   * This patient's visits, newest first. The record page lists them and expands
-   * one in place, so a row carries only what tells visits apart — the visit
-   * itself stays behind `opd.get`.
-   *
-   * Gated on `opd:read` rather than `patient:read`: a clerk who may correct a
-   * phone number is not thereby entitled to who the patient has been seeing.
-   */
+  // Gated on `opd:read`, not `patient:read`: a clerk who may correct a phone number
+  // is not thereby entitled to who the patient has been seeing.
   visits: orgProcedure(
     { opd: ["read"] },
     orgInput.extend({
       patientId: z.string(),
-      // Keyset on (business_date, id) because a visit is ordered by the day it
-      // happened, not by the day the row was created — a booking made today for
-      // next week must not sort above last week's attendance.
+      // Keyset on (business_date, id): a visit is ordered by the day it happened, so a
+      // booking made today for next week must not sort above last week's attendance.
       cursor: z.object({ businessDate: z.string(), id: z.string() }).optional(),
       limit: z.number().int().min(1).max(50).default(20),
     }),
@@ -312,11 +297,6 @@ export const patientRouter = {
     };
   }),
 
-  /**
-   * What this patient owes across every invoice, and the invoices behind it.
-   * Billing is invoiced per appointment, so nothing until now could answer
-   * "does this person owe anything" without reading each visit in turn.
-   */
   account: orgProcedure({ billing: ["read"] }, orgInput.extend({ patientId: z.string() })).handler(
     async ({ context, input }) => {
       const { scope } = context;
@@ -368,7 +348,7 @@ export const patientRouter = {
         .limit(1);
 
       if (!patient) {
-        throw new ORPCError("NOT_FOUND");
+        throw new ORPCError("NOT_FOUND", { message: "That patient no longer exists." });
       }
       return { ...patient, updatedAt: patient.updatedAt.toISOString() };
     },
@@ -402,13 +382,10 @@ export const patientRouter = {
         .returning();
     } catch (error) {
       if (uniqueViolationConstraint(error) === "patients_org_uid_idx") {
-        throw new ORPCError("CONFLICT", {
-          message: "A patient with this UID already exists.",
-          data: { code: "UID_TAKEN" },
-        });
+        throw conflict("uid_taken", "A patient with this UID already exists.");
       }
       if (isUniqueViolation(error)) {
-        throw new ORPCError("CONFLICT");
+        throw conflict("duplicate", "Those details match a patient who already exists.");
       }
       throw error;
     }
@@ -421,12 +398,9 @@ export const patientRouter = {
         .limit(1);
 
       if (existing) {
-        throw new ORPCError("CONFLICT", {
-          message: "This patient changed after you opened it.",
-          data: { code: "STALE_RECORD" },
-        });
+        throw conflict("stale_record", "This patient changed after you opened it.");
       }
-      throw new ORPCError("NOT_FOUND");
+      throw new ORPCError("NOT_FOUND", { message: "That patient no longer exists." });
     }
 
     audit({

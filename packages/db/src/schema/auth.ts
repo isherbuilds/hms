@@ -40,12 +40,8 @@ export const account = pgTable(
     id: text("id").primaryKey(),
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
-    // Better Auth 1.7 signs accounts in by `issuer`, and local credential
-    // accounts carry the synthetic issuer `local:credential`. The default
-    // backfills rows created before the column existed — every account in
-    // this system is a credential account, so it is correct for all of them.
-    // OAuth accounts (future Google sign-in) get their real issuer from
-    // Better Auth's own writes.
+    // Better Auth 1.7 signs accounts in by `issuer`; local credential accounts carry
+    // the synthetic `local:credential`. The default backfills pre-column rows.
     issuer: text("issuer").notNull().default("local:credential"),
     userId: text("user_id")
       .notNull()
@@ -112,8 +108,7 @@ export const member = pgTable(
   },
   (table) => [
     index("member_userId_idx").on(table.userId),
-    // A user has one row per organization. The same index also serves the
-    // membership lookup performed on every protected request.
+    // Also serves the membership lookup performed on every protected request.
     uniqueIndex("member_org_user_uidx").on(table.organizationId, table.userId),
   ],
 );

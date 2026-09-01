@@ -16,7 +16,11 @@ const healthQuery = queryOptions({
 
 export const Route = createFileRoute("/")({
   component: HomeRoute,
-  loader: ({ context }) => context.queryClient.prefetchQuery(healthQuery),
+  loader: ({ context }) =>
+    context.queryClient.fetchQuery(healthQuery).then(
+      () => {},
+      () => {},
+    ),
 });
 
 function HomeRoute() {
@@ -53,7 +57,7 @@ function HomeRoute() {
         </span>
       </div>
 
-      <Button size="sm" nativeButton={false} render={<Link to="/join" />}>
+      <Button size="lg" nativeButton={false} render={<Link to="/join" />}>
         Open an organization
       </Button>
     </div>

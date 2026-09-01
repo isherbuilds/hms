@@ -14,22 +14,15 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-/**
- * Every permanent destination in an organization, in one module.
- *
- * These render in four different places — the sidebar, the settings tab strip,
- * the reports hub, and the onboarding checklist — so this is one *source of
- * truth*, not one visual list. Each export below is a section with its own
- * shape; what they share is the entry type and the permission that gates it.
- * A new page means adding one line to the section it belongs to.
- */
+// One source of truth, not one visual list: these render in the sidebar, the
+// settings strip, the reports hub and the onboarding checklist. A new page means
+// one line in the section it belongs to.
 type NavEntry<Route extends string> = {
   to: Route;
   label: string;
   permission: AppPermission;
 };
 
-/** Sidebar groups, in the order the day runs. */
 export const NAV_GROUPS = ["Care", "Finance", "Workspace"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
 
@@ -42,13 +35,8 @@ export type PrimaryNavItem = NavEntry<
   | "/$orgSlug/files"
 > & { icon: LucideIcon; group: NavGroup };
 
-/**
- * No entry's path is a prefix of another's, so the router's default prefix
- * matching highlights exactly one item — including while a child route like
- * `/opd/$appointmentId/billing` is open. Keep it that way: nesting a second
- * sidebar entry under an existing one is what made "Front desk" and "Queue"
- * both light up at once.
- */
+// No entry's path is a prefix of another's, so prefix matching highlights exactly
+// one item. Nesting a second entry under an existing one lit up both.
 export const PRIMARY_NAV: readonly PrimaryNavItem[] = [
   {
     to: "/$orgSlug/dashboard",
@@ -57,8 +45,8 @@ export const PRIMARY_NAV: readonly PrimaryNavItem[] = [
     group: "Care",
     permission: { member: ["read"] },
   },
-  // Decision D013: each built care setting gets its own destination. The route stays
-  // `/opd` so staff terminology, navigation, and URLs do not drift apart.
+  // D013: each built care setting gets its own destination. The route stays `/opd`
+  // so terminology, navigation and URLs do not drift apart.
   {
     to: "/$orgSlug/opd",
     label: "OPD",
@@ -104,16 +92,12 @@ export type SettingsTab = NavEntry<
   | "/$orgSlug/settings/audit"
 >;
 
-/**
- * Settings is one destination in the sidebar, not five. Everything an operator
- * configures rather than works in lives behind its layout.
- */
 export const SETTINGS_TABS: readonly SettingsTab[] = [
   {
     to: "/$orgSlug/settings/organization",
     label: "Organization",
-    // Read is org-wide, but the page is a save form — surface it only to
-    // the roles that can actually save.
+    // Read is org-wide, but the page is a save form — surface it only to roles that
+    // can actually save.
     permission: { settings: ["update"] },
   },
   { to: "/$orgSlug/settings/members", label: "Members", permission: { member: ["read"] } },
@@ -122,10 +106,8 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   { to: "/$orgSlug/settings/audit", label: "Audit", permission: { audit: ["read"] } },
 ];
 
-/**
- * Settings stays reachable for anyone who can open at least one tab, so the
- * entry does not vanish for a role that can read members but not save settings.
- */
+// Reachable for anyone who can open at least one tab, so the entry does not vanish
+// for a role that can read members but not save settings.
 export const SETTINGS_PERMISSIONS: readonly AppPermission[] = SETTINGS_TABS.map(
   ({ permission }) => permission,
 );

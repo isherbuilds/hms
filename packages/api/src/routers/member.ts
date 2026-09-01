@@ -17,10 +17,7 @@ function likePattern(q: string): string {
   return `%${q.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
 }
 
-/**
- * A member id from another tenant must not reach Better Auth's own endpoints,
- * the same rule `revokeInvitation` applies to invitation ids.
- */
+// A member id from another tenant must not reach Better Auth's own endpoints.
 async function assertMemberIdInScope(memberId: string, orgId: string): Promise<void> {
   const [row] = await db
     .select({ id: member.id })
@@ -33,31 +30,21 @@ async function assertMemberIdInScope(memberId: string, orgId: string): Promise<v
   }
 }
 
-/**
- * Membership and invitations for the caller's organization.
- *
- * Reads go straight to the database with the tenant predicate. Writes delegate
- * to Better Auth's own API as the authenticated caller, so its invariants
- * (last-owner protection, invitation lifecycle) hold — `organizationId` is
- * always passed explicitly, never taken from the session's active org.
- */
+// Writes delegate to Better Auth as the caller so its invariants hold, always with
+// an explicit `organizationId` — never the session's active org.
 export const memberRouter = {
-  /** Active roles, account identity, and organizations for the app shell. */
   me: orgProcedure({ member: ["read"] }, orgInput).handler(async ({ context }) => {
     const { orgId, roles, userId } = context.scope;
-    // The guard already rejected an anonymous caller, but the context type
-    // cannot carry that proof. Fail loud rather than assert it away.
+    // The guard already rejected an anonymous caller; the context type cannot carry
+    // that proof, so fail loud rather than assert it away.
     const sessionUser = context.session?.user;
     if (!sessionUser) {
-      throw new ORPCError("UNAUTHORIZED");
+      throw new ORPCError("UNAUTHORIZED", { message: "Sign in again to continue." });
     }
 
     const [organizations, [settings]] = await Promise.all([
-      // The org switcher enumerates the caller's own memberships, so the
-      // predicate here is `userId` by design — it lists which orgs the user
-      // belongs to, never data inside one. Joining straight through `member`
-      // also avoids Better Auth's `listOrganizations`, which re-resolves the
-      // session before it reaches the same two tables.
+      // Predicate on `userId` by design: this lists which orgs the user belongs to, never
+      // data inside one.
       db
         .select({
           id: organization.id,
@@ -67,7 +54,6 @@ export const memberRouter = {
         .from(member)
         .innerJoin(organization, eq(organization.id, member.organizationId))
         .where(eq(member.userId, userId))
-        // Id breaks ties so two orgs sharing a name keep a stable order.
         .orderBy(asc(organization.name), asc(organization.id)),
       db
         .select({
@@ -162,8 +148,7 @@ export const memberRouter = {
       meta: { role: input.role },
     });
 
-    // Returned so an admin can hand the link over directly while no email
-    // provider is wired up.
+    // Returned so an admin can hand the link over while no email provider is wired up.
     return {
       id: created.id,
       email: created.email,
@@ -175,8 +160,7 @@ export const memberRouter = {
     { invitation: ["cancel"] },
     orgInput.extend({ invitationId: z.string().min(1) }),
   ).handler(async ({ context, input }) => {
-    // Scoped read first: an invitation id from another tenant must not reach
-    // Better Auth's cancel path at all.
+    // Scoped read first: a foreign invitation id must not reach Better Auth's cancel path.
     const [row] = await db
       .select({ email: invitation.email })
       .from(invitation)

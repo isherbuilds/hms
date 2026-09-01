@@ -24,7 +24,7 @@ import {
   SidebarRail,
 } from "@hms/ui/components/sidebar";
 import { TooltipProvider } from "@hms/ui/components/tooltip";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { ClientOnly, Link, useNavigate } from "@tanstack/react-router";
 import { CheckIcon, ChevronsUpDownIcon, LogInIcon, LogOutIcon, SettingsIcon } from "lucide-react";
 import { type ReactNode } from "react";
@@ -32,20 +32,11 @@ import { type ReactNode } from "react";
 import { Monogram } from "@/components/monogram";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { authClient } from "@/lib/auth-client";
+import { useMembership } from "@/lib/membership";
 import { NAV_GROUPS, PRIMARY_NAV, SETTINGS_PERMISSIONS } from "@/lib/navigation";
-import { orpc } from "@/lib/orpc";
 
-function OrgSwitcher({
-  activeOrgSlug,
-  organizations,
-}: {
-  activeOrgSlug: string;
-  organizations: { id: string; name: string; slug: string }[] | undefined;
-}) {
-  if (!organizations) {
-    return null;
-  }
-
+function OrgSwitcher({ activeOrgSlug }: { activeOrgSlug: string }) {
+  const organizations = useMembership(activeOrgSlug, (membership) => membership.organizations);
   const name =
     organizations.find((org) => org.slug === activeOrgSlug)?.name ?? "Unknown organization";
 
@@ -87,13 +78,10 @@ function OrgSwitcher({
   );
 }
 
-function UserFooter({ user }: { user: { name: string; email: string } | undefined }) {
+function UserFooter({ orgSlug }: { orgSlug: string }) {
+  const user = useMembership(orgSlug, (membership) => membership.user);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-
-  if (!user) {
-    return null;
-  }
 
   return (
     <DropdownMenu>
@@ -121,9 +109,8 @@ function UserFooter({ user }: { user: { name: string; email: string } | undefine
             authClient.signOut({
               fetchOptions: {
                 onSuccess: () => {
-                  // Query keys partition by org, not by user. Without this the
-                  // next account signed in on this tab reads the previous
-                  // one's cached responses.
+                  // Query keys partition by org, not by user: without this the next account signed
+                  // in on this tab reads the previous one's cached responses.
                   queryClient.clear();
                   navigate({ to: "/login" });
                 },
@@ -140,23 +127,18 @@ function UserFooter({ user }: { user: { name: string; email: string } | undefine
 }
 
 function OrgSidebar({ orgSlug }: { orgSlug: string }) {
-  const { data } = useQuery(orpc.member.me.queryOptions({ input: { orgSlug } }));
-  const roles = data?.roles;
-  // Until membership data loads, show only what every role can reach, so a link never
-  // appears and then disappears.
-  const visible = PRIMARY_NAV.filter(({ permission }) =>
-    roles ? authorize(roles, permission) : true,
-  );
-  const showSettings = roles
-    ? SETTINGS_PERMISSIONS.some((permission) => authorize(roles, permission))
-    : true;
+  // The `/$orgSlug` loader awaits `member.me` before this renders, so the roles are
+  // already cached: no pending nav that shows every link and then removes some.
+  const roles = useMembership(orgSlug, (membership) => membership.roles);
+  const visible = PRIMARY_NAV.filter(({ permission }) => authorize(roles, permission));
+  const showSettings = SETTINGS_PERMISSIONS.some((permission) => authorize(roles, permission));
 
   return (
     <Sidebar variant="inset">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <OrgSwitcher activeOrgSlug={orgSlug} organizations={data?.organizations} />
+            <OrgSwitcher activeOrgSlug={orgSlug} />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
@@ -219,7 +201,7 @@ function OrgSidebar({ orgSlug }: { orgSlug: string }) {
             <ThemeToggle />
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <UserFooter user={data?.user} />
+            <UserFooter orgSlug={orgSlug} />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

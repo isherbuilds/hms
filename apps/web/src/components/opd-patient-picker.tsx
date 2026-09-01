@@ -8,13 +8,13 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@hms/ui/components/empty";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { SearchIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { ErrorNote } from "@/components/page";
 import { PatientSheet } from "@/components/patient-sheet";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useDebouncedCallback } from "@/hooks/use-debounced-value";
 import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { patientAgeLabel } from "@/lib/patient-age";
@@ -39,66 +39,90 @@ function callerSeed(value: string): { name?: string; phone?: string } {
   return { name: value };
 }
 
-function usePatientMatches(orgSlug: string, raw: string) {
-  const trimmed = raw.trim();
-  const debounced = useDebouncedValue(trimmed, 300);
-  const { isPhone, incomplete } = phoneQuery(debounced);
+const NO_MATCHES: never[] = [];
+
+type PatientMatch = { id: string; name: string };
+const matchKey = (match: PatientMatch) => match.id;
+const matchLabel = (match: PatientMatch) => match.name;
+
+// Uncontrolled: the DOM holds what is typed and only the settled term becomes
+// state, so a keystroke never re-renders this component.
+function PatientSearchInput({
+  orgSlug,
+  initialQuery,
+  inputRef,
+  onSelect,
+  onRegister,
+}: {
+  orgSlug: string;
+  initialQuery?: string;
+  inputRef: { current: HTMLInputElement | null };
+  onSelect: (patient: SelectedPatient) => void;
+  onRegister: (seed: { name?: string; phone?: string }) => void;
+}) {
+  const { today } = useOrgDateTime();
+  const [search, setSearch] = useState(() => initialQuery?.trim() ?? "");
+  const [open, setOpen] = useState(false);
+  const settle = useDebouncedCallback(setSearch, 300);
+  const { isPhone, incomplete } = phoneQuery(search);
 
   const results = useQuery({
     ...orpc.patient.search.queryOptions({
       input: isPhone
-        ? { orgSlug, phone: debounced, limit: 20 }
-        : { orgSlug, query: debounced, limit: 20 },
+        ? { orgSlug, phone: search, limit: 20 }
+        : { orgSlug, query: search, limit: 20 },
     }),
-    enabled: debounced.length > 0 && !incomplete,
+    enabled: search.length > 0 && !incomplete,
+    // Keeps the prior answer cached so Base UI does not close and reopen the popup
+    // mid-word. Rows stay hidden until the answer belongs to the settled term.
+    placeholderData: keepPreviousData,
   });
+  const matches = results.isPlaceholderData ? NO_MATCHES : (results.data?.items ?? NO_MATCHES);
+  const searched =
+    !incomplete && search.length > 0 && results.isSuccess && !results.isPlaceholderData;
+  const error = results.isError ? results.error : null;
 
-  return {
-    matches: trimmed === debounced ? (results.data?.items ?? []) : [],
-    searched: !incomplete && debounced.length > 0 && results.isSuccess && trimmed === debounced,
-    error: results.isError ? results.error : null,
-  };
-}
-
-export function OpdPatientSearch({
-  orgSlug,
-  initialQuery,
-  onSelect,
-}: {
-  orgSlug: string;
-  initialQuery?: string;
-  onSelect: (patient: SelectedPatient) => void;
-}) {
-  const { today } = useOrgDateTime();
-  const searchRef = useRef<HTMLInputElement>(null);
-  const [query, setQuery] = useState(initialQuery ?? "");
-  const [open, setOpen] = useState(false);
-  const [seed, setSeed] = useState<{ name?: string; phone?: string } | null>(null);
-  const trimmed = query.trim();
-  const { matches, searched, error } = usePatientMatches(orgSlug, query);
+  const typed = () => inputRef.current?.value.trim() ?? search;
 
   const openRegistration = () => {
     setOpen(false);
-    setSeed(callerSeed(trimmed));
+    onRegister(callerSeed(typed()));
+  };
+
+  const renderMatch = (match: (typeof matches)[number]) => {
+    const age = patientAgeLabel(match.dateOfBirth, match.dobEstimated, today);
+    return (
+      <>
+        <span className="min-w-0">
+          <span className="block truncate font-medium">{match.name}</span>
+          <span className="block truncate text-muted-foreground">
+            {match.mrn} · <span className="font-mono tabular-nums">{match.phone}</span>
+          </span>
+        </span>
+        <span className="shrink-0 capitalize text-muted-foreground">
+          {age}y · {match.sex}
+        </span>
+      </>
+    );
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <>
       <div className="relative">
         <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
         <Combobox
           items={matches}
-          getItemKey={(match) => match.id}
-          getItemLabel={(match) => match.name}
-          inputValue={query}
-          onInputValueChange={setQuery}
+          getItemKey={matchKey}
+          getItemLabel={matchLabel}
+          defaultInputValue={initialQuery}
+          onInputValueChange={(value) => settle(value.trim())}
           onSelect={(match) => {
             setOpen(false);
             onSelect({ id: match.id, name: match.name, mrn: match.mrn });
           }}
           open={open}
           onOpenChange={setOpen}
-          inputRef={searchRef}
+          inputRef={inputRef}
           inputClassName="pl-8"
           inputProps={{
             id: "patient-search",
@@ -107,7 +131,7 @@ export function OpdPatientSearch({
             autoComplete: "off",
             autoFocus: true,
             onFocus: () => {
-              if (trimmed.length > 0) setOpen(true);
+              if (typed().length > 0) setOpen(true);
             },
             onKeyDown: (event) => {
               if (event.key !== "Enter" || !searched || matches.length > 0) return;
@@ -116,27 +140,14 @@ export function OpdPatientSearch({
             },
           }}
           itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-none border-b border-border px-3 py-2 last:border-b-0"
-          renderItem={(match) => {
-            const age = patientAgeLabel(match.dateOfBirth, match.dobEstimated, today);
-            return (
-              <>
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">{match.name}</span>
-                  <span className="block truncate text-muted-foreground">
-                    {match.mrn} · <span className="font-mono tabular-nums">{match.phone}</span>
-                  </span>
-                </span>
-                <span className="shrink-0 capitalize text-muted-foreground">
-                  {age}y · {match.sex}
-                </span>
-              </>
-            );
-          }}
+          renderItem={renderMatch}
           emptyContent={
-            searched ? (
+            results.isPlaceholderData ? (
+              <p className="px-3 py-2 text-muted-foreground">Searching…</p>
+            ) : searched ? (
               <Empty>
                 <EmptyHeader>
-                  <EmptyTitle>No patient matches “{trimmed}”</EmptyTitle>
+                  <EmptyTitle>No patient matches “{search}”</EmptyTitle>
                   <EmptyDescription>No existing record uses these details.</EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
@@ -150,7 +161,32 @@ export function OpdPatientSearch({
         />
       </div>
 
-      {error ? <ErrorNote title="Could not search patients" detail={error.message} /> : null}
+      {error ? <ErrorNote title="Could not search patients" error={error} /> : null}
+    </>
+  );
+}
+
+export function OpdPatientSearch({
+  orgSlug,
+  initialQuery,
+  onSelect,
+}: {
+  orgSlug: string;
+  initialQuery?: string;
+  onSelect: (patient: SelectedPatient) => void;
+}) {
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [seed, setSeed] = useState<{ name?: string; phone?: string } | null>(null);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <PatientSearchInput
+        orgSlug={orgSlug}
+        initialQuery={initialQuery}
+        inputRef={searchRef}
+        onSelect={onSelect}
+        onRegister={setSeed}
+      />
 
       <PatientSheet
         orgSlug={orgSlug}

@@ -1,15 +1,7 @@
 import { expect, test } from "bun:test";
 
-/**
- * The focus ring is the only thing telling a keyboard-driven desk where it is.
- * WCAG 2.4.11 / 1.4.11 put the floor for a non-text indicator at 3:1 against
- * every surface it can land on. This guards the token, in both themes, so the
- * floor cannot be lost to a palette tweak.
- */
-
 const GLOBALS = new URL("../../packages/ui/src/styles/globals.css", import.meta.url);
 
-/** Neutral oklch only (chroma 0): every surface token in this palette is grey. */
 function parseNeutralTokens(block: string): Map<string, number> {
   const out = new Map<string, number>();
   const pattern = /(--[a-z-]+):\s*oklch\(([0-9.]+)\s+0\s+0\)\s*;/g;
@@ -20,12 +12,8 @@ function parseNeutralTokens(block: string): Map<string, number> {
   return out;
 }
 
-/**
- * For a neutral oklch colour the OKLab->linear-sRGB matrix collapses to
- * r = g = b = L^3, so WCAG relative luminance (0.2126R + 0.7152G + 0.0722B on
- * linear-light channels) is simply L^3. Derived from the formula, not from any
- * value the stylesheet asserts.
- */
+// For a neutral oklch colour the OKLab->linear-sRGB matrix collapses to
+// r = g = b = L^3, so WCAG relative luminance is simply L^3.
 const luminance = (lightness: number) => lightness ** 3;
 
 const contrast = (a: number, b: number) => {
@@ -34,11 +22,8 @@ const contrast = (a: number, b: number) => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
-/**
- * Anchored to a rule at the start of a line: a bare indexOf(".dark") finds the
- * `@custom-variant dark (&:is(.dark *))` declaration above and reads the wrong
- * block entirely.
- */
+// Anchored to a line start: a bare indexOf(".dark") finds the `@custom-variant`
+// declaration above and reads the wrong block.
 function blockFor(css: string, selector: string): string {
   const open = css.indexOf(`\n${selector} {`);
   expect(open, `no top-level "${selector} {" rule in globals.css`).toBeGreaterThanOrEqual(0);
@@ -46,7 +31,6 @@ function blockFor(css: string, selector: string): string {
   return css.slice(open, close);
 }
 
-/** Every surface a ring can be drawn on top of. */
 const SURFACES = ["--background", "--card", "--muted", "--sidebar"] as const;
 
 test.each([

@@ -1,5 +1,4 @@
 import { Badge } from "@hms/ui/components/badge";
-import { Button } from "@hms/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +10,7 @@ import {
 import {
   Form,
   FormControl,
-  FormField,
+  RegisteredFormField,
   FormItem,
   FormLabel,
   FormMessage,
@@ -25,13 +24,10 @@ import { z } from "zod";
 
 import { useZodForm } from "@/hooks/use-zod-form";
 import { invalidateOpdAppointmentState } from "@/lib/domain-invalidation";
-import { toastOpdConflict } from "@/lib/opd-operational-query";
+import { useOpdErrorToast } from "@/lib/opd-error";
 import { orpc } from "@/lib/orpc";
 
-/**
- * Shared OPD status vocabulary for the day view, its panel, and the record
- * page. Staff copy, not the stored value.
- */
+// Staff copy, not the stored value.
 export const OPD_STATUS_LABELS = {
   booked: "Booked",
   checked_in: "Checked In",
@@ -47,36 +43,34 @@ export function OpdAppointmentStatusBadge({ status }: { status: OpdAppointmentSt
   return <Badge variant={variant}>{OPD_STATUS_LABELS[status]}</Badge>;
 }
 
-/**
- * The two routine status transitions shared by the day and detail screens.
- */
-export function useOpdStatusActions(orgSlug: string) {
+// On its own so a list row can take check-in without also observing no-show.
+export function useOpdCheckIn(orgSlug: string) {
   const queryClient = useQueryClient();
+  const onOpdError = useOpdErrorToast(orgSlug);
 
-  const checkIn = useMutation(
+  return useMutation(
     orpc.opd.checkIn.mutationOptions({
       onSuccess: ({ appointment }) => {
         toast.success(`Checked in · Token ${appointment.tokenNumber}`);
         return invalidateOpdAppointmentState(queryClient, orgSlug, appointment.id, "checkIn");
       },
-      onError: (error, variables) => {
-        if (toastOpdConflict(queryClient, error, orgSlug, variables.appointmentId, "checkIn"))
-          return;
-        toast.error(error.message);
-      },
+      onError: (error, variables) => onOpdError(variables.appointmentId, "checkIn", error),
     }),
   );
+}
+
+export function useOpdStatusActions(orgSlug: string) {
+  const queryClient = useQueryClient();
+  const onOpdError = useOpdErrorToast(orgSlug);
+
+  const checkIn = useOpdCheckIn(orgSlug);
   const markNoShow = useMutation(
     orpc.opd.markNoShow.mutationOptions({
       onSuccess: (appointment) => {
         toast.success("Marked as no show");
         return invalidateOpdAppointmentState(queryClient, orgSlug, appointment.id, "noShow");
       },
-      onError: (error, variables) => {
-        if (toastOpdConflict(queryClient, error, orgSlug, variables.appointmentId, "noShow"))
-          return;
-        toast.error(error.message);
-      },
+      onError: (error, variables) => onOpdError(variables.appointmentId, "noShow", error),
     }),
   );
 
@@ -100,21 +94,18 @@ export function CancelOpdAppointmentDialog({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  const onOpdError = useOpdErrorToast(orgSlug);
   const form = useZodForm(cancelSchema, { defaultValues: { cancelReason: "" } });
   const cancel = useMutation(
     orpc.opd.cancel.mutationOptions({
       onSuccess: async () => {
-        // Awaited so the dialog closes onto a day that no longer lists this
-        // appointment, rather than onto the row it just cancelled.
+        // Awaited so the dialog closes onto a day that no longer lists this appointment.
         await invalidateOpdAppointmentState(queryClient, orgSlug, appointmentId, "cancel");
         toast.success("OPD appointment cancelled");
         onCancelled?.();
         onClose();
       },
-      onError: (error) => {
-        if (toastOpdConflict(queryClient, error, orgSlug, appointmentId, "cancel")) return;
-        toast.error(error.message);
-      },
+      onError: (error) => onOpdError(appointmentId, "cancel", error),
     }),
   );
   const submit = form.handleSubmit(({ cancelReason }) => {
@@ -141,8 +132,7 @@ export function CancelOpdAppointmentDialog({
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={submit} className="flex flex-col gap-4">
-            <FormField
-              control={form.control}
+            <RegisteredFormField
               name="cancelReason"
               render={({ field }) => (
                 <FormItem>
@@ -155,9 +145,6 @@ export function CancelOpdAppointmentDialog({
               )}
             />
             <DialogFooter>
-              <Button type="button" variant="ghost" disabled={cancel.isPending} onClick={onClose}>
-                Keep appointment
-              </Button>
               <SubmitButton isSubmitting={cancel.isPending}>Cancel appointment</SubmitButton>
             </DialogFooter>
           </form>

@@ -1,10 +1,6 @@
-/**
- * Foreground polling keeps multi-terminal operational screens fresh. TanStack
- * suppresses intervals in background tabs by default. Same-key background
- * refetches retain their current result without placeholder data; omitting a
- * shared placeholder also prevents one appointment or organization from appearing
- * under another key during navigation.
- */
+// TanStack suppresses intervals in background tabs by default. No shared
+// placeholder: it would bridge results across keys and show one appointment or
+// organization under another during navigation.
 export const OPERATIONAL_REFETCH = {
   refetchInterval: 10_000,
   refetchOnWindowFocus: true,
@@ -13,10 +9,8 @@ export const OPERATIONAL_REFETCH = {
 
 type InfiniteQueryLike = { state: { data?: { pages: unknown[] } | undefined } };
 
-/**
- * TanStack refetches every loaded infinite-query page. Keep the live poll
- * cheap on page one; deeper browsing refreshes only when staff ask for it.
- */
+// TanStack refetches every loaded page of an infinite query, so keep the live poll
+// to page one.
 export const OPERATIONAL_INFINITE_REFETCH = {
   ...OPERATIONAL_REFETCH,
   refetchInterval: (query: InfiniteQueryLike) =>

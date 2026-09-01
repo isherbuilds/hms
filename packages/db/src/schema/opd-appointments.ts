@@ -20,11 +20,7 @@ import { practitioners } from "./practitioners";
 export const OPD_ARRIVAL_MODES = ["scheduled", "walk_in"] as const;
 export const OPD_APPOINTMENT_STATUSES = ["booked", "checked_in", "cancelled", "no_show"] as const;
 
-/**
- * One outpatient attendance, whether booked ahead or created as a walk-in.
- * The row owns operational state only; money, files, and future clinical facts
- * remain typed child records.
- */
+// The row owns operational state only; money and files stay typed child records.
 export const opdAppointments = pgTable(
   "opd_appointments",
   {
@@ -49,6 +45,8 @@ export const opdAppointments = pgTable(
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     noShowAt: timestamp("no_show_at", { withTimezone: true }),
     cancelReason: text("cancel_reason"),
+    // Optimistic version of this attendance's pending/invoiced charge set.
+    chargeRevision: integer("charge_revision").notNull().default(0),
     createdBy: text("created_by")
       .notNull()
       .references(() => user.id),
@@ -110,8 +108,7 @@ export const opdAppointments = pgTable(
       table.dayOrderAt,
       table.id,
     ),
-    // The patient record lists one person's visits newest first, keyset on
-    // (business_date, id) — so the index carries that exact order.
+    // Carries the exact (business_date, id) keyset order the patient record pages on.
     index("opd_appointments_org_patient_date_idx").on(
       table.orgId,
       table.patientId,

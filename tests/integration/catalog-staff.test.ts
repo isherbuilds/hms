@@ -157,16 +157,75 @@ test("service search returns only the first six active matching additional servi
   const results = await api.catalog.searchServices({
     orgSlug: organization.slug,
     query: "panel",
-    category: "lab",
+    includeConsultation: false,
   });
 
-  expect(results).toHaveLength(6);
-  expect(results.every((item) => item.category === "lab" && item.name.startsWith("Panel"))).toBe(
-    true,
-  );
+  expect(results.map((item) => item.name)).toEqual(["Panel procedure"]);
   expect(Object.keys(results[0]!).sort()).toEqual(
     ["category", "code", "id", "name", "taxRatePercent", "unitPrice"].sort(),
   );
+});
+
+test("service search includes consultation items only when the caller opts in", async () => {
+  const owner = await createTestUser("catalog-consultation-search-owner");
+  const organization = await createOrganization(owner, "catalog-consultation-search");
+  const otherOwner = await createTestUser("catalog-consultation-search-other-owner");
+  const otherOrganization = await createOrganization(
+    otherOwner,
+    "catalog-consultation-search-other",
+  );
+  const api = clientFor(owner);
+  const query = `Desk consultation ${uniqueSuffix()}`;
+  const consultation = await api.catalog.create(
+    catalogItemInput(organization.slug, `CONS-${uniqueSuffix()}`, query),
+  );
+  await clientFor(otherOwner).catalog.create(
+    catalogItemInput(otherOrganization.slug, `CONS-${uniqueSuffix()}`, query),
+  );
+
+  const excluded = await api.catalog.searchServices({
+    orgSlug: organization.slug,
+    query,
+    includeConsultation: false,
+  });
+  const unfiltered = await api.catalog.searchServices({
+    orgSlug: organization.slug,
+    query,
+    includeConsultation: true,
+  });
+  expect(excluded).toEqual([]);
+  expect(unfiltered.map((item) => item.id)).toEqual([consultation.id]);
+  expect(unfiltered[0]?.category).toBe("consultation");
+});
+
+test("service search excludes consultations before applying the result cap", async () => {
+  const owner = await createTestUser("catalog-service-search-eligibility-owner");
+  const organization = await createOrganization(owner, "catalog-service-search-eligibility");
+  const api = clientFor(owner);
+  const query = `Later service ${uniqueSuffix()}`;
+  const eligible = await api.catalog.create({
+    ...catalogItemInput(organization.slug, `PROC-${uniqueSuffix()}`, `${query} Z eligible`),
+    category: "procedure",
+  });
+  await Promise.all(
+    Array.from({ length: 6 }, (_, index) =>
+      api.catalog.create(
+        catalogItemInput(
+          organization.slug,
+          `CONS-${index}-${uniqueSuffix()}`,
+          `${query} A${index} consultation`,
+        ),
+      ),
+    ),
+  );
+
+  const results = await api.catalog.searchServices({
+    orgSlug: organization.slug,
+    query,
+    includeConsultation: false,
+  });
+
+  expect(results.map((item) => item.id)).toEqual([eligible.id]);
 });
 
 test("departments and practitioners support linked CRUD within an organization", async () => {
@@ -402,8 +461,6 @@ test("catalog mutations and practitioner creates are audited, with price meta as
   });
   expect(entries.catalogEntry.orgId).toBe(organization.id);
   expect(entries.practitionerEntry.orgId).toBe(organization.id);
-  // The create entry is the price timeline's origin; the update entry records
-  // the repriced state — together they reconstruct the history.
   expect(entries.catalogEntry.meta).toEqual({
     unitPrice: item.unitPrice,
     taxRatePercent: item.taxRatePercent,

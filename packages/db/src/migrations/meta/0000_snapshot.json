@@ -1,5 +1,5 @@
 {
-  "id": "323edcf0-1465-414c-8fcf-6938037f1cdb",
+  "id": "45b9686a-192b-46e0-960f-3527c64105ea",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1815,6 +1815,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
         "reason": {
           "name": "reason",
           "type": "text",
@@ -2862,6 +2868,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "charge_revision": {
+          "name": "charge_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "created_by": {
           "name": "created_by",
           "type": "text",
@@ -3173,6 +3186,12 @@
         "fiscal_year": {
           "name": "fiscal_year",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
           "primaryKey": false,
           "notNull": true
         },
@@ -3694,6 +3713,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
         "received_by": {
           "name": "received_by",
           "type": "text",
@@ -3892,6 +3917,12 @@
         "fiscal_year": {
           "name": "fiscal_year",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
           "primaryKey": false,
           "notNull": true
         },

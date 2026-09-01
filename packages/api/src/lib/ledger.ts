@@ -1,7 +1,4 @@
-/**
- * Double-entry ledger primitives used by billing and statutory reports.
- * Journal dates follow the organization's configured time zone.
- */
+// Journal dates follow the organization's configured time zone.
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import type { DbTransaction } from "@hms/db/counter";

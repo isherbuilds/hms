@@ -9,11 +9,6 @@ import {
   type RoleKey,
 } from "@hms/auth/access";
 
-/**
- * The role/permission matrix is the whole point of the authorization layer and
- * costs nothing to check, so it is asserted exhaustively rather than sampled.
- * `true` means the role must hold the permission, `false` means it must not.
- */
 const MATRIX: Array<{
   permission: AppPermission;
   owner: boolean;
@@ -129,8 +124,6 @@ const MATRIX: Array<{
 ];
 
 test("each role grants exactly the permissions the matrix declares", () => {
-  // The matrix only means anything if it covers every role the app defines —
-  // `satisfies RoleKey[]` rejects an unknown role but not a forgotten one.
   expect([...ORG_ROLES].sort()).toEqual(Object.keys(roles).sort() as RoleKey[]);
 
   const granted = MATRIX.map((row) => ({
@@ -140,8 +133,6 @@ test("each role grants exactly the permissions the matrix declares", () => {
     member: authorize(["member"], row.permission),
   }));
 
-  // One assertion over the whole matrix: a mismatch prints the offending row
-  // next to its expectation instead of a bare `true !== false`.
   expect(granted).toEqual(MATRIX);
 });
 
@@ -154,8 +145,8 @@ test("parseRoles reads every stored role and rejects ones this app does not defi
 });
 
 test("authorize grants the union across roles, matching Better Auth's own semantics", () => {
-  // The bug this guards: reading only the first role silently strips the
-  // permissions a multi-role member was deliberately granted.
+  // The bug this guards: reading only the first role strips a multi-role member's
+  // permissions.
   expect(authorize(parseRoles("member"), { audit: ["read"] })).toBe(false);
   expect(authorize(parseRoles("member,admin"), { audit: ["read"] })).toBe(true);
   expect(authorize(parseRoles("member,admin"), { file: ["delete"] })).toBe(true);

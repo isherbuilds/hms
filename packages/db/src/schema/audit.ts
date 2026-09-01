@@ -1,7 +1,6 @@
 import { pgTable, text, timestamp, jsonb, index, bigint, boolean } from "drizzle-orm/pg-core";
 
-// Deliberately no FK to organization: audit entries must outlive the org (and
-// keep their orgId) after it is deleted.
+// No FK to organization: entries must outlive the org, keeping their orgId.
 export const auditLog = pgTable(
   "audit_log",
   {
@@ -14,7 +13,6 @@ export const auditLog = pgTable(
     meta: jsonb("meta").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  // The identity id is insertion-ordered, so it serves as both the keyset
-  // cursor and the sort key; the composite covers `audit.list`'s org filter.
+  // The id is insertion-ordered, so it is both the keyset cursor and the sort key.
   (table) => [index("audit_log_org_id_idx").on(table.orgId, table.id)],
 );

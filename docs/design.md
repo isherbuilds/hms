@@ -55,7 +55,9 @@ One scale. Five steps carry everything:
 | `4` (16px) | `gap-4`, `p-4` | Page padding, card padding, gap between sections |
 | `6` (24px) | `gap-6`        | Between major blocks on a public page only       |
 
-- **Page padding is `p-4`, applied by `PageBody`.** Pages do not set padding.
+- **Page padding is `p-4`, applied by `PageBody`.** Pages do not retune the
+  ordinary gutter. A task route may add bottom-only reserve when its fixed
+  mobile action footer would otherwise cover the final fields.
 - **Prefer `gap` on the parent over margins on children.** A margin is a decision
   only the child knows about; a gap is one the layout owns. `mt-*`/`mb-*` on a
   child is a smell — the sole exception is the optical nudge under a label, and
@@ -67,25 +69,32 @@ One scale. Five steps carry everything:
 
 A dense data surface. `text-xs` is the body size, not a small size.
 
-| Size                  | Where                                                     |
-| --------------------- | --------------------------------------------------------- |
-| `text-xs` (12px)      | Default: table cells, labels, body copy, buttons, inputs  |
-| `text-sm` (14px)      | Page and section titles                                   |
-| `text-base` (16px)    | Dialog and Sheet task titles                              |
-| `text-2xl`/`text-3xl` | The headline number on a dashboard stat card only         |
-| `text-lg`/`text-xl`   | Public pages only (`/login`). Never inside the org shell. |
+| Size                      | Where                                                               |
+| ------------------------- | ------------------------------------------------------------------- |
+| `text-[0.6875rem]` (11px) | `Badge` and `TableHead` primitives only: dense status/column labels |
+| `text-xs` (12px)          | Default: table cells, labels, body copy, buttons, inputs            |
+| `text-sm` (14px)          | Page and section titles                                             |
+| `text-base` (16px)        | Dialog and Sheet task titles                                        |
+| `text-lg` (18px)          | Public pages and a chart's fixed-height interactive readout         |
+| `text-xl` (20px)          | Public pages only                                                   |
+| `text-2xl`/`text-3xl`     | The headline number on a dashboard stat card only                   |
 
-- **No `text-[13px]`-style values.** A missing step means the design is wrong, not
-  the scale. The only arbitrary sizes live in print documents, measured in `mm`
-  against physical paper.
+- **No route-level `text-[13px]`-style values.** A missing step means the design
+  is wrong, not the scale. The reviewed 11 px component labels above and print
+  sizes measured against physical paper are the only type exceptions.
 - **Weight carries hierarchy, not size.** `font-medium` for titles and the active
   row; regular elsewhere. There is no `font-bold`.
 - **`text-muted-foreground` is the only secondary colour** — not an opacity, not a
   lighter grey.
-- **`font-mono` is for identifiers compared character by character**: MRN, invoice
-  number, token, actor id, catalog code. Never prose, never amounts.
+- **`font-mono` is for identifiers compared character by character**: MRN,
+  phone, invoice number, token, actor id, catalog code. Never prose, never
+  amounts.
 - **`tabular-nums` on every number that can change** — counts, money, times. Without
   it a live-updating figure jitters.
+
+Patient facts must look as honest as they are stored: every age derived from an
+estimated birth date carries a `~` prefix, and registration never preselects a
+sex value for the operator.
 
 **Fonts.** Inter Variable (UI) and JetBrains Mono (identifiers), both self-hosted
 via `@fontsource-variable/*`. Billing PDFs pair Takumi's shipped Latin sans with
@@ -113,16 +122,17 @@ tier is changed once in `globals.css` and never at a call site.
 ## 5. Colour
 
 Theme tokens only: `bg-background`, `bg-card`, `bg-muted`, `text-foreground`,
-`text-muted-foreground`, `border-border`, `bg-primary`, `text-destructive`.
+`text-muted-foreground`, `border-border`, `bg-primary`, `text-destructive`,
+`text-pending`, and `text-overdue`.
 
 - **No palette utilities** (`bg-neutral-100`, `text-zinc-500`). They do not invert
   in dark mode, which is how a screen ends up unreadable in one theme.
 - **Both themes are shipped, not one flipped.** Every screen is checked in light
   and dark before it is done.
-- **Three documented exceptions.** Print documents (`bg-white text-black
-border-black` — paper is white with black ink in every theme), the login
-  context panel, a fixed dark surface in both themes by design, and the
-  **clinical severity tokens**.
+- **Three documented exceptions.** Print documents use `bg-white text-black
+border-black` because paper is white with black ink in every theme; the login
+  context panel is a fixed dark surface in both themes; and clinical severity
+  uses the named tokens below.
 - **Clinical severity** is the one place hue carries meaning beyond tenancy
   state: `--clinical-alert` for what is dangerous about a patient (allergies, a
   balance still owed), `--clinical-note` for what is chronic (medical history),
@@ -131,6 +141,9 @@ border-black` — paper is white with black ink in every theme), the login
   `-border` companion and is defined in both themes in `globals.css`. A hue here
   is a claim about the patient, never decoration — and the word is still
   present, so the meaning survives for a reader who cannot see the colour.
+- **Billing work state** uses `--pending` for Charges not yet invoiced and
+  `--overdue` for an unpaid Invoice older than seven days. These tokens appear
+  through labelled `Badge` variants; neither is a general accent colour.
 - **Colour means one thing: state.** `text-destructive` for a failure the user must
   act on. Status is carried by a `Badge`, never by colour alone — the word is
   always present.
@@ -292,7 +305,7 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
 
 - [ ] When a card tray is used, canvas, shell and card are three visibly distinct surfaces.
 - [ ] Card trays group related rows only; flat sections use hairlines and typography, and no card sits inside a raised surface.
-- [ ] No arbitrary values outside print documents.
+- [ ] No route-level arbitrary values; only the documented component and print exceptions.
 - [ ] Every colour is a token; checked in light **and** dark.
 - [ ] Spacing uses the scale; no margins on children where a gap would do.
 - [ ] `tabular-nums` on every changing number; `font-mono` on identifiers.

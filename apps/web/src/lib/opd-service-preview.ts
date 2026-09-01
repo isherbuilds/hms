@@ -18,6 +18,19 @@ export type WalkInQuote = {
   taxTotal: string;
   grandTotal: string;
 };
+type LineMetadata = Pick<WalkInQuote["lines"][number], "category" | "source">;
+
+function attachLineMetadata<T extends object>(
+  lines: T[],
+  sources: readonly LineMetadata[],
+  missingSourceMessage: string,
+): Array<T & LineMetadata> {
+  return lines.map((line, index) => {
+    const source = sources[index];
+    if (!source) throw new Error(missingSourceMessage);
+    return { ...line, category: source.category, source: source.source };
+  });
+}
 
 export function applyDiscount(quote: WalkInQuote, discountAmount: string): WalkInQuote {
   const computed = computeInvoiceLines(
@@ -34,11 +47,7 @@ export function applyDiscount(quote: WalkInQuote, discountAmount: string): WalkI
 
   return {
     ...quote,
-    lines: computed.lines.map((line, index) => {
-      const quoted = quote.lines[index];
-      if (!quoted) throw new Error("Discounted line has no quoted line");
-      return { ...line, category: quoted.category, source: quoted.source };
-    }),
+    lines: attachLineMetadata(computed.lines, quote.lines, "Discounted line has no quoted line"),
     subtotal: computed.subtotal,
     discountAmount,
     taxTotal: computed.taxTotal,
@@ -56,25 +65,25 @@ type PreviewService = {
 };
 
 export function servicePreview(services: PreviewService[], currency: string): WalkInQuote {
-  const computed = computeInvoiceLines(
-    services.map((service) => ({
-      chargeId: service.catalogItemId,
-      description: service.name,
-      qty: service.qty,
-      unitPrice: service.unitPrice,
-      taxRatePercent: service.taxRatePercent,
-      taxCode: null,
-    })),
-    "0",
-  );
+  const previewLines = services.map((service) => ({
+    chargeId: service.catalogItemId,
+    description: service.name,
+    category: service.category,
+    source: "service" as const,
+    qty: service.qty,
+    unitPrice: service.unitPrice,
+    taxRatePercent: service.taxRatePercent,
+    taxCode: null,
+  }));
+  const computed = computeInvoiceLines(previewLines, "0");
 
   return {
     currency,
-    lines: computed.lines.map((line, index) => {
-      const service = services[index];
-      if (!service) throw new Error("Computed preview line has no selected service");
-      return { ...line, category: service.category, source: "service" as const };
-    }),
+    lines: attachLineMetadata(
+      computed.lines,
+      previewLines,
+      "Computed preview line has no source line",
+    ),
     subtotal: computed.subtotal,
     discountAmount: "0.00",
     taxTotal: computed.taxTotal,

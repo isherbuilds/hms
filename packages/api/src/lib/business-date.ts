@@ -66,7 +66,6 @@ export function businessDate(instant: Date, timeZone: string): string {
   return dateFormatter(timeZone).format(instant);
 }
 
-/** Convert a hospital-local `YYYY-MM-DDTHH:mm` value into an absolute instant. */
 export function localDateTime(value: string, timeZone: string): Date {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
     throw new Error(`Invalid local date and time ${value}`);

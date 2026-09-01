@@ -1,12 +1,11 @@
 import { authorize } from "@hms/auth/access";
 import { buttonVariants } from "@hms/ui/components/button";
-import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { ArrowRightIcon } from "lucide-react";
 
 import { PageBody, PageHeader } from "@/components/page";
+import { useMembership } from "@/lib/membership";
 import { SETUP_STEPS } from "@/lib/navigation";
-import { orpc } from "@/lib/orpc";
 
 export const Route = createFileRoute("/$orgSlug/onboarding")({
   head: () => ({ meta: [{ title: "Set up organization · HMS" }] }),
@@ -15,12 +14,12 @@ export const Route = createFileRoute("/$orgSlug/onboarding")({
 
 function OrganizationOnboardingRoute() {
   const { orgSlug } = Route.useParams();
-  const { data } = useQuery(orpc.member.me.queryOptions({ input: { orgSlug } }));
-  const visibleSetup = data
-    ? SETUP_STEPS.filter(({ permission }) => authorize(data.roles, permission))
-    : [];
+  const membership = useMembership(orgSlug);
+  const visibleSetup = SETUP_STEPS.filter(({ permission }) =>
+    authorize(membership.roles, permission),
+  );
   const organizationName =
-    data?.organizations.find(({ slug }) => slug === orgSlug)?.name ?? orgSlug;
+    membership.organizations.find(({ slug }) => slug === orgSlug)?.name ?? orgSlug;
 
   return (
     <>

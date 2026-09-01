@@ -17,7 +17,7 @@ test("query retries are disabled during SSR and for auth failures", async () => 
     let serverAttempts = 0;
 
     await expect(
-      serverClient.fetchQuery({
+      serverClient.query({
         queryKey: ["server-retry"],
         retryDelay: 0,
         queryFn: () => {
@@ -33,7 +33,7 @@ test("query retries are disabled during SSR and for auth failures", async () => 
     let authAttempts = 0;
 
     await expect(
-      browserClient.fetchQuery({
+      browserClient.query({
         queryKey: ["auth-retry"],
         retryDelay: 0,
         queryFn: () => {
@@ -47,7 +47,7 @@ test("query retries are disabled during SSR and for auth failures", async () => 
     let transientAttempts = 0;
 
     await expect(
-      browserClient.fetchQuery({
+      browserClient.query({
         queryKey: ["transient-retry"],
         retryDelay: 0,
         queryFn: () => {

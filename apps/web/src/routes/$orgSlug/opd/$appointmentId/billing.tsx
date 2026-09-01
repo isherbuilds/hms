@@ -1,238 +1,106 @@
-import { authorize } from "@hms/auth/access";
-import { Button } from "@hms/ui/components/button";
-import { Separator } from "@hms/ui/components/separator";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hms/ui/components/table";
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 
-import {
-  AddChargeDialog,
-  IssueInvoiceDialog,
-  VoidChargeDialog,
-} from "@/components/opd-billing/charge-dialogs";
+import { ChargeCheckout } from "@/components/opd-billing/charge-checkout";
 import { InvoiceAccount } from "@/components/opd-billing/invoice-account";
-import { ErrorNote, PageBody, PageHeader } from "@/components/page";
-import { StaleDataNotice } from "@/components/stale-data-notice";
-import { formatMoney } from "@/lib/money";
+import { VoidChargeDialog } from "@/components/opd-billing/void-charge-dialog";
+import { ErrorNote } from "@/components/page";
+import { useCan, useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
-import { loadRouteQuery } from "@/lib/orpc-error";
 import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 
-import {
-  OpdRecordDescription,
-  OpdRecordFacts,
-  OpdRecordSummary,
-  OpdRecordTabs,
-  RecordCard,
-  RecordEmpty,
-} from "./route";
+import { RecordCard, RecordEmpty } from "./route";
+import { useOpdRecord } from "@/lib/opd-record";
 
 export const Route = createFileRoute("/$orgSlug/opd/$appointmentId/billing")({
+  remountDeps: ({ params }) => ({ appointmentId: params.appointmentId }),
   loader: async ({ context: { queryClient }, params: { orgSlug, appointmentId } }) => {
-    const invoiceList = orpc.billing.listInvoices.queryOptions({
-      input: { orgSlug, appointmentId },
-    });
-    await Promise.all([
-      loadRouteQuery(
-        queryClient.fetchQuery(orpc.opd.get.queryOptions({ input: { orgSlug, appointmentId } })),
-      ),
-      loadRouteQuery(
-        queryClient.fetchQuery(orpc.settings.get.queryOptions({ input: { orgSlug } })),
-      ),
-      queryClient.prefetchQuery(
-        orpc.billing.listPendingCharges.queryOptions({ input: { orgSlug, appointmentId } }),
-      ),
-      queryClient.prefetchQuery(invoiceList).then(() => {
-        // Each invoice row also reads its own receipts, credit notes and
-        // refunds, which the list does not carry. Started here so the rows
-        // hydrate warm, and deliberately not awaited: the page is usable
-        // without them, so they must never hold up the navigation.
-        for (const invoice of queryClient.getQueryData(invoiceList.queryKey) ?? []) {
-          void queryClient.prefetchQuery(
-            orpc.billing.getInvoice.queryOptions({ input: { orgSlug, invoiceId: invoice.id } }),
-          );
-        }
-      }),
-    ]);
+    // The record itself is the layout's; this tab loads what only it reads.
+    await queryClient
+      .query(orpc.billing.listInvoices.queryOptions({ input: { orgSlug, appointmentId } }))
+      .catch(() => {});
   },
   component: BillingOpdAppointmentRoute,
 });
 
 function BillingOpdAppointmentRoute() {
   const { orgSlug, appointmentId } = Route.useParams();
-  const [addOpen, setAddOpen] = useState(false);
-  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const { record, refreshError: recordRefreshError } = useOpdRecord();
   const [voiding, setVoiding] = useState<{ id: string; description: string } | null>(null);
-  const detailQuery = {
-    ...orpc.opd.get.queryOptions({ input: { orgSlug, appointmentId } }),
-    ...OPERATIONAL_REFETCH,
-  };
-  const detail = useQuery(detailQuery);
-  const pendingQuery = {
-    ...orpc.billing.listPendingCharges.queryOptions({ input: { orgSlug, appointmentId } }),
-    ...OPERATIONAL_REFETCH,
-  };
-  const pending = useQuery(pendingQuery);
-  const invoicesQuery = {
+  const invoices = useQuery({
     ...orpc.billing.listInvoices.queryOptions({ input: { orgSlug, appointmentId } }),
     ...OPERATIONAL_REFETCH,
-  };
-  const invoices = useQuery(invoicesQuery);
-  const settings = useSuspenseQuery(orpc.settings.get.queryOptions({ input: { orgSlug } }));
-  const membership = useSuspenseQuery(orpc.member.me.queryOptions({ input: { orgSlug } }));
-  const canCredit = authorize(membership.data.roles, { billing: ["creditNote"] });
-  const currency = settings.data.currency;
+  });
+  // From membership, not `settings.get`: the same currency, already loaded by the org
+  // layout, and readable by a cashier who has no `settings:read` grant.
+  const currency = useMembership(orgSlug, (membership) => membership.currency);
+  const canCredit = useCan(orgSlug, { billing: ["creditNote"] });
 
-  // Both tabs render the same title band in every state, so a cashier switching
-  // views never sees the record's identity move.
-  if (detail.isPending || pending.isPending || invoices.isPending) {
-    return (
-      <>
-        <PageHeader title="Outpatient appointment" />
-        <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
-        <PageBody className="mx-auto w-full max-w-5xl" />
-      </>
-    );
-  }
-  if (detail.isError || pending.isError || invoices.isError) {
-    const error = detail.error ?? pending.error ?? invoices.error;
-    return (
-      <>
-        <PageHeader title="Outpatient appointment" />
-        <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
-        <ErrorNote title="Could not load outpatient billing" detail={error?.message} inset />
-      </>
-    );
+  // The layout has proven the record; only the invoice list can be missing here.
+  if (!invoices.data) {
+    return invoices.error ? (
+      <ErrorNote title="Could not load outpatient billing" error={invoices.error} />
+    ) : null;
   }
 
-  const canChangeCharges = detail.data.appointment.status === "checked_in";
+  const refreshError = recordRefreshError ?? invoices.error;
+  const canChangeCharges = record.appointment.status === "checked_in";
+  const pending = record.charges.filter((charge) => charge.status === "pending");
 
   return (
     <>
-      <PageHeader
-        title="Outpatient appointment"
-        description={<OpdRecordDescription orgSlug={orgSlug} record={detail.data} />}
-        action={
-          <>
-            <StaleDataNotice
-              dataUpdatedAt={Math.min(
-                detail.dataUpdatedAt,
-                pending.dataUpdatedAt,
-                invoices.dataUpdatedAt,
-              )}
-            />
-            {canChangeCharges ? (
-              <>
-                <Button variant="outline" onClick={() => setAddOpen(true)}>
-                  Add charge
-                </Button>
-                <Button disabled={pending.data.length === 0} onClick={() => setInvoiceOpen(true)}>
-                  Issue invoice
-                </Button>
-              </>
-            ) : null}
-          </>
-        }
-      />
-      <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
-      <PageBody className="mx-auto w-full max-w-5xl">
-        <OpdRecordSummary record={detail.data} />
+      {refreshError ? (
+        <ErrorNote
+          title="Billing data could not refresh"
+          detail="Showing the last successful billing state. Your unsubmitted changes are preserved."
+        />
+      ) : null}
 
-        <Separator />
-        <OpdRecordFacts record={detail.data} />
+      {/* One list for both roles now that the counter cannot add to it: the
+          cashier gets a Void column and the invoice beside it, nobody gets a
+          catalog. */}
+      <RecordCard label="Charges">
+        {pending.length === 0 ? (
+          <RecordEmpty>No charge is waiting to be invoiced.</RecordEmpty>
+        ) : (
+          <ChargeCheckout
+            orgSlug={orgSlug}
+            appointmentId={appointmentId}
+            pending={pending}
+            chargeRevision={record.appointment.chargeRevision}
+            currency={currency}
+            canSettle={canChangeCharges}
+            onVoid={setVoiding}
+          />
+        )}
+      </RecordCard>
 
-        <Separator />
-        <RecordCard label="Pending charges">
-          {pending.data.length === 0 ? (
-            <RecordEmpty>No charge is waiting to be invoiced.</RecordEmpty>
-          ) : (
-            // The same grid as the clinical tab's Charges card, so the two
-            // views of one appointment's money line up column for column.
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="w-20 text-right">Qty</TableHead>
-                  <TableHead className="w-36 text-right">Unit price</TableHead>
-                  {canChangeCharges ? (
-                    <TableHead className="w-28 text-right">Action</TableHead>
-                  ) : null}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pending.data.map((charge) => (
-                  <TableRow key={charge.id}>
-                    <TableCell className="font-medium">{charge.description}</TableCell>
-                    <TableCell className="text-right tabular-nums">{charge.qty}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatMoney(charge.unitPrice, currency)}
-                    </TableCell>
-                    {canChangeCharges ? (
-                      <TableCell className="text-right">
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          onClick={() =>
-                            setVoiding({ id: charge.id, description: charge.description })
-                          }
-                        >
-                          Void
-                        </Button>
-                      </TableCell>
-                    ) : null}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </RecordCard>
+      {/* Each invoice already carries its own surface and its own actions, so
+          the list stays flat: a card around a stack of boxes is noise. The
+          hairline is what separates it from the tray above — the same rule the
+          clinical tab follows. */}
+      <section className="flex flex-col gap-2 border-t border-border pt-4">
+        <h2 className="flex min-h-6 items-center text-muted-foreground">Invoices</h2>
+        {invoices.data.length === 0 ? (
+          <p className="text-muted-foreground">No invoice issued for this appointment yet.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {invoices.data.map((invoice) => (
+              <InvoiceAccount
+                key={invoice.id}
+                orgSlug={orgSlug}
+                appointmentId={appointmentId}
+                invoice={invoice}
+                canCredit={canCredit}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
-        {/* Each invoice already carries its own surface and its own actions, so
-            the list stays flat: a card around a stack of boxes is noise. The
-            hairline is what separates it from the tray above — the same rule the
-            clinical tab follows. */}
-        <section className="flex flex-col gap-2 border-t border-border pt-4">
-          <h2 className="flex min-h-6 items-center text-muted-foreground">Invoices</h2>
-          {invoices.data.length === 0 ? (
-            <p className="text-muted-foreground">No invoice issued for this appointment yet.</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {invoices.data.map((invoice) => (
-                <InvoiceAccount
-                  key={invoice.id}
-                  orgSlug={orgSlug}
-                  appointmentId={appointmentId}
-                  invoice={invoice}
-                  canCredit={canCredit}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      </PageBody>
       {canChangeCharges ? (
         <ClientOnly fallback={null}>
-          <AddChargeDialog
-            open={addOpen}
-            onOpenChange={setAddOpen}
-            orgSlug={orgSlug}
-            appointmentId={appointmentId}
-            currency={currency}
-          />
-          <IssueInvoiceDialog
-            open={invoiceOpen}
-            onOpenChange={setInvoiceOpen}
-            orgSlug={orgSlug}
-            appointmentId={appointmentId}
-          />
           {voiding ? (
             <VoidChargeDialog
               charge={voiding}

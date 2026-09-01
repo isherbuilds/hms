@@ -13,11 +13,8 @@ import {
 import { organization, user } from "./auth";
 import { invoices } from "./invoices";
 
-/**
- * Immutable corrections issued against invoices. Credit notes are the only
- * correction path for an issued invoice; their header totals are sums of the
- * stored credit-note line values.
- */
+// The only correction path for an issued invoice. Header totals are sums of the
+// stored credit-note lines.
 export const creditNotes = pgTable(
   "credit_notes",
   {
@@ -28,13 +25,11 @@ export const creditNotes = pgTable(
     invoiceId: text("invoice_id").notNull(),
     creditNoteNumber: text("credit_note_number").notNull(),
     fiscalYear: text("fiscal_year").notNull(),
-    /** Organization-local accounting date snapshotted at issuance. */
     businessDate: date("business_date").notNull(),
     reason: text("reason").notNull(),
     subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull(),
     taxTotal: numeric("tax_total", { precision: 12, scale: 2 }).notNull(),
     total: numeric("total", { precision: 12, scale: 2 }).notNull(),
-    /** Attribution only; authorization always comes from the request's organization scope. */
     issuedBy: text("issued_by")
       .notNull()
       .references(() => user.id),

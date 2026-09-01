@@ -16,25 +16,14 @@ import { fromPaise, toPaise } from "../lib/invoice-math";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
 
-/**
- * The organization-wide money worklist, split by how it scales.
- *
- * `worklist` is bounded by the day: the charges still waiting for an invoice can
- * only be as many as the patients currently in the building, and the four
- * summary figures are aggregates rather than rows. It is the half that polls.
- *
- * `openInvoices` is the half that grows forever, so it pages on a keyset and
- * filters in SQL. Nothing here returns a whole row: each select lists exactly
- * the columns the billing screen draws, so widening the screen is a deliberate
- * edit rather than a silent one.
- */
+// `worklist` is bounded by the day and polls. `openInvoices` grows forever, so it
+// pages on a keyset and filters in SQL.
 
 const OVERDUE_DAYS = 7;
 const STALE_DAYS = 30;
 
 const searchQuery = z.string().trim().min(1).max(100).optional();
 
-/** Everything still owed on an invoice: total, less credits and payments, plus refunds. */
 function settledExpression(orgId: string) {
   return sql`
     ${invoices.grandTotal}
@@ -110,12 +99,10 @@ export const billingWorklistRouter = {
           patients.phone,
           practitioners.name,
         )
-        // Oldest first: the patient who has waited longest is the one most likely
-        // to walk out unbilled.
+        // Oldest first: the longest wait is the most likely to walk out unbilled.
         .orderBy(sql`min(${charges.createdAt}) asc`, asc(opdAppointments.id));
 
-      // One scan of the invoice table answers all four figures. Splitting them
-      // into four procedures would be four scans on the same 10-second poll.
+      // One scan answers all four figures; four procedures would be four scans per poll.
       const [openMoney] = await db
         .select({
           outstanding: sql<string>`coalesce(sum(case when (${settled}) > 0 then (${settled}) else 0 end), 0)`,
@@ -164,9 +151,8 @@ export const billingWorklistRouter = {
     orgInput.extend({
       query: searchQuery,
       overdueOnly: z.boolean().default(false),
-      // Keyset on the UUIDv7 id alone, like `patient.search`: invoice ids are
-      // minted at issue so they order chronologically, and a timestamp cursor's
-      // millisecond truncation is unrepresentable.
+      // Keyset on the UUIDv7 id alone: ids are minted at issue so they order
+      // chronologically, and a timestamp cursor's millisecond truncation loses rows.
       cursor: z.string().optional(),
       limit: z.number().int().min(1).max(100).default(25),
     }),
@@ -206,8 +192,7 @@ export const billingWorklistRouter = {
     const hasNextPage = rows.length > input.limit;
     if (hasNextPage) rows.pop();
 
-    // The SQL predicate picks the rows; displayed money still comes from
-    // `invoiceBalancesFor`, which stays the single source of truth on screen.
+    // Displayed money still comes from `invoiceBalancesFor`, the single source on screen.
     const balances = await invoiceBalancesFor(db, scope.orgId, rows);
     const last = rows[rows.length - 1];
 

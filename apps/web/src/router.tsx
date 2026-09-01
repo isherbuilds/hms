@@ -17,9 +17,12 @@ export const getRouter = () => {
     routeTree,
     scrollRestoration: true,
     defaultPreload: "intent",
-    // Query owns caching. Leaving the router's own preload cache on would give
-    // the same data two owners with two different ideas of when it went stale.
+    // Query owns caching; the router's own preload cache would give the same data two
+    // owners with two ideas of when it went stale.
     defaultPreloadStaleTime: 0,
+    // Search params keep their identity when nothing in them changed, so a
+    // `useSearch({ select })` returning an object does not re-render on every push.
+    defaultStructuralSharing: true,
     context: { queryClient },
     defaultErrorComponent: DefaultRouteError,
     defaultNotFoundComponent: NotFound,

@@ -1,22 +1,36 @@
 import { authorize, type AppPermission } from "@hms/auth/access";
+import { Button } from "@hms/ui/components/button";
+import { Separator } from "@hms/ui/components/separator";
 import { cn } from "@hms/ui/lib/utils";
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { Link, Outlet, createFileRoute } from "@tanstack/react-router";
-import { type ReactNode } from "react";
+import { useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { ClientOnly, Link, Outlet, createFileRoute, useChildMatches } from "@tanstack/react-router";
+import { PrinterIcon } from "lucide-react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 
-import { OpdAppointmentStatusBadge, type OpdAppointmentStatus } from "@/components/opd-appointment";
+import { useConfirm } from "@/components/confirm-dialog";
+import {
+  CancelOpdAppointmentDialog,
+  OpdAppointmentStatusBadge,
+  useOpdStatusActions,
+  type OpdAppointmentStatus,
+} from "@/components/opd-appointment";
+import {
+  CheckInOpdAppointmentDialog,
+  RescheduleOpdAppointmentDialog,
+} from "@/components/opd-appointment-dialogs";
+import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import { StaleDataNotice } from "@/components/stale-data-notice";
+import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
+import { useMembership } from "@/lib/membership";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
+import { OpdRecordContext, useOpdRecord } from "@/lib/opd-record";
 import { orpc } from "@/lib/orpc";
-import { loadRouteQuery } from "@/lib/orpc-error";
+import { hasErrorCode, loadRouteQuery } from "@/lib/orpc-error";
 import { patientAgeLabel } from "@/lib/patient-age";
 
-/**
- * An OPD Appointment has two views: what the clinician does and what
- * the cashier does. They stay separate screens — the billing surface is large
- * and its mistakes are expensive — but they share a URL root so a terminal can
- * move between them without going back through a list.
- */
-export const OPD_TABS: readonly {
+// Two separate screens — the billing surface is large and its mistakes expensive —
+// sharing a URL root so a terminal moves between them without a list in between.
+const OPD_TABS: readonly {
   to: "/$orgSlug/opd/$appointmentId" | "/$orgSlug/opd/$appointmentId/billing";
   label: string;
   permission: AppPermission;
@@ -29,14 +43,21 @@ export const OPD_TABS: readonly {
   },
 ];
 
+const CLINICAL_ROUTE_ID = "/$orgSlug/opd/$appointmentId/";
+
 export const Route = createFileRoute("/$orgSlug/opd/$appointmentId")({
+  // The chrome and the clinical tab's dialogs hang off this layout, so moving to the
+  // next appointment must not carry their state over.
+  remountDeps: ({ params }) => ({ appointmentId: params.appointmentId }),
   loader: async ({ context: { queryClient }, params: { orgSlug, appointmentId } }) => {
-    // Both tabs already read this key, so the layout shares their cache entry
-    // rather than adding a request. It is fetched here only to name the tab.
+    // The one place the record is fetched; both tabs read it out of the layout context.
     const data = await loadRouteQuery(
-      queryClient.ensureQueryData(orpc.opd.get.queryOptions({ input: { orgSlug, appointmentId } })),
+      queryClient.query({
+        ...orpc.opd.get.queryOptions({ input: { orgSlug, appointmentId } }),
+        staleTime: "static",
+      }),
     );
-    // A booked appointment has no token or patient yet — name it by the caller.
+    // A booked appointment has no patient yet — name it by the caller.
     return {
       tokenNumber: data.appointment.tokenNumber,
       name: data.patient ? data.patient.name : data.appointment.callerName,
@@ -53,25 +74,228 @@ export const Route = createFileRoute("/$orgSlug/opd/$appointmentId")({
       },
     ],
   }),
-  // Nothing but the shared cache entry and the title: the tab strip belongs to
-  // each tab, under its own header band. See `OpdRecordTabs`.
-  component: Outlet,
+  component: OpdRecordLayout,
 });
 
-/**
- * The tab strip. Each tab renders it under its own `PageHeader` rather than the
- * layout rendering it above both: a page owns its title band, and the sections
- * belong directly under that band instead of floating above it.
- */
-export function OpdRecordTabs({
+// In the layout so switching tabs re-renders the body alone: the strip and its
+// `member.me` observer stay mounted.
+function OpdRecordLayout() {
+  const { orgSlug, appointmentId } = Route.useParams();
+  const detail = useQuery({
+    ...orpc.opd.get.queryOptions({ input: { orgSlug, appointmentId } }),
+    ...OPERATIONAL_REFETCH,
+  });
+  const isClinical = useChildMatches({
+    select: (matches) => matches[0]?.routeId === CLINICAL_ROUTE_ID,
+  });
+
+  // Authorization failures are terminal: keeping the cached record here would leave
+  // patient and charge data visible after access was revoked.
+  if (
+    detail.error &&
+    (hasErrorCode(detail.error, "UNAUTHORIZED") || hasErrorCode(detail.error, "FORBIDDEN"))
+  ) {
+    throw detail.error;
+  }
+
+  if (!detail.data && detail.error) {
+    return (
+      <>
+        <PageHeader title="Outpatient appointment" />
+        <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
+        <ErrorNote title="Could not load outpatient appointment" error={detail.error} inset />
+      </>
+    );
+  }
+  if (!detail.data) {
+    return (
+      <>
+        <PageHeader title="Outpatient appointment" />
+        <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
+        <PageBody className="mx-auto w-full max-w-5xl" />
+      </>
+    );
+  }
+
+  const record = detail.data;
+  // A screen is only as fresh as its oldest read, and the cashier polls the invoice
+  // list beside the record.
+  const freshnessKeys = isClinical
+    ? [orpc.opd.get.key({ input: { orgSlug, appointmentId } })]
+    : [
+        orpc.opd.get.key({ input: { orgSlug, appointmentId } }),
+        orpc.billing.listInvoices.key({ input: { orgSlug, appointmentId } }),
+      ];
+
+  return (
+    <OpdRecordContext.Provider value={{ record, refreshError: detail.error }}>
+      {/* `contents` so the bands stay direct children of the page column. The
+          clinical tab prints a token slip and nothing else, so its chrome
+          leaves the page; the cashier's tab prints the way it looks. */}
+      <div className={cn("contents", isClinical && "print:hidden")}>
+        <PageHeader
+          title="Outpatient appointment"
+          description={<OpdRecordDescription orgSlug={orgSlug} record={record} />}
+          action={
+            <>
+              <RecordFreshness queryKeys={freshnessKeys} />
+              {isClinical ? (
+                <Button
+                  disabled={record.appointment.tokenNumber == null || !record.patient}
+                  onClick={() => window.print()}
+                >
+                  <PrinterIcon data-icon="inline-start" />
+                  Print slip
+                </Button>
+              ) : null}
+            </>
+          }
+        />
+        <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
+      </div>
+
+      <PageBody className="mx-auto w-full max-w-5xl">
+        <div className={cn("contents", isClinical && "print:hidden")}>
+          <OpdRecordSummary
+            record={record}
+            action={
+              isClinical ? (
+                <ClinicalStatusActions orgSlug={orgSlug} appointmentId={appointmentId} />
+              ) : undefined
+            }
+          />
+          <Separator />
+          <OpdRecordFacts record={record} />
+          <Separator />
+        </div>
+        <Outlet />
+      </PageBody>
+    </OpdRecordContext.Provider>
+  );
+}
+
+// Read straight out of the cache. Taking `dataUpdatedAt` as a prop put the 10s poll
+// in the same reactive scope as the body, re-rendering every charge on every poll.
+function RecordFreshness({ queryKeys }: { queryKeys: QueryKey[] }) {
+  const queryClient = useQueryClient();
+  const dataUpdatedAt = useSyncExternalStore(
+    (onStoreChange) => queryClient.getQueryCache().subscribe(onStoreChange),
+    () =>
+      queryKeys.reduce(
+        (oldest, key) => Math.min(oldest, queryClient.getQueryState(key)?.dataUpdatedAt ?? 0),
+        Number.POSITIVE_INFINITY,
+      ),
+    () => 0,
+  );
+
+  return <StaleDataNotice dataUpdatedAt={dataUpdatedAt} />;
+}
+
+// Declared here and mounted only while the clinical tab is open; the cashier has none.
+function ClinicalStatusActions({
   orgSlug,
   appointmentId,
 }: {
   orgSlug: string;
   appointmentId: string;
 }) {
-  const membership = useSuspenseQuery(orpc.member.me.queryOptions({ input: { orgSlug } }));
-  const visible = OPD_TABS.filter(({ permission }) => authorize(membership.data.roles, permission));
+  const { record } = useOpdRecord();
+  const { appointment } = record;
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [checkInOpen, setCheckInOpen] = useState(false);
+  const [confirm, confirmDialog] = useConfirm();
+  const { checkIn, markNoShow } = useOpdStatusActions(orgSlug);
+  const changingStatus = checkIn.isPending || markNoShow.isPending;
+
+  return (
+    <>
+      {appointment.status === "booked" ? (
+        <div className="flex flex-wrap gap-1">
+          <Button
+            size="xs"
+            disabled={changingStatus}
+            onClick={() =>
+              appointment.patientId
+                ? checkIn.mutate({ orgSlug, appointmentId })
+                : setCheckInOpen(true)
+            }
+          >
+            Check in
+          </Button>
+          <Button size="xs" variant="ghost" onClick={() => setRescheduleOpen(true)}>
+            Reschedule
+          </Button>
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={changingStatus}
+            onClick={() =>
+              confirm({
+                title: "Mark as no show?",
+                description:
+                  "The caller did not arrive. A no show cannot be reopened — rebook if they turn up later.",
+                confirmLabel: "Mark no show",
+                run: () => markNoShow.mutate({ orgSlug, appointmentId }),
+              })
+            }
+          >
+            No show
+          </Button>
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={changingStatus}
+            onClick={() => setCancelOpen(true)}
+          >
+            Cancel
+          </Button>
+        </div>
+      ) : appointment.status === "checked_in" ? (
+        <Button
+          size="xs"
+          variant="ghost"
+          disabled={changingStatus}
+          onClick={() => setCancelOpen(true)}
+        >
+          Cancel
+        </Button>
+      ) : null}
+
+      <ClientOnly fallback={null}>
+        {cancelOpen ? (
+          <CancelOpdAppointmentDialog
+            orgSlug={orgSlug}
+            appointmentId={appointmentId}
+            onClose={() => setCancelOpen(false)}
+          />
+        ) : null}
+        {rescheduleOpen ? (
+          <RescheduleOpdAppointmentDialog
+            orgSlug={orgSlug}
+            appointmentId={appointmentId}
+            scheduledFor={appointment.scheduledFor}
+            onClose={() => setRescheduleOpen(false)}
+          />
+        ) : null}
+        {checkInOpen ? (
+          <CheckInOpdAppointmentDialog
+            orgSlug={orgSlug}
+            appointmentId={appointmentId}
+            callerName={appointment.callerName}
+            callerPhone={appointment.callerPhone}
+            onClose={() => setCheckInOpen(false)}
+          />
+        ) : null}
+        {confirmDialog}
+      </ClientOnly>
+    </>
+  );
+}
+
+function OpdRecordTabs({ orgSlug, appointmentId }: { orgSlug: string; appointmentId: string }) {
+  const roles = useMembership(orgSlug, (membership) => membership.roles);
+  const visible = OPD_TABS.filter(({ permission }) => authorize(roles, permission));
 
   return (
     <nav
@@ -84,8 +308,8 @@ export function OpdRecordTabs({
             key={to}
             to={to}
             params={{ orgSlug, appointmentId }}
-            // The clinical tab is the index route, so prefix matching would
-            // keep it active while Billing is open.
+            // The clinical tab is the index route, so prefix matching would keep it active
+            // while Billing is open.
             activeOptions={{ exact: to === "/$orgSlug/opd/$appointmentId" }}
             className={cn(
               "-mb-px flex shrink-0 items-center border-b-2 border-transparent px-3 text-xs text-muted-foreground transition-colors",
@@ -101,12 +325,7 @@ export function OpdRecordTabs({
   );
 }
 
-/**
- * The fields both tabs read out of `opd.get` to say *which* record this is.
- * Named one by one rather than inferred from the router, so the shared chrome
- * below declares exactly what it draws.
- */
-export type OpdRecordIdentity = {
+type OpdRecordIdentity = {
   appointment: {
     tokenNumber: number | null;
     status: OpdAppointmentStatus;
@@ -129,19 +348,7 @@ export type OpdRecordIdentity = {
   department: { name: string };
 };
 
-/**
- * Which record this is, for the title band. Shared rather than written twice:
- * the two copies had already drifted, and a title that re-words itself when a
- * cashier switches tabs reads as a different record instead of another view of
- * the same one.
- */
-export function OpdRecordDescription({
-  orgSlug,
-  record,
-}: {
-  orgSlug: string;
-  record: OpdRecordIdentity;
-}) {
+function OpdRecordDescription({ orgSlug, record }: { orgSlug: string; record: OpdRecordIdentity }) {
   const { appointment, patient } = record;
 
   return (
@@ -162,19 +369,7 @@ export function OpdRecordDescription({
   );
 }
 
-/**
- * What the desk says out loud, in one line: the token, the state the
- * appointment is in, and when it last moved. No box around it — the type
- * carries the hierarchy. `action` is the only part a tab owns; the clinical tab
- * hangs the status actions there and the cashier has none.
- */
-export function OpdRecordSummary({
-  record,
-  action,
-}: {
-  record: OpdRecordIdentity;
-  action?: ReactNode;
-}) {
+function OpdRecordSummary({ record, action }: { record: OpdRecordIdentity; action?: ReactNode }) {
   const { timeZone } = useOrgDateTime();
   const { appointment } = record;
   const event = appointment.arrivedAt
@@ -208,13 +403,7 @@ export function OpdRecordSummary({
   );
 }
 
-/**
- * Who the appointment is for and who is seeing them — the same facts on both
- * tabs, held apart from the strip above by a hairline rather than by two more
- * boxes. The cashier's copy used to carry fewer of them, so the same record
- * said two different things depending on which tab was open.
- */
-export function OpdRecordFacts({ record }: { record: OpdRecordIdentity }) {
+function OpdRecordFacts({ record }: { record: OpdRecordIdentity }) {
   const { today } = useOrgDateTime();
   const { appointment, patient, practitioner, department } = record;
   const age = patient
@@ -251,13 +440,6 @@ export function OpdRecordFacts({ record }: { record: OpdRecordIdentity }) {
   );
 }
 
-/**
- * The one card surface the record uses, for the two blocks that are genuinely a
- * table of rows: charges and money. Same tinted tray and raised card as the OPD
- * day list (docs/design.md §1), so the boards read as one product. Everything
- * else on the record stays flat — a box around every fact is noise, not
- * structure.
- */
 export function RecordCard({
   label,
   action,
@@ -283,11 +465,6 @@ export function RecordCard({
   );
 }
 
-/**
- * The one empty state inside a `RecordCard`, centred in the card the way the
- * OPD day list centres its own. A record with nothing in it then reads as an
- * empty card rather than a collapsed one.
- */
 export function RecordEmpty({ children }: { children: ReactNode }) {
   return (
     <p className="flex flex-1 items-center justify-center px-4 text-center text-muted-foreground">

@@ -2,13 +2,8 @@ import { cn } from "@hms/ui/lib/utils";
 import { SidebarTrigger } from "@hms/ui/components/sidebar";
 import { type ReactNode } from "react";
 
-/**
- * Page chrome. These own every spacing decision a page would otherwise make for
- * itself, which is what keeps two screens built months apart looking like the
- * same product. See `docs/design.md`.
- */
+import { errorMessage } from "@/lib/orpc-error";
 
-/** Title, optional description, and optional action for one page. */
 export function PageHeader({
   title,
   description,
@@ -36,11 +31,8 @@ export function PageHeader({
   );
 }
 
-/**
- * The standard page container: one padding value, one gap, one column. A page
- * should never set its own `p-*` — if the content needs to bleed to the edge
- * (a full-width table), pass `bleed`.
- */
+// A page should never set its own `p-*`; pass `bleed` for content that must reach
+// the edge.
 export function PageBody({
   children,
   bleed = false,
@@ -63,20 +55,27 @@ export function PageBody({
   );
 }
 
+const RETRY_HINT = "The connection dropped. It will retry; reload if it stays empty.";
+
 /**
- * The one way a page reports a failed read. It repeated verbatim in seven pages
- * with three different outer margins before it became a component — which is
- * exactly the signal the convention doc describes.
+ * How a page reports a read that failed. Pass the caught `error` and this words it:
+ * a dropped connection has no sentence of its own, so printing `error.message` raw
+ * puts "Failed to fetch" in front of an operator. Pass `detail` instead only for
+ * wording the error cannot carry — what is stale, and what still works.
  */
 export function ErrorNote({
   title,
+  error,
   detail,
   inset = false,
 }: {
   title: string;
+  error?: unknown;
   detail?: ReactNode;
   inset?: boolean;
 }) {
+  const body = detail ?? (error === undefined ? undefined : errorMessage(error, RETRY_HINT));
+
   return (
     <div
       role="alert"
@@ -86,7 +85,7 @@ export function ErrorNote({
       )}
     >
       <p className="font-medium">{title}</p>
-      {detail && <p className="text-muted-foreground">{detail}</p>}
+      {body && <p className="text-muted-foreground">{body}</p>}
     </div>
   );
 }

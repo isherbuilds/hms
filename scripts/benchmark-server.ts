@@ -60,8 +60,8 @@ async function runRound(cookie: string, concurrency: number, requests: number): 
         });
         await response.arrayBuffer();
         durations.push(performance.now() - requestStartedAt);
-        // fetch follows redirects by default. A stale fixture can otherwise turn
-        // an auth redirect followed by a fast 200 login page into a false pass.
+        // fetch follows redirects by default, so a stale fixture could turn an auth
+        // redirect plus a fast 200 login page into a false pass.
         if (!response.ok || response.url !== routeUrl.href) failures += 1;
       }
     }),

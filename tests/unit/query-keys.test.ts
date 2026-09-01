@@ -14,8 +14,7 @@ test("organization input partitions generated query keys", async () => {
   const beta = orpc.settings.get.queryKey({ input: { orgSlug: "beta" } });
 
   expect(alpha).not.toEqual(beta);
-  // Not just different — the slug must actually be in the key, or a builder
-  // that dropped input entirely would still satisfy the inequality above.
+  // A builder that dropped input entirely would still satisfy the inequality above.
   expect(JSON.stringify(alpha)).toContain("alpha");
   expect(JSON.stringify(beta)).toContain("beta");
 });

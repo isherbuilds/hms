@@ -8,16 +8,9 @@ import { audit } from "../audit";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { invalidateOrgSettings } from "../lib/settings-cache";
 
-/**
- * The full settings row is validated and written as one unit — there is no
- * partial update, so a saved row never mixes stored and default values.
- *
- * Time zones are validated by probing the formatter, not by membership in
- * `Intl.supportedValuesOf("timeZone")`: Bun's JavaScriptCore lists only the
- * legacy canonical ids (`Asia/Calcutta`), so a membership check would reject
- * `Asia/Kolkata` — the very default the migration backfills. The probe accepts
- * exactly the zones the runtime can compute business dates in.
- */
+// Time zones are validated by probing the formatter: Bun's JavaScriptCore lists
+// only legacy canonical ids (Asia/Calcutta), so a membership check would reject
+// Asia/Kolkata — the default the migration backfills.
 function isSupportedTimeZone(value: string): boolean {
   try {
     new Intl.DateTimeFormat("en", { timeZone: value });
@@ -58,7 +51,6 @@ export const settingsRouter = {
         .where(eq(organizationSettings.orgId, context.scope.orgId))
         .limit(1);
 
-      // A fresh organization has no row yet; reads never create one.
       if (!row) {
         return { ...SETTINGS_DEFAULTS };
       }
@@ -72,8 +64,8 @@ export const settingsRouter = {
       const { scope } = context;
       const { orgSlug: _claim, ...fields } = input;
 
-      // A later time-zone change re-derives future dates only; rows already
-      // written keep the Business Date they were numbered under.
+      // A later time-zone change re-derives future dates only; written rows keep the
+      // business date they were numbered under.
       const [row] = await db
         .insert(organizationSettings)
         .values({ ...fields, orgId: scope.orgId })
@@ -87,11 +79,9 @@ export const settingsRouter = {
         throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Failed to save settings" });
       }
 
-      // Derived reads (document numbering) must see the new prefixes on the next call in this process.
+      // Derived reads must see the new prefixes on the next call in this process.
       invalidateOrgSettings(scope.orgId);
 
-      // Tax identity and numbering prefixes shape every printed invoice —
-      // a sensitive success, recorded fire-and-forget.
       audit({
         action: "settings.update",
         actorId: scope.userId,

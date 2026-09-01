@@ -23,11 +23,16 @@ export const CATALOG_CATEGORIES = [
 
 export type CatalogCategory = (typeof CATALOG_CATEGORIES)[number];
 
-/**
- * Priced service catalog. Items are soft-deactivated only (`active: false`
- * hides them from pickers) because Charges snapshot price/tax at creation —
- * existing charges must never dangle or reprice.
- */
+// Revenue posts per category, so a lab item on an OPD invoice would make the two
+// streams indistinguishable at the document level. Lab and radiology are billed by
+// the domain that orders them.
+export const OPD_BILLABLE_CATEGORIES = [
+  "consultation",
+  "procedure",
+] as const satisfies readonly CatalogCategory[];
+
+// Soft-deactivate only: charges snapshot price and tax at creation, so a deleted
+// item would leave existing charges dangling.
 export const catalogItems = pgTable(
   "catalog_items",
   {
@@ -36,13 +41,11 @@ export const catalogItems = pgTable(
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    /** Short code for fast entry at the desk; unique per tenant. */
     code: text("code").notNull(),
     category: text("category", { enum: CATALOG_CATEGORIES }).notNull(),
     unitPrice: numeric("unit_price", { precision: 12, scale: 2 }).notNull(),
-    /** 0 for exempt healthcare services; storage is the single rate (CGST/SGST split is display-time). */
+    // The single stored rate; the CGST/SGST split is display-time.
     taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull().default("0"),
-    /** HSN/SAC code, when applicable. */
     taxCode: text("tax_code"),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -60,7 +63,6 @@ export const catalogItems = pgTable(
     ),
     unique("catalog_items_org_id_id_unique").on(table.orgId, table.id),
     uniqueIndex("catalog_items_org_code_idx").on(table.orgId, table.code),
-    // Covers the admin list and pickers: org (+ category filter), name-ordered.
     index("catalog_items_org_category_name_idx").on(table.orgId, table.category, table.name),
     index("catalog_items_org_name_idx").on(table.orgId, table.name),
   ],

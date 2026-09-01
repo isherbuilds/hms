@@ -1,9 +1,6 @@
 import { orpc } from "@/lib/orpc";
 
-/**
- * Uploads bytes directly to private storage, then marks the metadata ready.
- * `mimeType` overrides `file.type` for browsers that report an empty type.
- */
+// `mimeType` overrides `file.type` for browsers that report an empty type.
 export async function uploadOrgFile(
   orgSlug: string,
   file: File,

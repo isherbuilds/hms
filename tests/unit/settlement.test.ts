@@ -72,7 +72,6 @@ test("a non-zero UPI payment requires a transaction reference", () => {
 });
 
 test("collecting more than the bill names the excess and is never quiet", () => {
-  // 500.00 + 500.00 against a 982.50 bill is 17.50 too much.
   const found = problems({
     payments: [
       line({ id: 1, amount: "500.00" }),
@@ -86,7 +85,6 @@ test("collecting more than the bill names the excess and is never quiet", () => 
 });
 
 test("a balance left behind requires a written reason", () => {
-  // 900.00 against 982.50 leaves 82.50 carried.
   const payments = [line({ id: 1, amount: "900.00" })];
 
   const unexplained = problems({ payments, attempted: true });

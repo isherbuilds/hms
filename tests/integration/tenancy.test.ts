@@ -13,6 +13,7 @@ import {
   setMemberRoles,
 } from "../support/auth";
 import { clientFor, eventually, expectAuthStatus, expectORPCCode } from "../support/client";
+import { addPendingCatalogCharge } from "../support/billing";
 import { resetTestDatabase } from "../support/database";
 import { shiftLocalMinute } from "../support/time";
 import { uniqueSuffix } from "../support/unique";
@@ -42,7 +43,6 @@ test("settings are scoped by explicit input: defaults until saved, then the save
   const organization = await createOrganization(owner, "settings-pages");
   const api = clientFor(owner);
 
-  // A fresh organization answers with defaults; reads never create a row.
   const fresh = await api.settings.get({ orgSlug: organization.slug });
   expect(fresh.currency).toBe("INR");
   expect(fresh.legalName).toBe("");
@@ -55,10 +55,8 @@ test("settings are scoped by explicit input: defaults until saved, then the save
   });
   expect(saved.legalName).toBe("Settings Pages Hospital Pvt. Ltd.");
 
-  // The org named in the input is the org written to and read back from.
   expect(await api.settings.get({ orgSlug: organization.slug })).toEqual(saved);
 
-  // Saving settings is a sensitive success and lands in the audit trail.
   const entry = await eventually(async () => {
     const audit = await api.audit.list({ orgSlug: organization.slug });
     return audit.items.find((item) => item.action === "settings.update");
@@ -82,16 +80,13 @@ test("settings are invisible across orgs, and a foreign org is FORBIDDEN", async
   const beta = await createOrganization(bob, "beta");
   const bobClient = clientFor(bob);
 
-  // Beta still sees its own defaults, not alpha's saved row.
   const visible = await bobClient.settings.get({ orgSlug: beta.slug });
   expect(visible.legalName).toBe("");
 
-  // Bob saving beta's settings must not touch alpha's.
   await bobClient.settings.update({ orgSlug: beta.slug, ...visible, legalName: "beta public" });
   const alphaAfter = await aliceClient.settings.get({ orgSlug: alpha.slug });
   expect(alphaAfter.legalName).toBe("alpha secret");
 
-  // Explicitly naming an org you are not a member of fails loud.
   await expectORPCCode(bobClient.settings.get({ orgSlug: alpha.slug }), "FORBIDDEN");
 });
 
@@ -104,8 +99,8 @@ test("a foreign org claim cannot write into that tenant's audit trail", async ()
     clientFor(visitor).settings.get({ orgSlug: organization.slug }),
     "FORBIDDEN",
   );
-  // Draining beats sleeping: a negative assertion behind a fixed interval
-  // passes wrongly the moment a reintroduced write lands just after it.
+  // Draining beats sleeping: a negative assertion behind a fixed interval passes
+  // wrongly the moment a reintroduced write lands just after it.
   await drainAuditWrites();
 
   const audit = await clientFor(owner).audit.list({ orgSlug: organization.slug });
@@ -140,8 +135,6 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
   const outsider = await createTestUser("today-visitor");
   const api = clientFor(owner);
 
-  // One checked-in appointment and one pending charge exist in `one` only.
-  // `two` stays empty, which makes a leak visible rather than merely unlikely.
   const patient = await api.patient.register({
     orgSlug: one.slug,
     name: "Today Patient",
@@ -176,14 +169,13 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
     unitPrice: "500.00",
     taxRatePercent: "0",
   });
-  await api.billing.addCharges({
-    orgSlug: one.slug,
+  await addPendingCatalogCharge({
+    orgId: one.id,
+    userId: owner.user.id,
     appointmentId: appointment.id,
-    lines: [{ catalogItemId: consult.id }],
+    catalogItemId: consult.id,
   });
 
-  // Same client, both orgs, concurrently: scope must come from the claim on
-  // each call and never from whichever request happened to run first.
   const [todayOne, todayTwo, moneyOne, moneyTwo] = await Promise.all([
     api.dashboard.today({ orgSlug: one.slug }),
     api.dashboard.today({ orgSlug: two.slug }),
@@ -201,12 +193,10 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
   expect(Number(moneyTwo.unbilled)).toBe(0);
   expect(moneyTwo.unbilledOpdAppointments).toBe(0);
 
-  // A non-member naming the org is FORBIDDEN, not an empty result.
   const outsiderApi = clientFor(outsider);
   await expectORPCCode(outsiderApi.dashboard.today({ orgSlug: one.slug }), "FORBIDDEN");
   await expectORPCCode(outsiderApi.dashboard.collections({ orgSlug: one.slug }), "FORBIDDEN");
 
-  // And a member loses both on the very next request after removal.
   const member = await createTestUser("today-member");
   await joinOrganization(member, one.id);
   const memberApi = clientFor(member);
@@ -223,7 +213,6 @@ test("plain members are denied audit:read, the denial is recorded, and admins se
 
   await expectORPCCode(clientFor(member).audit.list({ orgSlug: organization.slug }), "FORBIDDEN");
 
-  // Audit writes are fire-and-forget, so poll briefly for the denial entry.
   const ownerClient = clientFor(owner);
   const denial = await eventually(async () => {
     const audit = await ownerClient.audit.list({ orgSlug: organization.slug });
@@ -298,7 +287,6 @@ test("a member,admin holder gets the union of both roles' permissions", async ()
 
   const personClient = clientFor(person);
 
-  // As a plain member, audit:read is denied.
   await expectORPCCode(personClient.audit.list({ orgSlug: organization.slug }), "FORBIDDEN");
 
   const membership = await clientFor(owner).member.list({
@@ -309,8 +297,7 @@ test("a member,admin holder gets the union of both roles' permissions", async ()
 
   await setMemberRoles(owner, row!.id, ["member", "admin"], organization.id);
 
-  // Reading only the first stored role would leave this denied. The denial
-  // logged a moment ago is the proof the log is genuinely readable now.
+  // Reading only the first stored role would leave this denied.
   const ownDenial = await eventually(async () => {
     const audit = await personClient.audit.list({ orgSlug: organization.slug });
     return audit.items.find(
@@ -336,7 +323,6 @@ test("an org slug is immutable, so the tenant claim can never be re-pointed", as
     "BAD_REQUEST",
   );
 
-  // The original claim still resolves, and the display name is still editable.
   const api = clientFor(owner);
   await api.settings.get({ orgSlug: organization.slug });
   await auth.api.updateOrganization({
@@ -351,20 +337,13 @@ test("an unknown slug is FORBIDDEN, not NOT_FOUND — existence never leaks", as
   const organization = await createOrganization(user, "unknown-slug");
   const api = clientFor(user);
 
-  // Identical to the code a real-but-foreign org returns, so the two cases are
-  // indistinguishable: a caller cannot probe which slugs exist.
+  // Identical to a real-but-foreign org, so a caller cannot probe which slugs exist.
   await expectORPCCode(api.settings.get({ orgSlug: `absent-${uniqueSuffix()}` }), "FORBIDDEN");
   await api.settings.get({ orgSlug: organization.slug });
 });
 
-/**
- * Every guarded procedure, with the tenant claim left as a parameter. The table
- * is compared against `appRouter` below, so adding a procedure without adding it
- * here fails the suite rather than going silently uncovered. The three sweeps
- * that follow reuse it to answer, for every procedure at once, the questions a
- * per-domain test would otherwise have to remember to ask: a missing claim, a
- * foreign claim, and a claim from someone whose membership was just revoked.
- */
+// Compared against `appRouter` below, so a new procedure that is not listed here
+// fails the suite rather than going uncovered.
 const GUARDED_CALLS = {
   "dashboard.today": (api, claim) => api.dashboard.today({ ...claim }),
   "dashboard.collections": (api, claim) => api.dashboard.collections({ ...claim }),
@@ -418,7 +397,7 @@ const GUARDED_CALLS = {
     api.patient.account({ ...claim, patientId: Bun.randomUUIDv7() }),
   "catalog.list": (api, claim) => api.catalog.list({ ...claim }),
   "catalog.searchServices": (api, claim) =>
-    api.catalog.searchServices({ ...claim, query: "intrusion" }),
+    api.catalog.searchServices({ ...claim, query: "intrusion", includeConsultation: false }),
   "catalog.create": (api, claim) =>
     api.catalog.create({
       ...claim,
@@ -484,7 +463,11 @@ const GUARDED_CALLS = {
       patientId: Bun.randomUUIDv7(),
       practitionerId: Bun.randomUUIDv7(),
       departmentId: Bun.randomUUIDv7(),
-      settlement: { payments: [], note: "Guarded-call tenant probe" },
+      settlement: {
+        expectedGrandTotal: "0",
+        payments: [],
+        note: "Guarded-call tenant probe",
+      },
     }),
   "opd.checkIn": (api, claim) =>
     api.opd.checkIn({
@@ -517,22 +500,20 @@ const GUARDED_CALLS = {
     }),
   "billing.worklist": (api, claim) => api.billing.worklist({ ...claim }),
   "billing.openInvoices": (api, claim) => api.billing.openInvoices({ ...claim }),
-  "billing.listPendingCharges": (api, claim) =>
-    api.billing.listPendingCharges({ ...claim, appointmentId: Bun.randomUUIDv7() }),
-  "billing.addCharges": (api, claim) =>
-    api.billing.addCharges({
-      ...claim,
-      appointmentId: Bun.randomUUIDv7(),
-      lines: [{ catalogItemId: Bun.randomUUIDv7(), qty: 1 }],
-    }),
   "billing.voidCharge": (api, claim) =>
     api.billing.voidCharge({
       ...claim,
       chargeId: Bun.randomUUIDv7(),
       reason: "Intrusion",
     }),
-  "billing.issueInvoice": (api, claim) =>
-    api.billing.issueInvoice({ ...claim, appointmentId: Bun.randomUUIDv7() }),
+  "billing.settleCharges": (api, claim) =>
+    api.billing.settleCharges({
+      ...claim,
+      appointmentId: Bun.randomUUIDv7(),
+      expectedChargeRevision: 0,
+      expectedGrandTotal: "0",
+      note: "Guarded-call tenant probe",
+    }),
   "billing.recordPayments": (api, claim) =>
     api.billing.recordPayments({
       ...claim,
@@ -573,10 +554,8 @@ const GUARDED_CALLS = {
   "member.remove": (api, claim) => api.member.remove({ ...claim, memberId: "m" }),
 } satisfies Record<string, (api: AppRouterClient, claim: { orgSlug: string }) => Promise<unknown>>;
 
-/** The only place a claim is faked away — every entry above stays type-checked. */
 const NO_CLAIM = {} as { orgSlug: string };
 
-/** Wide enough to hold everything a fixture just wrote, inside the report period cap. */
 function reportRange(): { from: string; to: string } {
   const day = 24 * 60 * 60 * 1_000;
   const now = Date.now();
@@ -604,7 +583,6 @@ test("every procedure is FORBIDDEN when an outsider names a foreign org", async 
     await expectORPCCode(call(api, { orgSlug: organization.slug }), "FORBIDDEN", name);
   }
 
-  // Nothing the outsider did may appear in the tenant's own audit trail.
   await drainAuditWrites();
   const audit = await clientFor(owner).audit.list({ orgSlug: organization.slug });
   expect(audit.items.some((entry) => entry.actorId === outsider.user.id)).toBe(false);
@@ -614,10 +592,8 @@ test("every procedure rejects a missing org claim as BAD_REQUEST, not FORBIDDEN"
   const user = await createTestUser("no-claim");
   const api = clientFor(user);
 
-  // Documented in decision D001: a missing claim never reaches the permission
-  // guard, so it is a validation failure rather than an authorization one. A
-  // procedure that dropped `orgInput` would answer FORBIDDEN here — or worse,
-  // succeed — so the code, not merely the rejection, is what is asserted.
+  // D001: a missing claim fails validation, not authorization — so the code, not
+  // merely the rejection, is what is asserted.
   for (const [name, call] of Object.entries(GUARDED_CALLS)) {
     await expectORPCCode(call(api, NO_CLAIM), "BAD_REQUEST", name);
   }
@@ -630,15 +606,13 @@ test("every procedure is FORBIDDEN for a removed member on the very next request
   await joinOrganization(member, organization.id);
 
   const memberClient = clientFor(member);
-  // Sanity: while a member, org settings are readable. Without this the sweep
-  // below would pass just as well against a user who never joined at all.
+  // Control case: without it the sweep below would pass against a user who never
+  // joined at all.
   const before = await memberClient.settings.get({ orgSlug: organization.slug });
   expect(before.currency).toBe("INR");
 
   await removeFromOrganization(owner, member.user.email, organization.id);
 
-  // Membership is proven per request, with no cached session claim to outlive
-  // the revocation — so reads and writes alike are rejected immediately.
   for (const [name, call] of Object.entries(GUARDED_CALLS)) {
     await expectORPCCode(call(memberClient, { orgSlug: organization.slug }), "FORBIDDEN", name);
   }
@@ -657,8 +631,8 @@ test("member mutations reject an id belonging to another tenant", async () => {
   );
   expect(inAlpha).toBeDefined();
 
-  // Bob owns beta, so the permission guard passes — only the scoped pre-read
-  // stops alpha's member id from reaching Better Auth.
+  // Bob owns beta, so the guard passes — only the scoped pre-read stops alpha's
+  // member id reaching Better Auth.
   const bobClient = clientFor(bob);
   await expectORPCCode(
     bobClient.member.updateRole({ orgSlug: beta.slug, memberId: inAlpha!.id, role: "admin" }),
@@ -669,7 +643,6 @@ test("member mutations reject an id belonging to another tenant", async () => {
     "NOT_FOUND",
   );
 
-  // Alpha's member is untouched.
   const stillThere = (await clientFor(alice).member.list({ orgSlug: alpha.slug })).members;
   expect(stillThere.map((row) => row.userId)).toContain(stranger.user.id);
   expect(stillThere.find((row) => row.userId === stranger.user.id)?.role).toBe("member");
@@ -695,12 +668,6 @@ test("an invitation id from another tenant cannot be revoked", async () => {
   expect(stillPending.invitations.map((row) => row.id)).toContain(invited.id);
 });
 
-// Per-domain isolation. A missing claim, a foreign claim, and a revoked
-// membership are already proven for every procedure by the three GUARDED_CALLS
-// sweeps above, so a domain owes only what those sweeps cannot see: that its own
-// rows are invisible from another org, and that one client working in two orgs
-// at once keeps them apart.
-
 test("patient rows are invisible from another org through search or get", async () => {
   const alice = await createTestUser("patient-scope-alice");
   const alpha = await createOrganization(alice, "patient-scope-alpha");
@@ -722,8 +689,6 @@ test("patient rows are invisible from another org through search or get", async 
     bobClient.patient.get({ orgSlug: beta.slug, patientId: patient.id }),
     "NOT_FOUND",
   );
-  // The record page's two child reads answer the same way. An empty visit list
-  // would confirm the id exists somewhere; absence must look like absence.
   await expectORPCCode(
     bobClient.patient.visits({ orgSlug: beta.slug, patientId: patient.id }),
     "NOT_FOUND",
@@ -733,7 +698,6 @@ test("patient rows are invisible from another org through search or get", async 
     "NOT_FOUND",
   );
 
-  // And they answer for a patient that is in scope.
   const aliceClient = clientFor(alice);
   const [visits, account] = await Promise.all([
     aliceClient.patient.visits({ orgSlug: alpha.slug, patientId: patient.id }),
@@ -920,7 +884,11 @@ test("OPD appointment rows are invisible from another org through queue or get",
     patientId: patient.id,
     practitionerId: practitioner.id,
     departmentId: department.id,
-    settlement: { payments: [], note: "Tenant visibility probe" },
+    settlement: {
+      expectedGrandTotal: "100.00",
+      payments: [],
+      note: "Tenant visibility probe",
+    },
   });
   const pastBooking = await aliceClient.opd.book({
     orgSlug: alpha.slug,
@@ -1019,14 +987,20 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
       patientId: patientOne.id,
       practitionerId: practitionerOne.id,
       departmentId: departmentOne.id,
-      settlement: { payments: [{ method: "cash", amount: "100.00" }] },
+      settlement: {
+        expectedGrandTotal: "100.00",
+        payments: [{ method: "cash", amount: "100.00" }],
+      },
     }),
     api.opd.createWalkIn({
       orgSlug: two.slug,
       patientId: patientTwo.id,
       practitionerId: practitionerTwo.id,
       departmentId: departmentTwo.id,
-      settlement: { payments: [{ method: "cash", amount: "100.00" }] },
+      settlement: {
+        expectedGrandTotal: "100.00",
+        payments: [{ method: "cash", amount: "100.00" }],
+      },
     }),
   ]);
   const [seenInOne, seenInTwo] = await Promise.all([
@@ -1050,6 +1024,7 @@ async function createScopedInvoice(
   organization: { slug: string },
   seed: string,
   settlement: Parameters<AppRouterClient["opd"]["createWalkIn"]>[0]["settlement"] = {
+    expectedGrandTotal: "100.00",
     payments: [{ method: "cash", amount: "100.00" }],
   },
 ) {
@@ -1212,7 +1187,11 @@ test("one client concurrently scopes report calls to two organizations", async (
   const one = await createOrganization(user, "report-scope-one");
   const two = await createOrganization(user, "report-scope-two");
   const api = clientFor(user);
-  const unpaid = { payments: [], note: "Settle at the counter" };
+  const unpaid = {
+    expectedGrandTotal: "100.00",
+    payments: [],
+    note: "Settle at the counter",
+  };
   const [inOne, inTwo] = await Promise.all([
     createScopedInvoice(api, one, "Report One", unpaid),
     createScopedInvoice(api, two, "Report Two", unpaid),

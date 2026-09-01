@@ -61,10 +61,6 @@ test("an operator-created account can sign in and is email-verified for account 
   expect(headers.get("set-cookie")).toContain("session");
 });
 
-/**
- * Organization creation is restricted to the FOUNDING_EMAIL account alone —
- * there is no org-count nuance, so this test has no ordering requirement.
- */
 test("only the founding email can create an organization", async () => {
   await createUserWithPassword({
     email: env.FOUNDING_EMAIL,
@@ -79,7 +75,6 @@ test("only the founding email can create an organization", async () => {
   expect(cookie).toBeDefined();
   const founder = new Headers({ cookie: cookie! });
 
-  // A signed-in stranger is denied.
   const stranger = await createTestUser("bootstrap-stranger");
   await expectAuthStatus(
     auth.api.createOrganization({
@@ -90,7 +85,6 @@ test("only the founding email can create an organization", async () => {
     "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_ORGANIZATION",
   );
 
-  // The founding email is allowed, and becomes the first org's owner.
   const first = await auth.api.createOrganization({
     body: { name: "First Org", slug: "first-org" },
     headers: founder,
@@ -102,8 +96,6 @@ test("only the founding email can create an organization", async () => {
     .where(eq(member.organizationId, first!.id));
   expect(membership?.role).toBe("owner");
 
-  // The exception does not expire: the founding email may keep creating orgs
-  // (it stays the sole creator), but an owner of an existing org may not.
   const second = await auth.api.createOrganization({
     body: { name: "Second Org", slug: "second-org" },
     headers: founder,
@@ -154,8 +146,7 @@ test("organization deletion stays disabled until external objects can be cleaned
   const owner = await createTestUser("delete-org-owner");
   const organization = await createOrganization(owner, "delete-org");
 
-  // The body code is Better Auth's own machine-readable constant, so this pins
-  // the reason for the rejection without pinning the sentence it renders as.
+  // Pins Better Auth's machine-readable code, not the sentence it renders as.
   await expectAuthStatus(
     auth.api.deleteOrganization({
       body: { organizationId: organization.id },
@@ -203,14 +194,8 @@ test("deleting an attributed user preserves organization content", async () => {
   expect(preservedFile?.userId).toBeNull();
 });
 
-/**
- * Decision D001 accepts that Better Auth's organization endpoints are mounted whole
- * at `/api/auth/*` rather than closed at the edge, on two load-bearing claims:
- * they enforce the same permissions (so the open surface is not a privilege
- * bypass), and they write no audit row (so `members.*` stays the preferred
- * path). Both are asserted here — an accepted trade-off is only accepted while
- * the half that makes it safe still holds.
- */
+// D001 accepts Better Auth's org endpoints mounted whole only while both halves
+// hold: same permissions enforced, and no audit row. Both are asserted here.
 test("the direct Better Auth surface enforces the same permissions and skips the audit trail", async () => {
   const owner = await createTestUser("direct-surface-owner");
   const organization = await createOrganization(owner, "direct-surface");
@@ -226,9 +211,6 @@ test("the direct Better Auth surface enforces the same permissions and skips the
       body: JSON.stringify({ organizationId: organization.id, memberIdOrEmail }),
     });
 
-  // A plain member holds no member:delete, and the direct endpoint honours that.
-  // Better Auth picks its own status for the refusal, so the machine-readable
-  // code and the unchanged membership are what get pinned, not the number.
   const denied = await removeDirectly(plainMember.cookie, target.user.email);
   expect(denied.ok).toBe(false);
   expect(((await denied.json()) as { code?: string }).code).toBe(
@@ -240,14 +222,13 @@ test("the direct Better Auth surface enforces the same permissions and skips the
     .where(eq(member.userId, target.user.id));
   expect(stillMember).toHaveLength(1);
 
-  // The owner does hold it — without this the assertion above would pass just
-  // as well against an endpoint that refuses everyone.
+  // Control case: without it the assertion above would pass against an endpoint
+  // that refuses everyone.
   expect((await removeDirectly(owner.cookie, target.user.email)).status).toBe(200);
   expect(
     await db.select({ id: member.id }).from(member).where(eq(member.userId, target.user.id)),
   ).toHaveLength(0);
 
-  // The documented cost of that convenience: no audit row, unlike member.remove.
   await drainAuditWrites();
   const [audited] = await db
     .select({ id: auditLog.id })

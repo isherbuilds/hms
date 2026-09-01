@@ -16,6 +16,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  RegisteredFormField,
 } from "@hms/ui/components/form";
 import {
   DropdownMenu,
@@ -38,15 +39,18 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
 import { CopyIcon, MoreHorizontalIcon, SearchIcon, UsersIcon } from "lucide-react";
-import { useDeferredValue, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useConfirm } from "@/components/confirm-dialog";
+import { useDebouncedCallback } from "@/hooks/use-debounced-value";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
+import { errorMessage } from "@/lib/orpc-error";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
+import { useCan } from "@/lib/membership";
 
 import { SettingsTabs } from "./route";
 
@@ -55,9 +59,9 @@ const MEMBER_PAGE_LIMIT = 100;
 export const Route = createFileRoute("/$orgSlug/settings/members")({
   head: () => ({ meta: [{ title: "Members · HMS" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
-    await queryClient.prefetchQuery(
-      orpc.member.list.queryOptions({ input: { orgSlug, limit: MEMBER_PAGE_LIMIT } }),
-    );
+    await queryClient
+      .query(orpc.member.list.queryOptions({ input: { orgSlug, limit: MEMBER_PAGE_LIMIT } }))
+      .catch(() => {});
   },
   component: MembersRoute,
 });
@@ -73,6 +77,23 @@ function RoleBadge({ role }: { role: string }) {
         </Badge>
       ))}
     </span>
+  );
+}
+
+function MemberSearch({ onSettledChange }: { onSettledChange: (search: string) => void }) {
+  const handleChange = useDebouncedCallback(onSettledChange, 300);
+
+  return (
+    <div className="relative max-w-xs">
+      <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        type="search"
+        aria-label="Search members"
+        placeholder="Search by name or email"
+        className="pl-8"
+        onChange={(event) => handleChange(event.currentTarget.value.trim())}
+      />
+    </div>
   );
 }
 
@@ -102,20 +123,19 @@ function InviteDialog({
         form.reset();
         setLastLink(result.url);
         toast.success(`Invitation sent to ${result.email}`);
-        // Returned, so the form stays pending until the member list shows the
-        // invitation instead of settling before it exists.
+        // Returned, so the form stays pending until the list shows the invitation.
         return queryClient.invalidateQueries({
           queryKey: orpc.member.list.key({ input: { orgSlug } }),
         });
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(errorMessage(error, "Could not send the invitation")),
     }),
   );
 
   const submit = form.handleSubmit((values) => invite.mutate({ orgSlug, ...values }));
 
-  // `lastLink` is a single-use credential for one address — it must never
-  // survive into the next invitation.
+  // `lastLink` is a single-use credential for one address — it must never survive
+  // into the next invitation.
   const change = (next: boolean) => {
     if (!next) {
       form.reset();
@@ -138,9 +158,8 @@ function InviteDialog({
           </DialogHeader>
 
           <Form {...form}>
-            <form onSubmit={submit} className="flex min-w-0 flex-col gap-3">
-              <FormField
-                control={form.control}
+            <form noValidate onSubmit={submit} className="flex min-w-0 flex-col gap-3">
+              <RegisteredFormField
                 name="email"
                 render={({ field }) => (
                   <FormItem>
@@ -218,24 +237,34 @@ function InviteDialog({
   );
 }
 
-function MembersRoute() {
-  const { orgSlug } = Route.useParams();
+function InviteAction({ orgSlug, compact = false }: { orgSlug: string; compact?: boolean }) {
+  const canInvite = useCan(orgSlug, { invitation: ["create"] });
+  const [open, setOpen] = useState(false);
+
+  if (!canInvite) return null;
+
+  return (
+    <>
+      <Button size={compact ? "xs" : undefined} onClick={() => setOpen(true)}>
+        {compact ? "Invite someone" : "Invite"}
+      </Button>
+      <InviteDialog open={open} onOpenChange={setOpen} orgSlug={orgSlug} />
+    </>
+  );
+}
+
+function MemberResults({ orgSlug, q }: { orgSlug: string; q: string }) {
   const { timeZone } = useOrgDateTime();
   const queryClient = useQueryClient();
   const [confirm, confirmDialog] = useConfirm();
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  // Deferred so fast typing coalesces requests without bridging cached rows
-  // when the organization route changes.
-  const q = useDeferredValue(search.trim());
   const members = useQuery(
     orpc.member.list.queryOptions({
       input: { orgSlug, limit: MEMBER_PAGE_LIMIT, ...(q ? { q } : {}) },
     }),
   );
 
-  // Role changes, removals and revocations are audited server-side, so the
-  // audit trail on the neighbouring screen is stale the moment one succeeds.
+  // These are audited server-side, so the neighbouring audit screen is stale the
+  // moment one succeeds.
   const refresh = () =>
     Promise.all([
       queryClient.invalidateQueries({
@@ -245,12 +274,20 @@ function MembersRoute() {
         queryKey: orpc.audit.list.key({ input: { orgSlug } }),
       }),
     ]);
-  const onError = (error: Error) => toast.error(error.message);
+  const onError = (error: Error) => toast.error(errorMessage(error, "Could not update the roster"));
+  // The roster is readable org-wide; only its actions need the grant.
+  const canManage = useCan(orgSlug, { member: ["update", "delete"] });
+  const canRevoke = useCan(orgSlug, { invitation: ["cancel"] });
 
   const updateRole = useMutation(
     orpc.member.updateRole.mutationOptions({
       onSuccess: async () => {
-        await refresh();
+        await Promise.all([
+          refresh(),
+          queryClient.invalidateQueries({
+            queryKey: orpc.member.me.key({ input: { orgSlug } }),
+          }),
+        ]);
         toast.success("Role updated");
       },
       onError,
@@ -259,7 +296,12 @@ function MembersRoute() {
   const removeMember = useMutation(
     orpc.member.remove.mutationOptions({
       onSuccess: async () => {
-        await refresh();
+        await Promise.all([
+          refresh(),
+          queryClient.invalidateQueries({
+            queryKey: orpc.member.me.key({ input: { orgSlug } }),
+          }),
+        ]);
         toast.success("Member removed");
       },
       onError,
@@ -277,95 +319,76 @@ function MembersRoute() {
 
   const people = members.data?.members ?? [];
   const invitations = members.data?.invitations ?? [];
-  const truncated = people.length === MEMBER_PAGE_LIMIT;
 
   return (
     <>
-      <PageHeader
-        title="Members"
-        description={
-          (truncated
-            ? `first ${MEMBER_PAGE_LIMIT} people — search to narrow`
-            : `${people.length} ${people.length === 1 ? "person" : "people"}`) +
-          (invitations.length > 0 ? ` · ${invitations.length} invited` : "")
-        }
-        action={<Button onClick={() => setInviteOpen(true)}>Invite</Button>}
-      />
-      <SettingsTabs orgSlug={orgSlug} />
-
-      <PageBody>
-        <div className="relative max-w-xs">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            aria-label="Search members"
-            placeholder="Search by name or email"
-            className="pl-8"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </div>
-
-        {/* One tray, one list: an invitation is the same person a step earlier,
+      {/* One tray, one list: an invitation is the same person a step earlier,
             so both sit in the same board rather than in two boxes. Same shell
             as the OPD day list (docs/design.md §1). */}
-        <section className="flex flex-col rounded-xl bg-muted p-1">
-          <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
-            <span className="min-w-0 truncate">People</span>
-          </div>
-          {/* The card holds its height through a pending read, a failed one and
+      <section className="flex flex-col rounded-xl bg-muted p-1">
+        <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
+          {/* The count lives here, beside the rows it counts, so the page
+              header needs no second read of the same list. */}
+          <span className="min-w-0 truncate">
+            People
+            {people.length === MEMBER_PAGE_LIMIT
+              ? ` · first ${MEMBER_PAGE_LIMIT} — search to narrow`
+              : ` · ${people.length}`}
+            {invitations.length > 0 ? ` · ${invitations.length} invited` : ""}
+          </span>
+        </div>
+        {/* The card holds its height through a pending read, a failed one and
               a search that matches nobody, so the page keeps its shape. */}
-          <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
-            {members.isPending ? null : members.isError ? (
-              <div className="flex min-h-32 flex-col items-start justify-center gap-3 p-4">
-                <ErrorNote title="Could not load members" detail={members.error.message} />
-                <Button variant="outline" size="xs" onClick={() => members.refetch()}>
-                  Try again
-                </Button>
-              </div>
-            ) : people.length === 0 && invitations.length === 0 && q ? (
-              <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground">
-                <SearchIcon className="size-5" />
-                <p className="max-w-sm">
-                  Nobody matches “{q}”. Search covers names, email addresses and invitations.
-                </p>
-              </div>
-            ) : people.length === 0 && invitations.length === 0 ? (
-              <div className="flex min-h-32 flex-col items-center justify-center gap-3 px-4 text-center">
-                <UsersIcon className="size-5 text-muted-foreground" />
-                <p className="max-w-sm text-muted-foreground">
-                  You are the only one here. Accounts are created by an administrator, then invited
-                  into this organization.
-                </p>
-                <Button size="xs" onClick={() => setInviteOpen(true)}>
-                  Invite someone
-                </Button>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Person</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-8" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {people.map((person) => (
-                    <TableRow key={person.id}>
-                      <TableCell>
-                        <div className="min-w-0">
-                          <div className="truncate font-medium">{person.name}</div>
-                          <div className="truncate text-muted-foreground">{person.email}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <RoleBadge role={person.role} />
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">active</TableCell>
-                      <TableCell className="text-right">
-                        <ClientOnly fallback={null}>
+        <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
+          {members.isPending ? null : members.isError ? (
+            <div className="flex min-h-32 flex-col items-start justify-center gap-3 p-4">
+              <ErrorNote title="Could not load members" error={members.error} />
+              <Button variant="outline" size="xs" onClick={() => members.refetch()}>
+                Try again
+              </Button>
+            </div>
+          ) : people.length === 0 && invitations.length === 0 && q ? (
+            <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground">
+              <SearchIcon className="size-5" />
+              <p className="max-w-sm">
+                Nobody matches “{q}”. Search covers names, email addresses and invitations.
+              </p>
+            </div>
+          ) : people.length === 0 && invitations.length === 0 ? (
+            <div className="flex min-h-32 flex-col items-center justify-center gap-3 px-4 text-center">
+              <UsersIcon className="size-5 text-muted-foreground" />
+              <p className="max-w-sm text-muted-foreground">
+                You are the only one here. Accounts are created by an administrator, then invited
+                into this organization.
+              </p>
+              <InviteAction orgSlug={orgSlug} compact />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Person</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-8" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {people.map((person) => (
+                  <TableRow key={person.id}>
+                    <TableCell>
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{person.name}</div>
+                        <div className="truncate text-muted-foreground">{person.email}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <RoleBadge role={person.role} />
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">active</TableCell>
+                    <TableCell className="text-right">
+                      <ClientOnly fallback={null}>
+                        {canManage ? (
                           <DropdownMenu>
                             <DropdownMenuTrigger
                               render={<Button variant="ghost" size="icon-xs" />}
@@ -413,26 +436,28 @@ function MembersRoute() {
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        </ClientOnly>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        ) : null}
+                      </ClientOnly>
+                    </TableCell>
+                  </TableRow>
+                ))}
 
-                  {invitations.map((invitation) => (
-                    <TableRow key={invitation.id} className="text-muted-foreground">
-                      <TableCell>
-                        <div className="truncate">{invitation.email}</div>
-                      </TableCell>
-                      <TableCell>
-                        <RoleBadge role={invitation.role ?? "member"} />
-                      </TableCell>
-                      <TableCell>
-                        <span className="flex items-center gap-2 whitespace-nowrap">
-                          <Badge variant="outline">invited</Badge>
-                          expires {formatDate(invitation.expiresAt, timeZone)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
+                {invitations.map((invitation) => (
+                  <TableRow key={invitation.id} className="text-muted-foreground">
+                    <TableCell>
+                      <div className="truncate">{invitation.email}</div>
+                    </TableCell>
+                    <TableCell>
+                      <RoleBadge role={invitation.role ?? "member"} />
+                    </TableCell>
+                    <TableCell>
+                      <span className="flex items-center gap-2 whitespace-nowrap">
+                        <Badge variant="outline">invited</Badge>
+                        expires {formatDate(invitation.expiresAt, timeZone)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {canRevoke ? (
                         <Button
                           variant="ghost"
                           size="xs"
@@ -448,18 +473,43 @@ function MembersRoute() {
                         >
                           Revoke
                         </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        </section>
-      </PageBody>
-
-      <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} orgSlug={orgSlug} />
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      </section>
       {confirmDialog}
+    </>
+  );
+}
+
+function MemberDirectory({ orgSlug }: { orgSlug: string }) {
+  const [q, setQ] = useState("");
+
+  return (
+    <PageBody>
+      <MemberSearch onSettledChange={setQ} />
+      <MemberResults orgSlug={orgSlug} q={q} />
+    </PageBody>
+  );
+}
+
+function MembersRoute() {
+  const { orgSlug } = Route.useParams();
+
+  return (
+    <>
+      <PageHeader
+        title="Members"
+        description="Everyone with access to this organization"
+        action={<InviteAction orgSlug={orgSlug} />}
+      />
+      <SettingsTabs orgSlug={orgSlug} />
+      <MemberDirectory key={orgSlug} orgSlug={orgSlug} />
     </>
   );
 }

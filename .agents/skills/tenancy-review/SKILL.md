@@ -12,7 +12,9 @@ description: >-
 
 One tenant seeing another's row is a different class of bug from everything else
 in this repository. This is the checklist for catching it before it ships.
-Invariants: [security](../../../docs/contributing/security.md).
+Invariants: [tenancy and authorization](../../../docs/architecture.md#tenancy-and-authorization)
+and decisions D001, D002, D005, and D008 in the
+[decision log](../../../docs/decisions.md).
 
 Review the diff, not the whole codebase. Report findings ranked by blast radius:
 a leak first, a denial-path gap second, a convention slip last.
@@ -49,7 +51,7 @@ Changes to `packages/api/src/lib/context.ts` or
   into a separate lookup reintroduces an oracle for which orgs exist.
 - Is `beforeUpdateOrganization` in `packages/auth` still rejecting slug changes?
   A mutable slug would let a rename re-point existing links at another tenant
-  ([0011](../../../docs/contributing/decisions/0011-org-slug-as-request-claim.md)).
+  (D001 in the [decision log](../../../docs/decisions.md)).
 - Is membership resolved for every org procedure and uncached across requests?
 - Is the permission a required `orgProcedure` constructor argument, with the raw
   builder unavailable to routers?
@@ -88,7 +90,8 @@ Changes to `packages/api/src/lib/context.ts` or
   query, mutation, direct call, and tenant-specific invalidation key?
 - Does the layout keep `ssr: true`, fetch `member.me` in its loader, and isolate
   every Base UI popup behind `ClientOnly`? The client may reuse a ≤60 s-fresh
-  membership result for the shell; that is accepted (ADR 0021). What is never
+  membership result for the shell; that is accepted by D008 in the
+  [decision log](../../../docs/decisions.md). What is never
   acceptable is a procedure trusting cached membership instead of proving it.
 
 ## 7. Auth surface

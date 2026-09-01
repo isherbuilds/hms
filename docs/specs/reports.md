@@ -1,58 +1,82 @@
 # Operational reports and billing worklists
 
-**Status:** active; remaining pre-pilot work only.
+The **Next** scope and pre-pilot gate in [`product.md`](../product.md) own the
+priority of this work. GST, Trial Balance, and Balance Sheet reports already
+ship; this spec covers only the missing operational reports and billing
+exceptions below.
 
-Reception and billing staff must close a Business Date and resolve financial
-exceptions without opening appointments one by one. Reports are
-organization-scoped read models; clinical notes are excluded.
+Reports are Organization-scoped read models over source records. They never
+become a second write model, and clinical notes are excluded.
 
-## Remaining slices
+## Current baseline
+
+- `billing.worklist` returns tenant-scoped pending Charges for `checked_in` OPD
+  appointments, oldest Charge first. It is searchable in SQL but is currently
+  unbounded.
+- `billing.openInvoices` returns issued Invoices with a positive outstanding
+  balance, filtered in SQL before keyset pagination. It defaults to 25 rows and
+  accepts at most 100.
+- Invoice balances already share one calculation over Invoice value, Credit
+  Notes, Payments, and recorded Refunds.
+
+## Remaining work
 
 ### Day-close reports
 
-- **Daily collections:** Payments by method minus refunds, grouped by the
-  Organization's Business Date. Invoice value is never presented as cash
-  collected.
-- **OPD register:** one row per OPD Appointment with token, Patient,
-  Practitioner, Department, status, billed, paid, and outstanding amounts.
-  Cancelled rows remain visible but do not count as completed.
+**Daily collections** shows Payments minus Refunds by method and Organization
+Business Date. Invoice value is never presented as cash collected.
 
-Both accept an inclusive local-date range, use the Organization timezone, link
-from `/$orgSlug/reports`, and support XLSX and print output. On-screen and export
-totals must reconcile under identical filters.
+**OPD register** shows one row per OPD Appointment with token, Patient,
+Practitioner, Department, observable status, billed, paid, and outstanding
+amounts. `checked_in` plus `arrivedAt` is attended work; `booked`, `cancelled`,
+and `no_show` remain distinct outcomes. The report must not invent a completed
+state.
+
+Both reports:
+
+- accept an inclusive Organization-local date range;
+- link from `/$orgSlug/reports`;
+- support XLSX and print output; and
+- reconcile on-screen and exported totals under identical filters.
+
+### No-show accuracy gate
+
+OPD currently changes past `booked` rows to `no_show` lazily when `opd.day`
+reads that Business Date. A report therefore cannot assume every past date has
+already been opened.
+
+Before the OPD register or a no-show total ships, establish one tenant-scoped
+reconciliation boundary shared by operational and report reads, or approve a
+different authoritative mechanism. Until then, a stale booking remains
+`booked`; do not publish a no-show rate or silently count it as attended.
 
 ### Billing exception completion
 
-`billing.worklist` already ships oldest-first, SQL-filtered **Unbilled activity**
-(pending Charges) and **Dues outstanding** (issued Invoices with positive
-outstanding), capped at 50 by default and 200 maximum.
+- Add Organization setting `unbilledAlertHours`, constrained to 1–168 and
+  initially 24. Apply the threshold in SQL before a new bounded worklist result
+  (50 rows by default, 200 maximum).
+- Add **Refund due** for issued Invoices whose shared balance is negative after
+  Credit Notes, Payments, and already-recorded Refunds.
 
-Still required:
-
-- `unbilledAlertHours`, constrained to 1–168 and initially 24, applied before
-  the row cap;
-- **Refund due:** issued Invoices where Payments exceed remaining value after
-  Credit Notes.
-
-Each row links to the existing OPD Billing or Invoice screen and disappears on
-the next invalidation/poll after resolution.
+Exception lists are oldest first. Each row links to the existing OPD Billing or
+Invoice screen and disappears on the next invalidation or poll after resolution.
 
 ## Acceptance
 
-- Partial/full Payment, Credit Note, refund, cancellation, and local Business
-  Date boundaries produce correct totals.
-- Outstanding/refund identities use the shared invoice-balance logic and filter
-  in SQL before caps.
-- Lists are oldest-first and resolved rows disappear.
-- Every query uses verified Organization scope; every query/invalidation key
-  includes `orgSlug`; foreign tenants are denied.
-- XLSX, print, desktop, and mobile output are inspected with representative data.
-- `bun run check-types`, `bun run check`, `bun run test`, and production web build
-  pass.
+- Partial and full Payment, Credit Note, recorded Refund, cancellation, and
+  Organization-local Business Date boundaries produce correct totals.
+- Outstanding and refund-due identities reuse the shared Invoice balance and
+  filter in SQL before result caps.
+- No-show reporting is correct without relying on a prior read of each OPD day.
+- Every query uses verified Organization scope; every query and invalidation key
+  includes `orgSlug`; another tenant's rows are denied.
+- XLSX, print, desktop, and mobile output are inspected with representative
+  data.
+- Existing type, lint, integration, and production-build checks pass.
 
 ## Non-goals
 
 Payment gateway, Advance Receipt implementation, WebSockets, a cashier-shift
-entity, petty-cash expenses, speculative payment methods, or filing-ready GST
-output. Add a handover entity only if the pilot proves the report plus SOP is
-insufficient.
+entity, petty-cash expenses, speculative payment methods, filing-ready GST
+output, or a general analytics platform. Add a handover entity only if the pilot
+proves the report plus SOP insufficient.

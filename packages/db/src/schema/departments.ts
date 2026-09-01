@@ -3,10 +3,7 @@ import { foreignKey, pgTable, text, timestamp, unique, uniqueIndex } from "drizz
 import { organization } from "./auth";
 import { catalogItems } from "./catalog-items";
 
-/**
- * Clinical departments (OPD units). Referenced by practitioners and, from
- * Slice 5 on, by appointments. No delete path — departments are renamed, not removed.
- */
+// No delete path — departments are renamed, not removed.
 export const departments = pgTable(
   "departments",
   {
@@ -15,7 +12,6 @@ export const departments = pgTable(
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    /** Fallback consult-fee catalog item when a practitioner has no fee configured. */
     defaultConsultFeeItemId: text("default_consult_fee_item_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -26,7 +22,6 @@ export const departments = pgTable(
       columns: [table.orgId, table.defaultConsultFeeItemId],
       foreignColumns: [catalogItems.orgId, catalogItems.id],
     }),
-    // One department per name per tenant; also serves the org-scoped name-ordered list.
     uniqueIndex("departments_org_name_idx").on(table.orgId, table.name),
   ],
 );

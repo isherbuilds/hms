@@ -4,24 +4,31 @@ type ReportSheet = {
   rows: Array<Record<string, string | number>>;
 };
 
+// hucre keys header styles `"row,col"`; a column's own `style` would bold the
+// whole column, not row 1.
+const BOLD_HEADER = { style: { font: { bold: true } } };
+
 export async function downloadXlsx(filename: string, sheets: ReportSheet[]): Promise<void> {
-  // ExcelJS is export-only and large; load it on demand to keep it out of the main application chunk.
-  const { Workbook } = await import("exceljs");
-  const workbook = new Workbook();
+  // Export-only, so load it on demand. The `/xlsx` subpath is the narrowest entry
+  // hucre exports; today it buys a readable chunk name rather than a size win.
+  const { writeXlsx } = await import("hucre/xlsx");
 
-  for (const sheet of sheets) {
-    const worksheet = workbook.addWorksheet(sheet.name);
-    worksheet.columns = sheet.columns.map((column) => ({
-      header: column.header,
-      key: column.key,
-      width: column.width ?? Math.max(column.header.length + 2, 12),
-    }));
-    worksheet.addRows(sheet.rows);
-    worksheet.getRow(1).font = { bold: true };
-  }
+  const buffer = await writeXlsx({
+    sheets: sheets.map((sheet) => ({
+      name: sheet.name,
+      columns: sheet.columns.map((column) => ({
+        header: column.header,
+        key: column.key,
+        width: column.width ?? Math.max(column.header.length + 2, 12),
+      })),
+      data: sheet.rows,
+      cells: new Map(sheet.columns.map((_, index) => [`0,${index}`, BOLD_HEADER])),
+    })),
+  });
 
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], {
+  // `WriteOutput` is `Uint8Array<ArrayBufferLike>`, which `BlobPart` rejects
+  // because it also admits `SharedArrayBuffer`. hucre allocates a plain one.
+  const blob = new Blob([buffer as Uint8Array<ArrayBuffer>], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
   const url = URL.createObjectURL(blob);

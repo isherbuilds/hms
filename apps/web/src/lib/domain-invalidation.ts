@@ -25,12 +25,19 @@ export function invalidateOpdAppointmentState(
       queryKey: orpc.opd.day.key({ input: { orgSlug } }),
     }),
     queryClient.invalidateQueries({
-      queryKey: orpc.opd.get.key({ input: { orgSlug, appointmentId } }),
-    }),
-    queryClient.invalidateQueries({
       queryKey: orpc.dashboard.today.key({ input: { orgSlug } }),
     }),
   ];
+
+  // A newly minted ID cannot already have a detail cache. Avoid issuing a
+  // second detail request immediately after its route loader fetched it.
+  if (transition !== "create") {
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: orpc.opd.get.key({ input: { orgSlug, appointmentId } }),
+      }),
+    );
+  }
 
   if (transition === "create" || transition === "checkIn" || transition === "cancel") {
     invalidations.push(
@@ -49,20 +56,22 @@ export function invalidateOpdAppointmentState(
       }),
     );
   }
-  if (
-    transition === "billing" ||
-    transition === "checkIn" ||
-    transition === "cancel" ||
-    transition === "noShow"
-  ) {
-    invalidations.push(
-      queryClient.invalidateQueries({
-        queryKey: orpc.billing.listPendingCharges.key({ input: { orgSlug, appointmentId } }),
-      }),
-    );
-  }
-
   return Promise.all(invalidations);
+}
+
+export function invalidatePatientState(
+  queryClient: QueryInvalidator,
+  orgSlug: string,
+  patientId: string,
+): Promise<unknown[]> {
+  return Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: orpc.patient.get.key({ input: { orgSlug, patientId } }),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: orpc.patient.search.key({ input: { orgSlug } }),
+    }),
+  ]);
 }
 
 export function invalidateBillingState(
@@ -72,9 +81,6 @@ export function invalidateBillingState(
   invoiceId?: string,
 ): Promise<unknown[]> {
   return Promise.all([
-    queryClient.invalidateQueries({
-      queryKey: orpc.billing.listPendingCharges.key({ input: { orgSlug, appointmentId } }),
-    }),
     queryClient.invalidateQueries({
       queryKey: orpc.billing.listInvoices.key({ input: { orgSlug, appointmentId } }),
     }),

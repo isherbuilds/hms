@@ -1,6 +1,6 @@
 import { authorize } from "@hms/auth/access";
 import { Badge } from "@hms/ui/components/badge";
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRightIcon,
@@ -14,31 +14,37 @@ import { type ReactNode } from "react";
 
 import { BarChart, type BarDatum } from "@/components/bar-chart";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
+import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { formatDay } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 
 export const Route = createFileRoute("/$orgSlug/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard · HMS" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
-    const { roles } = await queryClient.ensureQueryData(
-      orpc.member.me.queryOptions({ input: { orgSlug } }),
-    );
+    const { roles } = await queryClient.query(orpc.member.me.queryOptions({ input: { orgSlug } }));
 
     const prefetches: Promise<unknown>[] = [];
     if (authorize(roles, { opd: ["read"] })) {
       prefetches.push(
-        queryClient.prefetchQuery(orpc.dashboard.today.queryOptions({ input: { orgSlug } })),
-        queryClient.prefetchQuery(
-          orpc.opd.day.queryOptions({
-            input: { orgSlug, limit: 6 },
-          }),
-        ),
+        queryClient
+          .query(orpc.dashboard.today.queryOptions({ input: { orgSlug } }))
+          .catch(() => {}),
+        queryClient
+          .query(
+            orpc.opd.day.queryOptions({
+              input: { orgSlug, limit: 6 },
+            }),
+          )
+          .catch(() => {}),
       );
     }
     if (authorize(roles, { billing: ["read"] })) {
       prefetches.push(
-        queryClient.prefetchQuery(orpc.dashboard.collections.queryOptions({ input: { orgSlug } })),
+        queryClient
+          .query(orpc.dashboard.collections.queryOptions({ input: { orgSlug } }))
+          .catch(() => {}),
       );
     }
 
@@ -49,12 +55,6 @@ export const Route = createFileRoute("/$orgSlug/dashboard")({
 
 type StatLink = "/$orgSlug/opd" | "/$orgSlug/files";
 
-/**
- * The card the dashboard is built from, and the reason the grid reads as one
- * instrument: a tinted shell carrying the label, a raised surface carrying the
- * number. `text-2xl` is the deliberate exception to the app's `text-xs` body —
- * on these cards the number *is* the content, not a detail inside it.
- */
 function StatCard({
   label,
   icon: Icon,
@@ -112,7 +112,6 @@ function StatCard({
   );
 }
 
-/** The same shell, for content that is not a single number. */
 function Panel({
   label,
   action,
@@ -121,8 +120,6 @@ function Panel({
 }: {
   label: string;
   action?: ReactNode;
-  /** Panels keep their height when empty: an empty dashboard should read as a
-   *  dashboard with nothing in it, not as a collapsed page. */
   minHeight?: string;
   children: ReactNode;
 }) {
@@ -143,27 +140,30 @@ function Panel({
 
 function DashboardRoute() {
   const { orgSlug } = Route.useParams();
-  const membership = useSuspenseQuery(orpc.member.me.queryOptions({ input: { orgSlug } }));
-  const roles = membership.data.roles;
+  const roles = useMembership(orgSlug, (membership) => membership.roles);
+  const currency = useMembership(orgSlug, (membership) => membership.currency);
   const money = (value: string | number | undefined) =>
-    value === undefined ? "—" : formatMoney(value, membership.data.currency);
+    value === undefined ? "—" : formatMoney(value, currency);
 
-  // Each block asks for its own permission, so a role that may read OPD appointments but
+  // Each block asks for its own permission, so a role that may read appointments but
   // not money still gets the clinical half rather than an error page.
   const canReadOpdAppointments = authorize(roles, { opd: ["read"] });
   const canReadBilling = authorize(roles, { billing: ["read"] });
   const today = useQuery({
     ...orpc.dashboard.today.queryOptions({ input: { orgSlug } }),
+    ...OPERATIONAL_REFETCH,
     enabled: canReadOpdAppointments,
   });
   const collections = useQuery({
     ...orpc.dashboard.collections.queryOptions({ input: { orgSlug } }),
+    ...OPERATIONAL_REFETCH,
     enabled: canReadBilling,
   });
   const queue = useQuery({
     ...orpc.opd.day.queryOptions({
       input: { orgSlug, limit: 6 },
     }),
+    ...OPERATIONAL_REFETCH,
     enabled: canReadOpdAppointments,
   });
 
@@ -180,11 +180,12 @@ function DashboardRoute() {
       <PageHeader title="Dashboard" />
 
       <PageBody>
-        {today.isError && (
-          <ErrorNote title="Could not load today's queue" detail={today.error.message} />
-        )}
+        {today.isError && <ErrorNote title="Could not load today's counts" error={today.error} />}
         {collections.isError && (
-          <ErrorNote title="Could not load collections" detail={collections.error.message} />
+          <ErrorNote title="Could not load collections" error={collections.error} />
+        )}
+        {queue.isError && (
+          <ErrorNote title="Could not load the waiting queue" error={queue.error} />
         )}
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

@@ -11,8 +11,9 @@ description: >-
 
 Every domain row belongs to exactly one organization. This skill is the
 end-to-end path for a new one. Background:
-[tenancy](../../../docs/contributing/architecture/tenancy.md),
-[authorization](../../../docs/contributing/architecture/authorization.md).
+[tenancy and authorization](../../../docs/architecture.md#tenancy-and-authorization)
+and the [decision log](../../../docs/decisions.md) (especially D001, D002, and
+D008).
 
 Work in this order — each step depends on the one before it.
 
@@ -62,7 +63,7 @@ export const ac = createAccessControl({ ..., thing: ["create", "read", "update",
 
 ## 4. Router — `packages/api/src/routers/<thing>.ts`
 
-````ts
+```ts
 export const thingRouter = {
   list: orgProcedure(
     { thing: ["read"] },
@@ -71,6 +72,7 @@ export const thingRouter = {
     return db.select().from(thing).where(eq(thing.orgId, context.scope.orgId)) /* ... */;
   }),
 };
+```
 
 Non-negotiable in every handler:
 
@@ -95,8 +97,10 @@ from `@/lib/orpc`, read `orgSlug` from route params, and include it in every
 procedure input and tenant-specific invalidation key. Put Base UI popups behind
 TanStack Router's `ClientOnly`.
 
-Follow `packages/ui` (shadcn `base-lyra` on Base UI: zero radius, `text-xs`,
-compact). Colour means one thing only — which tenant you are acting as.
+Follow `packages/ui` (shadcn `base-lyra` on Base UI: `text-xs`, compact controls,
+and the [shared radius scale](../../../docs/design.md#4-radius)). Use only the
+state colours and named exceptions documented in Design; tenants do not receive
+their own visual themes.
 
 ## 6. Test — `tests/integration/tenancy.test.ts`
 
@@ -115,7 +119,7 @@ back a fire-and-forget `audit()` write, use `eventually`.
 
 ```sh
 bun run check-types && bun run check && bun run test
-````
+```
 
 ## Self-check before calling it done
 

@@ -8,16 +8,9 @@ import { env } from "@hms/env/server";
 import { count, eq } from "drizzle-orm";
 import pg from "pg";
 
-/**
- * Development seed. Creates two organizations and one account that belongs to
- * both so switching orgs can be exercised from a single login.
- *
- * Sign-up is disabled, so every account is created directly with
- * `createUserWithPassword`, exactly as an operator would.
- *
- * Run with `bun run db:seed`, or `bun run db:seed -- --reset` to drop the
- * schema first. Refuses to touch a production database.
- */
+// bun run db:seed, or `-- --reset` to drop the schema first. Refuses to touch a
+// production database. Every account is created with `createUserWithPassword`,
+// exactly as an operator would, because sign-up is disabled.
 
 const PASSWORD = "password123";
 
@@ -28,11 +21,8 @@ type Person = {
   headers: Headers;
 };
 
-/**
- * `NODE_ENV` defaults to `development`, so it cannot be the only thing standing
- * between `--reset` and a real database. Gate the drop on the database name the
- * same way `tests/support/database.ts` does, and fail loud on anything else.
- */
+// `NODE_ENV` defaults to `development`, so it cannot be the only thing standing
+// between `--reset` and a real database. Gate on the database name and fail loud.
 const RESETTABLE_DATABASE = /^(postgres|.*_dev|.*_test)$/;
 
 function assertResettableDatabase(): void {
@@ -82,13 +72,8 @@ async function addMember(
   });
 }
 
-/**
- * Creates an organization through Better Auth's system path (a `userId` with
- * no session), which bypasses `allowUserToCreateOrganization`. Sign-up is
- * disabled and only FOUNDING_EMAIL may create orgs, so this is how the seed
- * provisions its two organizations — the creator still becomes owner via the
- * plugin's default `creatorRole`.
- */
+// Better Auth's system path (a userId with no session) bypasses
+// `allowUserToCreateOrganization`; the creator still becomes owner.
 async function createOrg(owner: Person, name: string, slug: string): Promise<string> {
   const org = await auth.api.createOrganization({
     body: { name, slug, userId: owner.id },
@@ -99,7 +84,6 @@ async function createOrg(owner: Person, name: string, slug: string): Promise<str
   return org.id;
 }
 
-/** Mercy arrives configured so print prefixes and tax id show up on day one. */
 async function addSettings(orgId: string): Promise<void> {
   await db.insert(organizationSettings).values({
     orgId,

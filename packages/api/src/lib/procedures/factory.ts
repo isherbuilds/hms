@@ -14,29 +14,17 @@ export type Scope = {
   roles: RoleKey[];
 };
 
-/**
- * The raw builder is deliberately not exported: every procedure in this app is
- * org-scoped and permission-guarded, so the only way to declare one is
- * `orgProcedure`, which cannot be constructed without stating a permission.
- * A genuinely public endpoint would be a new architectural decision, not a
- * default (see decision D001).
- */
+// Not exported: every procedure goes through `orgProcedure`, which cannot be
+// constructed without stating a permission (decision D001).
 const base = os.$context<ORPCContext>();
 
-/**
- * The unverified tenant claim, named by the page URL. Safe to key authorization
- * on only because `packages/auth` rejects slug changes after creation. Handlers
- * scope on `context.scope.orgId` — never on this.
- */
+// The unverified claim, named by the page URL. Safe to key authorization on only
+// because slug changes are rejected after creation. Handlers scope on
+// `context.scope.orgId` — never on this.
 export const orgInput = z.object({ orgSlug: z.string().min(1) });
 
-/**
- * Resolves the caller's membership in the claimed org, at most once per request.
- * The *promise* is memoized before it settles, so procedure calls that fan out
- * concurrently from one page render share a single in-flight join instead of
- * racing to issue their own. A `null` result is memoized too: a rejected claim
- * must not be re-probed either.
- */
+// The promise is memoized before it settles, so calls fanning out from one page
+// render share a single in-flight join. A `null` result is memoized too.
 async function resolveMembership(
   context: ORPCContext,
   userId: string,
@@ -49,11 +37,8 @@ async function resolveMembership(
     return memoized;
   }
 
-  // Looked up fresh per request — and once within it — so revocation takes
-  // effect on the next request. Resolving the slug and proving membership in
-  // one statement is what keeps "no such org" and "not a member"
-  // indistinguishable to the caller. `parseRoles` still throws on an unknown
-  // role, so a corrupt row fails loudly rather than silently losing authority.
+  // One statement for slug and membership: "no such org" and "not a member" must
+  // stay indistinguishable to the caller. `parseRoles` throws on an unknown role.
   const pending = db
     .select({ role: member.role, orgId: organization.id })
     .from(member)
@@ -66,27 +51,29 @@ async function resolveMembership(
   return pending;
 }
 
+// One wording for "no such org" and "you are not a member". Telling them apart would
+// leak the existence that answering FORBIDDEN instead of NOT_FOUND exists to hide.
+const NO_ORG_ACCESS = "You do not have access to this organization.";
+
 export async function authorizeOrg(
   context: ORPCContext,
   orgSlug: string,
   permission: AppPermission,
 ): Promise<Scope> {
   if (!context.session?.user) {
-    throw new ORPCError("UNAUTHORIZED");
+    throw new ORPCError("UNAUTHORIZED", { message: "Sign in to continue." });
   }
 
   const userId = context.session.user.id;
   const membership = await resolveMembership(context, userId, orgSlug);
 
   if (!membership) {
-    // Deliberately NOT written to the tenant audit trail: an outsider must
-    // never be able to inject rows (or leak their user id) into an org they
-    // don't belong to — tests/integration/tenancy.test.ts enforces this. The
-    // probe is still an operator-level signal, so it goes to server logs.
+    // Never written to the tenant audit trail: an outsider must not inject rows, or
+    // leak their user id, into an org they don't belong to (tenancy.test.ts).
     console.warn(
       JSON.stringify({ event: "rbac.membership.denied", actorId: userId, claimedSlug: orgSlug }),
     );
-    throw new ORPCError("FORBIDDEN");
+    throw new ORPCError("FORBIDDEN", { message: NO_ORG_ACCESS });
   }
 
   const { orgId, roles } = membership;
@@ -98,19 +85,12 @@ export async function authorizeOrg(
       orgId,
       meta: { roles, permission },
     });
-    throw new ORPCError("FORBIDDEN");
+    throw new ORPCError("FORBIDDEN", { message: "You do not have permission to do that." });
   }
 
   return { userId, orgId, roles };
 }
 
-/**
- * The single way to declare a procedure. The permission is a constructor
- * argument, so an unguarded org endpoint cannot compile; the input schema must
- * carry the `orgSlug` claim (extend `orgInput`) because the guard reads it
- * after validation. Membership is resolved fresh per request — shared within
- * one request, never across requests. The permission check runs on every call.
- */
 export const orgProcedure = <TSchema extends z.ZodType<{ orgSlug: string }, unknown>>(
   permission: AppPermission,
   input: TSchema,

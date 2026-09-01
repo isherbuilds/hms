@@ -4,20 +4,22 @@ import { Textarea } from "@hms/ui/components/textarea";
 import { cn } from "@hms/ui/lib/utils";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckIcon, PencilIcon } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 
+import { invalidatePatientState } from "@/lib/domain-invalidation";
 import { orpc } from "@/lib/orpc";
-import { errorDataCode } from "@/lib/orpc-error";
+import { errorMessage, errorReason } from "@/lib/orpc-error";
 
-/**
- * The patient record edits where it is read. There is no edit mode and no
- * panel: a field is a button until it is clicked, then a control, and Enter
- * writes it.
- *
- * The procedure takes the whole record, not a patch. Every commit sends the
- * current row with one value replaced and its latest compare-and-swap token.
- */
+// The procedure takes the whole record, not a patch: every commit sends the current
+// row with one value replaced and its latest compare-and-swap token.
 export type EditablePatientRecord = {
   id: string;
   mrn: string;
@@ -38,7 +40,6 @@ export type EditablePatientRecord = {
 type FieldKey = Exclude<keyof EditablePatientRecord, "id" | "mrn" | "updatedAt" | "dobEstimated">;
 type FieldKind = "text" | "date" | "sex" | "blood" | "textarea";
 
-/** Every field the update procedure requires, with one value replaced. */
 function nextRecord(
   record: EditablePatientRecord,
   field: FieldKey,
@@ -75,33 +76,23 @@ function nextRecord(
 
 export function usePatientFieldSave(orgSlug: string, record: EditablePatientRecord) {
   const queryClient = useQueryClient();
-  const [savedField, setSavedField] = useState<FieldKey | null>(null);
-  // Which field the in-flight write belongs to. A ref, not state: the mutation
-  // callbacks read it after the fact, and re-rendering on every keystroke-sized
-  // write would buy nothing.
-  const inFlight = useRef<FieldKey | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Wrapped in an object so saving the same field twice is a new value and the tick
+  // below restarts.
+  const [savedToken, setSavedToken] = useState<{ field: FieldKey } | null>(null);
 
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (!savedToken) return;
+    const timer = setTimeout(() => setSavedToken(null), 1400);
+    return () => clearTimeout(timer);
+  }, [savedToken]);
 
   const update = useMutation(
     orpc.patient.update.mutationOptions({
       onSuccess: async () => {
-        const field = inFlight.current;
-        await Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: orpc.patient.get.key({ input: { orgSlug, patientId: record.id } }),
-          }),
-          queryClient.invalidateQueries({
-            queryKey: orpc.patient.search.key({ input: { orgSlug } }),
-          }),
-        ]);
-        setSavedField(field);
-        clearTimeout(timer.current);
-        timer.current = setTimeout(() => setSavedField(null), 1400);
+        await invalidatePatientState(queryClient, orgSlug, record.id);
       },
       onError: (error) => {
-        if (errorDataCode(error) === "STALE_RECORD") {
+        if (errorReason(error) === "stale_record") {
           toast.error(error.message, {
             action: {
               label: "Refresh",
@@ -116,30 +107,38 @@ export function usePatientFieldSave(orgSlug: string, record: EditablePatientReco
           });
           return;
         }
-        toast.error(
-          errorDataCode(error) === "UID_TAKEN"
-            ? "A patient with this UID already exists."
-            : error.message,
-        );
+        toast.error(errorMessage(error, "Could not save that change"));
       },
     }),
   );
 
-  return {
-    savedField,
-    pending: update.isPending,
-    save(field: FieldKey, raw: string) {
-      if (update.isPending) return;
+  // Every field holds `save`, so its identity alone decides whether one edit wakes
+  // one field or all ten. Record and pending flag travel by ref, not in the closure.
+  const latest = useRef({ record, pending: update.isPending });
+  useEffect(() => {
+    latest.current = { record, pending: update.isPending };
+  });
+
+  const mutate = update.mutate;
+  const save = useCallback(
+    (field: FieldKey, raw: string) => {
+      const { record, pending } = latest.current;
+      if (pending) return;
       const next = nextRecord(record, field, raw);
       if ("error" in next) {
         toast.error(next.error);
         return;
       }
       const { id: _id, mrn: _mrn, updatedAt, ...fields } = next;
-      inFlight.current = field;
-      update.mutate({ orgSlug, patientId: record.id, updatedAt, ...fields });
+      mutate(
+        { orgSlug, patientId: record.id, updatedAt, ...fields },
+        { onSuccess: () => setSavedToken({ field }) },
+      );
     },
-  };
+    [mutate, orgSlug],
+  );
+
+  return { savedField: savedToken?.field ?? null, pending: update.isPending, save };
 }
 
 function Editor({
@@ -153,10 +152,11 @@ function Editor({
   onCommit: (next: string) => void;
   onCancel: () => void;
 }) {
+  // Callers key this on `value`, so a record that changed underneath reseeds the
+  // draft instead of writing a stale one back on blur.
   const [draft, setDraft] = useState(value);
 
-  // Enter commits, Escape reverts. A textarea keeps Enter for newlines, so it
-  // commits on blur or Cmd/Ctrl+Enter instead.
+  // A textarea keeps Enter for newlines, so it commits on blur or Cmd/Ctrl+Enter.
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
       event.stopPropagation();
@@ -229,14 +229,17 @@ function SavedFlag() {
   );
 }
 
-/** One editable line of the record. */
+// Told what happened to its own field rather than handed the saver: one page-wide
+// object as a prop re-rendered all ten fields on every step of one save.
 export function InlineRow({
   label,
   field,
   kind,
   value,
   display,
-  saver,
+  saved,
+  pending,
+  onSave,
   compact = false,
 }: {
   label: string;
@@ -244,12 +247,12 @@ export function InlineRow({
   kind: FieldKind;
   value: string;
   display?: ReactNode;
-  saver: ReturnType<typeof usePatientFieldSave>;
-  /** Narrower label column, for the two-up layout. */
+  saved: boolean;
+  pending: boolean;
+  onSave: (field: FieldKey, raw: string) => void;
   compact?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
-  const pending = saver.pending;
 
   return (
     <div
@@ -262,12 +265,13 @@ export function InlineRow({
       <dd className="min-w-0">
         {editing ? (
           <Editor
+            key={value}
             kind={kind}
             value={value}
             onCancel={() => setEditing(false)}
             onCommit={(next) => {
               setEditing(false);
-              if (next !== value) saver.save(field, next);
+              if (next !== value) onSave(field, next);
             }}
           />
         ) : (
@@ -283,7 +287,7 @@ export function InlineRow({
             )}
           >
             <span className="min-w-0 flex-1 truncate">{display ?? (value || "Not recorded")}</span>
-            {saver.savedField === field ? (
+            {saved ? (
               <SavedFlag />
             ) : (
               <PencilIcon className="size-3.5 shrink-0 text-muted-foreground opacity-50 transition-opacity [@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover/row:opacity-100" />
@@ -295,25 +299,26 @@ export function InlineRow({
   );
 }
 
-/**
- * A clinical field with a hue: allergies in alert red, history in note amber, a
- * clear allergy record in green. The colour is the claim — see `docs/design.md`
- * §5 for why these four tokens are the only chromatic exception.
- */
+// The colour is the claim — see docs/design.md §5 for why these four tokens are
+// the only chromatic exception.
 export function InlineClinicalBlock({
   title,
   field,
   tone,
   value,
   placeholder,
-  saver,
+  saved,
+  pending,
+  onSave,
 }: {
   title: string;
   field: FieldKey;
   tone: "alert" | "note" | "clear";
   value: string;
   placeholder: string;
-  saver: ReturnType<typeof usePatientFieldSave>;
+  saved: boolean;
+  pending: boolean;
+  onSave: (field: FieldKey, raw: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -328,22 +333,23 @@ export function InlineClinicalBlock({
     >
       <div className="flex items-center justify-between gap-2">
         <p className="font-medium">{title}</p>
-        {saver.savedField === field ? <SavedFlag /> : null}
+        {saved ? <SavedFlag /> : null}
       </div>
       {editing ? (
         <Editor
+          key={value}
           kind="textarea"
           value={value}
           onCancel={() => setEditing(false)}
           onCommit={(next) => {
             setEditing(false);
-            if (next !== value) saver.save(field, next);
+            if (next !== value) onSave(field, next);
           }}
         />
       ) : (
         <button
           type="button"
-          disabled={saver.pending}
+          disabled={pending}
           onClick={() => setEditing(true)}
           className={cn(
             "-mx-1 rounded-md px-1 py-0.5 text-left transition-colors disabled:opacity-60",

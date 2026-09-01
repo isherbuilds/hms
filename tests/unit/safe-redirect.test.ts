@@ -16,7 +16,6 @@ test("safeRedirect preserves same-app destinations without allowing login loops"
   expect(safeRedirect("/create", "/fallback")).toBe("/create");
   expect(safeRedirect("/acme", "/fallback")).toBe("/acme");
   expect(safeRedirect("/acme/onboarding", "/fallback")).toBe("/acme/onboarding");
-  // /login targets would bounce forever, nesting one encoding layer per hop.
   expect(safeRedirect("/login", "/fallback")).toBe("/fallback");
   expect(safeRedirect("/login/reset", "/fallback")).toBe("/fallback");
   expect(safeRedirect("/LOGIN?redirect=%2Facme", "/fallback")).toBe("/fallback");

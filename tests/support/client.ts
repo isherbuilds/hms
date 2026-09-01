@@ -5,12 +5,8 @@ import { expect } from "bun:test";
 
 import type { TestUser } from "./auth";
 
-/**
- * One context per call, exactly like one HTTP request per call: each call
- * resolves its own session and gets its own membership map, so nothing an
- * earlier call proved carries over. Use this to test anything that must be
- * re-proven per request, such as revocation.
- */
+// One context per call, like one HTTP request per call. Use for anything that
+// must be re-proven per request, such as revocation.
 export function clientFor(identity: TestUser): AppRouterClient {
   const headers = new Headers({ cookie: identity.cookie });
   return createRouterClient(appRouter, {
@@ -18,12 +14,8 @@ export function clientFor(identity: TestUser): AppRouterClient {
   });
 }
 
-/**
- * One context for every call, modelling the server-rendered page that fans out
- * into several procedure calls inside a single request. The shared context is
- * what lets those calls reuse one membership join; the permission check still
- * runs per call.
- */
+// One context for every call, like a server-rendered page fanning out. The
+// permission check still runs per call.
 export function requestScopedClientFor(identity: TestUser): AppRouterClient {
   const headers = new Headers({ cookie: identity.cookie });
   const context = createRequestContext(headers);
@@ -50,11 +42,6 @@ export async function expectORPCCode(
   expect((error as { code?: string }).code, `${label} should be ${code}`).toBe(code);
 }
 
-/**
- * Better Auth throws `APIError`, which carries the same kind of machine-readable
- * status oRPC does. Assert that rather than the message, so rewording a string
- * in `packages/auth` never breaks a test.
- */
 export async function expectAuthStatus(
   promise: Promise<unknown>,
   status: string,
@@ -67,7 +54,6 @@ export async function expectAuthStatus(
   }
 }
 
-/** Polls a probe until it returns a value — for fire-and-forget writes. */
 export async function eventually<T>(probe: () => Promise<T | undefined>): Promise<T> {
   for (let attempt = 0; attempt < 50; attempt++) {
     const result = await probe();

@@ -6,10 +6,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { parseBillingDocumentRequest } from "@/lib/billing-document-request";
 import { pdfContentDisposition } from "@/lib/content-disposition";
 
-/**
- * The guarded billing query is the route's sole source of tenant data. The
- * renderer is lazy so its WASM and fonts stay out of browser and route chunks.
- */
+// The guarded billing query is the route's sole source of tenant data. The renderer
+// is lazy so its WASM and fonts stay out of browser and route chunks.
 export const Route = createFileRoute("/api/$orgSlug/billing/invoices/$invoiceId/pdf")({
   server: {
     handlers: {

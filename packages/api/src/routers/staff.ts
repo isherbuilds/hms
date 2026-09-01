@@ -8,6 +8,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { conflict } from "../lib/conflict";
 import { isUniqueViolation } from "../lib/db-errors";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 const departmentName = z.string().trim().min(1).max(200);
@@ -30,7 +31,7 @@ async function assertDepartmentInScope(departmentId: string, orgId: string): Pro
     .limit(1);
 
   if (!row) {
-    throw new ORPCError("NOT_FOUND");
+    throw new ORPCError("NOT_FOUND", { message: "That department no longer exists." });
   }
 }
 
@@ -42,7 +43,7 @@ async function assertCatalogItemInScope(catalogItemId: string, orgId: string): P
     .limit(1);
 
   if (!row) {
-    throw new ORPCError("NOT_FOUND");
+    throw new ORPCError("NOT_FOUND", { message: "That catalog item no longer exists." });
   }
 }
 
@@ -54,7 +55,7 @@ async function assertMemberUserInScope(memberUserId: string, orgId: string): Pro
     .limit(1);
 
   if (!row) {
-    throw new ORPCError("NOT_FOUND");
+    throw new ORPCError("NOT_FOUND", { message: "That member is not in this organization." });
   }
 }
 
@@ -130,7 +131,7 @@ export const staffRouter = {
       return department;
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw new ORPCError("CONFLICT");
+        throw conflict("duplicate", "A department with this name already exists.");
       }
       throw error;
     }
@@ -162,13 +163,13 @@ export const staffRouter = {
         .returning();
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw new ORPCError("CONFLICT");
+        throw conflict("duplicate", "A department with this name already exists.");
       }
       throw error;
     }
 
     if (!department) {
-      throw new ORPCError("NOT_FOUND");
+      throw new ORPCError("NOT_FOUND", { message: "That department no longer exists." });
     }
 
     audit({
@@ -253,7 +254,7 @@ export const staffRouter = {
       .returning();
 
     if (!practitioner) {
-      throw new ORPCError("NOT_FOUND");
+      throw new ORPCError("NOT_FOUND", { message: "That practitioner no longer exists." });
     }
 
     audit({

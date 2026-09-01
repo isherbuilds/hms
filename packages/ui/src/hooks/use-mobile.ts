@@ -1,15 +1,10 @@
 import * as React from "react";
 
-// Keep the navigation and task overlays touch-first through tablet widths.
 const MOBILE_BREAKPOINT = 1024;
 const QUERY = `(max-width: ${MOBILE_BREAKPOINT - 1}px)`;
 
-/**
- * Reads the breakpoint from the media query rather than `window.innerWidth`,
- * which counts the scrollbar and so flips a few pixels before the CSS does.
- * The first render gets the real value instead of assuming desktop and
- * correcting in an effect, which used to flash the desktop layout on a phone.
- */
+// The media query, not `window.innerWidth`, which counts the scrollbar and flips a
+// few pixels before the CSS does. First render gets the real value.
 export function useIsMobile(): boolean {
   return React.useSyncExternalStore(
     subscribe,

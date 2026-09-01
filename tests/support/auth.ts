@@ -7,11 +7,6 @@ export type TestUser = {
   user: { id: string; email: string; name: string };
 };
 
-/**
- * Sign-up is disabled, so test users are created directly with
- * `createUserWithPassword` — the same path an operator uses — and then signed
- * in to obtain a session cookie.
- */
 const TEST_PASSWORD = "integration-test-password";
 
 export async function createTestUser(prefix: string): Promise<TestUser> {
@@ -37,15 +32,8 @@ export async function createTestUser(prefix: string): Promise<TestUser> {
   };
 }
 
-/**
- * Creates an organization through Better Auth's system path (a `userId` with
- * no session), which bypasses `allowUserToCreateOrganization` — harness orgs
- * must be creatable even though no test user is the founding email. The
- * creator still becomes owner via the plugin's default `creatorRole`.
- */
-// The slug is only made unique so repeat runs do not collide — see
-// `uniqueSuffix`. Production does not generate one: a person picks the slug and
-// the unique index decides whether it is free.
+// Better Auth's system path (a userId with no session) bypasses
+// `allowUserToCreateOrganization`; the creator still becomes owner.
 export async function createOrganization(
   owner: TestUser,
   name: string,
@@ -69,10 +57,6 @@ export async function joinOrganization(
   });
 }
 
-/**
- * Assigns one or more roles. Better Auth stores them comma-joined and
- * authorizes as a union, which is the behaviour worth pinning down.
- */
 export async function setMemberRoles(
   owner: TestUser,
   memberId: string,

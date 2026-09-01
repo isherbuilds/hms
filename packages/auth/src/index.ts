@@ -9,7 +9,6 @@ import { APIError } from "better-auth/api";
 import { ac, roles } from "./access";
 import { organizationSlugIssue } from "./organization-slug";
 
-/** The page that lists a user's pending invitations and lets them accept one. */
 export function invitationUrl(invitationId: string): string {
   return new URL(`/join?invitation=${invitationId}`, env.CORS_ORIGIN).toString();
 }
@@ -22,13 +21,12 @@ function createAuth() {
       schema: schema,
     }),
     trustedOrigins: [env.CORS_ORIGIN],
-    // Creation performs the authoritative uniqueness check. Exposing this
-    // unused probe would let any signed-in account enumerate organization URLs.
+    // Creation performs the authoritative check; exposing this probe would let any
+    // signed-in account enumerate organization URLs.
     disabledPaths: ["/organization/check-slug"],
     emailAndPassword: {
       enabled: true,
-      // Sign-up is closed: accounts are created by an operator through
-      // `scripts/create-user.ts`, not by a public endpoint. Login stays open.
+      // Sign-up is closed: accounts are created by an operator. Login stays open.
       disableSignUp: true,
     },
     secret: env.BETTER_AUTH_SECRET,
@@ -40,19 +38,12 @@ function createAuth() {
     },
     advanced: {
       database: {
-        // Better Auth 1.7 moved this out of `experimental`. Left there it is
-        // silently ignored, and a session resolves with a query per model
-        // instead of one join.
+        // Better Auth 1.7 moved this out of `experimental`. Left there it is silently
+        // ignored and a session resolves with a query per model instead of one join.
         joins: true,
-        /**
-         * Better Auth mints the primary key for every row it owns — user,
-         * session, account, organization, member, invitation. Its default is a
-         * random string, so consecutive inserts scatter across the primary-key
-         * index instead of appending. UUIDv7 is time-ordered.
-         *
-         * `Bun.randomUUIDv7()`, not `crypto.randomUUID({ version: 7 })` — the
-         * latter accepts the option and silently returns a v4.
-         */
+        // Better Auth mints the primary key for every row it owns, defaulting to a random
+        // string that scatters across the index. Not `crypto.randomUUID({ version: 7 })` —
+        // that accepts the option and silently returns a v4.
         generateId: () => Bun.randomUUIDv7(),
       },
       defaultCookieAttributes: {
@@ -71,17 +62,12 @@ function createAuth() {
       organization({
         ac,
         roles,
-        /**
-         * Organization creation is restricted to the single operator account
-         * identified by FOUNDING_EMAIL — nobody else can create one
-         */
         allowUserToCreateOrganization: (user) => {
-          // Emails are stored lowercased (see `createUserWithPassword`), so
-          // normalize the env value before comparing.
+          // Emails are stored lowercased, so normalize the env value before comparing.
           return user.email === env.FOUNDING_EMAIL.toLowerCase();
         },
-        // Object storage cannot participate in the database cascade. Keep this
-        // endpoint closed until deletion has an explicit object-cleanup flow.
+        // Object storage cannot join the database cascade. Keep this closed until deletion
+        // has an explicit object-cleanup flow.
         disableOrganizationDeletion: true,
         organizationHooks: {
           beforeCreateOrganization: async ({ organization: candidate }) => {
@@ -92,13 +78,9 @@ function createAuth() {
               });
             }
           },
-          /**
-           * The slug is the tenant claim every org-scoped request carries, so it
-           * must be stable, not merely unique. Better Auth never reserves a
-           * vacated slug, so a rename would free it for another tenant to claim
-           * and silently re-point every existing link at a different customer.
-           * `name` stays editable; it authorizes nothing.
-           */
+          // The slug is the tenant claim every request carries, so it must be stable, not
+          // merely unique: Better Auth never reserves a vacated slug, so a rename would free
+          // it for another tenant and re-point every existing link.
           beforeUpdateOrganization: async ({ organization: update }) => {
             if (update.slug !== undefined) {
               throw new APIError("BAD_REQUEST", {
@@ -107,13 +89,8 @@ function createAuth() {
             }
           },
         },
-        /**
-         * Accounts are created by an operator, so an invitation is how a
-         * person is placed into an organization — wire a real provider here.
-         * Until one is configured the link is logged, and `member.invite`
-         * also returns it so an admin can pass it on directly; the flow is
-         * never silently broken.
-         */
+        // Until a real provider is wired here the link is logged, and `member.invite`
+        // returns it too, so the flow is never silently broken.
         sendInvitationEmail: async ({ id, email, organization: org, inviter }) => {
           console.info(
             `[invite] ${inviter.user.email} invited ${email} to ${org.name}: ${invitationUrl(id)}`,

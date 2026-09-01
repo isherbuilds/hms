@@ -4,14 +4,10 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { SETTINGS_TABS } from "@/lib/navigation";
 import { orpc } from "@/lib/orpc";
 
-/**
- * `/settings` is an address, not a page. It resolves to the first tab this
- * member can actually open, so an accountant who can read the audit log but
- * not save settings still lands somewhere useful instead of on a denial.
- */
+// An address, not a page: resolves to the first tab this member can open.
 export const Route = createFileRoute("/$orgSlug/settings/")({
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
-    const membership = await queryClient.fetchQuery({
+    const membership = await queryClient.query({
       ...orpc.member.me.queryOptions({ input: { orgSlug } }),
       staleTime: 0,
     });

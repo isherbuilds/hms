@@ -8,37 +8,38 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { DownloadIcon, PrinterIcon } from "lucide-react";
 import { z } from "zod";
 
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
 import { downloadXlsx } from "@/lib/report-export";
 import { REPORT_PRINT_PORTRAIT_CSS, formatReportMoney } from "@/lib/report-presentation";
 import { orgToday as today } from "@/lib/org-datetime";
+import { requireOrgPermission } from "@/lib/route-permission";
 
 export const Route = createFileRoute("/$orgSlug/reports/balance-sheet")({
   head: () => ({ meta: [{ title: "Balance sheet · HMS" }] }),
-  // `.catch` keeps a hand-edited or truncated URL on the page: a date that does
-  // not parse falls back to today instead of an error screen.
+  // `.catch` keeps a hand-edited or truncated URL on the page: an unparseable date
+  // falls back instead of showing an error screen. Same in the sibling reports.
   validateSearch: z.object({ asOf: z.iso.date().optional().catch(undefined) }),
   loaderDeps: ({ search: { asOf } }) => ({ asOf }),
-  /**
-   * The loader resolves the range and the component reads that same object
-   * back, so the key we prefetch and the key we render cannot drift apart.
-   * `member.me` already carries the org time zone and the parent org loader
-   * has it in flight, so this awaits a deduplicated request, not a second one.
-   */
+  // The loader resolves the range and the component reads that same object back, so
+  // the prefetched key and the rendered key cannot drift apart.
   loader: async ({ context: { queryClient }, params: { orgSlug }, deps }) => {
-    const { timeZone } = await queryClient.ensureQueryData(
-      orpc.member.me.queryOptions({ input: { orgSlug } }),
+    const { timeZone } = await requireOrgPermission(
+      queryClient,
+      orgSlug,
+      { report: ["read"] },
+      "/$orgSlug/dashboard",
     );
     const asOf = deps.asOf ?? today(timeZone);
     await loadRouteQuery(
-      queryClient.fetchQuery(orpc.report.balanceSheet.queryOptions({ input: { orgSlug, asOf } })),
+      queryClient.query(orpc.report.balanceSheet.queryOptions({ input: { orgSlug, asOf } })),
     );
     return { asOf };
   },
@@ -49,13 +50,12 @@ function BalanceSheetRoute() {
   const { orgSlug } = Route.useParams();
   const navigate = Route.useNavigate();
   const { asOf } = Route.useLoaderData();
-  const membership = useSuspenseQuery(orpc.member.me.queryOptions({ input: { orgSlug } }));
+  const currency = useMembership(orgSlug, (membership) => membership.currency);
   const report = useQuery(orpc.report.balanceSheet.queryOptions({ input: { orgSlug, asOf } }));
-  const money = (value: string) => formatReportMoney(value, membership.data.currency);
+  const money = (value: string) => formatReportMoney(value, currency);
 
-  /** `asOf` lives in the URL, so the balance sheet on screen is one you can send
-   *  to someone else. A cleared date input reports "", which is not a date the
-   *  report can run on, so it is ignored. */
+  // `asOf` lives in the URL, so the report on screen is one you can send to someone
+  // else. A cleared date input reports "", which is not a date to run on.
   const setAsOf = (next: string) => {
     if (!next) return;
     void navigate({ search: (current) => ({ ...current, asOf: next }), replace: true });
@@ -145,10 +145,7 @@ function BalanceSheetRoute() {
         </div>
 
         {report.isPending ? null : report.isError ? (
-          <ErrorNote
-            title="Could not load the billing ledger balance sheet"
-            detail={report.error.message}
-          />
+          <ErrorNote title="Could not load the billing ledger balance sheet" error={report.error} />
         ) : (
           <section data-report-print className="space-y-3">
             <header className="border-b pb-2">

@@ -15,6 +15,7 @@ import { ScrollTextIcon } from "lucide-react";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { orpc } from "@/lib/orpc";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
+import { requireOrgPermission } from "@/lib/route-permission";
 
 import { SettingsTabs } from "./route";
 
@@ -28,7 +29,8 @@ const auditQuery = (orgSlug: string) =>
 export const Route = createFileRoute("/$orgSlug/settings/audit")({
   head: () => ({ meta: [{ title: "Audit log · HMS" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
-    await queryClient.prefetchInfiniteQuery(auditQuery(orgSlug));
+    await requireOrgPermission(queryClient, orgSlug, { audit: ["read"] }, "/$orgSlug/settings");
+    await queryClient.infiniteQuery(auditQuery(orgSlug)).catch(() => {});
   },
   component: AuditRoute,
 });
@@ -60,7 +62,7 @@ function AuditRoute() {
           <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
             {audit.isPending ? null : audit.isError ? (
               <div className="flex min-h-32 flex-col items-start justify-center gap-3 p-4">
-                <ErrorNote title="Could not load the audit trail" detail={audit.error.message} />
+                <ErrorNote title="Could not load the audit trail" error={audit.error} />
                 <Button variant="outline" size="xs" onClick={() => audit.refetch()}>
                   Try again
                 </Button>

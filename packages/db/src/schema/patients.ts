@@ -13,10 +13,6 @@ import { sql } from "drizzle-orm";
 
 import { organization, user } from "./auth";
 
-/**
- * Patient master data is always tenant-scoped and immutable to the org boundary to
- * prevent identity bleed across organizations.
- */
 export const patients = pgTable(
   "patients",
   {
@@ -24,24 +20,13 @@ export const patients = pgTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    /**
-     * MRN is derived from org sequence state and must remain unique per organization,
-     * so the unique index is keyed by tenant + mrn.
-     */
     mrn: text("mrn").notNull(),
     name: text("name").notNull(),
     phone: text("phone").notNull(),
-    /**
-     * Sex is constrained here to keep downstream matching and analytics simple and
-     * to avoid free-form values propagating past write boundaries.
-     */
     sex: text("sex", { enum: ["male", "female", "other", "unknown"] }).notNull(),
     dateOfBirth: date("date_of_birth", { mode: "string" }).notNull(),
     dobEstimated: boolean("dob_estimated").default(false).notNull(),
-    /**
-     * Address is required in this schema but callers pass/emit empty string when not
-     * provided; no null semantics are needed for downstream rendering.
-     */
+    // Callers pass "" when not provided; no null semantics downstream.
     address: text("address").notNull(),
     email: text("email"),
     bloodGroup: text("blood_group", {
@@ -65,13 +50,8 @@ export const patients = pgTable(
     uniqueIndex("patients_org_uid_idx")
       .on(table.orgId, table.uid)
       .where(sql`${table.uid} is not null`),
-    // Newest-first browsing by registration time. `patient.search` keysets on
-    // the UUIDv7 id via `patients_org_id_id_unique`; keep this index only
-    // while a createdAt-ordered query exists or returns. `.desc()` alone
-    // emits `DESC NULLS LAST`, but `ORDER BY x DESC` means NULLS FIRST — a
-    // mismatch the planner will not bridge, so it discards the index and
-    // falls back to a scan and sort. Both columns are NOT NULL, so this only
-    // has to agree with the query.
+    // `patient.search` keysets on the UUIDv7 id instead, so keep this only while a
+    // createdAt-ordered query exists. Same DESC NULLS trap as file.ts.
     index("patients_org_created_idx").on(
       table.orgId,
       table.createdAt.desc().nullsFirst(),

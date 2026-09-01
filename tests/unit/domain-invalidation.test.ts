@@ -4,7 +4,7 @@ type QueryKey = readonly unknown[];
 
 const previousSkip = process.env.SKIP_ENV_VALIDATION;
 process.env.SKIP_ENV_VALIDATION = "true";
-const { invalidateBillingState, invalidateOpdAppointmentState } =
+const { invalidateBillingState, invalidateOpdAppointmentState, invalidatePatientState } =
   await import("../../apps/web/src/lib/domain-invalidation");
 if (previousSkip === undefined) {
   delete process.env.SKIP_ENV_VALIDATION;
@@ -35,8 +35,19 @@ test("appointment invalidation scopes every key to the given org", async () => {
   const emitted = serialize(keys);
   expect(emitted.length).toBeGreaterThan(0);
   for (const key of emitted) expect(key).toContain('"orgSlug":"org-a"');
-  expect(emitted.some((key) => key.includes('"appointmentId":"appointment-1"'))).toBe(true);
+  expect(emitted.some((key) => key.includes('"opd","get"'))).toBe(false);
   expect(emitted.some((key) => key.includes('"collections"'))).toBe(true);
+});
+
+test("an existing appointment transition invalidates its detail", async () => {
+  const { client, keys } = recordingInvalidator();
+  await invalidateOpdAppointmentState(client, "org-a", "appointment-1", "checkIn");
+
+  expect(
+    serialize(keys).some(
+      (key) => key.includes('"opd","get"') && key.includes('"appointmentId":"appointment-1"'),
+    ),
+  ).toBe(true);
 });
 
 test("a reschedule leaves financial caches alone", async () => {
@@ -47,18 +58,17 @@ test("a reschedule leaves financial caches alone", async () => {
   expect(emitted.length).toBeGreaterThan(0);
   expect(emitted.some((key) => key.includes('"collections"'))).toBe(false);
   expect(emitted.some((key) => key.includes('"worklist"'))).toBe(false);
-  expect(emitted.some((key) => key.includes('"listPendingCharges"'))).toBe(false);
 });
 
-test("charge-changing appointment transitions invalidate pending charges", async () => {
+test("charge-changing appointment transitions invalidate the paired appointment detail", async () => {
   for (const transition of ["billing", "checkIn", "cancel", "noShow"] as const) {
     const { client, keys } = recordingInvalidator();
     await invalidateOpdAppointmentState(client, "org-a", "appointment-1", transition);
 
-    const pendingCharges = serialize(keys).filter((key) => key.includes('"listPendingCharges"'));
-    expect(pendingCharges).toHaveLength(1);
-    expect(pendingCharges[0]).toContain('"orgSlug":"org-a"');
-    expect(pendingCharges[0]).toContain('"appointmentId":"appointment-1"');
+    const details = serialize(keys).filter((key) => key.includes('"opd","get"'));
+    expect(details).toHaveLength(1);
+    expect(details[0]).toContain('"orgSlug":"org-a"');
+    expect(details[0]).toContain('"appointmentId":"appointment-1"');
   }
 });
 
@@ -78,4 +88,17 @@ test("billing invalidation scopes every key to the given org", async () => {
   for (const key of emitted) expect(key).toContain('"orgSlug":"org-a"');
   expect(emitted.some((key) => key.includes('"appointmentId":"appointment-1"'))).toBe(true);
   expect(emitted.some((key) => key.includes('"invoiceId":"invoice-1"'))).toBe(true);
+});
+
+test("patient invalidation refreshes its detail and the org search", async () => {
+  const { client, keys } = recordingInvalidator();
+  await invalidatePatientState(client, "org-a", "patient-1");
+
+  const emitted = serialize(keys);
+  expect(emitted).toHaveLength(2);
+  expect(emitted[0]).toContain('"orgSlug":"org-a"');
+  expect(emitted[0]).toContain('"patientId":"patient-1"');
+  expect(emitted[0]).toContain('"patient","get"');
+  expect(emitted[1]).toContain('"orgSlug":"org-a"');
+  expect(emitted[1]).toContain('"patient","search"');
 });

@@ -16,16 +16,8 @@ import { CATALOG_CATEGORIES, catalogItems } from "./catalog-items";
 import { invoices } from "./invoices";
 import { opdAppointments } from "./opd-appointments";
 
-/**
- * Billable line items, hung directly off the OPD appointment they were incurred
- * in. Description,
- * price, tax, and revenue category are snapshotted at creation so later catalog
- * changes never alter existing care.
- *
- * A patient-level account (advances, deposits, insurance) is deliberately absent.
- * If a live workflow earns one, it is additive; it does not restore the removed
- * per-attendance wrapper (decision D013).
- */
+// Description, price, tax and revenue category are snapshotted at creation, so
+// later catalog changes never alter existing care.
 export const charges = pgTable(
   "charges",
   {
@@ -44,10 +36,9 @@ export const charges = pgTable(
     sourceType: text("source_type").notNull(),
     sourceId: text("source_id"),
     status: text("status").notNull().default("pending"),
-    /** Set exactly once when a pending charge becomes part of an issued invoice. */
+    // Set exactly once, when a pending charge joins an issued invoice.
     invoiceId: text("invoice_id"),
     voidReason: text("void_reason"),
-    /** Attribution only; authorization always comes from the request's organization scope. */
     createdBy: text("created_by")
       .notNull()
       .references(() => user.id),
@@ -58,8 +49,6 @@ export const charges = pgTable(
     check("charges_qty_check", sql`${table.qty} > 0`),
     check("charges_unit_price_check", sql`${table.unitPrice} >= 0`),
     check("charges_tax_rate_percent_check", sql`${table.taxRatePercent} >= 0`),
-    // No `order`: orders left the consult domain before it shipped, and
-    // in-house fulfillment is billed as a `catalog` charge by the desk.
     check("charges_source_type_check", sql`${table.sourceType} in ('consult_fee', 'catalog')`),
     check("charges_status_check", sql`${table.status} in ('pending', 'invoiced', 'voided')`),
     check(

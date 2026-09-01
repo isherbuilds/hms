@@ -14,6 +14,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  RegisteredFormField,
 } from "@hms/ui/components/form";
 import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
@@ -32,26 +33,38 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { optionalNumberText, optionalText } from "@/lib/form-schema";
+
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
-import { isConflictError } from "@/lib/orpc-error";
+import { errorMessage } from "@/lib/orpc-error";
+import { requireOrgPermission } from "@/lib/route-permission";
 
 import { SettingsTabs } from "./route";
 
 export const Route = createFileRoute("/$orgSlug/settings/staff")({
   head: () => ({ meta: [{ title: "Staff · HMS" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
+    // Everyone may read the roster; only these roles may edit it, and this page is
+    // nothing but the editor.
+    await requireOrgPermission(queryClient, orgSlug, { staff: ["update"] }, "/$orgSlug/settings");
     await Promise.all([
-      queryClient.prefetchQuery(orpc.staff.listDepartments.queryOptions({ input: { orgSlug } })),
-      queryClient.prefetchQuery(orpc.staff.listPractitioners.queryOptions({ input: { orgSlug } })),
-      queryClient.prefetchQuery(orpc.member.list.queryOptions({ input: { orgSlug } })),
-      queryClient.prefetchQuery(
-        orpc.catalog.list.queryOptions({
-          input: { orgSlug, category: "consultation", activeOnly: true },
-        }),
-      ),
+      queryClient
+        .query(orpc.staff.listDepartments.queryOptions({ input: { orgSlug } }))
+        .catch(() => {}),
+      queryClient
+        .query(orpc.staff.listPractitioners.queryOptions({ input: { orgSlug } }))
+        .catch(() => {}),
+      queryClient.query(orpc.member.list.queryOptions({ input: { orgSlug } })).catch(() => {}),
+      queryClient
+        .query(
+          orpc.catalog.list.queryOptions({
+            input: { orgSlug, category: "consultation", activeOnly: true },
+          }),
+        )
+        .catch(() => {}),
     ]);
   },
   component: StaffRoute,
@@ -63,7 +76,7 @@ const departmentSchema = z.object({
     .trim()
     .min(1, "Enter a department name")
     .max(200, "Keep the name under 200 characters"),
-  defaultConsultFeeItemId: z.string().min(1).nullable().optional(),
+  defaultConsultFeeItemId: optionalText(z.string()),
 });
 
 const practitionerSchema = z.object({
@@ -73,11 +86,13 @@ const practitionerSchema = z.object({
     .min(1, "Enter a practitioner name")
     .max(200, "Keep the name under 200 characters"),
   departmentId: z.string().min(1, "Choose a department"),
-  registrationNumber: z.string().trim().nullable().optional(),
-  memberUserId: z.string().min(1).nullable().optional(),
-  consultFeeItemId: z.string().min(1).nullable().optional(),
-  followUpFeeItemId: z.string().min(1).nullable().optional(),
-  followUpValidityDays: z.number().int().min(1).max(365).nullable().optional(),
+  registrationNumber: optionalText(z.string()),
+  memberUserId: optionalText(z.string()),
+  consultFeeItemId: optionalText(z.string()),
+  followUpFeeItemId: optionalText(z.string()),
+  followUpValidityDays: optionalNumberText(
+    z.number().int().min(1, "Between 1 and 365 days").max(365, "Between 1 and 365 days"),
+  ),
 });
 
 type Department = {
@@ -161,11 +176,7 @@ function StaffRoute() {
           </div>
           <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
             {departments.isPending ? null : departments.isError ? (
-              <ErrorNote
-                title="Could not load departments"
-                detail={departments.error.message}
-                inset
-              />
+              <ErrorNote title="Could not load departments" error={departments.error} inset />
             ) : departments.data.length === 0 ? (
               <div className="flex min-h-32 items-center justify-center px-4 text-center text-muted-foreground">
                 No departments yet. A department groups practitioners and carries the fee they
@@ -223,11 +234,7 @@ function StaffRoute() {
           </div>
           <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
             {practitioners.isPending ? null : practitioners.isError ? (
-              <ErrorNote
-                title="Could not load practitioners"
-                detail={practitioners.error.message}
-                inset
-              />
+              <ErrorNote title="Could not load practitioners" error={practitioners.error} inset />
             ) : practitioners.data.length === 0 ? (
               <div className="flex min-h-32 items-center justify-center px-4 text-center text-muted-foreground">
                 No practitioners yet. Add the clinicians a patient can be booked with.
@@ -343,12 +350,11 @@ function DepartmentDialog({
   const form = useZodForm(departmentSchema, {
     defaultValues: {
       name: department?.name ?? "",
-      defaultConsultFeeItemId: department?.defaultConsultFeeItemId ?? null,
+      defaultConsultFeeItemId: department?.defaultConsultFeeItemId ?? "",
     },
   });
 
-  /** Awaited, not fired and forgotten: the dialog closes onto a list that has
-   *  already refetched, and the submit button stays pending until it has. */
+  // Awaited, so the dialog closes onto a list that has already refetched.
   const onSuccess = async (message: string) => {
     await queryClient.invalidateQueries({
       queryKey: orpc.staff.listDepartments.key({ input: { orgSlug } }),
@@ -356,15 +362,8 @@ function DepartmentDialog({
     toast.success(message);
     onClose();
   };
-  const onError = (error: unknown) => {
-    toast.error(
-      isConflictError(error)
-        ? "Department already exists"
-        : error instanceof Error
-          ? error.message
-          : "Something went wrong",
-    );
-  };
+  // The server names the clash now, so there is nothing left to re-word here.
+  const onError = (error: unknown) => toast.error(errorMessage(error));
 
   const createDepartment = useMutation(
     orpc.staff.createDepartment.mutationOptions({
@@ -380,7 +379,7 @@ function DepartmentDialog({
   );
   const isSubmitting = createDepartment.isPending || updateDepartment.isPending;
   const submit = form.handleSubmit(({ name, defaultConsultFeeItemId }) => {
-    const fields = { name, defaultConsultFeeItemId: defaultConsultFeeItemId || null };
+    const fields = { name, defaultConsultFeeItemId };
     if (department) {
       updateDepartment.mutate({ orgSlug, departmentId: department.id, ...fields });
     } else {
@@ -400,9 +399,8 @@ function DepartmentDialog({
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={submit} className="flex flex-col gap-4">
-            <FormField
-              control={form.control}
+          <form noValidate onSubmit={submit} className="flex flex-col gap-4">
+            <RegisteredFormField
               name="name"
               render={({ field }) => (
                 <FormItem>
@@ -414,6 +412,8 @@ function DepartmentDialog({
                 </FormItem>
               )}
             />
+            {/* Controlled, not registered: the catalog arrives from a query,
+                and a stored id with no matching <option> yet would be lost. */}
             <FormField
               control={form.control}
               name="defaultConsultFeeItemId"
@@ -421,14 +421,7 @@ function DepartmentDialog({
                 <FormItem>
                   <FormLabel>Default consult fee (optional)</FormLabel>
                   <FormControl>
-                    <NativeSelect
-                      name={field.name}
-                      ref={field.ref}
-                      onBlur={field.onBlur}
-                      value={field.value ?? ""}
-                      onChange={(event) => field.onChange(event.target.value || null)}
-                      disabled={isSubmitting || catalogPending}
-                    >
+                    <NativeSelect {...field} disabled={isSubmitting || catalogPending}>
                       <option value="">None</option>
                       {catalogItems.map((item) => (
                         <option key={item.id} value={item.id}>
@@ -481,16 +474,19 @@ function PractitionerDialog({
     defaultValues: {
       name: practitioner?.name ?? "",
       departmentId: practitioner?.departmentId ?? departments[0]?.id ?? "",
-      registrationNumber: practitioner?.registrationNumber ?? null,
-      memberUserId: practitioner?.memberUserId ?? null,
-      consultFeeItemId: practitioner?.consultFeeItemId ?? null,
-      followUpFeeItemId: practitioner?.followUpFeeItemId ?? null,
-      followUpValidityDays: practitioner?.followUpValidityDays ?? null,
+      registrationNumber: practitioner?.registrationNumber ?? "",
+      memberUserId: practitioner?.memberUserId ?? "",
+      consultFeeItemId: practitioner?.consultFeeItemId ?? "",
+      followUpFeeItemId: practitioner?.followUpFeeItemId ?? "",
+      followUpValidityDays:
+        practitioner?.followUpValidityDays === null ||
+        practitioner?.followUpValidityDays === undefined
+          ? ""
+          : String(practitioner.followUpValidityDays),
     },
   });
 
-  const onError = (error: unknown) =>
-    toast.error(error instanceof Error ? error.message : "Something went wrong");
+  const onError = (error: unknown) => toast.error(errorMessage(error));
   const onSuccess = async (message: string) => {
     await queryClient.invalidateQueries({
       queryKey: orpc.staff.listPractitioners.key({ input: { orgSlug } }),
@@ -516,11 +512,11 @@ function PractitionerDialog({
     const fields = {
       name: values.name,
       departmentId: values.departmentId,
-      registrationNumber: values.registrationNumber?.trim() || null,
-      memberUserId: values.memberUserId || null,
-      consultFeeItemId: values.consultFeeItemId || null,
-      followUpFeeItemId: values.followUpFeeItemId || null,
-      followUpValidityDays: values.followUpValidityDays ?? null,
+      registrationNumber: values.registrationNumber,
+      memberUserId: values.memberUserId,
+      consultFeeItemId: values.consultFeeItemId,
+      followUpFeeItemId: values.followUpFeeItemId,
+      followUpValidityDays: values.followUpValidityDays,
     };
     if (practitioner) {
       updatePractitioner.mutate({ orgSlug, practitionerId: practitioner.id, ...fields });
@@ -540,10 +536,9 @@ function PractitionerDialog({
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={submit} className="flex flex-col gap-4">
+          <form noValidate onSubmit={submit} className="flex flex-col gap-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              <FormField
-                control={form.control}
+              <RegisteredFormField
                 name="name"
                 render={({ field }) => (
                   <FormItem>
@@ -579,14 +574,13 @@ function PractitionerDialog({
               />
             </div>
 
-            <FormField
-              control={form.control}
+            <RegisteredFormField
               name="registrationNumber"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Registration no. (optional)</FormLabel>
                   <FormControl>
-                    <Input {...field} value={field.value ?? ""} disabled={isSubmitting} />
+                    <Input {...field} disabled={isSubmitting} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -600,14 +594,7 @@ function PractitionerDialog({
                 <FormItem>
                   <FormLabel>Linked member (optional)</FormLabel>
                   <FormControl>
-                    <NativeSelect
-                      name={field.name}
-                      ref={field.ref}
-                      onBlur={field.onBlur}
-                      value={field.value ?? ""}
-                      onChange={(event) => field.onChange(event.target.value || null)}
-                      disabled={isSubmitting || membersPending}
-                    >
+                    <NativeSelect {...field} disabled={isSubmitting || membersPending}>
                       <option value="">None</option>
                       {members.map((member) => (
                         <option key={member.userId} value={member.userId}>
@@ -628,14 +615,7 @@ function PractitionerDialog({
                 <FormItem>
                   <FormLabel>Consult fee item (optional)</FormLabel>
                   <FormControl>
-                    <NativeSelect
-                      name={field.name}
-                      ref={field.ref}
-                      onBlur={field.onBlur}
-                      value={field.value ?? ""}
-                      onChange={(event) => field.onChange(event.target.value || null)}
-                      disabled={isSubmitting || catalogPending}
-                    >
+                    <NativeSelect {...field} disabled={isSubmitting || catalogPending}>
                       <option value="">None</option>
                       {catalogItems.map((item) => (
                         <option key={item.id} value={item.id}>
@@ -656,14 +636,7 @@ function PractitionerDialog({
                   <FormItem>
                     <FormLabel>Follow-up fee (optional)</FormLabel>
                     <FormControl>
-                      <NativeSelect
-                        name={field.name}
-                        ref={field.ref}
-                        onBlur={field.onBlur}
-                        value={field.value ?? ""}
-                        onChange={(event) => field.onChange(event.target.value || null)}
-                        disabled={isSubmitting || catalogPending}
-                      >
+                      <NativeSelect {...field} disabled={isSubmitting || catalogPending}>
                         <option value="">None</option>
                         {catalogItems.map((item) => (
                           <option key={item.id} value={item.id}>
@@ -676,27 +649,18 @@ function PractitionerDialog({
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
+              <RegisteredFormField
                 name="followUpValidityDays"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Follow-up window (days)</FormLabel>
                     <FormControl>
                       <Input
+                        {...field}
                         type="number"
                         min={1}
                         max={365}
                         step={1}
-                        name={field.name}
-                        ref={field.ref}
-                        onBlur={field.onBlur}
-                        value={field.value ?? ""}
-                        onChange={(event) =>
-                          field.onChange(
-                            event.target.value === "" ? null : Number(event.target.value),
-                          )
-                        }
                         placeholder="Organization default"
                         disabled={isSubmitting}
                       />

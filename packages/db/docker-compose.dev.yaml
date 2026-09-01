@@ -25,7 +25,7 @@ services:
       mini -dir=/data -webdav=false -admin.ui=false
       -admin.password=better-stack-admin-secret -s3.port.iceberg=0
       -master.telemetry=false
-      -s3.allowedOrigins=http://localhost:3001,http://127.0.0.1:3001
+      -s3.allowedOrigins=https://hms.localhost,http://localhost:3001,http://127.0.0.1:3001
     environment:
       AWS_ACCESS_KEY_ID: better-stack
       AWS_SECRET_ACCESS_KEY: better-stack-secret

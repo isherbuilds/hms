@@ -16,6 +16,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  RegisteredFormField,
 } from "@hms/ui/components/form";
 import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
@@ -36,23 +37,15 @@ import { z } from "zod";
 
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
+import { MONEY_INPUT_PATTERN } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
-import { applyOrpcFieldError } from "@/lib/orpc-error";
+import { applyOrpcFieldError, errorMessage } from "@/lib/orpc-error";
+import { requireOrgPermission } from "@/lib/route-permission";
 
 import { SettingsTabs } from "./route";
 
-export const Route = createFileRoute("/$orgSlug/settings/catalog")({
-  head: () => ({ meta: [{ title: "Catalog · HMS" }] }),
-  loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
-    await queryClient.prefetchQuery(
-      orpc.catalog.list.queryOptions({ input: { orgSlug, activeOnly: false } }),
-    );
-  },
-  component: CatalogRoute,
-});
-
-// Mirrors CATALOG_CATEGORIES in @hms/db/schema/catalog-items, kept
-// local so no server schema module reaches the client bundle (hard rule 6).
+// Mirrors CATALOG_CATEGORIES in @hms/db, kept local so no server schema module
+// reaches the client bundle (hard rule 6).
 const CATALOG_CATEGORIES = ["consultation", "procedure", "lab", "radiology", "other"] as const;
 
 type CatalogCategory = (typeof CATALOG_CATEGORIES)[number];
@@ -64,19 +57,39 @@ const CATEGORY_LABELS: Record<CatalogCategory, string> = {
   radiology: "Radiology",
   other: "Other",
 };
+export const Route = createFileRoute("/$orgSlug/settings/catalog")({
+  head: () => ({ meta: [{ title: "Catalog · HMS" }] }),
+  validateSearch: z.object({
+    category: z.enum(CATALOG_CATEGORIES).optional().catch(undefined),
+    activeOnly: z.boolean().optional().catch(undefined),
+  }),
+  loaderDeps: ({ search }) => ({ category: search.category, activeOnly: search.activeOnly }),
+  loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {
+    // Reading the catalog is org-wide; this page only edits it, so the tab strip gates
+    // it on `update` too.
+    await requireOrgPermission(queryClient, orgSlug, { catalog: ["update"] }, "/$orgSlug/settings");
+    await queryClient
+      .query(
+        orpc.catalog.list.queryOptions({
+          input: { orgSlug, category: deps.category, activeOnly: deps.activeOnly ?? false },
+        }),
+      )
+      .catch(() => {});
+  },
+  component: CatalogRoute,
+});
 
 const formSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200, "Keep the name under 200 characters"),
   code: z.string().trim().min(1, "Code is required").max(20, "Keep the code under 20 characters"),
   category: z.enum(CATALOG_CATEGORIES),
-  unitPrice: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/, "Amount like 150 or 150.00"),
+  unitPrice: z.string().regex(MONEY_INPUT_PATTERN, "Amount like 150 or 150.00"),
   taxRatePercent: z.string().regex(/^\d{1,2}(\.\d{1,2})?$/, "Rate like 0, 5, or 12.50"),
   taxCode: z.string().trim().max(20, "Keep the tax code under 20 characters").optional(),
   active: z.boolean(),
 });
 
 type CatalogFormValues = z.infer<typeof formSchema>;
-/** Row shape returned by catalog.list/create/update, mirrored structurally like staff.tsx. */
 type CatalogItem = {
   id: string;
   name: string;
@@ -103,8 +116,9 @@ const EMPTY_VALUES: CatalogFormValues = {
 function CatalogRoute() {
   const { orgSlug } = Route.useParams();
   const queryClient = useQueryClient();
-  const [category, setCategory] = useState<CatalogCategory | "">("");
-  const [activeOnly, setActiveOnly] = useState(false);
+  // Filters live in the URL, so a filtered view is shareable and Back restores it.
+  const { category, activeOnly } = Route.useSearch();
+  const navigate = Route.useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<CatalogItem | null>(null);
   const toggleActive = useMutation(
@@ -126,12 +140,11 @@ function CatalogRoute() {
         for (const [queryKey, data] of context?.snapshot ?? []) {
           queryClient.setQueryData(queryKey, data);
         }
-        toast.error(error instanceof Error ? error.message : "Could not update catalog item");
+        toast.error(errorMessage(error, "Could not update catalog item"));
       },
       onSettled: () => {
-        // The settling mutation still counts as pending here, so >1 means a
-        // sibling catalog.update is in flight; refetching now would overwrite
-        // its optimistic patch. The last one to settle invalidates.
+        // The settling mutation still counts as pending, so >1 means a sibling update is in
+        // flight and refetching now would overwrite its optimistic patch.
         const pending = queryClient.isMutating({
           mutationKey: orpc.catalog.update.mutationKey(),
         });
@@ -162,8 +175,8 @@ function CatalogRoute() {
     orpc.catalog.list.queryOptions({
       input: {
         orgSlug,
-        category: category || undefined,
-        activeOnly,
+        category,
+        activeOnly: activeOnly ?? false,
       },
     }),
   );
@@ -182,8 +195,14 @@ function CatalogRoute() {
           <label className="flex w-48 flex-col gap-2 text-xs font-medium">
             Category
             <NativeSelect
-              value={category}
-              onChange={(event) => setCategory(event.target.value as CatalogCategory | "")}
+              value={category ?? ""}
+              onChange={(event) => {
+                const next = (event.target.value || undefined) as CatalogCategory | undefined;
+                void navigate({
+                  search: (previous) => ({ ...previous, category: next }),
+                  replace: true,
+                });
+              }}
             >
               <option value="">All categories</option>
               {CATALOG_CATEGORIES.map((option) => (
@@ -194,7 +213,15 @@ function CatalogRoute() {
             </NativeSelect>
           </label>
           <label className="flex h-8 items-center gap-2 text-xs font-medium">
-            <Checkbox checked={activeOnly} onCheckedChange={setActiveOnly} />
+            <Checkbox
+              checked={activeOnly ?? false}
+              onCheckedChange={(checked) => {
+                void navigate({
+                  search: (previous) => ({ ...previous, activeOnly: checked || undefined }),
+                  replace: true,
+                });
+              }}
+            />
             Active only
           </label>
         </div>
@@ -209,11 +236,7 @@ function CatalogRoute() {
               a filter that matches nothing. */}
           <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
             {catalog.isPending ? null : catalog.isError ? (
-              <ErrorNote
-                title="Could not load service catalog"
-                detail={catalog.error.message}
-                inset
-              />
+              <ErrorNote title="Could not load service catalog" error={catalog.error} inset />
             ) : catalog.data.length === 0 ? (
               <div className="flex min-h-32 items-center justify-center px-4 text-center text-muted-foreground">
                 {category || activeOnly
@@ -348,9 +371,8 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
       : EMPTY_VALUES,
   });
 
-  /** Awaiting the refetch keeps the mutation pending, so the submit button holds
-   *  its spinner and the list behind the dialog is already correct when the
-   *  dialog closes, instead of showing the old row for a beat. */
+  // Awaiting the refetch keeps the mutation pending, so the dialog closes onto a list
+  // that is already correct.
   const closeAfterSuccess = async (message: string) => {
     await queryClient.invalidateQueries({
       queryKey: orpc.catalog.list.key({ input: { orgSlug } }),
@@ -362,15 +384,9 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
 
   const handleError = (error: unknown) => {
     const mapped = applyOrpcFieldError(form, error, {
-      CONFLICT: { field: "code", message: "Code already in use" },
+      duplicate: { field: "code", message: "Code already in use" },
     });
-    toast.error(
-      mapped
-        ? "Code already in use"
-        : error instanceof Error
-          ? error.message
-          : "Could not save catalog item",
-    );
+    toast.error(mapped ?? errorMessage(error, "Could not save catalog item"));
   };
 
   const create = useMutation(
@@ -428,10 +444,9 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
           </DialogHeader>
 
           <Form {...form}>
-            <form onSubmit={onSubmit} className="flex flex-col gap-4">
+            <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <FormField
-                  control={form.control}
+                <RegisteredFormField
                   name="name"
                   render={({ field }) => (
                     <FormItem>
@@ -443,8 +458,7 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
+                <RegisteredFormField
                   name="code"
                   render={({ field }) => (
                     <FormItem>
@@ -456,21 +470,13 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
+                <RegisteredFormField
                   name="category"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Category</FormLabel>
                       <FormControl>
-                        <NativeSelect
-                          value={field.value}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          name={field.name}
-                          ref={field.ref}
-                          disabled={isPending}
-                        >
+                        <NativeSelect {...field} disabled={isPending}>
                           {CATALOG_CATEGORIES.map((option) => (
                             <option key={option} value={option}>
                               {CATEGORY_LABELS[option]}
@@ -482,8 +488,7 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
+                <RegisteredFormField
                   name="unitPrice"
                   render={({ field }) => (
                     <FormItem>
@@ -500,8 +505,7 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
+                <RegisteredFormField
                   name="taxRatePercent"
                   render={({ field }) => (
                     <FormItem>
@@ -518,8 +522,7 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
+                <RegisteredFormField
                   name="taxCode"
                   render={({ field }) => (
                     <FormItem>

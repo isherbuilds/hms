@@ -1,5 +1,4 @@
 import { Button } from "@hms/ui/components/button";
-import { Separator } from "@hms/ui/components/separator";
 import {
   Table,
   TableBody,
@@ -9,30 +8,21 @@ import {
   TableRow,
 } from "@hms/ui/components/table";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClientOnly, createFileRoute } from "@tanstack/react-router";
-import { PrinterIcon, Trash2Icon, UploadIcon } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { Trash2Icon, UploadIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
-import {
-  CheckInOpdAppointmentDialog,
-  RescheduleOpdAppointmentDialog,
-} from "@/components/opd-appointment-dialogs";
-import { useConfirm } from "@/components/confirm-dialog";
-import { CancelOpdAppointmentDialog, useOpdStatusActions } from "@/components/opd-appointment";
-import { ErrorNote, PageBody, PageHeader } from "@/components/page";
-import { StaleDataNotice } from "@/components/stale-data-notice";
+import { ErrorNote } from "@/components/page";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { formatFileSize, openOrgFile, uploadOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
-import { loadRouteQuery } from "@/lib/orpc-error";
-import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
+import { errorMessage } from "@/lib/orpc-error";
 import { patientAgeLabel } from "@/lib/patient-age";
 
-import { OpdRecordDescription, OpdRecordFacts, OpdRecordSummary, OpdRecordTabs } from "./route";
+import { useOpdRecord } from "@/lib/opd-record";
 
-/** Extensions worth trusting when the browser reports an empty File.type. */
 const SCAN_EXTENSION_TYPES: Record<string, string> = {
   pdf: "application/pdf",
   png: "image/png",
@@ -47,11 +37,8 @@ const SCAN_EXTENSION_TYPES: Record<string, string> = {
   bmp: "image/bmp",
 };
 
-/**
- * Resolves the MIME type `appointment.attachPrescription` will accept, or null.
- * Browsers report an empty `File.type` for some valid scans; uploading those
- * unresolved would finalize an orphan file that attach then rejects.
- */
+// Browsers report an empty `File.type` for some valid scans; uploading those
+// unresolved would finalize an orphan file that attach then rejects.
 function prescriptionMimeType(file: File): string | null {
   if (file.type === "application/pdf" || file.type.startsWith("image/")) {
     return file.type;
@@ -64,13 +51,12 @@ function prescriptionMimeType(file: File): string | null {
 }
 
 export const Route = createFileRoute("/$orgSlug/opd/$appointmentId/")({
-  loader: async ({ context: { queryClient }, params: { orgSlug, appointmentId } }) => {
-    await Promise.all([
-      loadRouteQuery(
-        queryClient.fetchQuery(orpc.opd.get.queryOptions({ input: { orgSlug, appointmentId } })),
-      ),
-      queryClient.prefetchQuery(orpc.settings.get.queryOptions({ input: { orgSlug } })),
-    ]);
+  // The flags below belong to one appointment; the next must not inherit them.
+  remountDeps: ({ params }) => ({ appointmentId: params.appointmentId }),
+  loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
+    // Caught here so a settings outage is reported inside the tab rather than replacing
+    // the whole record with the route's error page.
+    await queryClient.query(orpc.settings.get.queryOptions({ input: { orgSlug } })).catch(() => {});
   },
   component: OpdAppointmentDetailRoute,
 });
@@ -78,42 +64,28 @@ export const Route = createFileRoute("/$orgSlug/opd/$appointmentId/")({
 function OpdAppointmentDetailRoute() {
   const { orgSlug, appointmentId } = Route.useParams();
   const { timeZone, today } = useOrgDateTime();
-  const [cancelOpen, setCancelOpen] = useState(false);
-  const [rescheduleOpen, setRescheduleOpen] = useState(false);
-  const [checkInOpen, setCheckInOpen] = useState(false);
-  const [confirm, confirmDialog] = useConfirm();
-  const detailQuery = {
-    ...orpc.opd.get.queryOptions({ input: { orgSlug, appointmentId } }),
-    ...OPERATIONAL_REFETCH,
-  };
-  const detail = useQuery(detailQuery);
-  const settings = useQuery(orpc.settings.get.queryOptions({ input: { orgSlug } }));
-  const { checkIn, markNoShow } = useOpdStatusActions(orgSlug);
-  const changingStatus = checkIn.isPending || markNoShow.isPending;
+  const { record } = useOpdRecord();
+  const settings = useQuery({
+    ...orpc.settings.get.queryOptions({ input: { orgSlug } }),
+    // The slip is all this tab reads out of settings, so any other setting edit must
+    // not redraw the record.
+    select: (data) => ({
+      legalName: data.legalName,
+      address: data.address,
+      currency: data.currency,
+    }),
+  });
 
-  if (detail.isPending || settings.isPending) {
-    return (
-      <>
-        <PageHeader title="Outpatient appointment" />
-        <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
-        <PageBody className="mx-auto w-full max-w-5xl" />
-      </>
-    );
+  if (!settings.data) {
+    return settings.error ? (
+      <ErrorNote title="Could not load organisation settings" error={settings.error} />
+    ) : null;
   }
 
-  if (detail.isError || settings.isError) {
-    const error = detail.error ?? settings.error;
-    return (
-      <>
-        <PageHeader title="Outpatient appointment" />
-        <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
-        <ErrorNote title="Could not load outpatient appointment" detail={error?.message} inset />
-      </>
-    );
-  }
-
-  const { appointment, patient, practitioner, department, charges, prescriptions } = detail.data;
-  const consultCharge = charges.find((charge) => charge.sourceType === "consult_fee");
+  const { appointment, patient, practitioner, department, charges, prescriptions } = record;
+  const consultCharge = charges.find(
+    (charge) => charge.revenueCategory === "consultation" && charge.status !== "voided",
+  );
   const age = patient
     ? `${patientAgeLabel(patient.dateOfBirth, patient.dobEstimated, today)} years`
     : null;
@@ -122,92 +94,12 @@ function OpdAppointmentDetailRoute() {
 
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col print:hidden">
-        <PageHeader
-          title="Outpatient appointment"
-          description={<OpdRecordDescription orgSlug={orgSlug} record={detail.data} />}
-          action={
-            <>
-              <StaleDataNotice dataUpdatedAt={detail.dataUpdatedAt} />
-              <Button disabled={!hasToken || !patient} onClick={() => window.print()}>
-                <PrinterIcon data-icon="inline-start" />
-                Print slip
-              </Button>
-            </>
-          }
-        />
-        <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
-
-        <PageBody className="mx-auto w-full max-w-5xl">
-          <OpdRecordSummary
-            record={detail.data}
-            action={
-              appointment.status === "booked" ? (
-                <div className="flex flex-wrap gap-1">
-                  <Button
-                    size="xs"
-                    disabled={changingStatus}
-                    onClick={() =>
-                      appointment.patientId
-                        ? checkIn.mutate({ orgSlug, appointmentId })
-                        : setCheckInOpen(true)
-                    }
-                  >
-                    Check in
-                  </Button>
-                  <Button size="xs" variant="ghost" onClick={() => setRescheduleOpen(true)}>
-                    Reschedule
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    disabled={changingStatus}
-                    onClick={() =>
-                      confirm({
-                        title: "Mark as no show?",
-                        description:
-                          "The caller did not arrive. A no show cannot be reopened — rebook if they turn up later.",
-                        confirmLabel: "Mark no show",
-                        run: () => markNoShow.mutate({ orgSlug, appointmentId }),
-                      })
-                    }
-                  >
-                    No show
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    disabled={changingStatus}
-                    onClick={() => setCancelOpen(true)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              ) : appointment.status === "checked_in" ? (
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  disabled={changingStatus}
-                  onClick={() => setCancelOpen(true)}
-                >
-                  Cancel
-                </Button>
-              ) : null
-            }
-          />
-
-          <Separator />
-          <OpdRecordFacts record={detail.data} />
-
-          <Separator />
-          <PrescriptionDocuments
-            orgSlug={orgSlug}
-            appointmentId={appointmentId}
-            prescriptions={prescriptions}
-            disabled={appointment.status === "cancelled"}
-          />
-        </PageBody>
-      </div>
+      <PrescriptionDocuments
+        orgSlug={orgSlug}
+        appointmentId={appointmentId}
+        prescriptions={prescriptions}
+        disabled={appointment.status === "cancelled"}
+      />
 
       {hasToken && patient ? (
         <article
@@ -253,34 +145,6 @@ function OpdAppointmentDetailRoute() {
         [data-opd-slip], [data-opd-slip] * { visibility: visible !important; }
         [data-opd-slip] { position: fixed; inset: 0; width: 100%; }
       }`}</style>
-
-      <ClientOnly fallback={null}>
-        {cancelOpen ? (
-          <CancelOpdAppointmentDialog
-            orgSlug={orgSlug}
-            appointmentId={appointmentId}
-            onClose={() => setCancelOpen(false)}
-          />
-        ) : null}
-        {rescheduleOpen ? (
-          <RescheduleOpdAppointmentDialog
-            orgSlug={orgSlug}
-            appointmentId={appointmentId}
-            scheduledFor={appointment.scheduledFor}
-            onClose={() => setRescheduleOpen(false)}
-          />
-        ) : null}
-        {checkInOpen ? (
-          <CheckInOpdAppointmentDialog
-            orgSlug={orgSlug}
-            appointmentId={appointmentId}
-            callerName={appointment.callerName}
-            callerPhone={appointment.callerPhone}
-            onClose={() => setCheckInOpen(false)}
-          />
-        ) : null}
-        {confirmDialog}
-      </ClientOnly>
     </>
   );
 }
@@ -313,8 +177,8 @@ function PrescriptionDocuments({
       queryClient.invalidateQueries({
         queryKey: orpc.opd.get.key({ input: { orgSlug, appointmentId } }),
       }),
-      // Uploads create a ready file and attach/detach write audit rows, so the
-      // file-domain views must not keep serving their 60s-stale caches.
+      // Uploads and attach/detach write audit rows, so the file-domain views must not
+      // keep serving their 60s-stale caches.
       queryClient.invalidateQueries({
         queryKey: orpc.file.list.key({ input: { orgSlug } }),
       }),
@@ -336,17 +200,16 @@ function PrescriptionDocuments({
       await refresh();
       toast.success("Prescription scan attached");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not attach prescription scan");
-    } finally {
-      setUploading(false);
+      toast.error(errorMessage(error, "Could not attach prescription scan"));
     }
+    setUploading(false);
   };
 
   const open = async (fileId: string) => {
     try {
       await openOrgFile(orgSlug, fileId);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not open prescription scan");
+      toast.error(errorMessage(error, "Could not open prescription scan"));
     }
   };
 
@@ -357,14 +220,14 @@ function PrescriptionDocuments({
       await refresh();
       toast.success("Prescription scan removed; the private file was kept");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not remove prescription scan");
-    } finally {
-      setRemovingId(null);
+      toast.error(errorMessage(error, "Could not remove prescription scan"));
     }
+    setRemovingId(null);
   };
 
   return (
-    <section className="flex flex-col gap-2">
+    // Printing this tab prints the token slip alone.
+    <section className="flex flex-col gap-2 print:hidden">
       <div className="flex min-h-6 items-center justify-between gap-2">
         <h2 className="min-w-0 truncate text-muted-foreground">Paper prescription</h2>
         <input

@@ -10,7 +10,7 @@ import {
 import {
   Form,
   FormControl,
-  FormField,
+  RegisteredFormField,
   FormItem,
   FormLabel,
   FormMessage,
@@ -25,7 +25,7 @@ import { z } from "zod";
 import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { invalidateOpdAppointmentState } from "@/lib/domain-invalidation";
-import { toastOpdConflict } from "@/lib/opd-operational-query";
+import { useOpdErrorToast } from "@/lib/opd-error";
 import { localInputValue, nextHalfHour, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 
@@ -38,13 +38,15 @@ export function CheckInOpdAppointmentDialog({
 }: {
   orgSlug: string;
   appointmentId: string;
-  /** Who the booking was taken for, echoed so the desk matches the right person. */
   callerName?: string | null;
   callerPhone?: string | null;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  const onOpdError = useOpdErrorToast(orgSlug);
+
   const [selected, setSelected] = useState<SelectedPatient>();
+
   const checkIn = useMutation(
     orpc.opd.checkIn.mutationOptions({
       onSuccess: async ({ appointment }) => {
@@ -52,10 +54,7 @@ export function CheckInOpdAppointmentDialog({
         toast.success(`Checked in · Token ${appointment.tokenNumber}`);
         onClose();
       },
-      onError: (error) => {
-        if (toastOpdConflict(queryClient, error, orgSlug, appointmentId, "checkIn")) return;
-        toast.error(error.message);
-      },
+      onError: (error) => onOpdError(appointmentId, "checkIn", error),
     }),
   );
   const caller = [callerName, callerPhone].filter(Boolean).join(" · ");
@@ -82,25 +81,24 @@ export function CheckInOpdAppointmentDialog({
               </Button>
               <Button
                 disabled={checkIn.isPending}
-                onClick={() => checkIn.mutate({ orgSlug, appointmentId, patientId: selected.id })}
+                onClick={() =>
+                  checkIn.mutate({
+                    orgSlug,
+                    appointmentId,
+                    patientId: selected.id,
+                  })
+                }
               >
                 Check in
               </Button>
             </DialogFooter>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            <OpdPatientSearch
-              orgSlug={orgSlug}
-              initialQuery={callerPhone ?? undefined}
-              onSelect={setSelected}
-            />
-            <DialogFooter>
-              <Button type="button" variant="ghost" onClick={onClose}>
-                Cancel
-              </Button>
-            </DialogFooter>
-          </div>
+          <OpdPatientSearch
+            orgSlug={orgSlug}
+            initialQuery={callerPhone ?? undefined}
+            onSelect={setSelected}
+          />
         )}
       </DialogContent>
     </Dialog>
@@ -119,11 +117,11 @@ export function RescheduleOpdAppointmentDialog({
 }: {
   orgSlug: string;
   appointmentId: string;
-  /** The current slot, so the dialog opens on what is being moved. */
   scheduledFor?: Date | string | null;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  const onOpdError = useOpdErrorToast(orgSlug);
   const { timeZone } = useOrgDateTime();
   const form = useZodForm(rescheduleSchema, {
     defaultValues: {
@@ -139,14 +137,15 @@ export function RescheduleOpdAppointmentDialog({
         toast.success("Appointment rescheduled");
         onClose();
       },
-      onError: (error) => {
-        if (toastOpdConflict(queryClient, error, orgSlug, appointmentId, "reschedule")) return;
-        toast.error(error.message);
-      },
+      onError: (error) => onOpdError(appointmentId, "reschedule", error),
     }),
   );
   const submit = form.handleSubmit((values) =>
-    reschedule.mutate({ orgSlug, appointmentId, scheduledLocal: values.scheduledFor }),
+    reschedule.mutate({
+      orgSlug,
+      appointmentId,
+      scheduledLocal: values.scheduledFor,
+    }),
   );
 
   return (
@@ -158,8 +157,7 @@ export function RescheduleOpdAppointmentDialog({
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={submit} className="flex flex-col gap-4">
-            <FormField
-              control={form.control}
+            <RegisteredFormField
               name="scheduledFor"
               render={({ field }) => (
                 <FormItem>
@@ -177,14 +175,6 @@ export function RescheduleOpdAppointmentDialog({
               )}
             />
             <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={reschedule.isPending}
-                onClick={onClose}
-              >
-                Keep current time
-              </Button>
               <SubmitButton isSubmitting={reschedule.isPending}>Reschedule</SubmitButton>
             </DialogFooter>
           </form>

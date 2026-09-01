@@ -1,0 +1,58 @@
+---
+title: OPD desk
+description: Register patients and run Now or Later outpatient appointments
+---
+
+## Start an appointment
+
+Open **OPD**, choose **New appointment**, and complete the form in order:
+
+1. **Patient** — search by the available patient details and select the correct
+   record. Register the patient from the same search when no safe match exists.
+2. **Care** — choose the department and practitioner.
+3. **When** — choose **Now** for an arriving patient or **Later** for a future
+   organization-local date and time.
+4. **Services** — add any known billable services. Services are optional in
+   both modes; **Now** also shows the configured attendance fee for review.
+
+HMS warns before leaving a changed form. Resolve that warning instead of opening
+another destination and assuming the draft was saved.
+
+### Now
+
+**Now** uses server time and creates a checked-in appointment. When a billable
+line remains, a user with billing access reviews the itemized amount, discount
+details, and up to four payment lines before issuing and collecting. When no
+attendance fee or selected service remains, HMS creates only the appointment and
+token; it does not invent an Invoice or Payment.
+
+### Later
+
+**Later** requires a future minute. Selected services are saved at their current
+price but remain pending until check-in. Review them again when the patient
+arrives.
+
+## Work the day list
+
+The OPD page is a dated list. Search within the selected day, move to another
+date when needed, and include closed rows only when you need to inspect them.
+
+- **Booked** — scheduled but not yet arrived. You can check in, reschedule, mark
+  no-show, or cancel when your role allows it.
+- **Checked In** — the patient arrived. Open the record for the clinical or
+  billing work owned by your role.
+- **Cancelled** and **No show** — closed outcomes. Pending Charges are not left
+  available for billing.
+
+## Use the appointment record
+
+An appointment has two permission-controlled tabs over the same record:
+
+- **Clinical** shows the patient and attendance facts, prints the OPD slip, and
+  attaches or downloads the signed prescription scan. The signed paper remains
+  the clinical source.
+- **Billing** reviews pending Charges, issues Invoices, records collections, and
+  shows later corrections.
+
+Continue with [Billing and corrections](/billing-and-corrections) before issuing
+or changing a financial document.

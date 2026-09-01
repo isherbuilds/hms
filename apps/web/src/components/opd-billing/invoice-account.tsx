@@ -12,6 +12,7 @@ import {
   Form,
   FormControl,
   FormField,
+  RegisteredFormField,
   FormItem,
   FormLabel,
   FormMessage,
@@ -32,18 +33,21 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { ClientOnly, Link } from "@tanstack/react-router";
 import { Trash2Icon } from "lucide-react";
 import { useState } from "react";
+import { useFieldArray, useFormContext, useFormState, Watch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { useZodForm } from "@/hooks/use-zod-form";
 import { formatMoney, MONEY_INPUT_PATTERN, parseMoneyInput } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
+import { errorMessage } from "@/lib/orpc-error";
+import { needsReference, PAYMENT_METHODS, type PaymentMethod } from "@/lib/settlement";
 
 import { useBillingInvalidation } from "./use-billing-invalidation";
 
 const paymentLineFields = z.object({
   id: z.number(),
-  method: z.enum(["cash", "upi", "card"]),
+  method: z.enum(PAYMENT_METHODS.map((method) => method.value)),
   amount: z
     .string()
     .regex(MONEY_INPUT_PATTERN, "Amount like 150.00")
@@ -51,21 +55,27 @@ const paymentLineFields = z.object({
   reference: z.string().trim().max(100).optional(),
 });
 
-const paymentLineSchema = paymentLineFields.superRefine((value, context) => {
-  if (value.method !== "cash" && !value.reference) {
+function requireTransactionReference(
+  value: { method: PaymentMethod; reference?: string },
+  context: z.RefinementCtx,
+) {
+  if (needsReference(value.method) && !value.reference) {
     context.addIssue({
       code: "custom",
       path: ["reference"],
-      message: `Enter the ${value.method === "upi" ? "UPI" : "card"} reference`,
+      message: "Enter the transaction reference",
     });
   }
-});
+}
+
+const paymentLineSchema = paymentLineFields.superRefine(requireTransactionReference);
 
 const paymentSchema = z.object({ payments: z.array(paymentLineSchema).min(1).max(4) });
 
-const refundSchema = paymentLineFields.omit({ id: true }).extend({
-  creditNoteId: z.string().min(1, "Choose a credit note"),
-});
+const refundSchema = paymentLineFields
+  .omit({ id: true })
+  .extend({ creditNoteId: z.string().min(1, "Choose a credit note") })
+  .superRefine(requireTransactionReference);
 
 const creditSchema = z
   .object({
@@ -103,6 +113,26 @@ const creditSchema = z
     });
   });
 
+function PaymentRootError() {
+  const { control } = useFormContext<z.input<typeof paymentSchema>>();
+  const { errors } = useFormState({ control });
+  const message = errors.root?.message;
+
+  return message ? (
+    <p role="alert" className="text-destructive">
+      {message}
+    </p>
+  ) : null;
+}
+
+function CreditLinesError() {
+  const { control } = useFormContext<z.input<typeof creditSchema>>();
+  const { errors } = useFormState({ control, name: "lines" });
+  const message = errors.lines?.root?.message;
+
+  return message ? <p className="text-xs text-destructive">{message}</p> : null;
+}
+
 type InvoiceHeader = {
   id: string;
   invoiceNumber: string;
@@ -125,18 +155,17 @@ export function InvoiceAccount({
   invoice: InvoiceHeader;
   canCredit: boolean;
 }) {
-  const [paymentOpen, setPaymentOpen] = useState(false);
-  const [creditOpen, setCreditOpen] = useState(false);
-  const [refundOpen, setRefundOpen] = useState(false);
-  const detail = useQuery(
-    orpc.billing.getInvoice.queryOptions({ input: { orgSlug, invoiceId: invoice.id } }),
-  );
+  const [action, setAction] = useState<"payment" | "credit" | "refund" | null>(null);
+  const [documentsOpen, setDocumentsOpen] = useState(false);
+  const needsDetail = documentsOpen || action === "credit" || action === "refund";
+  const detail = useQuery({
+    ...orpc.billing.getInvoice.queryOptions({ input: { orgSlug, invoiceId: invoice.id } }),
+    enabled: needsDetail,
+  });
   const outstanding = Number(invoice.outstanding);
   const isRefundDue = outstanding < 0;
 
   return (
-    // Each invoice is its own card on the canvas: the billing tab lists them
-    // flat, so the surface comes from the row rather than from a tray around it.
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
@@ -162,25 +191,20 @@ export function InvoiceAccount({
             size="xs"
             variant="outline"
             disabled={outstanding <= 0}
-            onClick={() => setPaymentOpen(true)}
+            onClick={() => setAction("payment")}
           >
             Record payment
           </Button>
           {canCredit ? (
             <>
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={!detail.data}
-                onClick={() => setCreditOpen(true)}
-              >
+              <Button size="xs" variant="outline" onClick={() => setAction("credit")}>
                 Credit note
               </Button>
               <Button
                 size="xs"
                 variant="outline"
-                disabled={!detail.data?.creditNotes.length || !isRefundDue}
-                onClick={() => setRefundOpen(true)}
+                disabled={!isRefundDue}
+                onClick={() => setAction("refund")}
               >
                 Record refund
               </Button>
@@ -196,7 +220,15 @@ export function InvoiceAccount({
         >
           Invoice print
         </Link>
-        {detail.data ? (
+        <Button
+          size="xs"
+          variant="ghost"
+          className="h-auto px-0 text-muted-foreground"
+          onClick={() => setDocumentsOpen((open) => !open)}
+        >
+          {documentsOpen ? "Hide documents" : "Documents"}
+        </Button>
+        {documentsOpen && detail.data ? (
           <>
             {detail.data.payments.map((payment) => (
               <Link
@@ -228,13 +260,13 @@ export function InvoiceAccount({
           </>
         ) : null}
       </div>
-      {detail.isPending ? (
+      {needsDetail && detail.isPending ? (
         <p role="status" className="text-muted-foreground">
-          Loading invoice activity…
+          Loading invoice details…
         </p>
-      ) : detail.isError ? (
+      ) : needsDetail && detail.isError ? (
         <div role="alert" className="border-l-2 border-destructive pl-3">
-          <p className="font-medium">Could not load invoice activity</p>
+          <p className="font-medium">Could not load invoice details</p>
           <p className="text-muted-foreground">{detail.error.message}</p>
           <Button size="xs" variant="ghost" onClick={() => void detail.refetch()}>
             Retry
@@ -242,29 +274,22 @@ export function InvoiceAccount({
         </div>
       ) : null}
       <ClientOnly fallback={null}>
-        {paymentOpen ? (
+        {action === "payment" ? (
           <PaymentDialog
             open
-            onOpenChange={setPaymentOpen}
+            onOpenChange={(open) => setAction(open ? "payment" : null)}
             orgSlug={orgSlug}
             appointmentId={appointmentId}
             invoiceId={invoice.id}
             outstanding={invoice.outstanding}
             currency={invoice.currency}
-            onApplyCredit={
-              canCredit && detail.data
-                ? () => {
-                    setPaymentOpen(false);
-                    setCreditOpen(true);
-                  }
-                : undefined
-            }
+            onApplyCredit={canCredit ? () => setAction("credit") : undefined}
           />
         ) : null}
-        {detail.data ? (
+        {action === "credit" && detail.data ? (
           <CreditDialog
-            open={creditOpen}
-            onOpenChange={setCreditOpen}
+            open
+            onOpenChange={(open) => setAction(open ? "credit" : null)}
             orgSlug={orgSlug}
             appointmentId={appointmentId}
             invoiceId={invoice.id}
@@ -272,10 +297,10 @@ export function InvoiceAccount({
             currency={invoice.currency}
           />
         ) : null}
-        {detail.data ? (
+        {action === "refund" && detail.data ? (
           <RefundDialog
-            open={refundOpen}
-            onOpenChange={setRefundOpen}
+            open
+            onOpenChange={(open) => setAction(open ? "refund" : null)}
             orgSlug={orgSlug}
             appointmentId={appointmentId}
             invoiceId={invoice.id}
@@ -313,15 +338,21 @@ function PaymentDialog({
       payments: [{ id: 1, method: "cash", amount: outstanding, reference: "" }],
     },
   });
-  const paymentLines = form.watch("payments");
+  const paymentLines = useFieldArray({
+    control: form.control,
+    name: "payments",
+    keyName: "fieldKey",
+  });
   const mutation = useMutation(
     orpc.billing.recordPayments.mutationOptions({
-      onSuccess: async () => {
+      onSuccess: async (_data, variables) => {
         await invalidate(invoiceId);
-        toast.success(paymentLines.length === 1 ? "Payment recorded" : "Split payment recorded");
         onOpenChange(false);
+        toast.success(
+          variables.payments.length === 1 ? "Payment recorded" : "Split payment recorded",
+        );
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(errorMessage(error, "Could not record the payment")),
     }),
   );
 
@@ -359,47 +390,52 @@ function PaymentDialog({
             })}
             className="flex flex-col gap-3"
           >
-            {paymentLines.map((payment, index) => (
-              <div key={payment.id} className="flex flex-wrap items-end gap-2">
-                <FormField
-                  control={form.control}
+            {paymentLines.fields.map((payment, index) => (
+              <div key={payment.fieldKey} className="flex flex-wrap items-end gap-2">
+                <RegisteredFormField
                   name={`payments.${index}.method`}
                   render={({ field }) => (
                     <FormItem className="w-28">
                       <FormLabel>{index === 0 ? "Payment" : "And"}</FormLabel>
                       <FormControl>
                         <NativeSelect {...field} disabled={mutation.isPending}>
-                          <option value="cash">Cash</option>
-                          <option value="upi">UPI</option>
-                          <option value="card">Card</option>
+                          {PAYMENT_METHODS.map((method) => (
+                            <option key={method.value} value={method.value}>
+                              {method.label}
+                            </option>
+                          ))}
                         </NativeSelect>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                {payment.method !== "cash" ? (
-                  <FormField
-                    control={form.control}
-                    name={`payments.${index}.reference`}
-                    render={({ field }) => (
-                      <FormItem className="min-w-48 flex-1">
-                        <FormLabel>Reference *</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            value={field.value ?? ""}
-                            disabled={mutation.isPending}
-                            placeholder="Transaction reference"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                ) : null}
-                <FormField
+                <Watch
                   control={form.control}
+                  name={`payments.${index}.method`}
+                  exact
+                  render={(method) =>
+                    needsReference(method) ? (
+                      <RegisteredFormField
+                        name={`payments.${index}.reference`}
+                        render={({ field }) => (
+                          <FormItem className="min-w-48 flex-1">
+                            <FormLabel>Reference *</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                disabled={mutation.isPending}
+                                placeholder="Transaction reference"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    ) : null
+                  }
+                />
+                <RegisteredFormField
                   name={`payments.${index}.amount`}
                   render={({ field }) => (
                     <FormItem className="ml-auto w-32">
@@ -416,20 +452,14 @@ function PaymentDialog({
                     </FormItem>
                   )}
                 />
-                {paymentLines.length > 1 ? (
+                {paymentLines.fields.length > 1 ? (
                   <Button
                     type="button"
                     size="icon-sm"
                     variant="ghost"
                     disabled={mutation.isPending}
                     aria-label={`Remove payment ${index + 1}`}
-                    onClick={() =>
-                      form.setValue(
-                        "payments",
-                        paymentLines.filter((line) => line.id !== payment.id),
-                        { shouldDirty: true, shouldValidate: true },
-                      )
-                    }
+                    onClick={() => paymentLines.remove(index)}
                   >
                     <Trash2Icon />
                   </Button>
@@ -441,39 +471,26 @@ function PaymentDialog({
               size="sm"
               variant="ghost"
               className="self-start"
-              disabled={mutation.isPending || paymentLines.length >= 4}
-              onClick={() =>
-                form.setValue(
-                  "payments",
-                  [
-                    ...paymentLines,
-                    {
-                      id: Math.max(...paymentLines.map((payment) => payment.id)) + 1,
-                      method: "upi",
-                      amount: "",
-                      reference: "",
-                    },
-                  ],
-                  { shouldDirty: true },
-                )
-              }
+              disabled={mutation.isPending || paymentLines.fields.length >= 4}
+              onClick={() => {
+                const payments = form.getValues("payments");
+                paymentLines.append({
+                  id: Math.max(...payments.map((payment) => payment.id)) + 1,
+                  method: "upi",
+                  amount: "",
+                  reference: "",
+                });
+              }}
             >
               Split payment
             </Button>
-            {form.formState.errors.root?.message ? (
-              <p role="alert" className="text-destructive">
-                {form.formState.errors.root.message}
-              </p>
-            ) : null}
+            <PaymentRootError />
             <DialogFooter>
               {onApplyCredit ? (
                 <Button type="button" variant="outline" onClick={onApplyCredit}>
                   Apply discount
                 </Button>
               ) : null}
-              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
               <SubmitButton isSubmitting={mutation.isPending}>Record payment</SubmitButton>
             </DialogFooter>
           </form>
@@ -511,10 +528,10 @@ function CreditDialog({
     orpc.billing.issueCreditNote.mutationOptions({
       onSuccess: async () => {
         await invalidate(invoiceId);
-        toast.success("Credit note issued");
         onOpenChange(false);
+        toast.success("Credit note issued");
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(errorMessage(error, "Could not issue the credit note")),
     }),
   );
   const submit = form.handleSubmit((value) =>
@@ -541,8 +558,7 @@ function CreditDialog({
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={submit} className="flex flex-col gap-3">
-            <FormField
-              control={form.control}
+            <RegisteredFormField
               name="reason"
               render={({ field }) => (
                 <FormItem>
@@ -587,21 +603,27 @@ function CreditDialog({
                         />
                       </TableCell>
                       <TableCell>
-                        <FormField
+                        <Watch
                           control={form.control}
-                          name={`lines.${index}.gross`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl>
-                                <Input
-                                  {...field}
-                                  aria-label={`Partial gross credit for ${line.description}`}
-                                  inputMode="decimal"
-                                  disabled={form.watch(`lines.${index}.full`)}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
+                          name={`lines.${index}.full`}
+                          exact
+                          render={(full) => (
+                            <RegisteredFormField
+                              name={`lines.${index}.gross`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormControl>
+                                    <Input
+                                      {...field}
+                                      aria-label={`Partial gross credit for ${line.description}`}
+                                      inputMode="decimal"
+                                      disabled={full}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
                           )}
                         />
                       </TableCell>
@@ -610,11 +632,8 @@ function CreditDialog({
                 </TableBody>
               </Table>
             </div>
-            <p className="text-xs text-destructive">{form.formState.errors.lines?.root?.message}</p>
+            <CreditLinesError />
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
               <SubmitButton isSubmitting={mutation.isPending}>Issue credit note</SubmitButton>
             </DialogFooter>
           </form>
@@ -649,10 +668,10 @@ function RefundDialog({
     orpc.billing.recordRefund.mutationOptions({
       onSuccess: async () => {
         await invalidate(invoiceId);
-        toast.success("Refund recorded");
         onOpenChange(false);
+        toast.success("Refund recorded");
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(errorMessage(error, "Could not record the refund")),
     }),
   );
 
@@ -676,8 +695,7 @@ function RefundDialog({
             )}
             className="flex flex-col gap-3"
           >
-            <FormField
-              control={form.control}
+            <RegisteredFormField
               name="creditNoteId"
               render={({ field }) => (
                 <FormItem>
@@ -696,25 +714,25 @@ function RefundDialog({
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
+            <RegisteredFormField
               name="method"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Method</FormLabel>
                   <FormControl>
                     <NativeSelect {...field} disabled={mutation.isPending}>
-                      <option value="cash">Cash</option>
-                      <option value="upi">UPI</option>
-                      <option value="card">Card</option>
+                      {PAYMENT_METHODS.map((method) => (
+                        <option key={method.value} value={method.value}>
+                          {method.label}
+                        </option>
+                      ))}
                     </NativeSelect>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
+            <RegisteredFormField
               name="amount"
               render={({ field }) => (
                 <FormItem>
@@ -726,8 +744,7 @@ function RefundDialog({
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
+            <RegisteredFormField
               name="reference"
               render={({ field }) => (
                 <FormItem>
@@ -740,9 +757,6 @@ function RefundDialog({
               )}
             />
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
               <SubmitButton isSubmitting={mutation.isPending}>Record refund</SubmitButton>
             </DialogFooter>
           </form>

@@ -1,29 +1,57 @@
 import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
+import {
+  Form,
+  FormControl,
+  FormItem,
+  FormMessage,
+  RegisteredFormField,
+} from "@hms/ui/components/form";
 import { Input } from "@hms/ui/components/input";
+import { NativeSelect } from "@hms/ui/components/native-select";
 import { Separator } from "@hms/ui/components/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@hms/ui/components/sheet";
-import { ToggleGroup, ToggleGroupItem } from "@hms/ui/components/toggle-group";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ExternalLinkIcon, PhoneIcon } from "lucide-react";
-import { useState } from "react";
+import { Watch } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 
+import { useZodForm } from "@/hooks/use-zod-form";
 import type { WorklistRow } from "@/lib/billing-worklist-row";
 import { invalidateBillingState } from "@/lib/domain-invalidation";
 import { MONEY_INPUT_PATTERN, formatMoney, parseMoneyInput } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
-import { PAYMENT_METHODS, type PaymentMethod, needsReference } from "@/lib/settlement";
+import { errorMessage } from "@/lib/orpc-error";
+import { PAYMENT_METHODS, needsReference } from "@/lib/settlement";
 
-/**
- * The desk's settle panel: what is owed on one row, and the one control that
- * closes it. It sits over the worklist rather than navigating, so a cashier
- * keeps their place in the list across twenty settlements.
- *
- * Anything the panel cannot finish — issuing the invoice, crediting, refunding —
- * links to the visit's billing page rather than growing a second copy of it here.
- */
+// The ceiling is per-row, so the schema is built per panel rather than at module scope.
+function paymentSchema(owedPaise: number, owedLabel: string) {
+  return z
+    .object({
+      method: z.enum(PAYMENT_METHODS.map((option) => option.value)),
+      amount: z
+        .string()
+        .regex(MONEY_INPUT_PATTERN, "Enter an amount like 450 or 450.50")
+        .refine((value) => Number(value) > 0, "Enter an amount above zero")
+        .refine(
+          (value) => (parseMoneyInput(value) ?? 0) <= owedPaise,
+          `More than the ${owedLabel} outstanding`,
+        ),
+      reference: z.string().trim().max(100),
+    })
+    .superRefine((value, context) => {
+      if (needsReference(value.method) && !value.reference) {
+        context.addIssue({
+          code: "custom",
+          path: ["reference"],
+          message: "A non-cash payment needs a reference",
+        });
+      }
+    });
+}
+
 export function BillingWorklistSheet({
   orgSlug,
   row,
@@ -38,7 +66,11 @@ export function BillingWorklistSheet({
   return (
     <Sheet open={row !== null} onOpenChange={(next) => (next ? undefined : onClose())}>
       <SheetContent>
-        {row ? <Body orgSlug={orgSlug} row={row} currency={currency} onClose={onClose} /> : null}
+        {row ? (
+          // Keyed by the row, not by what it owes: a background refetch must not remount the
+          // panel and wipe a half-typed amount.
+          <Body key={row.key} orgSlug={orgSlug} row={row} currency={currency} onClose={onClose} />
+        ) : null}
       </SheetContent>
     </Sheet>
   );
@@ -56,36 +88,25 @@ function Body({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [method, setMethod] = useState<PaymentMethod>("cash");
-  const [amount, setAmount] = useState(() => Number(row.owed).toFixed(2));
-  const [reference, setReference] = useState("");
-
+  const invoiceId = row.invoiceId;
   const owedPaise = parseMoneyInput(row.owed) ?? 0;
-  const amountPaise = MONEY_INPUT_PATTERN.test(amount) ? parseMoneyInput(amount) : null;
-  const problem =
-    amountPaise === null
-      ? "Enter an amount like 450 or 450.50"
-      : amountPaise === 0
-        ? "Enter an amount above zero"
-        : amountPaise > owedPaise
-          ? `More than the ${formatMoney(row.owed, currency)} outstanding`
-          : needsReference(method) && !reference.trim()
-            ? "A UPI or card payment needs a reference"
-            : null;
+  const form = useZodForm(paymentSchema(owedPaise, formatMoney(row.owed, currency)), {
+    defaultValues: { method: "cash", amount: Number(row.owed).toFixed(2), reference: "" },
+  });
 
   const record = useMutation(
     orpc.billing.recordPayments.mutationOptions({
-      onSuccess: async () => {
-        await invalidateBillingState(
+      onSuccess: () => {
+        onClose();
+        toast.success("Payment recorded");
+        void invalidateBillingState(
           queryClient,
           orgSlug,
           row.appointmentId,
           row.invoiceId ?? undefined,
         );
-        toast.success("Payment recorded");
-        onClose();
       },
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(errorMessage(error, "Could not record the payment")),
     }),
   );
 
@@ -121,66 +142,86 @@ function Body({
 
         <Separator />
 
-        {row.invoiceId ? (
-          <form
-            className="flex flex-col gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (problem || !row.invoiceId) return;
-              record.mutate({
-                orgSlug,
-                invoiceId: row.invoiceId,
-                payments: [{ method, amount, reference: reference.trim() || undefined }],
-              });
-            }}
-          >
-            <span className="text-muted-foreground">Take payment</span>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center rounded-lg bg-muted p-0.5">
-                <ToggleGroup
-                  aria-label="Payment method"
-                  value={[method]}
-                  size="sm"
-                  spacing={1}
-                  onValueChange={(value) =>
-                    setMethod((value[0] as PaymentMethod | undefined) ?? method)
-                  }
-                >
-                  {PAYMENT_METHODS.map((option) => (
-                    <ToggleGroupItem key={option.value} value={option.value}>
-                      {option.label}
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
+        {invoiceId ? (
+          <Form {...form}>
+            {/* `noValidate`: Zod owns every message here. */}
+            <form
+              noValidate
+              className="flex flex-col gap-2"
+              onSubmit={form.handleSubmit((values) =>
+                record.mutate({
+                  orgSlug,
+                  invoiceId,
+                  payments: [{ ...values, reference: values.reference || undefined }],
+                }),
+              )}
+            >
+              <span className="text-muted-foreground">Take payment</span>
+              <div className="flex flex-wrap items-start gap-2">
+                <RegisteredFormField
+                  name="method"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <NativeSelect {...field} aria-label="Payment method" className="w-36">
+                          {PAYMENT_METHODS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </NativeSelect>
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                <RegisteredFormField
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          aria-label="Amount received"
+                          inputMode="decimal"
+                          className="w-28 text-right font-mono tabular-nums"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
-              <Input
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-                aria-label="Amount received"
-                inputMode="decimal"
-                className="w-28 text-right font-mono tabular-nums"
+              {/* Only this line watches the method, so choosing one does not
+                  re-render the panel around it. */}
+              <Watch
+                control={form.control}
+                name="method"
+                exact
+                render={(method) =>
+                  needsReference(method) ? (
+                    <RegisteredFormField
+                      name="reference"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              aria-label="Reference"
+                              placeholder="Transaction reference"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : null
+                }
               />
-            </div>
-            {needsReference(method) ? (
-              <Input
-                value={reference}
-                onChange={(event) => setReference(event.target.value)}
-                aria-label="Reference"
-                placeholder="UPI or card reference"
-              />
-            ) : null}
-            <div className="flex items-center gap-2">
-              {problem ? <span className="text-destructive">{problem}</span> : null}
-              <Button
-                type="submit"
-                size="sm"
-                className="ml-auto"
-                disabled={Boolean(problem) || record.isPending}
-              >
-                Collect {amountPaise ? formatMoney(amount, currency) : ""}
+              <Button type="submit" size="sm" className="ml-auto" disabled={record.isPending}>
+                Collect
               </Button>
-            </div>
-          </form>
+            </form>
+          </Form>
         ) : (
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">

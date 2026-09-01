@@ -75,13 +75,13 @@ One `opd_appointments` row represents both scheduled and walk-in work.
 states are exactly `booked`, `checked_in`, `cancelled`, and `no_show` with staff
 copy **Booked**, **Checked In**, **Cancelled**, and **No show**. The staff
 surface is one searchable `opd.day` list per business date.
-See the [OPD desk lifecycle spec](./specs/opd-desk-lifecycle.md) for behavior.
+See [OPD](./opd.md) for the shipped workflow.
 
-Clinical and financial lifecycles remain independent after creation. The normal
-front-desk walk-in is one deliberate exception at the transaction boundary: it
-atomically creates the appointment, token, known Charges, itemized supply
-document, Payments, Receipts, and balanced journals. It must be settled or carry
-an explicit credit/discount reason. A failure leaves no partial desk walk-in.
+Clinical and financial lifecycles remain independent after creation. The one
+deliberate exception is at the transaction boundary: a front-desk walk-in
+commits its appointment, token, Charges, and money as a single atomic unit, so
+a failure leaves no partial desk walk-in (D015). See
+[OPD](./opd.md#now) for that contract.
 
 Financial vocabulary is precise:
 
@@ -94,7 +94,7 @@ Financial vocabulary is precise:
 - booking money taken before supply is an **Advance Receipt/Credit**, not
   Appointment payment state, and remains a liability until allocation.
 
-One collection may be split across at most four Payment methods. Each non-cash
+One collection may be split across at most four Payment lines. Each non-cash
 line requires its reconciliation reference and produces its own Receipt. After
 an Invoice is issued, a discount is represented by a Credit Note; recording a
 Payment never rewrites the immutable Invoice.

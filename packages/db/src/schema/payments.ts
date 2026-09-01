@@ -14,7 +14,6 @@ import {
 import { organization, user } from "./auth";
 import { invoices } from "./invoices";
 
-/** Payments received against immutable issued invoices, with receipt numbering fixed at record time. */
 export const payments = pgTable(
   "payments",
   {
@@ -28,9 +27,7 @@ export const payments = pgTable(
     reference: text("reference"),
     receiptNumber: text("receipt_number").notNull(),
     fiscalYear: text("fiscal_year").notNull(),
-    /** Organization-local accounting date snapshotted when money is received. */
     businessDate: date("business_date").notNull(),
-    /** Attribution only; authorization always comes from the request's organization scope. */
     receivedBy: text("received_by")
       .notNull()
       .references(() => user.id),
@@ -44,11 +41,10 @@ export const payments = pgTable(
       foreignColumns: [invoices.orgId, invoices.id],
     }),
     uniqueIndex("payments_org_receipt_number_idx").on(table.orgId, table.receiptNumber),
-    // Dashboard collection totals read one organization's payments over a
-    // Business-Date range, independently of any invoice.
+    // Dashboard collection totals read one org's payments over a day range, with no
+    // invoice involved.
     index("payments_org_created_idx").on(table.orgId, table.createdAt),
-    // Every read is scoped to one invoice and sorted by time, so the sort
-    // rides along in the same index.
+    // Every other read is scoped to one invoice and sorted by time.
     index("payments_org_invoice_idx").on(table.orgId, table.invoiceId, table.createdAt),
   ],
 );

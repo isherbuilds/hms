@@ -1,9 +1,5 @@
-/**
- * One row shape for both halves of the billing worklist: charges waiting for an
- * invoice, and invoices waiting for money. They are two different jobs but the
- * same question — who owes what, and how long has it waited — so merging them
- * lets the desk work one ordered list instead of choosing a board first.
- */
+// One shape for both halves: charges waiting for an invoice and invoices waiting
+// for money are the same question, so the desk works one ordered list.
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/org-datetime";
 
@@ -18,7 +14,6 @@ export type WorklistRow = {
   patientName: string;
   patientMrn: string;
   patientPhone: string | null;
-  /** The org currency the row's money strings are denominated in. */
   currency: string;
   total: string;
   owed: string;
@@ -70,9 +65,8 @@ export function toWorklistRows(
 ): WorklistRow[] {
   const now = Date.now();
 
-  // Charges outrank invoices whatever their age: the patient is in the building
-  // and stops being collectable the moment they leave, while an old invoice will
-  // still be there tomorrow. Both halves already arrive oldest first.
+  // Charges outrank invoices whatever their age: the patient is in the building and
+  // stops being collectable the moment they leave.
   return [
     ...unbilled.map((row) => ({
       key: `c-${row.appointmentId}`,

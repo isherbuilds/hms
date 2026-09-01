@@ -15,7 +15,6 @@ import { organization, user } from "./auth";
 import { creditNotes } from "./credit-notes";
 import { invoices } from "./invoices";
 
-/** Refunds paid against credit notes, with the invoice relationship snapshotted for balance queries. */
 export const refunds = pgTable(
   "refunds",
   {
@@ -30,9 +29,7 @@ export const refunds = pgTable(
     reference: text("reference"),
     refundNumber: text("refund_number").notNull(),
     fiscalYear: text("fiscal_year").notNull(),
-    /** Organization-local accounting date snapshotted when the refund is recorded. */
     businessDate: date("business_date").notNull(),
-    /** Attribution only; authorization always comes from the request's organization scope. */
     refundedBy: text("refunded_by")
       .notNull()
       .references(() => user.id),
@@ -50,8 +47,7 @@ export const refunds = pgTable(
       foreignColumns: [creditNotes.orgId, creditNotes.id],
     }),
     uniqueIndex("refunds_org_number_idx").on(table.orgId, table.refundNumber),
-    // Every read is scoped to one invoice and sorted by time, so the sort
-    // rides along in the same index.
+    // Every read is scoped to one invoice and sorted by time.
     index("refunds_org_invoice_idx").on(table.orgId, table.invoiceId, table.createdAt),
     index("refunds_org_credit_note_idx").on(table.orgId, table.creditNoteId),
   ],

@@ -1,12 +1,6 @@
 {
   "version": 1,
   "skills": {
-    "ai-sdk": {
-      "source": "vercel/ai",
-      "sourceType": "github",
-      "skillPath": "skills/use-ai-sdk/SKILL.md",
-      "computedHash": "0883204d11b055e968dee697c5858e68064c27dfd4deb6310212895daa65c5ad"
-    },
     "analyze-logs": {
       "source": "evlog.dev",
       "sourceType": "well-known",
@@ -18,21 +12,11 @@
       "skillPath": "better-auth/best-practices/SKILL.md",
       "computedHash": "61ba0ef64ed2e7c424401cc848ca33dd6d790a720c44727717dc0c5cba5fc122"
     },
-    "build-audit-logs": {
-      "source": "evlog.dev",
-      "sourceType": "well-known",
-      "computedHash": "d2836433a45d3763403a87803f48df7a48f6c2c52355dfca3c3e29238e5b7cf5"
-    },
     "hono": {
       "source": "yusukebe/hono-skill",
       "sourceType": "github",
       "skillPath": "skills/hono/SKILL.md",
       "computedHash": "220e5e1b12bbaeec49ec362b6e2262d77632d0536e9758bba9acbbc323fef990"
-    },
-    "review-logging-patterns": {
-      "source": "evlog.dev",
-      "sourceType": "well-known",
-      "computedHash": "ec2a14dfb5c6cc8eacfef4bbcd35a8bb02a7de16c801083f14024137c22b5cc9"
     },
     "shadcn": {
       "source": "shadcn/ui",

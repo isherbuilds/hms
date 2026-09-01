@@ -14,13 +14,9 @@ import { organization, user } from "./auth";
 import { catalogItems } from "./catalog-items";
 import { departments } from "./departments";
 
-/**
- * Practitioners are staff records, not accounts: doctors without logins exist,
- * so `memberUserId` is optional attribution linking a practitioner to a member.
- * FKs alone never prove tenancy —
- * handlers must verify department and fee catalog item ids belong to the same
- * org before writing them.
- */
+// Staff records, not accounts: `memberUserId` is optional attribution. FKs alone
+// never prove tenancy — handlers must check department and fee item ids are in the
+// same org before writing them.
 export const practitioners = pgTable(
   "practitioners",
   {
@@ -32,9 +28,9 @@ export const practitioners = pgTable(
     departmentId: text("department_id").notNull(),
     registrationNumber: text("registration_number"),
     memberUserId: text("member_user_id").references(() => user.id, { onDelete: "set null" }),
-    /** Catalog item snapshotted into the auto consult-fee Charge at appointment creation (Slice 5). */
+    // Snapshotted into the automatic consult-fee charge at appointment creation.
     consultFeeItemId: text("consult_fee_item_id"),
-    /** Optional follow-up fee used only for a recent appointment within the configured window. */
+    // Used only for a repeat appointment inside the configured follow-up window.
     followUpFeeItemId: text("follow_up_fee_item_id"),
     followUpValidityDays: integer("follow_up_validity_days"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

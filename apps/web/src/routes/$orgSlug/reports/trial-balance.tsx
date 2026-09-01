@@ -1,5 +1,4 @@
 import { Button } from "@hms/ui/components/button";
-import { Input } from "@hms/ui/components/input";
 import {
   Table,
   TableBody,
@@ -8,48 +7,39 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { DownloadIcon, PrinterIcon } from "lucide-react";
-import { useEffect, useState } from "react";
 import { z } from "zod";
 
+import { ReportPeriodControls } from "@/components/report-period-controls";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
 import { downloadXlsx } from "@/lib/report-export";
-import {
-  REPORT_PRINT_LANDSCAPE_CSS,
-  formatReportMoney,
-  validateReportPeriod,
-} from "@/lib/report-presentation";
+import { REPORT_PRINT_LANDSCAPE_CSS, formatReportMoney } from "@/lib/report-presentation";
 import { orgMonthToDate as defaultRange } from "@/lib/org-datetime";
+import { requireOrgPermission } from "@/lib/route-permission";
 
 export const Route = createFileRoute("/$orgSlug/reports/trial-balance")({
   head: () => ({ meta: [{ title: "Trial balance · HMS" }] }),
-  // `.catch` keeps a hand-edited or truncated URL on the page: a date that does
-  // not parse falls back to the default range instead of an error screen.
   validateSearch: z.object({
     from: z.iso.date().optional().catch(undefined),
     to: z.iso.date().optional().catch(undefined),
   }),
   loaderDeps: ({ search: { from, to } }) => ({ from, to }),
-  /**
-   * The loader resolves the range and the component reads that same object
-   * back, so the key we prefetch and the key we render cannot drift apart.
-   * `member.me` already carries the org time zone and the parent org loader
-   * has it in flight, so this awaits a deduplicated request, not a second one.
-   */
   loader: async ({ context: { queryClient }, params: { orgSlug }, deps }) => {
-    const { timeZone } = await queryClient.ensureQueryData(
-      orpc.member.me.queryOptions({ input: { orgSlug } }),
+    const { timeZone } = await requireOrgPermission(
+      queryClient,
+      orgSlug,
+      { report: ["read"] },
+      "/$orgSlug/dashboard",
     );
     const fallback = defaultRange(timeZone);
     const range = { from: deps.from ?? fallback.from, to: deps.to ?? fallback.to };
     await loadRouteQuery(
-      queryClient.fetchQuery(
-        orpc.report.trialBalance.queryOptions({ input: { orgSlug, ...range } }),
-      ),
+      queryClient.query(orpc.report.trialBalance.queryOptions({ input: { orgSlug, ...range } })),
     );
     return range;
   },
@@ -60,17 +50,9 @@ function TrialBalanceRoute() {
   const { orgSlug } = Route.useParams();
   const navigate = Route.useNavigate();
   const { from, to } = Route.useLoaderData();
-  const membership = useSuspenseQuery(orpc.member.me.queryOptions({ input: { orgSlug } }));
+  const currency = useMembership(orgSlug, (membership) => membership.currency);
   const report = useQuery(orpc.report.trialBalance.queryOptions({ input: { orgSlug, from, to } }));
-  const [draft, setDraft] = useState({ from, to });
-  useEffect(() => setDraft({ from, to }), [from, to]);
-  const periodError = validateReportPeriod(draft.from, draft.to);
-  const money = (value: string) => formatReportMoney(value, membership.data.currency);
-
-  const applyRange = () => {
-    if (periodError) return;
-    void navigate({ search: draft, replace: true });
-  };
+  const money = (value: string) => formatReportMoney(value, currency);
 
   const exportReport = () => {
     if (!report.data) return;
@@ -121,32 +103,12 @@ function TrialBalanceRoute() {
     <>
       <PageHeader title="Trial balance" description="Account movement for a selected period" />
       <PageBody>
-        <div className="flex flex-wrap items-end gap-2 print:hidden">
-          <label className="grid gap-1">
-            <span className="text-muted-foreground">From</span>
-            <Input
-              type="date"
-              value={draft.from}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, from: event.target.value }))
-              }
-            />
-          </label>
-          <label className="grid gap-1">
-            <span className="text-muted-foreground">To</span>
-            <Input
-              type="date"
-              value={draft.to}
-              onChange={(event) => setDraft((current) => ({ ...current, to: event.target.value }))}
-            />
-          </label>
-          <Button
-            size="sm"
-            disabled={Boolean(periodError) || (draft.from === from && draft.to === to)}
-            onClick={applyRange}
-          >
-            Apply
-          </Button>
+        <ReportPeriodControls
+          key={`${orgSlug}:${from}:${to}`}
+          from={from}
+          to={to}
+          onApply={(range) => void navigate({ search: range, replace: true })}
+        >
           <Button size="sm" variant="outline" disabled={!report.data} onClick={exportReport}>
             <DownloadIcon data-icon="inline-start" />
             Export Excel
@@ -160,15 +122,10 @@ function TrialBalanceRoute() {
             <PrinterIcon data-icon="inline-start" />
             Print / PDF
           </Button>
-        </div>
-        {periodError ? (
-          <p role="alert" className="text-destructive">
-            {periodError}
-          </p>
-        ) : null}
+        </ReportPeriodControls>
 
         {report.isPending ? null : report.isError ? (
-          <ErrorNote title="Could not load the trial balance" detail={report.error.message} />
+          <ErrorNote title="Could not load the trial balance" error={report.error} />
         ) : (
           <section data-report-print className="space-y-3">
             <header className="border-b pb-2">

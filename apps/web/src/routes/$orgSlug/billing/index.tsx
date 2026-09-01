@@ -13,17 +13,18 @@ import { ToggleGroup, ToggleGroupItem } from "@hms/ui/components/toggle-group";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { SearchIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import { z } from "zod";
 
 import { BillingWorklistSheet } from "@/components/billing-worklist-sheet";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { type WorklistRow, toWorklistRows, waitedLabel } from "@/lib/billing-worklist-row";
+import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { OPERATIONAL_INFINITE_REFETCH, OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
+import { requireOrgPermission } from "@/lib/route-permission";
 
 const FACETS = [
   { id: "all", label: "All" },
@@ -65,99 +66,94 @@ export const Route = createFileRoute("/$orgSlug/billing/")({
   }),
   loaderDeps: ({ search }) => ({ q: search.q, view: search.view }),
   loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {
+    // The worklist below is fetched without a catch, so a denial would otherwise reach
+    // the generic error page and offer a Try again that reruns the same denial.
+    await requireOrgPermission(queryClient, orgSlug, { billing: ["read"] }, "/$orgSlug/dashboard");
     const query = deps.q ?? "";
     await Promise.all([
-      queryClient.ensureQueryData(worklistQuery(orgSlug, query)),
+      queryClient.query({ ...worklistQuery(orgSlug, query), staleTime: "static" }),
       deps.view === "to-bill"
         ? null
-        : queryClient.prefetchInfiniteQuery(
-            openInvoicesQuery(orgSlug, query, deps.view === "overdue"),
-          ),
+        : queryClient
+            .infiniteQuery(openInvoicesQuery(orgSlug, query, deps.view === "overdue"))
+            .catch(() => {}),
     ]);
   },
   component: BillingIndexRoute,
 });
 
-/**
- * Every rupee the hospital is owed, in one list: charges nobody has invoiced,
- * then invoices nobody has paid. They were two boards before, which made the
- * cashier pick a board before they could look up a patient, and hid the second
- * half's growth entirely — the list was capped at 50 with nothing to say so.
- *
- * The list pages on a cursor and searches in SQL, so it stays the same size at
- * fifty open invoices and at five thousand.
- */
+function BillingSearchForm({ q }: { q: string | undefined }) {
+  const navigate = useNavigate({ from: Route.fullPath });
+
+  return (
+    <form
+      key={q ?? ""}
+      method="get"
+      className="flex min-w-48 flex-1 items-center gap-2 sm:max-w-md"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const nextQuery =
+          String(new FormData(event.currentTarget).get("q") ?? "").trim() || undefined;
+        if (nextQuery === q) return;
+        void navigate({ search: (previous) => ({ ...previous, q: nextQuery }) });
+      }}
+    >
+      <div className="relative flex-1">
+        <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="search"
+          name="q"
+          defaultValue={q ?? ""}
+          placeholder="Search patient, MRN, or invoice number"
+          aria-label="Search open money"
+          className="pl-8"
+        />
+      </div>
+      <Button type="submit" size="sm">
+        Search
+      </Button>
+    </form>
+  );
+}
+
 function BillingIndexRoute() {
   const { orgSlug } = Route.useParams();
   const { q, view } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const { timeZone } = useOrgDateTime();
 
-  const [query, setQuery] = useState(() => q ?? "");
-  const debouncedQuery = useDebouncedValue(query.trim(), 300);
-  const lastUrlQuery = useRef(q);
+  const query = q ?? "";
   const facet: Facet = view ?? "all";
-  const [openRow, setOpenRow] = useState<WorklistRow | null>(null);
-  const membership = useQuery(orpc.member.me.queryOptions({ input: { orgSlug } }));
-  const currency = membership.data?.currency;
-
-  // An external URL change (Back, a shared link) adopts the new value; our own
-  // debounced writes are recorded so they do not clobber what has been typed since.
-  useEffect(() => {
-    if (q !== lastUrlQuery.current) {
-      lastUrlQuery.current = q;
-      setQuery(q ?? "");
-    }
-  }, [q]);
-
-  useEffect(() => {
-    if (debouncedQuery !== query.trim()) return;
-    const nextQuery = debouncedQuery || undefined;
-    if (nextQuery === q) return;
-    lastUrlQuery.current = nextQuery;
-    void navigate({ search: (previous) => ({ ...previous, q: nextQuery }), replace: true });
-  }, [debouncedQuery, query, navigate, q]);
+  const [openRowKey, setOpenRowKey] = useState<string | null>(null);
+  const currency = useMembership(orgSlug, (membership) => membership.currency);
 
   const worklist = useQuery({
-    ...worklistQuery(orgSlug, debouncedQuery),
+    ...worklistQuery(orgSlug, query),
     ...OPERATIONAL_REFETCH,
   });
   const invoices = useInfiniteQuery({
-    ...openInvoicesQuery(orgSlug, debouncedQuery, facet === "overdue"),
+    ...openInvoicesQuery(orgSlug, query, facet === "overdue"),
     ...OPERATIONAL_INFINITE_REFETCH,
     enabled: facet !== "to-bill",
   });
 
-  const rows = useMemo(
-    () =>
-      currency
-        ? toWorklistRows(
-            facet === "all" || facet === "to-bill" ? (worklist.data?.unbilled ?? []) : [],
-            facet === "to-bill" ? [] : (invoices.data?.pages.flatMap((page) => page.items) ?? []),
-            currency,
-          )
-        : [],
-    [worklist.data, invoices.data, facet, currency],
+  const rows = toWorklistRows(
+    facet === "all" || facet === "to-bill" ? (worklist.data?.unbilled ?? []) : [],
+    facet === "to-bill" ? [] : (invoices.data?.pages.flatMap((page) => page.items) ?? []),
+    currency,
   );
+  // The sheet holds a key, not a row, so it always shows what the list shows.
+  const openRow = rows.find((row) => row.key === openRowKey) ?? null;
 
-  const failure = membership.isError
-    ? membership.error.message
-    : membership.isSuccess && !currency
-      ? "Organization currency is not configured."
-      : worklist.isError
-        ? worklist.error.message
-        : invoices.isError
-          ? invoices.error.message
-          : null;
+  const failure = worklist.error ?? invoices.error;
   const summary = worklist.data?.summary;
-  const pending =
-    membership.isPending || worklist.isPending || (facet !== "to-bill" && invoices.isPending);
+  const pending = worklist.isPending || (facet !== "to-bill" && invoices.isPending);
 
   return (
     <>
       <PageHeader title="Billing" description="Money owed to the hospital right now" />
       <PageBody>
-        {summary && currency ? (
+        {summary ? (
           <section className="flex flex-col rounded-xl bg-muted p-1">
             <div className="flex h-9 items-center justify-between gap-2 px-3 text-muted-foreground">
               <h2 className="min-w-0 truncate">Today</h2>
@@ -172,7 +168,7 @@ function BillingIndexRoute() {
               <Stat
                 label="Collected"
                 value={formatMoney(summary.collectedToday, currency)}
-                detail="Cash, UPI and card"
+                detail="All payment methods"
               />
               <Stat
                 label="Outstanding"
@@ -190,16 +186,7 @@ function BillingIndexRoute() {
         ) : null}
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-48 flex-1 sm:max-w-md">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search patient, MRN, or invoice number"
-              aria-label="Search open money"
-              className="pl-8"
-            />
-          </div>
+          <BillingSearchForm q={q} />
           <div className="flex items-center rounded-lg bg-muted p-0.5">
             <ToggleGroup
               aria-label="Filter"
@@ -235,12 +222,10 @@ function BillingIndexRoute() {
               one shape through a poll, a failure and an empty search. */}
           <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
             {pending ? null : failure ? (
-              <ErrorNote title="Could not load what is owed" detail={failure} inset />
+              <ErrorNote title="Could not load what is owed" error={failure} inset />
             ) : rows.length === 0 ? (
               <div className="flex min-h-32 items-center justify-center px-4 text-center text-muted-foreground">
-                {debouncedQuery
-                  ? "Nothing open matches this search."
-                  : "Nothing is owed right now."}
+                {query ? "Nothing open matches this search." : "Nothing is owed right now."}
               </div>
             ) : (
               <>
@@ -260,11 +245,11 @@ function BillingIndexRoute() {
                       <TableRow
                         key={row.key}
                         tabIndex={0}
-                        onClick={() => setOpenRow(row)}
+                        onClick={() => setOpenRowKey(row.key)}
                         onKeyDown={(event) => {
                           if (event.key !== "Enter") return;
                           event.preventDefault();
-                          setOpenRow(row);
+                          setOpenRowKey(row.key);
                         }}
                         className="cursor-pointer"
                       >
@@ -329,14 +314,12 @@ function BillingIndexRoute() {
         </section>
       </PageBody>
 
-      {currency ? (
-        <BillingWorklistSheet
-          orgSlug={orgSlug}
-          row={openRow}
-          currency={currency}
-          onClose={() => setOpenRow(null)}
-        />
-      ) : null}
+      <BillingWorklistSheet
+        orgSlug={orgSlug}
+        row={openRow}
+        currency={currency}
+        onClose={() => setOpenRowKey(null)}
+      />
     </>
   );
 }
@@ -345,7 +328,7 @@ function Stat({
   label,
   value,
   detail,
-  alarm = false,
+  alarm,
 }: {
   label: string;
   value: string;

@@ -2,21 +2,12 @@ import { getRouteApi } from "@tanstack/react-router";
 
 const orgRoute = getRouteApi("/$orgSlug");
 
-/**
- * Timestamps render in the organization's timezone, not the browser's, so a
- * clinic in Delhi and a doctor logged in from Dubai read the same queue times
- * (decision D008). The org layout loader resolves the zone once per navigation and
- * every helper here takes it explicitly — no hidden context, no wrapper types.
- *
- * Two kinds of value live here and they are not interchangeable:
- *   - an *instant* (`createdAt`) is a point in time, formatted in the org zone;
- *   - a *business date* (`YYYY-MM-DD`) is a label for a day, formatted in UTC
- *     so it never slides into the day before or after.
- */
+// An *instant* (`createdAt`) is a point in time, formatted in the org zone. A
+// *business date* (`YYYY-MM-DD`) labels a day and is formatted in UTC, so it never
+// slides into the day before or after. The two are not interchangeable (D008).
 
-// Constructing an Intl.DateTimeFormat costs far more than using one, and a
-// table formats a whole column. Cache per style+zone in a plain Map rather than
-// useMemo: loaders and the server call these too, outside any React render.
+// Constructing an Intl.DateTimeFormat costs far more than using one. A plain Map,
+// not useMemo: loaders and the server call these outside any React render.
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
 function formatter(
@@ -32,7 +23,6 @@ function formatter(
   return created;
 }
 
-/** An instant as the org-local `datetime-local` input value. */
 export function localInputValue(date: Date, timeZone: string): string {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-CA", {
@@ -50,14 +40,12 @@ export function localInputValue(date: Date, timeZone: string): string {
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 }
 
-/** The next half-hour boundary as an org-local `datetime-local` value. */
 export function nextHalfHour(timeZone: string): string {
   const date = new Date();
   date.setMinutes(date.getMinutes() + (30 - (date.getMinutes() % 30)), 0, 0);
   return localInputValue(date, timeZone);
 }
 
-/** "12 Aug 2026, 4:05 pm" — an instant, in tables and detail views. */
 export function formatDateTime(value: string | Date, timeZone: string): string {
   return formatter(`dateTime|${timeZone}`, "en-IN", {
     dateStyle: "medium",
@@ -66,7 +54,6 @@ export function formatDateTime(value: string | Date, timeZone: string): string {
   }).format(new Date(value));
 }
 
-/** "12 Aug 2026" — an instant where the time of day is noise. */
 export function formatDate(value: string | Date, timeZone: string): string {
   return formatter(`date|${timeZone}`, "en-IN", {
     dateStyle: "medium",
@@ -74,7 +61,6 @@ export function formatDate(value: string | Date, timeZone: string): string {
   }).format(new Date(value));
 }
 
-/** "4:05 pm" — same-day operational rows such as queue tokens. */
 export function formatTime(value: string | Date, timeZone: string): string {
   return formatter(`time|${timeZone}`, "en-IN", {
     hour: "numeric",
@@ -84,9 +70,8 @@ export function formatTime(value: string | Date, timeZone: string): string {
 }
 
 /**
- * "12 Aug" — a `YYYY-MM-DD` business date, for chart axes and day captions.
- * Pinned to UTC because the input names a day, not a moment: formatting it in
- * the org zone would shift a midnight anchor onto the neighbouring date.
+ * Pinned to UTC: the input names a day, not a moment, so formatting it in the org
+ * zone would shift a midnight anchor onto the neighbouring date.
  */
 export function formatDay(day: string): string {
   return formatter("day|UTC", "en-IN", {
@@ -96,7 +81,6 @@ export function formatDay(day: string): string {
   }).format(new Date(`${day}T00:00:00Z`));
 }
 
-/** "12 Aug 2026" — a complete `YYYY-MM-DD` business date. */
 export function formatBusinessDate(day: string): string {
   return formatter("businessDate|UTC", "en-IN", {
     dateStyle: "medium",
@@ -104,10 +88,7 @@ export function formatBusinessDate(day: string): string {
   }).format(new Date(`${day}T00:00:00Z`));
 }
 
-/**
- * Today's business date as `YYYY-MM-DD`. `en-CA` is the shortest way to get
- * that shape out of Intl without reassembling the parts by hand.
- */
+// `en-CA` is the shortest way to get `YYYY-MM-DD` out of Intl.
 export function orgToday(timeZone: string, now = new Date()): string {
   return formatter(`isoDate|${timeZone}`, "en-CA", {
     timeZone,
@@ -117,16 +98,12 @@ export function orgToday(timeZone: string, now = new Date()): string {
   }).format(now);
 }
 
-/** First of the current month through today — the default report range. */
 export function orgMonthToDate(timeZone: string): { from: string; to: string } {
   const to = orgToday(timeZone);
   return { from: `${to.slice(0, 8)}01`, to };
 }
 
-/**
- * The org's timezone and its current business date, both resolved by the
- * layout loader so server and client agree across a hydration.
- */
+// Both resolved by the layout loader, so server and client agree across hydration.
 export function useOrgDateTime(): { timeZone: string; today: string } {
   return orgRoute.useLoaderData();
 }

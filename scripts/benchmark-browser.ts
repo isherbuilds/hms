@@ -24,8 +24,8 @@ const browserEnv = {
   TMPDIR: process.env.TMPDIR,
   CHROME_DEVTOOLS_AXI_SESSION: SESSION,
   CHROME_DEVTOOLS_AXI_USER_DATA_DIR: PROFILE_DIR,
-  // A restart clears memory cache; this keeps the persistent profile's disk
-  // cache from turning later samples into warm-asset measurements.
+  // Keeps the persistent profile's disk cache from turning later samples into
+  // warm-asset measurements.
   CHROME_DEVTOOLS_AXI_CHROME_ARGS: "--disk-cache-size=1 --media-cache-size=1",
 };
 
@@ -122,8 +122,8 @@ const samples: Record<string, Array<Record<string, unknown>>> = {};
 try {
   for (const route of routes) {
     samples[route] = [];
-    // Discard the first run so database, SSR modules, and font machinery are
-    // warm while the HTTP asset cache remains cold on each browser restart.
+    // Discard the first run so database, SSR modules and fonts are warm while the HTTP
+    // asset cache stays cold on each browser restart.
     for (let index = 0; index <= SAMPLE_COUNT; index += 1) {
       console.error(
         `[browser benchmark] ${route} ${index === 0 ? "warm-up" : `sample ${index}/${SAMPLE_COUNT}`}`,

@@ -49,32 +49,34 @@ function JoinOrganizationRoute() {
     highlightedId && !invitations.isPending && !pending.some(({ id }) => id === highlightedId),
   );
 
+  const acceptOrExplain = async (invitationId: string, organizationId: string) => {
+    const { error } = await authClient.organization.acceptInvitation({ invitationId });
+    if (error) return error.message || "This invitation could not be accepted.";
+
+    const [{ data: joined }] = await Promise.all([
+      authClient.organization.getFullOrganization({ query: { organizationId } }),
+      queryClient.invalidateQueries({ queryKey: ["auth", "user-invitations"] }),
+    ]);
+    if (!joined) {
+      await organizations.refetch();
+      return "You joined, but the organization could not be opened. Choose it below.";
+    }
+
+    await navigate({ to: "/$orgSlug/onboarding", params: { orgSlug: joined.slug } });
+    return null;
+  };
+
   const acceptInvitation = async (invitationId: string, organizationId: string) => {
     setAcceptingId(invitationId);
     setActionError(null);
     try {
-      const { error } = await authClient.organization.acceptInvitation({ invitationId });
-      if (error) {
-        setActionError(error.message || "This invitation could not be accepted.");
-        return;
-      }
-      const [{ data: joined }] = await Promise.all([
-        authClient.organization.getFullOrganization({ query: { organizationId } }),
-        queryClient.invalidateQueries({ queryKey: ["auth", "user-invitations"] }),
-      ]);
-      if (!joined) {
-        setActionError("You joined, but the organization could not be opened. Choose it below.");
-        await organizations.refetch();
-        return;
-      }
-      await navigate({ to: "/$orgSlug/onboarding", params: { orgSlug: joined.slug } });
+      setActionError(await acceptOrExplain(invitationId, organizationId));
     } catch (caught) {
       setActionError(
         caught instanceof Error ? caught.message : "This invitation could not be accepted.",
       );
-    } finally {
-      setAcceptingId(null);
     }
+    setAcceptingId(null);
   };
 
   const mine = organizations.data ?? [];

@@ -3,12 +3,8 @@ import { DownloadIcon, PrinterIcon } from "lucide-react";
 
 import { PageBody, PageHeader } from "@/components/page";
 
-/**
- * Every billing document is now one server-rendered PDF (see the
- * `.../invoices/$invoiceId/pdf` route), so the screen shows that exact file
- * rather than a second HTML rendition of it. What the operator previews, saves,
- * and hands the patient is the same bytes.
- */
+// Shows the server-rendered PDF itself, so what the operator previews and what the
+// patient is handed are the same bytes.
 export function BillingDocumentView({
   title,
   description,

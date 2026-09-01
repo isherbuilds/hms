@@ -7,10 +7,7 @@ import { patients } from "@hms/db/schema/patients";
 import { env } from "@hms/env/server";
 import { count, eq, inArray, sql } from "drizzle-orm";
 
-/**
- * Deterministic development volume for patient search and catalog benchmarks.
- * Run the normal seed first, then run `bun scripts/seed-volume.ts` from the repo root.
- */
+// Run the normal seed first, then `bun scripts/seed-volume.ts` from the repo root.
 
 const ORG_SLUGS = ["mercy-general", "ridgeview-academy"] as const;
 const PATIENT_COUNT = 20_000;
@@ -153,7 +150,6 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-/** Build a deterministic UUIDv7 with a fixed timestamp and a unique 48-bit tail. */
 function deterministicUuidV7(
   date: Date,
   random: () => number,
@@ -241,7 +237,7 @@ async function seedOrganization(org: OrganizationSeed): Promise<SeedSummary> {
   const random = mulberry32(FIXED_SEED + org.orgIndex);
 
   const inserted = await db.transaction(async (tx) => {
-    // Serialize concurrent volume seeds for the same organization before the count gate.
+    // Serialize concurrent volume seeds for the same org before the count gate.
     await tx.execute(
       sql`select ${organization.id} from ${organization} where ${organization.id} = ${org.id} for update`,
     );
@@ -259,7 +255,7 @@ async function seedOrganization(org: OrganizationSeed): Promise<SeedSummary> {
       return { patientsInserted: 0, catalogItemsInserted: 0 };
     }
 
-    // This is the batched equivalent of PATIENT_COUNT calls to nextCounter.
+    // The batched equivalent of PATIENT_COUNT calls to nextCounter.
     const [sequence] = await tx
       .insert(counter)
       .values({ orgId: org.id, key: "mrn", value: PATIENT_COUNT })

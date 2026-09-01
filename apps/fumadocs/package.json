@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "astro dev --port=4000",
+    "dev": "portless",
+    "dev:app": "astro dev",
     "start": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
@@ -12,23 +13,27 @@
     "lint": "oxlint"
   },
   "dependencies": {
-    "@astrojs/markdown-remark": "^7.2.4",
-    "@astrojs/mdx": "^7.0.7",
-    "@astrojs/react": "^6.0.4",
-    "@fumadocs/base-ui": "16.14.5",
-    "astro": "^7.2.4",
-    "fumadocs-core": "16.14.5",
+    "@astrojs/markdown-remark": "^7.3.0",
+    "@astrojs/mdx": "^8.0.0",
+    "@astrojs/react": "^6.0.5",
+    "@fumadocs/base-ui": "16.15.4",
+    "astro": "^7.2.10",
+    "fumadocs-core": "16.15.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "sharp": "^0.35.3",
-    "takumi-js": "^2.10.0"
+    "sharp": "^0.35.4",
+    "takumi-js": "^2.13.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "oxlint": "^1.79.0",
+    "@types/react-dom": "^19.2.5",
+    "oxlint": "^1.80.0",
     "tailwindcss": "^4.3.3",
     "typescript": "catalog:"
+  },
+  "portless": {
+    "name": "docs.hms",
+    "script": "dev:app"
   }
 }
