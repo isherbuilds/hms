@@ -38,7 +38,11 @@ export const getRouter = () => {
 
 function DefaultRouteError({ error, reset }: ErrorComponentProps) {
   return (
-    <main className="mx-auto flex min-h-svh w-full max-w-lg flex-col justify-center gap-4 p-4 text-xs">
+    <main
+      id="main"
+      tabIndex={-1}
+      className="mx-auto flex min-h-svh w-full max-w-lg flex-col justify-center gap-4 p-4 text-xs"
+    >
       <div role="alert" className="flex flex-col gap-1 border-l-2 border-destructive pl-3">
         <p className="font-mono text-xs tracking-widest text-destructive">REQUEST FAILED</p>
         <h1 className="text-sm font-medium">This page could not be loaded</h1>
@@ -54,7 +58,11 @@ function DefaultRouteError({ error, reset }: ErrorComponentProps) {
 
 function NotFound() {
   return (
-    <main className="mx-auto flex min-h-svh w-full max-w-lg flex-col justify-center gap-4 p-4 text-xs">
+    <main
+      id="main"
+      tabIndex={-1}
+      className="mx-auto flex min-h-svh w-full max-w-lg flex-col justify-center gap-4 p-4 text-xs"
+    >
       <div className="flex flex-col gap-1 border-l-2 border-border pl-3">
         <p className="font-mono text-xs tracking-widest text-muted-foreground">404 · ROUTE</p>
         <h1 className="text-sm font-medium">Page not found</h1>

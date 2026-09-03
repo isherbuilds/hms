@@ -56,3 +56,24 @@ test.each([
     }
   }
 });
+
+test.each([
+  [":root", "light"],
+  [".dark", "dark"],
+])("%s: muted text clears 4.5:1 on every supporting surface", async (selector) => {
+  const css = await Bun.file(GLOBALS).text();
+  const tokens = parseNeutralTokens(blockFor(css, selector));
+  const foreground = tokens.get("--muted-foreground");
+  expect(foreground, `${selector} --muted-foreground must be a neutral oklch`).toBeDefined();
+
+  for (const surfaceToken of ["--background", "--card", "--muted"]) {
+    const surface = tokens.get(surfaceToken);
+    expect(surface, `${selector} ${surfaceToken} must be a neutral oklch`).toBeDefined();
+
+    const ratio = contrast(foreground!, surface!);
+    expect(
+      Number(ratio.toFixed(2)),
+      `${selector} --muted-foreground on ${surfaceToken} is ${ratio.toFixed(2)}:1, below the 4.5:1 floor`,
+    ).toBeGreaterThanOrEqual(4.5);
+  }
+});

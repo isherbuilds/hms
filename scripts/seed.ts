@@ -1,4 +1,5 @@
 import { auth } from "@hms/auth";
+import type { RoleKey } from "@hms/auth/access";
 import { createUserWithPassword } from "@hms/auth/manual-user";
 import { db } from "@hms/db";
 import { runMigrations } from "@hms/db/migrate";
@@ -65,7 +66,7 @@ async function createUser(email: string, name: string): Promise<Person> {
 async function addMember(
   organizationId: string,
   person: Person,
-  role: "member" | "admin",
+  role: RoleKey = "reception",
 ): Promise<void> {
   await auth.api.addMember({
     body: { userId: person.id, organizationId, role },
@@ -121,11 +122,11 @@ async function main(): Promise<void> {
   const admin = await createUser("admin@example.com", "Grace Hopper");
   const staff = await createUser("staff@example.com", "Alan Turing");
   await addMember(mercy, admin, "admin");
-  await addMember(mercy, staff, "member");
+  await addMember(mercy, staff);
 
   // Left unaccepted, so the Members page shows an invited row on arrival.
   await auth.api.createInvitation({
-    body: { email: "invited@example.com", role: "member", organizationId: mercy },
+    body: { email: "invited@example.com", role: "reception", organizationId: mercy },
     headers: owner.headers,
   });
 
@@ -145,7 +146,7 @@ async function main(): Promise<void> {
       "",
       "  owner@example.com   owner   Mercy General Hospital + Ridgeview Academy",
       "  admin@example.com   admin   Mercy General Hospital",
-      "  staff@example.com   member  Mercy General Hospital",
+      "  staff@example.com   reception  Mercy General Hospital",
       "",
       `  Mercy General Hospital  ${mercyCount?.value ?? 0} members, 1 pending invitation`,
       "  Ridgeview Academy       1 member",

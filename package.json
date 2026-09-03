@@ -52,6 +52,7 @@
     "benchmark:rpc": "bun scripts/benchmark-rpc.ts",
     "create-user": "bun scripts/create-user.ts",
     "create-founder": "bun scripts/create-founder.ts",
+    "cleanup-uploads": "bun scripts/cleanup-uploads.ts",
     "check": "oxlint && oxfmt --write"
   },
   "dependencies": {

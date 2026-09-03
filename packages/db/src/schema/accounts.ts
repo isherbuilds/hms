@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, pgTable, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { organization } from "./auth";
 
@@ -27,6 +27,7 @@ export const accounts = pgTable(
       "accounts_type_check",
       sql`${table.type} in ('asset', 'liability', 'equity', 'income', 'expense')`,
     ),
+    unique("accounts_org_id_id_unique").on(table.orgId, table.id),
     uniqueIndex("accounts_org_code_idx").on(table.orgId, table.code),
     uniqueIndex("accounts_org_system_key_idx")
       .on(table.orgId, table.systemKey)

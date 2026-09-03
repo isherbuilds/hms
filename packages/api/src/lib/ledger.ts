@@ -3,6 +3,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 
 import type { DbTransaction } from "@hms/db/counter";
 import { accounts, type AccountType } from "@hms/db/schema/accounts";
+import type { CatalogCategory } from "@hms/db/schema/catalog-items";
 import { journalEntries } from "@hms/db/schema/journal-entries";
 import { journalLines } from "@hms/db/schema/journal-lines";
 
@@ -57,20 +58,16 @@ function isSystemAccountKey(value: string): value is SystemAccountKey {
   return SYSTEM_ACCOUNTS.some((account) => account.key === value);
 }
 
-export function revenueAccountFor(category: string | null): SystemAccountKey {
-  switch (category) {
-    case "consultation":
-      return "revenue_consultation";
-    case "procedure":
-      return "revenue_procedure";
-    case "lab":
-      return "revenue_lab";
-    case "radiology":
-      return "revenue_radiology";
-    case "other":
-    default:
-      return "revenue_other";
-  }
+const REVENUE_ACCOUNTS: Record<CatalogCategory, SystemAccountKey> = {
+  consultation: "revenue_consultation",
+  procedure: "revenue_procedure",
+  lab: "revenue_lab",
+  radiology: "revenue_radiology",
+  other: "revenue_other",
+};
+
+export function revenueAccountFor(category: CatalogCategory): SystemAccountKey {
+  return REVENUE_ACCOUNTS[category];
 }
 
 export function settlementAccountFor(method: string): SystemAccountKey {

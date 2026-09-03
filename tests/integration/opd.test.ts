@@ -222,11 +222,11 @@ test("walk-in creation requires patient read and denial writes nothing", async (
   const operatorApi = clientFor(operator);
   // Every production role grants patient:read; the serial runner lets this test
   // fabricate the otherwise unreachable denial branch.
-  const memberStatements = roles.member.statements as unknown as {
+  const receptionStatements = roles.reception.statements as unknown as {
     patient: Array<"create" | "read" | "update">;
   };
-  const originalPatientGrants = memberStatements.patient;
-  memberStatements.patient = ["create", "update"];
+  const originalPatientGrants = receptionStatements.patient;
+  receptionStatements.patient = ["create", "update"];
 
   try {
     await expectORPCCode(
@@ -239,7 +239,7 @@ test("walk-in creation requires patient read and denial writes nothing", async (
       "FORBIDDEN",
     );
   } finally {
-    memberStatements.patient = originalPatientGrants;
+    receptionStatements.patient = originalPatientGrants;
   }
 
   expect(

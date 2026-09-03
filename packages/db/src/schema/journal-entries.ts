@@ -1,4 +1,4 @@
-import { date, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { date, index, pgTable, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
 
@@ -19,6 +19,7 @@ export const journalEntries = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    unique("journal_entries_org_id_id_unique").on(table.orgId, table.id),
     uniqueIndex("journal_entries_org_source_idx").on(table.orgId, table.sourceType, table.sourceId),
     index("journal_entries_org_date_idx").on(table.orgId, table.entryDate),
   ],

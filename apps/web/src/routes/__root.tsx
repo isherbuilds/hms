@@ -65,6 +65,12 @@ function RootDocument() {
         <HeadContent />
       </head>
       <body>
+        <a
+          href="#main"
+          className="sr-only fixed top-0 left-0 z-50 bg-background px-2 py-1 text-xs focus-visible:not-sr-only focus-visible:fixed"
+        >
+          Skip to main content
+        </a>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

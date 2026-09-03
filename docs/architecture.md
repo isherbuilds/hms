@@ -52,6 +52,9 @@ session state and never falls back:
 - A missing claim fails validation, a missing session is `UNAUTHORIZED`, and a
   missing membership or grant is `FORBIDDEN`. Foreign/nonexistent slugs are
   intentionally indistinguishable.
+- HMS recognizes `owner`, `admin`, `reception`, `cashier`, and `accountant`. Legacy
+  stored `member` roles are rejected by `parseRoles`/`authorize` and fail closed
+  until they are reset per D022.
 - Better Auth's own organization endpoints remain mounted at `/api/auth/*` and
   may consult active-organization state when their input omits an id. They
   enforce Better Auth permissions but bypass the application's membership audit;

@@ -1,5 +1,11 @@
 import { beforeAll, expect, test } from "bun:test";
 
+import { cleanupUploads } from "@hms/api/lib/upload-cleanup";
+import { db } from "@hms/db";
+import { file } from "@hms/db/schema/file";
+import { listObjects } from "@hms/storage";
+import { and, eq, inArray } from "drizzle-orm";
+
 import { createOrganization, createTestUser, joinOrganization } from "../support/auth";
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
@@ -128,4 +134,72 @@ test("a plain member cannot delete a file, an admin in the same org can", async 
   await joinOrganization(admin, org.id, "admin");
   await clientFor(admin).file.delete({ orgSlug: org.slug, key: upload.key });
   expect((await ownerApi.file.list({ orgSlug: org.slug })).items).toHaveLength(0);
+});
+
+test("upload cleanup preserves dry runs and ready files while deleting stale uploads and orphans", async () => {
+  const owner = await createTestUser("cleanup-owner");
+  const org = await createOrganization(owner, "files-cleanup");
+  const api = clientFor(owner);
+
+  const pending = await api.file.createUpload({
+    orgSlug: org.slug,
+    name: "abandoned.txt",
+    size: 1,
+  });
+  await db
+    .update(file)
+    .set({ createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000) })
+    .where(and(eq(file.id, pending.key), eq(file.orgId, org.id)));
+
+  const ready = await api.file.createUpload({
+    orgSlug: org.slug,
+    name: "ready.txt",
+    size: 5,
+  });
+  await putBytes(ready.uploadUrl, "ready", "text/plain");
+  await api.file.finalizeUpload({ orgSlug: org.slug, key: ready.key });
+
+  const orphan = await api.file.createUpload({
+    orgSlug: org.slug,
+    name: "orphan.txt",
+    size: 6,
+  });
+  await putBytes(orphan.uploadUrl, "orphan", "text/plain");
+  await db.delete(file).where(and(eq(file.id, orphan.key), eq(file.orgId, org.id)));
+
+  const olderThan = new Date(Date.now() + 1000);
+  expect(await cleanupUploads({ olderThan, execute: false })).toEqual({
+    staleRows: 1,
+    orphanObjects: 1,
+    deleted: 0,
+    failed: 0,
+    skipped: 0,
+  });
+
+  const keysAfterDryRun: string[] = [];
+  for await (const object of listObjects(`${org.id}/`)) {
+    keysAfterDryRun.push(object.key);
+  }
+  expect(keysAfterDryRun).toContain(orphan.key);
+
+  expect(await cleanupUploads({ olderThan, execute: true })).toEqual({
+    staleRows: 1,
+    orphanObjects: 1,
+    deleted: 2,
+    failed: 0,
+    skipped: 0,
+  });
+
+  expect(
+    await db
+      .select({ id: file.id, status: file.status })
+      .from(file)
+      .where(and(eq(file.orgId, org.id), inArray(file.id, [pending.key, ready.key]))),
+  ).toEqual([{ id: ready.key, status: "ready" }]);
+
+  const keysAfterCleanup: string[] = [];
+  for await (const object of listObjects(`${org.id}/`)) {
+    keysAfterCleanup.push(object.key);
+  }
+  expect(keysAfterCleanup).not.toContain(orphan.key);
 });

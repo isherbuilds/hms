@@ -14,6 +14,17 @@ export default defineConfig({
   resolve: {
     tsconfigPaths: true,
   },
+  environments: {
+    ssr: {
+      build: {
+        rolldownOptions: {
+          // The SSR graph splits into mutually importing chunks; without this the
+          // runtime helpers are read before their chunk assigns them (TDZ 500).
+          output: { strictExecutionOrder: true },
+        },
+      },
+    },
+  },
   plugins: [
     tailwindcss(),
     tanstackStart(),

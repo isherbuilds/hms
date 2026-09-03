@@ -28,7 +28,11 @@ function HomeRoute() {
   const reachable = health.data === "OK";
 
   return (
-    <div className="mx-auto flex min-h-svh w-full max-w-sm flex-col justify-center gap-4 p-4 text-xs">
+    <main
+      id="main"
+      tabIndex={-1}
+      className="mx-auto flex min-h-svh w-full max-w-sm flex-col justify-center gap-4 p-4 text-xs"
+    >
       <div className="flex flex-col gap-1">
         <h1 className="text-sm font-medium">HMS</h1>
         <p className="text-muted-foreground">
@@ -60,6 +64,6 @@ function HomeRoute() {
       <Button size="lg" nativeButton={false} render={<Link to="/join" />}>
         Open an organization
       </Button>
-    </div>
+    </main>
   );
 }

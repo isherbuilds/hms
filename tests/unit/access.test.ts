@@ -9,117 +9,246 @@ import {
   type RoleKey,
 } from "@hms/auth/access";
 
-const MATRIX: Array<{
-  permission: AppPermission;
-  owner: boolean;
-  admin: boolean;
-  member: boolean;
-}> = [
-  { permission: { settings: ["read"] }, owner: true, admin: true, member: true },
+const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = [
+  {
+    permission: { settings: ["read"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: true,
+    accountant: true,
+  },
   {
     permission: { settings: ["update"] },
     owner: true,
     admin: true,
-    member: false,
+    reception: false,
+    cashier: false,
+    accountant: false,
   },
-
-  { permission: { audit: ["read"] }, owner: true, admin: true, member: false },
-
-  { permission: { catalog: ["read"] }, owner: true, admin: true, member: true },
+  {
+    permission: { audit: ["read"] },
+    owner: true,
+    admin: true,
+    reception: false,
+    cashier: false,
+    accountant: true,
+  },
+  {
+    permission: { report: ["read"] },
+    owner: true,
+    admin: true,
+    reception: false,
+    cashier: false,
+    accountant: true,
+  },
+  {
+    permission: { catalog: ["read"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: true,
+    accountant: true,
+  },
   {
     permission: { catalog: ["create"] },
     owner: true,
     admin: true,
-    member: false,
+    reception: false,
+    cashier: false,
+    accountant: false,
   },
   {
     permission: { catalog: ["update"] },
     owner: true,
     admin: true,
-    member: false,
+    reception: false,
+    cashier: false,
+    accountant: false,
   },
-
-  { permission: { staff: ["read"] }, owner: true, admin: true, member: true },
+  {
+    permission: { staff: ["read"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: true,
+    accountant: true,
+  },
   {
     permission: { staff: ["create"] },
     owner: true,
     admin: true,
-    member: false,
+    reception: false,
+    cashier: false,
+    accountant: false,
   },
   {
     permission: { staff: ["update"] },
     owner: true,
     admin: true,
-    member: false,
+    reception: false,
+    cashier: false,
+    accountant: false,
   },
-
   {
     permission: { file: ["upload"] },
     owner: true,
     admin: true,
-    member: true,
+    reception: true,
+    cashier: false,
+    accountant: false,
   },
-  { permission: { file: ["read"] }, owner: true, admin: true, member: true },
+  {
+    permission: { file: ["read"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: true,
+    accountant: true,
+  },
   {
     permission: { file: ["delete"] },
     owner: true,
     admin: true,
-    member: false,
+    reception: false,
+    cashier: false,
+    accountant: false,
   },
-
-  { permission: { member: ["read"] }, owner: true, admin: true, member: true },
+  {
+    permission: { member: ["read"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: true,
+    accountant: true,
+  },
   {
     permission: { member: ["create"] },
     owner: true,
     admin: true,
-    member: false,
+    reception: false,
+    cashier: false,
+    accountant: false,
   },
   {
     permission: { member: ["update"] },
     owner: true,
     admin: true,
-    member: false,
+    reception: false,
+    cashier: false,
+    accountant: false,
   },
   {
     permission: { member: ["delete"] },
     owner: true,
     admin: true,
-    member: false,
+    reception: false,
+    cashier: false,
+    accountant: false,
   },
-
   {
     permission: { invitation: ["create"] },
     owner: true,
     admin: true,
-    member: false,
+    reception: false,
+    cashier: false,
+    accountant: false,
   },
   {
     permission: { invitation: ["cancel"] },
     owner: true,
     admin: true,
-    member: false,
+    reception: false,
+    cashier: false,
+    accountant: false,
   },
-
   {
     permission: { organization: ["update"] },
     owner: true,
     admin: true,
-    member: false,
+    reception: false,
+    cashier: false,
+    accountant: false,
   },
   {
     permission: { organization: ["delete"] },
     owner: true,
     admin: false,
-    member: false,
+    reception: false,
+    cashier: false,
+    accountant: false,
   },
-
-  { permission: { billing: ["read"] }, owner: true, admin: true, member: true },
-  { permission: { billing: ["write"] }, owner: true, admin: true, member: true },
+  {
+    permission: { patient: ["create"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: false,
+    accountant: false,
+  },
+  {
+    permission: { patient: ["read"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: true,
+    accountant: true,
+  },
+  {
+    permission: { patient: ["update"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: false,
+    accountant: false,
+  },
+  {
+    permission: { opd: ["create"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: false,
+    accountant: false,
+  },
+  {
+    permission: { opd: ["read"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: true,
+    accountant: true,
+  },
+  {
+    permission: { opd: ["update"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: false,
+    accountant: false,
+  },
+  {
+    permission: { billing: ["read"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: true,
+    accountant: true,
+  },
+  {
+    permission: { billing: ["write"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: true,
+    accountant: false,
+  },
   {
     permission: { billing: ["creditNote"] },
     owner: true,
     admin: true,
-    member: false,
+    reception: false,
+    cashier: false,
+    accountant: true,
   },
 ];
 
@@ -130,27 +259,30 @@ test("each role grants exactly the permissions the matrix declares", () => {
     permission: row.permission,
     owner: authorize(["owner"], row.permission),
     admin: authorize(["admin"], row.permission),
-    member: authorize(["member"], row.permission),
+    reception: authorize(["reception"], row.permission),
+    cashier: authorize(["cashier"], row.permission),
+    accountant: authorize(["accountant"], row.permission),
   }));
 
   expect(granted).toEqual(MATRIX);
 });
 
 test("parseRoles reads every stored role and rejects ones this app does not define", () => {
-  expect(parseRoles("member,admin")).toEqual(["member", "admin"]);
-  expect(parseRoles(" owner , member ")).toEqual(["owner", "member"]);
+  expect(parseRoles("reception,cashier")).toEqual(["reception", "cashier"]);
+  expect(parseRoles(" owner , accountant ")).toEqual(["owner", "accountant"]);
 
+  expect(() => parseRoles("member")).toThrow(/Unknown organization role/);
   expect(() => parseRoles("superadmin")).toThrow(/Unknown organization role/);
-  expect(() => parseRoles("member,superadmin")).toThrow(/Unknown organization role/);
+  expect(() => parseRoles("reception,superadmin")).toThrow(/Unknown organization role/);
 });
 
 test("authorize grants the union across roles, matching Better Auth's own semantics", () => {
   // The bug this guards: reading only the first role strips a multi-role member's
   // permissions.
-  expect(authorize(parseRoles("member"), { audit: ["read"] })).toBe(false);
-  expect(authorize(parseRoles("member,admin"), { audit: ["read"] })).toBe(true);
-  expect(authorize(parseRoles("member,admin"), { file: ["delete"] })).toBe(true);
+  expect(authorize(parseRoles("reception"), { audit: ["read"] })).toBe(false);
+  expect(authorize(parseRoles("reception,accountant"), { audit: ["read"] })).toBe(true);
+  expect(authorize(parseRoles("reception,admin"), { file: ["delete"] })).toBe(true);
 
-  expect(authorize(["member"], { organization: ["delete"] })).toBe(false);
+  expect(authorize(["reception"], { organization: ["delete"] })).toBe(false);
   expect(authorize([], { settings: ["read"] })).toBe(false);
 });

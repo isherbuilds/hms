@@ -1,4 +1,4 @@
-import { ORG_ROLES, parseRoles } from "@hms/auth/access";
+import { ORG_ROLES, ROLE_LABELS, parseRoles } from "@hms/auth/access";
 import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
 import {
@@ -79,7 +79,7 @@ function RoleBadge({ role }: { role: string }) {
     <span className="flex flex-wrap gap-1">
       {roles.map((one) => (
         <Badge key={one} variant={one === "owner" ? "default" : "muted"}>
-          {one}
+          {ROLE_LABELS[one]}
         </Badge>
       ))}
     </span>
@@ -88,7 +88,7 @@ function RoleBadge({ role }: { role: string }) {
 
 const inviteSchema = z.object({
   email: z.string().trim().pipe(z.email("Enter a valid email address")),
-  role: z.enum(ORG_ROLES),
+  role: z.enum(ORG_ROLES, { error: "Select a role" }),
 });
 
 function InviteDialog({
@@ -102,7 +102,7 @@ function InviteDialog({
 }) {
   const queryClient = useQueryClient();
   const form = useZodForm(inviteSchema, {
-    defaultValues: { email: "", role: "member" },
+    defaultValues: { email: "" },
   });
   const [lastLink, setLastLink] = useState<string | null>(null);
 
@@ -182,10 +182,11 @@ function InviteDialog({
                           aria-pressed={field.value === option}
                           onClick={() => field.onChange(option)}
                         >
-                          {option}
+                          {ROLE_LABELS[option]}
                         </Button>
                       ))}
                     </div>
+                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -392,7 +393,7 @@ function MemberResults({ orgSlug, q }: { orgSlug: string; q: string }) {
                                     })
                                   }
                                 >
-                                  {option}
+                                  {ROLE_LABELS[option]}
                                 </DropdownMenuItem>
                               ))}
                             </DropdownMenuGroup>
@@ -425,7 +426,7 @@ function MemberResults({ orgSlug, q }: { orgSlug: string; q: string }) {
                     <div className="truncate">{invitation.email}</div>
                   </TableCell>
                   <TableCell>
-                    <RoleBadge role={invitation.role ?? "member"} />
+                    {invitation.role ? <RoleBadge role={invitation.role} /> : "Unassigned"}
                   </TableCell>
                   <TableCell>
                     <span className="flex items-center gap-2 whitespace-nowrap">

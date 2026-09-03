@@ -227,18 +227,21 @@ disposition here first.
 empty databases; the deleted backfill has no replacement path for pre-existing
 rows.
 
-### D023 — Lost-response retries of payments and corrections are accepted until pilot.
+### D023 — Lost-response retries of payments and corrections are accepted.
 
-**Accepted 2026-08-31.** `recordPayments`, `issueCreditNote`, and
-`recordRefund` mint fresh IDs per request and bound only cumulative totals, so a
-client retry after a lost response can record a duplicate partial movement while
-headroom remains. D020's charge revision is deliberately not a payment
-idempotency key. This risk is accepted for the pre-pilot phase; before pilot,
-revisit with a client-supplied operation ID and a scoped unique constraint if
-the pilot workflow shows real retry exposure.
+**Accepted 2026-08-31; revisited and kept 2026-09-03.** `recordPayments`,
+`issueCreditNote`, `recordRefund`, `settleCharges`, and `createWalkIn` mint
+fresh IDs per request and bound only cumulative totals, so a client retry after
+a lost response can record a duplicate movement while headroom remains. D020's
+charge revision is deliberately not a payment idempotency key. The pre-pilot
+revisit compared Bahmni, Danphe, and Marley/ERPNext
+([research](./research/reference-financial-integrity-and-catalog.md)): none
+carries a client operation key; their guards are the numbering lock and journal
+uniqueness HMS already has. A client-supplied operation ID is therefore not
+built. Reopen only on an observed duplicate in the pilot's cash reconciliation.
 
 **Context:** Mutations do not auto-retry; the exposure is a human resubmitting
-after a network failure.
+after a network failure, and the day-close report plus SOP is the detection path.
 
 ### D024 — An outpatient appointment carries only consultation and procedure charges.
 
@@ -285,6 +288,28 @@ without adding a fallback query.
 second read only changes the error label, adds latency, and races with another
 write; clients recover from the combined conflict by closing stale overlays and
 refreshing authoritative state.
+
+### D027 — `catalog_items` is the only billable identity; domain masters link to it
+
+**Accepted 2026-09-03; evidence:
+[research](./research/reference-financial-integrity-and-catalog.md).** A
+billable item is one `catalog_items` row: name, code, category, price, tax,
+active. When pharmacy, lab, IPD, or OT open (product roadmap gates), each domain
+owns its own master (drug and batch, lab test and components, bed type, package
+and components) that carries a required composite tenant foreign key to its
+`catalog_items` row, unique on `(orgId, catalogItemId)`. The catalog never
+grows a kind column, nullable domain columns, or a details blob, and no second
+items table with its own name, price, tax, or invoice type is created. Price
+_source_ may be domain-specific (batch MRP, occupancy × rate); the Charge
+snapshot remains the single money record, and `charges.sourceType`/`sourceId`
+is the extension point. `category` stays the revenue routing key and
+`revenueAccountFor` is exhaustive over it, so a new category cannot post to a
+fallback account. D025 still owns invoice granularity.
+
+**Context:** Marley/ERPNext (`Item` + linking templates) and Danphe
+(`BillServiceItem` + integrated masters) converge on this shape; Danphe's
+separate pharmacy item master is the counter-example, forking its invoice,
+worklists, and ledger mapping. No domain table is created before its gate opens.
 
 ## Superseded history
 

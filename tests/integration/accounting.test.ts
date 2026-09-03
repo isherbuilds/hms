@@ -736,6 +736,85 @@ test("concurrent first invoices seed one complete chart and both post", async ()
   expect(new Set(chart.map((row) => row.systemKey)).size).toBe(9);
 });
 
+test("journal lines reject accounts and entries from another organization", async () => {
+  const [ownerA, ownerB] = await Promise.all([
+    createTestUser("accounting-journal-tenant-a"),
+    createTestUser("accounting-journal-tenant-b"),
+  ]);
+  const [organizationA, organizationB] = await Promise.all([
+    createOrganization(ownerA, "accounting-journal-tenant-a"),
+    createOrganization(ownerB, "accounting-journal-tenant-b"),
+  ]);
+  const accountAId = Bun.randomUUIDv7();
+  const accountBId = Bun.randomUUIDv7();
+  const entryAId = Bun.randomUUIDv7();
+  const entryBId = Bun.randomUUIDv7();
+
+  await db.insert(accounts).values([
+    {
+      id: accountAId,
+      orgId: organizationA.id,
+      code: "TENANT-A",
+      name: "Tenant A account",
+      type: "asset",
+    },
+    {
+      id: accountBId,
+      orgId: organizationB.id,
+      code: "TENANT-B",
+      name: "Tenant B account",
+      type: "asset",
+    },
+  ]);
+  await db.insert(journalEntries).values([
+    {
+      id: entryAId,
+      orgId: organizationA.id,
+      entryDate: "2030-03-15",
+      sourceType: "tenant-integrity",
+      sourceId: "tenant-a",
+      narration: "Tenant A entry",
+      createdBy: ownerA.user.id,
+    },
+    {
+      id: entryBId,
+      orgId: organizationB.id,
+      entryDate: "2030-03-15",
+      sourceType: "tenant-integrity",
+      sourceId: "tenant-b",
+      narration: "Tenant B entry",
+      createdBy: ownerB.user.id,
+    },
+  ]);
+
+  await expect(
+    db
+      .insert(journalLines)
+      .values({
+        id: Bun.randomUUIDv7(),
+        orgId: organizationB.id,
+        entryId: entryBId,
+        accountId: accountAId,
+        debit: "1.00",
+        credit: "0",
+      })
+      .execute(),
+  ).rejects.toThrow();
+  await expect(
+    db
+      .insert(journalLines)
+      .values({
+        id: Bun.randomUUIDv7(),
+        orgId: organizationB.id,
+        entryId: entryAId,
+        accountId: accountBId,
+        debit: "1.00",
+        credit: "0",
+      })
+      .execute(),
+  ).rejects.toThrow();
+});
+
 test("duplicate source posting is rejected", async () => {
   const fixture = await createAccountingFixture("accounting-duplicate-source");
   const issued = await issueConsultationInvoice(fixture, "Duplicate source");

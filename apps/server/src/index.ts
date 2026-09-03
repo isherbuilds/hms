@@ -18,6 +18,7 @@ import { compress } from "hono/compress";
 import { Hono, type Context as HonoContext } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
+import { secureHeaders } from "hono/secure-headers";
 
 initLogger({
   env: { service: "hms-server" },
@@ -25,6 +26,35 @@ initLogger({
 
 const isProduction = env.NODE_ENV === "production";
 export const app = new Hono<EvlogVariables>();
+app.use(
+  "/*",
+  secureHeaders({
+    crossOriginResourcePolicy: false,
+    crossOriginOpenerPolicy: false,
+    originAgentCluster: false,
+    referrerPolicy: "no-referrer",
+    strictTransportSecurity: isProduction ? "max-age=31536000; includeSubDomains" : false,
+    xContentTypeOptions: "nosniff",
+    xDnsPrefetchControl: false,
+    xDownloadOptions: false,
+    xFrameOptions: false,
+    xPermittedCrossDomainPolicies: false,
+    xXssProtection: false,
+    permissionsPolicy: {
+      camera: false,
+      microphone: false,
+      geolocation: false,
+      payment: false,
+    },
+    // Production-only so the development API reference can load its scripts and styles.
+    contentSecurityPolicy: isProduction
+      ? {
+          defaultSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+        }
+      : undefined,
+  }),
+);
 
 app.use(
   evlog({

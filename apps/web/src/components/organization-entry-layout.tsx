@@ -15,7 +15,11 @@ export function OrganizationEntryLayout({
   children: ReactNode;
 }) {
   return (
-    <main className="flex min-h-svh flex-col bg-background lg:grid lg:grid-cols-[minmax(16rem,0.72fr)_minmax(30rem,1fr)]">
+    <main
+      id="main"
+      tabIndex={-1}
+      className="flex min-h-svh flex-col bg-background lg:grid lg:grid-cols-[minmax(16rem,0.72fr)_minmax(30rem,1fr)]"
+    >
       <aside className="order-2 flex min-h-56 flex-col justify-between gap-8 border-t border-border bg-muted/25 p-6 lg:order-1 lg:min-h-svh lg:border-t-0 lg:border-r lg:p-8">
         <Link to="/" className="w-fit text-xs font-medium tracking-[0.18em] text-foreground">
           HMS

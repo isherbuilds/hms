@@ -42,8 +42,8 @@ shims may contain variable names, so a name-only grep is insufficient.
 
 ## Deployment topology
 
-Deploy two independent Dockerfiles from the repository root, plus PostgreSQL and
-SeaweedFS resources:
+Build two independent two-stage application images from the repository root,
+plus PostgreSQL and SeaweedFS resources:
 
 | Piece                     | Port             | Exposure                                                  |
 | ------------------------- | ---------------- | --------------------------------------------------------- |
@@ -82,23 +82,35 @@ add a second compatibility contract for this one-time transition.
 
 ## Production hardening
 
-Before public traffic:
+Current behaviour, with the release evidence still to be recorded:
 
-1. Replace the development-wide `member` grant with the approved reception,
-   cashier, accountant, and administrator split; walk the resulting role map
-   with the pilot shift lead.
-2. Add CSP, HSTS, frame restriction, `nosniff`, referrer, and permissions-policy
-   headers at the proxy or application middleware and verify them on both public
-   hosts.
-3. Replace the single-stage production images with runtime-only images and
-   record their digests, sizes, startup health, and migration behavior.
-4. Add a tenant-safe, age-bounded cleanup procedure for abandoned `pending`
-   uploads and unreachable storage objects, with a dry run and recorded result
-   before deletion is enabled.
+1. Organization roles are `owner`, `admin` (Administrator), `reception`,
+   `cashier`, and `accountant`, each with explicit grants in
+   `packages/auth/src/access.ts`; the legacy `member` key authorizes nothing and
+   fails closed, so reset pre-pilot databases (D022) before deploying. Walking
+   the role map with the shift lead is a [pilot readiness](#pilot-readiness) gate.
+2. Each public application host sets `nosniff`, referrer, and camera,
+   microphone, geolocation, and payment denial headers itself. In production
+   both set HSTS; the API CSP is `default-src 'none'` and denies all framing,
+   while the web CSP is self-based, permits API and storage connections, and
+   allows framing only by itself (the billing PDF is a web route framed
+   same-origin).
+3. The two-stage application images build in dedicated builder stages. Their
+   runtime stages install production-only dependencies, run as the non-root
+   `node` user, and contain only dependency manifests, installed dependencies,
+   and application build output; the server image additionally contains Bun and
+   the database and environment sources required to migrate before serving.
+   Image digests, sizes, startup health, and migration behavior are recorded at
+   release time.
+4. The tenant-safe cleanup reports abandoned `pending` uploads and unreachable
+   storage objects older than the requested age. Run
+   `bun run cleanup-uploads --older-than-hours 24 [--delete]`; it defaults to a
+   dry run, and `--delete` removes only the reported stale rows and orphaned
+   objects.
 
-This work closes only when the release evidence records all four outcomes and
-the production verification below passes against the resulting images and role
-configuration.
+This work closes when the release evidence records image digests, sizes,
+startup health, header verification on both hosts, and a reviewed cleanup dry
+run, and the production verification below passes against those images.
 
 ## Release verification
 
@@ -115,7 +127,11 @@ configuration.
    pilot cutover.
 
 The server sets credentialed CORS only for `CORS_ORIGIN`; session cookies are
-HTTP-only, secure, and SameSite Lax.
+HTTP-only, secure, and SameSite Lax. Both application hosts set `nosniff`,
+referrer, and permissions policies on every response and add HSTS in production.
+The production API CSP is `default-src 'none'; frame-ancestors 'none'`; the web
+CSP is self-based, permits its API and storage origins for connections, and
+allows same-origin framing only, which the billing PDF viewer requires.
 
 ## Pilot readiness
 

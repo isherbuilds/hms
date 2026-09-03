@@ -2,6 +2,7 @@ import { env } from "@hms/env/server";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -70,6 +71,29 @@ export function createReadUrl(key: string): Promise<string> {
   return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), {
     expiresIn: DEFAULT_EXPIRES_IN,
   });
+}
+export async function* listObjects(
+  prefix: string,
+): AsyncGenerator<{ key: string; lastModified: Date }> {
+  const { bucket, client } = storage();
+  let continuationToken: string | undefined;
+
+  do {
+    const page = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
+    for (const object of page.Contents ?? []) {
+      if (!object.Key || !object.LastModified) {
+        throw new Error("Storage returned an object without a key or modification time.");
+      }
+      yield { key: object.Key, lastModified: object.LastModified };
+    }
+    continuationToken = page.NextContinuationToken;
+  } while (continuationToken);
 }
 
 export async function deleteObject(key: string): Promise<void> {

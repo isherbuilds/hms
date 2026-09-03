@@ -23,10 +23,7 @@ export const ac = createAccessControl({
   file: ["upload", "read", "delete"],
 } as const);
 
-// `admin` and `owner` read as duplicates and must stay that way: they spread
-// different Better Auth bases (`ownerAc` alone grants `organization:delete`), so
-// sharing one body would silently move org deletion between them.
-export const member = ac.newRole({
+export const reception = ac.newRole({
   ...memberAc.statements,
   member: ["read"],
   patient: ["create", "read", "update"],
@@ -35,10 +32,38 @@ export const member = ac.newRole({
   catalog: ["read"],
   staff: ["read"],
   settings: ["read"],
-  report: ["read"],
   file: ["upload", "read"],
 });
 
+export const cashier = ac.newRole({
+  ...memberAc.statements,
+  member: ["read"],
+  patient: ["read"],
+  opd: ["read"],
+  billing: ["read", "write"],
+  catalog: ["read"],
+  staff: ["read"],
+  settings: ["read"],
+  file: ["read"],
+});
+
+export const accountant = ac.newRole({
+  ...memberAc.statements,
+  member: ["read"],
+  patient: ["read"],
+  opd: ["read"],
+  billing: ["read", "creditNote"],
+  catalog: ["read"],
+  staff: ["read"],
+  settings: ["read"],
+  report: ["read"],
+  audit: ["read"],
+  file: ["read"],
+});
+
+// `admin` and `owner` read as duplicates and must stay that way: they spread
+// different Better Auth bases (`ownerAc` alone grants `organization:delete`), so
+// sharing one body would silently move org deletion between them.
 export const admin = ac.newRole({
   ...adminAc.statements,
   member: ["create", "read", "update", "delete"],
@@ -67,11 +92,28 @@ export const owner = ac.newRole({
   file: ["upload", "read", "delete"],
 });
 
-export const roles = { owner, admin, member } as const;
+// Better Auth merges built-in `member`/`admin`/`owner` roles into this map, but HMS
+// authorizes only through `parseRoles`/`authorize`, which reject stored `member`;
+// reset legacy rows per D022 before deploying.
+export const roles = { owner, admin, reception, cashier, accountant } as const;
 
 export type RoleKey = keyof typeof roles;
 
-export const ORG_ROLES = ["owner", "admin", "member"] as const satisfies readonly RoleKey[];
+export const ROLE_LABELS: Record<RoleKey, string> = {
+  owner: "Owner",
+  admin: "Administrator",
+  reception: "Reception",
+  cashier: "Cashier",
+  accountant: "Accountant",
+};
+
+export const ORG_ROLES = [
+  "owner",
+  "admin",
+  "reception",
+  "cashier",
+  "accountant",
+] as const satisfies readonly RoleKey[];
 
 export type AppPermission = Parameters<typeof roles.admin.authorize>[0];
 

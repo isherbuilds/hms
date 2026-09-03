@@ -168,7 +168,7 @@ test("a user can have only one membership row per organization", async () => {
         id: Bun.randomUUIDv7(),
         organizationId: organization.id,
         userId: owner.user.id,
-        role: "member",
+        role: "reception",
         createdAt: new Date(),
       })
       .execute(),

@@ -1,3 +1,4 @@
+import interLatinExtSource from "@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2?inline";
 import devanagariRegularSource from "@fontsource/noto-sans-devanagari/files/noto-sans-devanagari-devanagari-400-normal.woff2?inline";
 import devanagariBoldSource from "@fontsource/noto-sans-devanagari/files/noto-sans-devanagari-devanagari-700-normal.woff2?inline";
 import { ORPCError } from "@orpc/server";
@@ -29,7 +30,17 @@ async function readBundledFont(source: string): Promise<Uint8Array> {
   return new Uint8Array(await readFile(source));
 }
 
+// The renderer's built-in sans-serif fallback covers ₹ only after a warm render,
+// so the first document of a process failed with "No registered font covers ₹".
+// Registering Inter for the currency block makes every render deterministic.
 const fonts = [
+  {
+    key: "hms-inter-currency-v1",
+    name: "Inter",
+    weight: 400,
+    ranges: [[0x20a0, 0x20c0] as [number, number]],
+    data: () => readBundledFont(interLatinExtSource),
+  },
   {
     key: "hms-noto-devanagari-400-v1",
     name: "Noto Sans Devanagari",
@@ -125,7 +136,7 @@ export async function renderBillingPdf(
   const { element, number, title } = findDocument(request.data, request);
   const caption = `${title} ${number} · ${request.data.invoice.orgLegalName}`;
   const common = {
-    fontFamilies: ["sans-serif", "Noto Sans Devanagari"],
+    fontFamilies: ["sans-serif", "Inter", "Noto Sans Devanagari"],
     fonts,
     lang: "en-IN",
     metadata: { creator: "HMS", title: caption },

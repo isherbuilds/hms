@@ -46,7 +46,7 @@ function LoginRoute() {
   const invited = redirect?.includes("invitation=") ?? false;
 
   return (
-    <div className="flex min-h-svh bg-background">
+    <main id="main" tabIndex={-1} className="flex min-h-svh bg-background">
       <div className="relative m-2 hidden overflow-hidden rounded-lg bg-neutral-950 lg:flex lg:w-1/2">
         <div
           aria-hidden
@@ -75,7 +75,7 @@ function LoginRoute() {
           </p>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 

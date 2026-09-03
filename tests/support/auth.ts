@@ -1,4 +1,5 @@
 import { auth } from "@hms/auth";
+import type { RoleKey } from "@hms/auth/access";
 import { createUserWithPassword } from "@hms/auth/manual-user";
 import { uniqueSuffix } from "./unique";
 export type TestUser = {
@@ -50,7 +51,7 @@ export async function createOrganization(
 export async function joinOrganization(
   joiner: TestUser,
   organizationId: string,
-  role: "member" | "admin" = "member",
+  role: RoleKey = "reception",
 ): Promise<void> {
   await auth.api.addMember({
     body: { userId: joiner.user.id, organizationId, role },
@@ -60,7 +61,7 @@ export async function joinOrganization(
 export async function setMemberRoles(
   owner: TestUser,
   memberId: string,
-  roles: Array<"member" | "admin" | "owner">,
+  roles: RoleKey[],
   organizationId: string,
 ): Promise<void> {
   await auth.api.updateMemberRole({

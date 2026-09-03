@@ -118,7 +118,7 @@ export const memberRouter = {
 
   invite: orgProcedure(
     { invitation: ["create"] },
-    orgInput.extend({ email: z.email(), role: roleInput.default("member") }),
+    orgInput.extend({ email: z.email(), role: roleInput }),
   ).handler(async ({ context, input }) => {
     const created = await auth.api.createInvitation({
       body: {

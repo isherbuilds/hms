@@ -294,7 +294,7 @@ test("a member,admin holder gets the union of both roles' permissions", async ()
   const row = membership.members.find((m) => m.userId === person.user.id);
   expect(row).toBeDefined();
 
-  await setMemberRoles(owner, row!.id, ["member", "admin"], organization.id);
+  await setMemberRoles(owner, row!.id, ["reception", "admin"], organization.id);
 
   // Reading only the first stored role would leave this denied.
   const ownDenial = await eventually(async () => {
@@ -540,7 +540,8 @@ const GUARDED_CALLS = {
   "report.gst": (api, claim) => api.report.gst({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
   "member.me": (api, claim) => api.member.me({ ...claim }),
   "member.list": (api, claim) => api.member.list({ ...claim }),
-  "member.invite": (api, claim) => api.member.invite({ ...claim, email: "x@example.com" }),
+  "member.invite": (api, claim) =>
+    api.member.invite({ ...claim, email: "x@example.com", role: "reception" }),
   "member.revokeInvitation": (api, claim) =>
     api.member.revokeInvitation({ ...claim, invitationId: "i" }),
   "member.updateRole": (api, claim) =>
@@ -639,7 +640,7 @@ test("member mutations reject an id belonging to another tenant", async () => {
 
   const stillThere = (await clientFor(alice).member.list({ orgSlug: alpha.slug })).members;
   expect(stillThere.map((row) => row.userId)).toContain(stranger.user.id);
-  expect(stillThere.find((row) => row.userId === stranger.user.id)?.role).toBe("member");
+  expect(stillThere.find((row) => row.userId === stranger.user.id)?.role).toBe("reception");
 });
 
 test("an invitation id from another tenant cannot be revoked", async () => {
@@ -651,6 +652,7 @@ test("an invitation id from another tenant cannot be revoked", async () => {
   const invited = await clientFor(alice).member.invite({
     orgSlug: alpha.slug,
     email: `scoped-${Bun.randomUUIDv7()}@example.com`,
+    role: "reception",
   });
 
   await expectORPCCode(
@@ -1124,7 +1126,7 @@ test("reports reject a foreign org claim and expose none of that org's figures i
   const betaOwner = await createTestUser("report-scope-beta-owner");
   const beta = await createOrganization(betaOwner, "report-scope-beta");
   const bob = await createTestUser("report-scope-beta-member");
-  await joinOrganization(bob, beta.id);
+  await joinOrganization(bob, beta.id, "accountant");
   const bobClient = clientFor(bob);
   const range = reportRange();
 

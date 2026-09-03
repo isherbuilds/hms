@@ -217,7 +217,11 @@ export function AppShell({ orgSlug, children }: { orgSlug: string; children: Rea
         <ClientOnly fallback={<div className="hidden w-64 shrink-0 bg-sidebar lg:block" />}>
           <OrgSidebar orgSlug={orgSlug} />
         </ClientOnly>
-        <SidebarInset className="min-w-0 overflow-hidden print:overflow-visible">
+        <SidebarInset
+          id="main"
+          tabIndex={-1}
+          className="min-w-0 overflow-hidden print:overflow-visible"
+        >
           {children}
         </SidebarInset>
       </SidebarProvider>

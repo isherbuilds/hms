@@ -129,6 +129,9 @@ Theme tokens only: `bg-background`, `bg-card`, `bg-muted`, `text-foreground`,
   in dark mode, which is how a screen ends up unreadable in one theme.
 - **Both themes are shipped, not one flipped.** Every screen is checked in light
   and dark before it is done.
+
+Light `--muted-foreground` is `oklch(0.5 0 0)` so secondary text clears 4.5:1 on the canvas, card, and muted tray.
+
 - **Three documented exceptions.** Print documents use `bg-white text-black
 border-black` because paper is white with black ink in every theme; the login
   context panel is a fixed dark surface in both themes; and clinical severity
@@ -184,6 +187,8 @@ content panel is the card that rises off it. The rail is not a card.
 Keyboard focus is the global unlayered `:focus-visible` rule in `globals.css`;
 do not remove or replace it with component-only rings. Hover effects are gated
 to `(hover: hover) and (pointer: fine)`.
+
+The skip link is the first focusable element and targets `#main` on every page root.
 
 ## 8. Layout primitives
 
