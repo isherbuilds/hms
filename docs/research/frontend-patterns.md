@@ -31,32 +31,31 @@ HMS is the only one of the three that lets the DOM own a draft value, and the
 only one that follows RHF's own documented performance model. `grep -rn
 "register(" apps/dashboard/src` returns **0** in Midday.
 
-**Three items remain unbuilt.** Everything else is either landed or rejected.
+**One item remains unbuilt.** Everything else is either landed or rejected.
 
 ## Remaining work
 
-**1. `ServicePicker` is the last controlled picker input.** `inputValue={query}`
-/ `onInputValueChange={setQuery}` (`opd-service-picker.tsx:130-131`) re-renders
-the component on every keystroke. Midday's command menu shows the alternative:
-pass no `value`, let the primitive hold the text, treat the callback as
-write-only
-([`search.tsx:832-846`](https://github.com/midday-ai/midday/blob/51587319f26a0ffaa9dfccab1920373cb65689b7/apps/dashboard/src/components/search/search.tsx#L832-L846)).
-The obstacle is real: the picker must clear its box after a selection and
-`defaultInputValue` alone cannot. Solve that first (a `key` bump on selection,
-or an imperative clear on the input ref), then drop the controlled prop.
-Profile the keystroke before and after; do not do it blind.
+**1. `ServicePicker` input ownership — landed.** The picker passes no
+`inputValue`; the primitive owns the draft, the callback is write-only into a
+debounced search term, and a `key` bump clears the box after selection
+(`opd-service-picker.tsx`). The keystroke profile is still owed; the retained
+scan only measures `OpdSearchInput`.
 
-**2. oRPC request batching is installed and unused.** Add `BatchLinkPlugin` to
-the client link in `apps/web/src/lib/orpc.ts` and `BatchHandlerPlugin` to the
-`RPCHandler` in `apps/server/src/index.ts`. Two lines, no component changes. The
-OPD intake route alone fans out to three procedures in its loader
-(`routes/$orgSlug/opd/new.tsx:30-43`) — three round trips on client navigation
-today. Measure the request count before and after.
+**2. oRPC request batching is installed and unused.** Add `BatchLinkPlugin` (with
+its required fallback `groups` entry) to the client link in
+`apps/web/src/lib/orpc.ts` and `BatchHandlerPlugin` to the `RPCHandler` in
+`apps/server/src/index.ts`; the default batch URL is `/rpc/__batch__`, so the
+existing `/rpc/*` body limit still applies. The OPD intake loader fans out to
+two procedures, three when it opens with a `patientId`
+(`routes/$orgSlug/opd/new.tsx`). Measure client-navigation request count before
+and after; the existing browser benchmark asserts on hard opens only.
 
-**3. `Route.useSearch({ select })` at the remaining call sites.** With
-`defaultStructuralSharing: true` already on, a `select` narrows the subscription
-to one key. On `opd/index.tsx`, toggling `includeClosed` re-renders components
-that read only `date`. Small, safe, mechanical.
+**3. `Route.useSearch({ select })` — partially landed, unmeasured.** `OpdHeader`
+selects `date`. Six single-field consumers still take the whole object
+(`join.tsx`, `login.tsx`, `billing/index.tsx`, `billing/invoices.$invoiceId.tsx`,
+`patients/$patientId.tsx`, `patients/index.tsx`); the two OPD day consumers and
+catalog settings legitimately read two fields. Measure the `includeClosed` toggle
+before touching the rest; without a render reduction this stays unbuilt.
 
 **Gated, not scheduled.** Per-widget dashboard streaming is a whole-route
 decision that conflicts with the current "loader primes, component reads"

@@ -23,15 +23,15 @@ progress, and **Verification** means implementation is complete but its exit
 evidence is not. Product roadmap items remain evidence-gated—not active work—
 until their trigger is met and they enter this registry.
 
-| Work                                                                                     | Lifecycle    | Exit condition                                                                                            |
-| ---------------------------------------------------------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------- |
-| [Operational reports](./specs/reports.md)                                                | Active       | Remaining pre-pilot reports and billing-exception work is shipped                                         |
-| [Production hardening](./operations.md#production-hardening)                             | Active       | Pilot roles, headers, images, and abandoned-object cleanup pass the recorded release gates                |
-| [Pilot readiness](./operations.md#pilot-readiness)                                       | Active       | A named owner records every operational, accounting, print, restore, and compliance gate complete         |
-| [Invoice granularity (D025)](./decisions.md)                                             | Blocked      | Decided before the first non-OPD invoice exists; blocked on a second billing domain being gated open      |
-| [Frontend pattern items](./research/frontend-patterns.md#remaining-work)                 | Active       | The three unbuilt items are profiled and either landed or dropped                                         |
-| [Midday adoption performance exceptions](./research/data/perf-midday-adoption/README.md) | Verification | A named owner accepts the three bound misses as ambient drift, or re-measures them within bounds          |
-| [Blank data regions](./design.md#9-density-and-emptiness)                                | Verification | Slow-4G cold-open and screen-reader checks confirm no collapsed region and no ambiguous silent navigation |
+| Work                                                                                     | Lifecycle    | Exit condition                                                                                                   |
+| ---------------------------------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------- |
+| [Operational reports](./specs/reports.md)                                                | Active       | Remaining pre-pilot reports and billing-exception work is shipped                                                |
+| [Production hardening](./operations.md#production-hardening)                             | Active       | Pilot roles, headers, images, and abandoned-object cleanup pass the recorded release gates                       |
+| [Pilot readiness](./operations.md#pilot-readiness)                                       | Active       | A named owner records every operational, accounting, print, restore, and compliance gate complete                |
+| [Invoice granularity (D025)](./decisions.md)                                             | Blocked      | Decided before the first non-OPD invoice exists; blocked on a second billing domain being gated open             |
+| [Frontend pattern items](./research/frontend-patterns.md#remaining-work)                 | Active       | Batching is measured and landed or dropped; the six remaining `useSearch` selector sites are measured or dropped |
+| [Midday adoption performance exceptions](./research/data/perf-midday-adoption/README.md) | Verification | A named owner accepts the three bound misses as ambient drift, or re-measures them within bounds                 |
+| [Blank data regions](./design.md#9-density-and-emptiness)                                | Verification | Slow-4G cold-open and screen-reader checks confirm no collapsed region and no ambiguous silent navigation        |
 
 End-user help belongs in `apps/fumadocs`, not here. Code is authoritative for
 exact APIs, schemas, permissions, and environment validation; these docs explain

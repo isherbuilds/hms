@@ -74,10 +74,10 @@ but the 111–115% cells still miss the agreed bound. Single-stream SSR p95
 jitters the same way (approximately ±2 ms on an approximately 8 ms route) and carries the same
 interpretation.
 
-Context, not a bound: the catalog settings page transfers 2.82 MB before and
-4.09 MB after at the seeded 1,000 rows (per-row SSR checkboxes). Real
-catalogs are far smaller today; paginate that page before they approach this
-size.
+Context, not a bound: the catalog settings page transferred 2.82 MB before and
+4.09 MB after at the seeded 1,000 rows (per-row SSR checkboxes). Superseded:
+the page now renders a 50-row keyset first page with **Load more**; re-measure
+the first-page transfer before quoting a size.
 
 The optimistic flip needed a fix to meet its bound: with 1,000 rows the first
 implementation re-rendered every row on the cache patch (~150 ms flip). A

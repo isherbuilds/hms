@@ -10,12 +10,18 @@ Active temporary memos:
 
 - [Frontend patterns](./frontend-patterns.md) — Midday and OpenStatus pinned;
   establishes that Midday runs _without_ React Compiler while HMS runs with it,
-  keeps the three unbuilt items (service-picker input ownership, oRPC batching,
-  `useSearch({ select })`), and records what is rejected and why. Consolidates
-  five 2026-08-31/09-01 memos.
+  keeps the one unbuilt item (oRPC batching) and the unmeasured `useSearch`
+  selector sites, and records what is rejected and why. Consolidates five
+  2026-08-31/09-01 memos.
 - [OPD reference flows](./opd-reference-flows.md) — Marley and OpenMRS pinned;
   what OPD means as a care setting, the unbuilt direct-service hypothesis, and
   the IPD territory map. Consolidates two 2026-08-24/25 memos.
+- [Reference financial integrity and catalog](./reference-financial-integrity-and-catalog.md)
+  — Bahmni, Danphe, and Marley pinned 2026-09-03; establishes that no reference
+  has a request key for financial retries (D023 is ahead of peers), that both
+  peers with a real design keep one thin billable item and link domain masters
+  to it, and what that means for pharmacy/lab/IPD masters, roles, no-show, and
+  day-close shapes.
 
 ## Adopted findings
 
