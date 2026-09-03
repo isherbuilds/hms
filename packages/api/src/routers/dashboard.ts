@@ -5,7 +5,7 @@ import { payments } from "@hms/db/schema/payments";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { sql } from "drizzle-orm";
 
-import { businessDate, businessDayWindow } from "../lib/business-date";
+import { businessDate } from "../lib/business-date";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
 
@@ -55,7 +55,6 @@ export const dashboardRouter = {
     const { orgId } = context.scope;
     const { timeZone, unbilledAlertHours } = await readOrgSettings(orgId);
     const currentDay = businessDate(new Date(), timeZone);
-    const { start, end } = businessDayWindow(currentDay, timeZone);
     const unbilledBefore = new Date(Date.now() - unbilledAlertHours * 3_600_000);
 
     // `filter` clauses split the day's takings by method in one scan of `payments`
@@ -92,7 +91,7 @@ export const dashboardRouter = {
             from unbilled_appointments) as "unbilledOpdAppointments"
         from ${payments}
         where ${payments.orgId} = ${orgId}
-          and ${payments.createdAt} >= ${start} and ${payments.createdAt} < ${end}
+          and ${payments.businessDate} = ${currentDay}
       `),
       // Gap-filled: a day with no payments must plot as zero, not compress the axis.
       db.execute<{ day: string; amount: string }>(sql`
@@ -105,8 +104,7 @@ export const dashboardRouter = {
         from days
         left join ${payments}
           on ${payments.orgId} = ${orgId}
-         and ${payments.createdAt} >= days.day::timestamp at time zone ${timeZone}
-         and ${payments.createdAt} < (days.day + 1)::timestamp at time zone ${timeZone}
+         and ${payments.businessDate} = days.day
         group by days.day
         order by days.day asc
       `),

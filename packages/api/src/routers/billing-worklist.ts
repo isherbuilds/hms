@@ -10,8 +10,9 @@ import { refunds } from "@hms/db/schema/refunds";
 import { and, asc, eq, gt, ilike, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { businessDate, businessDayWindow } from "../lib/business-date";
+import { businessDate } from "../lib/business-date";
 import { invoiceBalancesFor } from "../lib/invoice-balance";
+import { fromPaise, toSignedPaise } from "../lib/invoice-math";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { likePattern, searchQuery } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
@@ -45,7 +46,7 @@ export const billingWorklistRouter = {
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const settings = await readOrgSettings(scope.orgId);
-    const today = businessDayWindow(businessDate(new Date(), settings.timeZone), settings.timeZone);
+    const today = businessDate(new Date(), settings.timeZone);
     const settled = settledExpression(scope.orgId);
     const staleBefore = daysAgo(STALE_DAYS);
     const search = input.query ? likePattern(input.query) : undefined;
@@ -121,13 +122,7 @@ export const billingWorklistRouter = {
           receiptCount: sql<number>`count(*)::integer`,
         })
         .from(payments)
-        .where(
-          and(
-            eq(payments.orgId, scope.orgId),
-            sql`${payments.createdAt} >= ${today.start}`,
-            sql`${payments.createdAt} < ${today.end}`,
-          ),
-        ),
+        .where(and(eq(payments.orgId, scope.orgId), eq(payments.businessDate, today))),
     ]);
 
     const match = unbilledMatches[0];
@@ -222,43 +217,52 @@ export const billingWorklistRouter = {
   ).handler(async ({ context, input }) => {
     const { orgId } = context.scope;
     const search = input.query ? likePattern(input.query) : undefined;
-    const settled = settledExpression(orgId);
     const [settings, rows] = await Promise.all([
       readOrgSettings(orgId),
       db
         .select({
-          invoiceId: invoices.id,
+          id: invoices.id,
           invoiceNumber: invoices.invoiceNumber,
           appointmentId: invoices.opdAppointmentId,
-          patientName: patients.name,
-          patientMrn: patients.mrn,
+          patientName: invoices.patientName,
+          patientMrn: invoices.patientMrn,
           businessDate: invoices.businessDate,
-          refundDue: sql<string>`-(${settled})`,
+          grandTotal: invoices.grandTotal,
         })
         .from(invoices)
-        .innerJoin(
-          opdAppointments,
-          and(eq(opdAppointments.orgId, orgId), eq(opdAppointments.id, invoices.opdAppointmentId)),
-        )
-        .innerJoin(
-          patients,
-          and(eq(patients.orgId, orgId), eq(patients.id, opdAppointments.patientId)),
-        )
         .where(
           and(
             eq(invoices.orgId, orgId),
-            sql`(${settled}) < 0`,
-            search ? or(ilike(patients.name, search), ilike(patients.mrn, search)) : undefined,
+            sql`(${settledExpression(orgId)}) < 0`,
+            search
+              ? or(
+                  ilike(invoices.patientName, search),
+                  ilike(invoices.patientMrn, search),
+                  ilike(invoices.invoiceNumber, search),
+                )
+              : undefined,
           ),
         )
         .orderBy(asc(invoices.createdAt), asc(invoices.id))
         .limit(input.limit + 1),
     ]);
 
+    const hasMore = rows.length > input.limit;
+    if (hasMore) rows.pop();
+    const balances = await invoiceBalancesFor(db, orgId, rows);
+
     return {
       currency: settings.currency,
-      rows: rows.slice(0, input.limit),
-      hasMore: rows.length > input.limit,
+      rows: rows.map(({ id, grandTotal: _grandTotal, ...row }) => {
+        const balance = balances.get(id);
+        if (!balance) throw new Error(`Balance missing for invoice ${id}`);
+        return {
+          ...row,
+          invoiceId: id,
+          refundDue: fromPaise(-toSignedPaise(balance.outstanding)),
+        };
+      }),
+      hasMore,
     };
   }),
 };

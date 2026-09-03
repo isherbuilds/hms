@@ -35,6 +35,7 @@ export const reception = ac.newRole({
   file: ["upload", "read"],
 });
 
+// Cashiers close their own shift from Daily collections, so they read reports.
 export const cashier = ac.newRole({
   ...memberAc.statements,
   member: ["read"],
@@ -44,6 +45,7 @@ export const cashier = ac.newRole({
   catalog: ["read"],
   staff: ["read"],
   settings: ["read"],
+  report: ["read"],
   file: ["read"],
 });
 

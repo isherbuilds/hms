@@ -39,7 +39,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     owner: true,
     admin: true,
     reception: false,
-    cashier: false,
+    cashier: true,
     accountant: true,
   },
   {

@@ -266,13 +266,18 @@ fixed set of two to five options is a `FilterGroup`; a boolean is a two-option
 group such as `All | Active`. Options that come from data, such as catalog
 categories, or that run past five are a `FilterSelect`. Read states come only
 from `ListState`. A cursor list grows only through `LoadMore` in the panel
-footer, which also shows the count. Tables never scroll horizontally, and a
-scrollbar is 6 px on both axes; the sidebar rail hides its own because a rail is
-not a data region. A long text cell wraps with `break-words` when its content is
-why the reader is there, or uses `max-w-0` with an inner `truncate` `div` and a
-`title` when it is secondary. Identifiers stay whole: when one can outgrow the
-row, the table is `table-fixed` with declared column widths and the identifier
-cell wraps with `break-all`.
+footer, which also shows the count. Operational tables never scroll
+horizontally: below `md` a list renders one compact card per row (`text-xs`,
+`px-3 py-2`, `border-b`, the row's own link or activation handler) with the
+identifier, primary name, and status on the first line and secondary facts
+below, and the table returns at `md`. Report and print tables are the one
+exception and keep the primitive's horizontal scroll. A scrollbar is 6 px on
+both axes; the sidebar rail hides its own because a rail is not a data region.
+A long text cell wraps with `break-words` when its content is why the reader is
+there, or uses `max-w-0` with an inner `truncate` `div` and a `title` when it
+is secondary. Identifiers stay whole: when one can outgrow the row, the table is
+`table-fixed` with declared column widths and the identifier cell wraps with
+`break-all`.
 
 A new bespoke layout wrapper is a signal that one of these is missing a prop.
 

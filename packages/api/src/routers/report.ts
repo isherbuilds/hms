@@ -39,29 +39,27 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 // `maxDays` belongs only to reports whose row count grows with the period. Trial
 // balance and balance sheet return one row per account whatever the range, and the
 // pool's statement timeout already bounds a long scan.
-const MAX_FILING_DAYS = 366;
-const MAX_COLLECTION_DAYS = 92;
-const MAX_REGISTER_DAYS = 31;
+const GST_BOUND = { report: "GST register", maxDays: 366 };
+const COLLECTIONS_BOUND = { report: "Daily collections", maxDays: 92 };
+const REGISTER_BOUND = { report: "OPD register", maxDays: 31 };
 const PAYMENT_METHODS: readonly PaymentMethod[] = ["cash", "upi", "card"];
 
-function assertValidPeriod(from: string, to: string, maxDays?: number): void {
+function assertValidPeriod(
+  from: string,
+  to: string,
+  bound?: { report: string; maxDays: number },
+): void {
   if (from > to) {
     throw new ORPCError("BAD_REQUEST", {
       message: "The start date must not be after the end date",
     });
   }
-  if (maxDays === undefined) return;
+  if (!bound) return;
 
   const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS;
-  const reportName =
-    maxDays === MAX_COLLECTION_DAYS
-      ? "Daily collections"
-      : maxDays === MAX_REGISTER_DAYS
-        ? "OPD register"
-        : "GST register";
-  if (days > maxDays) {
+  if (days > bound.maxDays) {
     throw new ORPCError("BAD_REQUEST", {
-      message: `${reportName} covers at most ${maxDays} days`,
+      message: `${bound.report} covers at most ${bound.maxDays} days`,
     });
   }
 }
@@ -128,7 +126,7 @@ export const reportRouter = {
 
   dailyCollections: orgProcedure({ report: ["read"] }, periodInput).handler(
     async ({ context, input }) => {
-      assertValidPeriod(input.from, input.to, MAX_COLLECTION_DAYS);
+      assertValidPeriod(input.from, input.to, COLLECTIONS_BOUND);
       const orgId = context.scope.orgId;
       const [settings, paymentRows, refundRows] = await Promise.all([
         readOrgSettings(orgId),
@@ -235,7 +233,7 @@ export const reportRouter = {
 
   opdRegister: orgProcedure({ report: ["read"] }, periodInput).handler(
     async ({ context, input }) => {
-      assertValidPeriod(input.from, input.to, MAX_REGISTER_DAYS);
+      assertValidPeriod(input.from, input.to, REGISTER_BOUND);
       const { scope } = context;
       const settings = await readOrgSettings(scope.orgId);
       const now = new Date();
@@ -362,7 +360,7 @@ export const reportRouter = {
   ),
 
   gst: orgProcedure({ report: ["read"] }, periodInput).handler(async ({ context, input }) => {
-    assertValidPeriod(input.from, input.to, MAX_FILING_DAYS);
+    assertValidPeriod(input.from, input.to, GST_BOUND);
     const orgId = context.scope.orgId;
     const { timeZone } = await readOrgSettings(orgId);
 

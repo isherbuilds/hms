@@ -21,7 +21,7 @@ import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
 import { downloadXlsx } from "@/lib/report-export";
 import { REPORT_PRINT_LANDSCAPE_CSS } from "@/lib/report-presentation";
-import { orgMonthToDate as defaultRange } from "@/lib/org-datetime";
+import { formatDateTime, orgMonthToDate as defaultRange, useOrgDateTime } from "@/lib/org-datetime";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 const MAX_DAYS = 31;
@@ -55,6 +55,7 @@ function OpdRegisterRoute() {
   const navigate = Route.useNavigate();
   const { from, to } = Route.useLoaderData();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
+  const { timeZone } = useOrgDateTime();
   const report = useQuery(orpc.report.opdRegister.queryOptions({ input: { orgSlug, from, to } }));
 
   const exportReport = () => {
@@ -91,7 +92,7 @@ function OpdRegisterRoute() {
           departmentName: row.departmentName,
           arrivalMode: row.arrivalMode,
           status: row.status,
-          arrivedAt: row.arrivedAt?.toISOString() ?? "",
+          arrivedAt: row.arrivedAt ? formatDateTime(row.arrivedAt, timeZone) : "",
           billed: Number(row.billed),
           paid: Number(row.paid),
           credits: Number(row.credits),

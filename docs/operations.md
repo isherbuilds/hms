@@ -101,7 +101,11 @@ Current behaviour, with the release evidence still to be recorded:
    and application build output; the server image additionally contains Bun and
    the database and environment sources required to migrate before serving.
    Image digests, sizes, startup health, and migration behavior are recorded at
-   release time.
+   release time. First verification, 2026-09-03 on arm64 from commit `5f46954`
+   plus the report fixes: server image 900 MB, web image 1.09 GB; the server
+   migrated an empty database through `0000`–`0003` and answered `/` with the
+   production headers as `node`; the web image answered `/login` and `/` with
+   200, the full header set, and the skip link.
 4. The tenant-safe cleanup reports abandoned `pending` uploads and unreachable
    storage objects older than the requested age. Run
    `bun run cleanup-uploads --older-than-hours 24 [--delete]`; it defaults to a
