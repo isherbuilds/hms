@@ -1589,6 +1589,54 @@ test("day interleaves visits, searches patient keys, returns balances, and close
   ).toBe("booked");
 });
 
+test("OPD register reconciles expired bookings once without a prior day read", async () => {
+  const { organization, api, patient, department } =
+    await createOpdAppointmentSetup("opd-register");
+  const practitioner = await createPractitioner(
+    api,
+    organization.slug,
+    department.id,
+    "Dr. Register",
+  );
+  const appointment = await api.opd.book({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    scheduledLocal: "2030-03-20T10:00",
+  });
+  const timeZone = (await api.settings.get({ orgSlug: organization.slug })).timeZone;
+  const yesterday = new Date(`${businessDate(new Date(), timeZone)}T00:00:00Z`);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const pastDay = yesterday.toISOString().slice(0, 10);
+  await db
+    .update(opdAppointments)
+    .set({ businessDate: pastDay, scheduledFor: yesterday })
+    .where(and(eq(opdAppointments.orgId, organization.id), eq(opdAppointments.id, appointment.id)));
+
+  const first = await api.report.opdRegister({
+    orgSlug: organization.slug,
+    from: pastDay,
+    to: pastDay,
+  });
+  expect(first.rows).toEqual([
+    expect.objectContaining({ appointmentId: appointment.id, status: "no_show" }),
+  ]);
+  expect(first.totals.byStatus.no_show).toBe(1);
+
+  const second = await api.report.opdRegister({
+    orgSlug: organization.slug,
+    from: pastDay,
+    to: pastDay,
+  });
+  expect(second).toEqual(first);
+  await drainAuditWrites();
+  expect(
+    (await api.audit.list({ orgSlug: organization.slug })).items.filter(
+      (entry) => entry.action === "opd.no_show" && entry.target === `opd:${appointment.id}`,
+    ),
+  ).toHaveLength(1);
+});
+
 test("concurrent check-in mints one token and one consultation charge", async () => {
   const { organization, api, patient, department } =
     await createOpdAppointmentSetup("opd-check-in-race");

@@ -25,8 +25,7 @@ until their trigger is met and they enter this registry.
 
 | Work                                                                                     | Lifecycle    | Exit condition                                                                                                   |
 | ---------------------------------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------- |
-| [Operational reports](./specs/reports.md)                                                | Active       | Remaining pre-pilot reports and billing-exception work is shipped                                                |
-| [Production hardening](./operations.md#production-hardening)                             | Active       | Pilot roles, headers, images, and abandoned-object cleanup pass the recorded release gates                       |
+| [Production hardening](./operations.md#production-hardening)                             | Verification | Release evidence records image digests, sizes, startup health, header checks, and a reviewed cleanup dry run     |
 | [Pilot readiness](./operations.md#pilot-readiness)                                       | Active       | A named owner records every operational, accounting, print, restore, and compliance gate complete                |
 | [Invoice granularity (D025)](./decisions.md)                                             | Blocked      | Decided before the first non-OPD invoice exists; blocked on a second billing domain being gated open             |
 | [Frontend pattern items](./research/frontend-patterns.md#remaining-work)                 | Active       | Batching is measured and landed or dropped; the six remaining `useSearch` selector sites are measured or dropped |

@@ -1,15 +1,24 @@
 import { db } from "@hms/db";
 import { accounts } from "@hms/db/schema/accounts";
+import { departments } from "@hms/db/schema/departments";
 import { creditNoteLines } from "@hms/db/schema/credit-note-lines";
 import { creditNotes } from "@hms/db/schema/credit-notes";
 import { invoiceLines } from "@hms/db/schema/invoice-lines";
 import { invoices } from "@hms/db/schema/invoices";
+import { opdAppointments } from "@hms/db/schema/opd-appointments";
+import { patients } from "@hms/db/schema/patients";
+import { payments } from "@hms/db/schema/payments";
+import { practitioners } from "@hms/db/schema/practitioners";
+import { refunds } from "@hms/db/schema/refunds";
 import { journalEntries } from "@hms/db/schema/journal-entries";
 import { journalLines } from "@hms/db/schema/journal-lines";
 import { ORPCError } from "@orpc/server";
-import { and, eq, gte, lt, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, lt, lte, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
+import { businessDate } from "../lib/business-date";
+import { fromPaise, toPaise } from "../lib/invoice-math";
+import { closeExpiredBookings } from "../lib/opd-close";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
 import {
@@ -19,6 +28,7 @@ import {
   type AccountAggregate,
   type GstBucket,
 } from "../lib/report-math";
+import type { PaymentMethod } from "../lib/schemas";
 
 const reportDate = z.iso.date();
 const periodInput = orgInput.extend({ from: reportDate, to: reportDate });
@@ -30,6 +40,9 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 // balance and balance sheet return one row per account whatever the range, and the
 // pool's statement timeout already bounds a long scan.
 const MAX_FILING_DAYS = 366;
+const MAX_COLLECTION_DAYS = 92;
+const MAX_REGISTER_DAYS = 31;
+const PAYMENT_METHODS: readonly PaymentMethod[] = ["cash", "upi", "card"];
 
 function assertValidPeriod(from: string, to: string, maxDays?: number): void {
   if (from > to) {
@@ -40,9 +53,15 @@ function assertValidPeriod(from: string, to: string, maxDays?: number): void {
   if (maxDays === undefined) return;
 
   const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS;
+  const reportName =
+    maxDays === MAX_COLLECTION_DAYS
+      ? "Daily collections"
+      : maxDays === MAX_REGISTER_DAYS
+        ? "OPD register"
+        : "GST register";
   if (days > maxDays) {
     throw new ORPCError("BAD_REQUEST", {
-      message: `The GST register covers at most ${maxDays} days`,
+      message: `${reportName} covers at most ${maxDays} days`,
     });
   }
 }
@@ -104,6 +123,241 @@ export const reportRouter = {
       );
 
       return buildBalanceSheet({ asOf: input.asOf, aggregates });
+    },
+  ),
+
+  dailyCollections: orgProcedure({ report: ["read"] }, periodInput).handler(
+    async ({ context, input }) => {
+      assertValidPeriod(input.from, input.to, MAX_COLLECTION_DAYS);
+      const orgId = context.scope.orgId;
+      const [settings, paymentRows, refundRows] = await Promise.all([
+        readOrgSettings(orgId),
+        db
+          .select({
+            businessDate: payments.businessDate,
+            method: sql<PaymentMethod>`${payments.method}`,
+            amount: sql<string>`sum(${payments.amount})::text`,
+          })
+          .from(payments)
+          .where(
+            and(
+              eq(payments.orgId, orgId),
+              gte(payments.businessDate, input.from),
+              lte(payments.businessDate, input.to),
+            ),
+          )
+          .groupBy(payments.businessDate, payments.method),
+        db
+          .select({
+            businessDate: refunds.businessDate,
+            method: sql<PaymentMethod>`${refunds.method}`,
+            amount: sql<string>`sum(${refunds.amount})::text`,
+          })
+          .from(refunds)
+          .where(
+            and(
+              eq(refunds.orgId, orgId),
+              gte(refunds.businessDate, input.from),
+              lte(refunds.businessDate, input.to),
+            ),
+          )
+          .groupBy(refunds.businessDate, refunds.method),
+      ]);
+
+      const buckets = new Map<
+        string,
+        { businessDate: string; method: PaymentMethod; payments: number; refunds: number }
+      >();
+      for (const row of paymentRows) {
+        buckets.set(`${row.businessDate}:${row.method}`, {
+          businessDate: row.businessDate,
+          method: row.method,
+          payments: toPaise(row.amount),
+          refunds: 0,
+        });
+      }
+      for (const row of refundRows) {
+        const key = `${row.businessDate}:${row.method}`;
+        const bucket = buckets.get(key) ?? {
+          businessDate: row.businessDate,
+          method: row.method,
+          payments: 0,
+          refunds: 0,
+        };
+        bucket.refunds += toPaise(row.amount);
+        buckets.set(key, bucket);
+      }
+
+      const amounts = [...buckets.values()].sort(
+        (left, right) =>
+          left.businessDate.localeCompare(right.businessDate) ||
+          left.method.localeCompare(right.method),
+      );
+      const rows = amounts.map((row) => ({
+        businessDate: row.businessDate,
+        method: row.method,
+        payments: fromPaise(row.payments),
+        refunds: fromPaise(row.refunds),
+        net: fromPaise(row.payments - row.refunds),
+      }));
+      const methodTotals: Record<PaymentMethod, { payments: number; refunds: number }> = {
+        cash: { payments: 0, refunds: 0 },
+        upi: { payments: 0, refunds: 0 },
+        card: { payments: 0, refunds: 0 },
+      };
+      for (const row of amounts) {
+        methodTotals[row.method].payments += row.payments;
+        methodTotals[row.method].refunds += row.refunds;
+      }
+      const byMethod = PAYMENT_METHODS.map((method) => ({
+        method,
+        payments: fromPaise(methodTotals[method].payments),
+        refunds: fromPaise(methodTotals[method].refunds),
+        net: fromPaise(methodTotals[method].payments - methodTotals[method].refunds),
+      }));
+      const paymentsTotal = amounts.reduce((total, row) => total + row.payments, 0);
+      const refundsTotal = amounts.reduce((total, row) => total + row.refunds, 0);
+
+      return {
+        from: input.from,
+        to: input.to,
+        currency: settings.currency,
+        rows,
+        byMethod,
+        totals: {
+          payments: fromPaise(paymentsTotal),
+          refunds: fromPaise(refundsTotal),
+          net: fromPaise(paymentsTotal - refundsTotal),
+        },
+      };
+    },
+  ),
+
+  opdRegister: orgProcedure({ report: ["read"] }, periodInput).handler(
+    async ({ context, input }) => {
+      assertValidPeriod(input.from, input.to, MAX_REGISTER_DAYS);
+      const { scope } = context;
+      const settings = await readOrgSettings(scope.orgId);
+      const now = new Date();
+      const currentDay = businessDate(now, settings.timeZone);
+      if (input.from < currentDay) {
+        await closeExpiredBookings({
+          orgId: scope.orgId,
+          actorId: scope.userId,
+          currentDay,
+          now,
+        });
+      }
+
+      const billed = sql<string>`coalesce((select sum(${invoices.grandTotal}) from ${invoices}
+        where ${invoices.orgId} = ${scope.orgId}
+          and ${invoices.opdAppointmentId} = ${opdAppointments.id}), 0)::text`;
+      const paid = sql<string>`coalesce((select sum(${payments.amount}) from ${payments}
+        inner join ${invoices}
+          on ${invoices.id} = ${payments.invoiceId}
+          and ${invoices.orgId} = ${scope.orgId}
+        where ${payments.orgId} = ${scope.orgId}
+          and ${invoices.opdAppointmentId} = ${opdAppointments.id}), 0)::text`;
+      const credits = sql<string>`coalesce((select sum(${creditNotes.total}) from ${creditNotes}
+        inner join ${invoices}
+          on ${invoices.id} = ${creditNotes.invoiceId}
+          and ${invoices.orgId} = ${scope.orgId}
+        where ${creditNotes.orgId} = ${scope.orgId}
+          and ${invoices.opdAppointmentId} = ${opdAppointments.id}), 0)::text`;
+      const refunded = sql<string>`coalesce((select sum(${refunds.amount}) from ${refunds}
+        inner join ${invoices}
+          on ${invoices.id} = ${refunds.invoiceId}
+          and ${invoices.orgId} = ${scope.orgId}
+        where ${refunds.orgId} = ${scope.orgId}
+          and ${invoices.opdAppointmentId} = ${opdAppointments.id}), 0)::text`;
+
+      const selected = await db
+        .select({
+          appointmentId: opdAppointments.id,
+          businessDate: opdAppointments.businessDate,
+          tokenNumber: opdAppointments.tokenNumber,
+          patientName: patients.name,
+          patientMrn: patients.mrn,
+          callerName: opdAppointments.callerName,
+          practitionerName: practitioners.name,
+          departmentName: departments.name,
+          arrivalMode: opdAppointments.arrivalMode,
+          status: opdAppointments.status,
+          arrivedAt: opdAppointments.arrivedAt,
+          billed,
+          paid,
+          credits,
+          refunds: refunded,
+        })
+        .from(opdAppointments)
+        .leftJoin(
+          patients,
+          and(eq(patients.id, opdAppointments.patientId), eq(patients.orgId, scope.orgId)),
+        )
+        .innerJoin(
+          practitioners,
+          and(
+            eq(practitioners.id, opdAppointments.practitionerId),
+            eq(practitioners.orgId, scope.orgId),
+          ),
+        )
+        .innerJoin(
+          departments,
+          and(eq(departments.id, opdAppointments.departmentId), eq(departments.orgId, scope.orgId)),
+        )
+        .where(
+          and(
+            eq(opdAppointments.orgId, scope.orgId),
+            gte(opdAppointments.businessDate, input.from),
+            lte(opdAppointments.businessDate, input.to),
+          ),
+        )
+        .orderBy(
+          asc(opdAppointments.businessDate),
+          asc(opdAppointments.dayOrderAt),
+          asc(opdAppointments.id),
+        );
+
+      const byStatus = { booked: 0, checked_in: 0, cancelled: 0, no_show: 0 };
+      let billedTotal = 0;
+      let paidTotal = 0;
+      let creditsTotal = 0;
+      let refundsTotal = 0;
+      const rows = selected.map((row) => {
+        const billedPaise = toPaise(row.billed);
+        const paidPaise = toPaise(row.paid);
+        const creditsPaise = toPaise(row.credits);
+        const refundsPaise = toPaise(row.refunds);
+        billedTotal += billedPaise;
+        paidTotal += paidPaise;
+        creditsTotal += creditsPaise;
+        refundsTotal += refundsPaise;
+        byStatus[row.status] += 1;
+        return {
+          ...row,
+          billed: fromPaise(billedPaise),
+          paid: fromPaise(paidPaise),
+          credits: fromPaise(creditsPaise),
+          refunds: fromPaise(refundsPaise),
+          outstanding: fromPaise(billedPaise - creditsPaise - paidPaise + refundsPaise),
+        };
+      });
+
+      return {
+        from: input.from,
+        to: input.to,
+        currency: settings.currency,
+        rows,
+        totals: {
+          appointments: rows.length,
+          byStatus,
+          billed: fromPaise(billedTotal),
+          paid: fromPaise(paidTotal),
+          credits: fromPaise(creditsTotal),
+          refunds: fromPaise(refundsTotal),
+          outstanding: fromPaise(billedTotal - creditsTotal - paidTotal + refundsTotal),
+        },
+      };
     },
   ),
 

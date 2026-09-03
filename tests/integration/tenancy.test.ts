@@ -553,6 +553,10 @@ const GUARDED_CALLS = {
     api.report.trialBalance({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
   "report.balanceSheet": (api, claim) => api.report.balanceSheet({ ...claim, asOf: "2024-01-31" }),
   "report.gst": (api, claim) => api.report.gst({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
+  "report.dailyCollections": (api, claim) =>
+    api.report.dailyCollections({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
+  "report.opdRegister": (api, claim) =>
+    api.report.opdRegister({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
   "member.me": (api, claim) => api.member.me({ ...claim }),
   "member.list": (api, claim) => api.member.list({ ...claim }),
   "member.invite": (api, claim) =>

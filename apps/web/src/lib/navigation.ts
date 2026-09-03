@@ -1,6 +1,7 @@
 import type { AppPermission } from "@hms/auth/access";
 import {
   Building2Icon,
+  ClipboardListIcon,
   ChartColumnIcon,
   ChartNoAxesColumnIncreasingIcon,
   FileIcon,
@@ -9,6 +10,7 @@ import {
   ListChecksIcon,
   ListOrderedIcon,
   ReceiptTextIcon,
+  WalletIcon,
   StethoscopeIcon,
   UsersIcon,
   type LucideIcon,
@@ -107,7 +109,11 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
 ];
 
 export type ReportLink = NavEntry<
-  "/$orgSlug/reports/gst" | "/$orgSlug/reports/trial-balance" | "/$orgSlug/reports/balance-sheet"
+  | "/$orgSlug/reports/gst"
+  | "/$orgSlug/reports/trial-balance"
+  | "/$orgSlug/reports/balance-sheet"
+  | "/$orgSlug/reports/daily-collections"
+  | "/$orgSlug/reports/opd-register"
 > & { icon: LucideIcon; description: string };
 
 export const REPORT_LINKS: readonly ReportLink[] = [
@@ -116,6 +122,20 @@ export const REPORT_LINKS: readonly ReportLink[] = [
     label: "GST outward register",
     description: "Invoices, credit notes, rate totals, and HSN/SAC totals for the selected period.",
     icon: ReceiptTextIcon,
+    permission: { report: ["read"] },
+  },
+  {
+    to: "/$orgSlug/reports/daily-collections",
+    label: "Daily collections",
+    description: "Payments minus refunds by method and business date.",
+    icon: WalletIcon,
+    permission: { report: ["read"] },
+  },
+  {
+    to: "/$orgSlug/reports/opd-register",
+    label: "OPD register",
+    description: "One row per appointment with attendance and money.",
+    icon: ClipboardListIcon,
     permission: { report: ["read"] },
   },
   {

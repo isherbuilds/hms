@@ -25,11 +25,11 @@ AI reconstruction as the clinical source.
 
 ## Scope
 
-| Status             | Capabilities                                                                                                                                                                                                                                                                                                                      |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Live**           | Tenant/auth spine, patients and MRNs, departments, practitioners, catalog, OPD bookings and walk-ins, daily queue, prescription attachments, Charges, Invoices, Payments, Receipts, Credit Notes, refunds, billing ledger, GST outward register, trial balance, balance sheet, dashboard, files, audit, and member administration |
-| **Next**           | Daily collections, OPD register, refund-due worklist, unbilled alert threshold, production hardening, role split, printer validation, and pilot runbook                                                                                                                                                                           |
-| **Evidence-gated** | Patient timeline/vitals, pharmacy and inventory, lab, radiology, IPD/ADT, Emergency, OT, insurance/TPA, ABDM, payment gateway, patient portal, offline mode, and AI assistance                                                                                                                                                    |
+| Status             | Capabilities                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Live**           | Tenant/auth spine, patients and MRNs, departments, practitioners, catalog, OPD bookings and walk-ins, daily queue, prescription attachments, Charges, Invoices, Payments, Receipts, Credit Notes, refunds, billing ledger, GST outward register, trial balance, balance sheet, daily collections, OPD register, unbilled-alert and refund-due worklists, dashboard, files, audit, member administration with reception/cashier/accountant/administrator roles, security headers, runtime-only images, and upload cleanup |
+| **Next**           | Printer validation, release evidence for the hardened images and headers, and the pilot runbook                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **Evidence-gated** | Patient timeline/vitals, pharmacy and inventory, lab, radiology, IPD/ADT, Emergency, OT, insurance/TPA, ABDM, payment gateway, patient portal, offline mode, and AI assistance                                                                                                                                                                                                                                                                                                                                           |
 
 Evidence-gated work gets no placeholder route, table, permission, or navigation
 entry. It starts only with a paid/observed need, a named operational owner, and
@@ -140,10 +140,10 @@ adapter is evidence-gated.
 | Offline mode                | Outage evidence proves network/UPS remediation and controlled paper fallback insufficient                      |
 | AI assistance               | Owned workflow with consent, provenance, authorization, source linkage, human review, and failure handling     |
 
-Before pilot traffic, complete the [reports spec](./specs/reports.md), split
-roles, validate real printers, rehearse backups/restores and data import, define
-cashier handover and correction authority, and reconcile daily during a staged
-single-department or single-shift cutover.
+Before pilot traffic, walk the role map with the shift lead, validate real
+printers, rehearse backups/restores and data import, define cashier handover and
+correction authority, and reconcile daily during a staged single-department or
+single-shift cutover ([operations](./operations.md#pilot-readiness)).
 
 ## Non-negotiable product invariants
 

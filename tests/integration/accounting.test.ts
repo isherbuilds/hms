@@ -477,6 +477,66 @@ test("payments, credit notes, and refunds post to their exact settlement account
   expectBalanced(refundJournal.lines);
 });
 
+test("daily collections nets payments and refunds by Business Date and method", async () => {
+  const fixture = await createAccountingFixture("accounting-daily-collections");
+  const issued = await issueConsultationInvoice(fixture, "Daily Collections");
+  await fixture.api.billing.recordPayments({
+    orgSlug: fixture.organization.slug,
+    invoiceId: issued.invoice.id,
+    payments: [
+      { method: "cash", amount: "70.00" },
+      { method: "upi", amount: "48.00", reference: "UPI-COLLECTIONS" },
+    ],
+  });
+  const [invoiceLine] = issued.lines;
+  if (!invoiceLine) throw new Error("expected an invoice line");
+  const credited = await fixture.api.billing.issueCreditNote({
+    orgSlug: fixture.organization.slug,
+    invoiceId: issued.invoice.id,
+    reason: "Partial collection reversal",
+    lines: [{ invoiceLineId: invoiceLine.id, gross: "20.00" }],
+  });
+  await fixture.api.billing.recordRefund({
+    orgSlug: fixture.organization.slug,
+    creditNoteId: credited.creditNote.id,
+    method: "cash",
+    amount: "20.00",
+  });
+
+  const today = reportDate();
+  const report = await fixture.api.report.dailyCollections({
+    orgSlug: fixture.organization.slug,
+    from: today,
+    to: today,
+  });
+  expect(report.rows).toEqual([
+    {
+      businessDate: today,
+      method: "cash",
+      payments: "70.00",
+      refunds: "20.00",
+      net: "50.00",
+    },
+    {
+      businessDate: today,
+      method: "upi",
+      payments: "48.00",
+      refunds: "0.00",
+      net: "48.00",
+    },
+  ]);
+  expect(report.byMethod.find((row) => row.method === "cash")?.net).toBe("50.00");
+  expect(report.totals.net).toBe("98.00");
+  await expectORPCCode(
+    fixture.api.report.dailyCollections({
+      orgSlug: fixture.organization.slug,
+      from: today,
+      to: addDays(today, 93),
+    }),
+    "BAD_REQUEST",
+  );
+});
+
 test("trial balance is balanced, agrees with invoice outstanding, and carries prior activity into opening", async () => {
   const fixture = await createAccountingFixture("accounting-trial");
   const issued = await issueConsultationInvoice(fixture, "Trial");

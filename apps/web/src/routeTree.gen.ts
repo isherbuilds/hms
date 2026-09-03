@@ -27,7 +27,9 @@ import { Route as OrgSlugPatientsIndexRouteImport } from './routes/$orgSlug/pati
 import { Route as OrgSlugPatientsPatientIdRouteImport } from './routes/$orgSlug/patients/$patientId'
 import { Route as OrgSlugReportsIndexRouteImport } from './routes/$orgSlug/reports/index'
 import { Route as OrgSlugReportsBalanceSheetRouteImport } from './routes/$orgSlug/reports/balance-sheet'
+import { Route as OrgSlugReportsDailyCollectionsRouteImport } from './routes/$orgSlug/reports/daily-collections'
 import { Route as OrgSlugReportsGstRouteImport } from './routes/$orgSlug/reports/gst'
+import { Route as OrgSlugReportsOpdRegisterRouteImport } from './routes/$orgSlug/reports/opd-register'
 import { Route as OrgSlugReportsTrialBalanceRouteImport } from './routes/$orgSlug/reports/trial-balance'
 import { Route as OrgSlugSettingsIndexRouteImport } from './routes/$orgSlug/settings/index'
 import { Route as OrgSlugSettingsAuditRouteImport } from './routes/$orgSlug/settings/audit'
@@ -136,11 +138,23 @@ const OrgSlugReportsBalanceSheetRoute =
     path: '/reports/balance-sheet',
     getParentRoute: () => OrgSlugRouteRoute,
   } as any)
+const OrgSlugReportsDailyCollectionsRoute =
+  OrgSlugReportsDailyCollectionsRouteImport.update({
+    id: '/reports/daily-collections',
+    path: '/reports/daily-collections',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
 const OrgSlugReportsGstRoute = OrgSlugReportsGstRouteImport.update({
   id: '/reports/gst',
   path: '/reports/gst',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
+const OrgSlugReportsOpdRegisterRoute =
+  OrgSlugReportsOpdRegisterRouteImport.update({
+    id: '/reports/opd-register',
+    path: '/reports/opd-register',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
 const OrgSlugReportsTrialBalanceRoute =
   OrgSlugReportsTrialBalanceRouteImport.update({
     id: '/reports/trial-balance',
@@ -236,7 +250,9 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
   '/$orgSlug/patients/$patientId': typeof OrgSlugPatientsPatientIdRoute
   '/$orgSlug/reports/balance-sheet': typeof OrgSlugReportsBalanceSheetRoute
+  '/$orgSlug/reports/daily-collections': typeof OrgSlugReportsDailyCollectionsRoute
   '/$orgSlug/reports/gst': typeof OrgSlugReportsGstRoute
+  '/$orgSlug/reports/opd-register': typeof OrgSlugReportsOpdRegisterRoute
   '/$orgSlug/reports/trial-balance': typeof OrgSlugReportsTrialBalanceRoute
   '/$orgSlug/settings/audit': typeof OrgSlugSettingsAuditRoute
   '/$orgSlug/settings/catalog': typeof OrgSlugSettingsCatalogRoute
@@ -268,7 +284,9 @@ export interface FileRoutesByTo {
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
   '/$orgSlug/patients/$patientId': typeof OrgSlugPatientsPatientIdRoute
   '/$orgSlug/reports/balance-sheet': typeof OrgSlugReportsBalanceSheetRoute
+  '/$orgSlug/reports/daily-collections': typeof OrgSlugReportsDailyCollectionsRoute
   '/$orgSlug/reports/gst': typeof OrgSlugReportsGstRoute
+  '/$orgSlug/reports/opd-register': typeof OrgSlugReportsOpdRegisterRoute
   '/$orgSlug/reports/trial-balance': typeof OrgSlugReportsTrialBalanceRoute
   '/$orgSlug/settings/audit': typeof OrgSlugSettingsAuditRoute
   '/$orgSlug/settings/catalog': typeof OrgSlugSettingsCatalogRoute
@@ -304,7 +322,9 @@ export interface FileRoutesById {
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
   '/$orgSlug/patients/$patientId': typeof OrgSlugPatientsPatientIdRoute
   '/$orgSlug/reports/balance-sheet': typeof OrgSlugReportsBalanceSheetRoute
+  '/$orgSlug/reports/daily-collections': typeof OrgSlugReportsDailyCollectionsRoute
   '/$orgSlug/reports/gst': typeof OrgSlugReportsGstRoute
+  '/$orgSlug/reports/opd-register': typeof OrgSlugReportsOpdRegisterRoute
   '/$orgSlug/reports/trial-balance': typeof OrgSlugReportsTrialBalanceRoute
   '/$orgSlug/settings/audit': typeof OrgSlugSettingsAuditRoute
   '/$orgSlug/settings/catalog': typeof OrgSlugSettingsCatalogRoute
@@ -341,7 +361,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/opd/new'
     | '/$orgSlug/patients/$patientId'
     | '/$orgSlug/reports/balance-sheet'
+    | '/$orgSlug/reports/daily-collections'
     | '/$orgSlug/reports/gst'
+    | '/$orgSlug/reports/opd-register'
     | '/$orgSlug/reports/trial-balance'
     | '/$orgSlug/settings/audit'
     | '/$orgSlug/settings/catalog'
@@ -373,7 +395,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/opd/new'
     | '/$orgSlug/patients/$patientId'
     | '/$orgSlug/reports/balance-sheet'
+    | '/$orgSlug/reports/daily-collections'
     | '/$orgSlug/reports/gst'
+    | '/$orgSlug/reports/opd-register'
     | '/$orgSlug/reports/trial-balance'
     | '/$orgSlug/settings/audit'
     | '/$orgSlug/settings/catalog'
@@ -408,7 +432,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/opd/new'
     | '/$orgSlug/patients/$patientId'
     | '/$orgSlug/reports/balance-sheet'
+    | '/$orgSlug/reports/daily-collections'
     | '/$orgSlug/reports/gst'
+    | '/$orgSlug/reports/opd-register'
     | '/$orgSlug/reports/trial-balance'
     | '/$orgSlug/settings/audit'
     | '/$orgSlug/settings/catalog'
@@ -566,11 +592,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugReportsBalanceSheetRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/$orgSlug/reports/daily-collections': {
+      id: '/$orgSlug/reports/daily-collections'
+      path: '/reports/daily-collections'
+      fullPath: '/$orgSlug/reports/daily-collections'
+      preLoaderRoute: typeof OrgSlugReportsDailyCollectionsRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
     '/$orgSlug/reports/gst': {
       id: '/$orgSlug/reports/gst'
       path: '/reports/gst'
       fullPath: '/$orgSlug/reports/gst'
       preLoaderRoute: typeof OrgSlugReportsGstRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/reports/opd-register': {
+      id: '/$orgSlug/reports/opd-register'
+      path: '/reports/opd-register'
+      fullPath: '/$orgSlug/reports/opd-register'
+      preLoaderRoute: typeof OrgSlugReportsOpdRegisterRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
     '/$orgSlug/reports/trial-balance': {
@@ -742,7 +782,9 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugOpdNewRoute: typeof OrgSlugOpdNewRoute
   OrgSlugPatientsPatientIdRoute: typeof OrgSlugPatientsPatientIdRoute
   OrgSlugReportsBalanceSheetRoute: typeof OrgSlugReportsBalanceSheetRoute
+  OrgSlugReportsDailyCollectionsRoute: typeof OrgSlugReportsDailyCollectionsRoute
   OrgSlugReportsGstRoute: typeof OrgSlugReportsGstRoute
+  OrgSlugReportsOpdRegisterRoute: typeof OrgSlugReportsOpdRegisterRoute
   OrgSlugReportsTrialBalanceRoute: typeof OrgSlugReportsTrialBalanceRoute
   OrgSlugBillingIndexRoute: typeof OrgSlugBillingIndexRoute
   OrgSlugOpdIndexRoute: typeof OrgSlugOpdIndexRoute
@@ -762,7 +804,9 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugOpdNewRoute: OrgSlugOpdNewRoute,
   OrgSlugPatientsPatientIdRoute: OrgSlugPatientsPatientIdRoute,
   OrgSlugReportsBalanceSheetRoute: OrgSlugReportsBalanceSheetRoute,
+  OrgSlugReportsDailyCollectionsRoute: OrgSlugReportsDailyCollectionsRoute,
   OrgSlugReportsGstRoute: OrgSlugReportsGstRoute,
+  OrgSlugReportsOpdRegisterRoute: OrgSlugReportsOpdRegisterRoute,
   OrgSlugReportsTrialBalanceRoute: OrgSlugReportsTrialBalanceRoute,
   OrgSlugBillingIndexRoute: OrgSlugBillingIndexRoute,
   OrgSlugOpdIndexRoute: OrgSlugOpdIndexRoute,

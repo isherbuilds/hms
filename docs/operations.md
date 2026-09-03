@@ -138,8 +138,9 @@ allows same-origin framing only, which the billing PDF viewer requires.
 Do not schedule the first live shift until one named pilot owner has recorded
 all of these as complete:
 
-1. The active [operational reports](./specs/reports.md) acceptance is met, or a
-   time-bounded manual handover procedure and owner covers each remaining gap.
+1. The shipped [operational reports and worklists](./specs/reports.md) have been
+   exercised by the pilot cashier and shift lead on representative data, or a
+   time-bounded manual handover procedure and owner covers any remaining gap.
 2. Every pilot staff member has an operator-created account and the least
    privileged role needed for reception, billing, correction, reporting, or
    administration; the role map has been walked with the shift lead.

@@ -1,82 +1,58 @@
 # Operational reports and billing worklists
 
-The **Next** scope and pre-pilot gate in [`product.md`](../product.md) own the
-priority of this work. GST, Trial Balance, and Balance Sheet reports already
-ship; this spec covers only the missing operational reports and billing
-exceptions below.
-
 Reports are Organization-scoped read models over source records. They never
-become a second write model, and clinical notes are excluded.
+become a second write model, and clinical notes are excluded. GST, Trial
+Balance, Balance Sheet, Daily Collections, and the OPD Register ship; the
+billing worklists below are the shipped exception lists.
 
-## Current baseline
+## Billing exceptions
 
 - `billing.worklist` returns tenant-scoped pending Charges for `checked_in` OPD
-  appointments, oldest Charge first. It is searchable in SQL but is currently
-  unbounded.
+  appointments whose oldest pending Charge is older than the Organization's
+  `unbilledAlertHours` (1–168, initially 24, editable in Organization settings).
+  The threshold is a `HAVING` on the grouped appointment, so a newer Charge never
+  hides an eligible visit. Results are oldest first, 50 rows by default and 200
+  at most, with `hasMore`; the summary totals count every match, not the page.
+  The dashboard's unbilled figures apply the same threshold.
 - `billing.openInvoices` returns issued Invoices with a positive outstanding
-  balance, filtered in SQL before keyset pagination. It defaults to 25 rows and
-  accepts at most 100.
-- Invoice balances already share one calculation over Invoice value, Credit
-  Notes, Payments, and recorded Refunds.
+  balance, filtered in SQL before keyset pagination (25 default, 100 maximum).
+- `billing.refundDue` returns issued Invoices whose shared balance is negative
+  after Credit Notes, Payments, and recorded Refunds, filtered in SQL before the
+  cap, oldest first, linked to the Invoice screen, and invalidated with the rest
+  of billing state after any correction.
 
-## Remaining work
+Invoice balances share one calculation over Invoice value, Credit Notes,
+Payments, and recorded Refunds.
 
-### Day-close reports
+## Day-close reports
 
-**Daily collections** shows Payments minus Refunds by method and Organization
-Business Date. Invoice value is never presented as cash collected.
+**Daily collections** (`report.dailyCollections`, at most 92 days) aggregates
+Payments and Refunds by stored Business Date and method — never a date
+re-derived from `createdAt` — and returns per-day rows, per-method totals, and
+net collections. Invoice value is never presented as cash collected.
 
-**OPD register** shows one row per OPD Appointment with token, Patient,
-Practitioner, Department, observable status, billed, paid, and outstanding
-amounts. `checked_in` plus `arrivedAt` is attended work; `booked`, `cancelled`,
-and `no_show` remain distinct outcomes. The report must not invent a completed
-state.
+**OPD register** (`report.opdRegister`, at most 31 days) returns one row per OPD
+Appointment with token, Patient or caller, Practitioner, Department, arrival
+mode, stored status, and billed, paid, credit, refund, and outstanding amounts
+from correlated per-appointment sums. `booked`, `checked_in`, `cancelled`, and
+`no_show` remain distinct; the report never invents a completed state.
 
-Both reports:
+Both reports accept an inclusive Organization-local date range, link from
+`/$orgSlug/reports`, export XLSX and print from the same server result, and
+render as cards below `md`.
 
-- accept an inclusive Organization-local date range;
-- link from `/$orgSlug/reports`;
-- support XLSX and print output; and
-- reconcile on-screen and exported totals under identical filters.
+## No-show reconciliation
 
-### No-show accuracy gate
-
-OPD currently changes past `booked` rows to `no_show` lazily when `opd.day`
-reads that Business Date. A report therefore cannot assume every past date has
-already been opened.
-
-Before the OPD register or a no-show total ships, establish one tenant-scoped
-reconciliation boundary shared by operational and report reads, or approve a
-different authoritative mechanism. Until then, a stale booking remains
-`booked`; do not publish a no-show rate or silently count it as attended.
-
-### Billing exception completion
-
-- Add Organization setting `unbilledAlertHours`, constrained to 1–168 and
-  initially 24. Apply the threshold in SQL before a new bounded worklist result
-  (50 rows by default, 200 maximum).
-- Add **Refund due** for issued Invoices whose shared balance is negative after
-  Credit Notes, Payments, and already-recorded Refunds.
-
-Exception lists are oldest first. Each row links to the existing OPD Billing or
-Invoice screen and disappears on the next invalidation or poll after resolution.
-
-## Acceptance
-
-- Partial and full Payment, Credit Note, recorded Refund, cancellation, and
-  Organization-local Business Date boundaries produce correct totals.
-- Outstanding and refund-due identities reuse the shared Invoice balance and
-  filter in SQL before result caps.
-- No-show reporting is correct without relying on a prior read of each OPD day.
-- Every query uses verified Organization scope; every query and invalidation key
-  includes `orgSlug`; another tenant's rows are denied.
-- XLSX, print, desktop, and mobile output are inspected with representative
-  data.
-- Existing type, lint, integration, and production-build checks pass.
+Before selecting a range that includes a past Business Date, the OPD register
+runs the same `closeExpiredBookings` reconciliation as `opd.day`: every `booked`
+row older than the current Business Date becomes `no_show`, its pending Charges
+are voided, and each closure is audited after commit. The helper is idempotent
+and tenant-scoped, so the register reports the same statuses whether or not any
+OPD day was previously opened ([OPD](../opd.md)).
 
 ## Non-goals
 
 Payment gateway, Advance Receipt implementation, WebSockets, a cashier-shift
-entity, petty-cash expenses, speculative payment methods, filing-ready GST
-output, or a general analytics platform. Add a handover entity only if the pilot
-proves the report plus SOP insufficient.
+entity, petty-cash expenses, filing-ready GST output, or a general analytics
+platform. Add a handover entity only if the pilot proves the report plus SOP
+insufficient.

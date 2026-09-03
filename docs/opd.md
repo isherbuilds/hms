@@ -26,10 +26,12 @@ token and one automatic attendance Charge. Cancellation and no-show void pending
 Charges but never issue a Credit Note or Refund automatically; those remain
 separate authorized finance actions.
 
-A read of a past Business Date lazily closes that date's remaining `booked` rows
-to `no_show`. Same-day reads do not write, and there is no background sweep.
-Reports must therefore reconcile stale bookings independently rather than assume
-that somebody previously opened every past OPD day.
+Reading a past Business Date, or running the OPD register over one, first
+closes every remaining `booked` row older than the current Business Date to
+`no_show` through one shared, idempotent reconciliation (`closeExpiredBookings`),
+voiding pending Charges and auditing after commit. Same-day reads do not write,
+and there is no background sweep; reports never depend on a prior read of each
+OPD day.
 
 Follow-up pricing uses a prior `checked_in` attendance for the same Patient and
 Practitioner whose `arrivedAt` falls inside the configured follow-up window. A
@@ -46,6 +48,10 @@ name, caller phone, or an exact numeric token. The selected date and
 `includeClosed` filter are validated URL state. The register polls every 10
 seconds, refetches on focus, and includes cancelled and no-show rows only when
 requested.
+
+Below `md` the register renders one compact card per row (token, Patient,
+status; time and Practitioner; balance when non-zero) instead of the table;
+Patients and Billing lists follow the same split.
 
 The page has one **New appointment** entry. A booked row offers **Check in**;
 clicking or pressing Enter on a row opens the full OPD record. Cancel and no-show
