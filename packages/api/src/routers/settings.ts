@@ -38,6 +38,7 @@ const settingsFields = z.object({
   creditNotePrefix: z.string().trim().max(10),
   fiscalYearStartMonth: z.number().int().min(1).max(12),
   followUpValidityDays: z.number().int().min(1).max(365),
+  unbilledAlertHours: z.number().int().min(1).max(168),
 });
 
 export type SettingsFields = z.infer<typeof settingsFields>;

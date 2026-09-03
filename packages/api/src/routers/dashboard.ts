@@ -53,9 +53,10 @@ export const dashboardRouter = {
   // would cause money errors.
   collections: orgProcedure({ billing: ["read"] }, orgInput).handler(async ({ context }) => {
     const { orgId } = context.scope;
-    const { timeZone } = await readOrgSettings(orgId);
+    const { timeZone, unbilledAlertHours } = await readOrgSettings(orgId);
     const currentDay = businessDate(new Date(), timeZone);
     const { start, end } = businessDayWindow(currentDay, timeZone);
+    const unbilledBefore = new Date(Date.now() - unbilledAlertHours * 3_600_000);
 
     // `filter` clauses split the day's takings by method in one scan of `payments`
     // rather than a subselect per method.
@@ -68,27 +69,27 @@ export const dashboardRouter = {
         unbilled: string;
         unbilledOpdAppointments: number;
       }>(sql`
+        with unbilled_appointments as (
+          select sum(${charges.unitPrice} * ${charges.qty}) as pending_value
+          from ${charges}
+          inner join ${opdAppointments}
+            on ${opdAppointments.orgId} = ${charges.orgId}
+           and ${opdAppointments.id} = ${charges.opdAppointmentId}
+          where ${charges.orgId} = ${orgId}
+            and ${charges.status} = 'pending'
+            and ${opdAppointments.status} = 'checked_in'
+          group by ${charges.opdAppointmentId}
+          having min(${charges.createdAt}) < ${unbilledBefore}
+        )
         select
           coalesce(sum(${payments.amount}), 0)::text as "collected",
           coalesce(sum(${payments.amount}) filter (where ${payments.method} = 'cash'), 0)::text as "cash",
           coalesce(sum(${payments.amount}) filter (where ${payments.method} = 'upi'), 0)::text as "upi",
           coalesce(sum(${payments.amount}) filter (where ${payments.method} = 'card'), 0)::text as "card",
-          (select coalesce(sum(${charges.unitPrice} * ${charges.qty}), 0)::text
-            from ${charges}
-            inner join ${opdAppointments}
-              on ${opdAppointments.orgId} = ${charges.orgId}
-             and ${opdAppointments.id} = ${charges.opdAppointmentId}
-            where ${charges.orgId} = ${orgId}
-              and ${charges.status} = 'pending'
-              and ${opdAppointments.status} = 'checked_in') as "unbilled",
-          (select count(distinct ${charges.opdAppointmentId})::integer
-            from ${charges}
-            inner join ${opdAppointments}
-              on ${opdAppointments.orgId} = ${charges.orgId}
-             and ${opdAppointments.id} = ${charges.opdAppointmentId}
-            where ${charges.orgId} = ${orgId}
-              and ${charges.status} = 'pending'
-              and ${opdAppointments.status} = 'checked_in') as "unbilledOpdAppointments"
+          (select coalesce(sum(pending_value), 0)::text
+            from unbilled_appointments) as "unbilled",
+          (select count(*)::integer
+            from unbilled_appointments) as "unbilledOpdAppointments"
         from ${payments}
         where ${payments.orgId} = ${orgId}
           and ${payments.createdAt} >= ${start} and ${payments.createdAt} < ${end}

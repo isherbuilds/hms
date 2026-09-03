@@ -4,8 +4,9 @@ import pg from "pg";
 import { invoiceBalanceFor } from "@hms/api/lib/invoice-balance";
 import type { AppRouterClient } from "@hms/api/routers/index";
 import { db } from "@hms/db";
+import { charges } from "@hms/db/schema/charges";
 import { invoices } from "@hms/db/schema/invoices";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { createOrganization, createTestUser, joinOrganization } from "../support/auth";
 import { addPendingCatalogCharge, settlePendingCharges } from "../support/billing";
@@ -60,6 +61,7 @@ async function createBillingFixture(seed: string) {
     creditNotePrefix: "CN",
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
+    unbilledAlertHours: 1,
   });
   const patient = await api.patient.register({
     orgSlug: organization.slug,
@@ -1080,6 +1082,49 @@ test("refunds are bounded by refund due and by the selected credit note", async 
   });
 });
 
+test("refund due lists overpaid invoices until the refund is recorded", async () => {
+  const fixture = await createBillingFixture("billing-refund-due");
+  const issued = await createInvoice(fixture);
+  await fixture.api.billing.recordPayments({
+    orgSlug: fixture.organization.slug,
+    invoiceId: issued.invoice.id,
+    payments: [{ method: "cash", amount: "100.00" }],
+  });
+  const credit = await fixture.api.billing.issueCreditNote({
+    orgSlug: fixture.organization.slug,
+    invoiceId: issued.invoice.id,
+    reason: "Partial reversal",
+    lines: [{ invoiceLineId: firstLineId(issued), gross: "25.00" }],
+  });
+
+  const due = await fixture.api.billing.refundDue({ orgSlug: fixture.organization.slug });
+  expect(due).toMatchObject({
+    currency: "INR",
+    hasMore: false,
+    rows: [
+      {
+        invoiceId: issued.invoice.id,
+        invoiceNumber: issued.invoice.invoiceNumber,
+        appointmentId: issued.appointment.id,
+        patientName: fixture.patient.name,
+        patientMrn: fixture.patient.mrn,
+        businessDate: issued.invoice.businessDate,
+        refundDue: "25.00",
+      },
+    ],
+  });
+
+  await fixture.api.billing.recordRefund({
+    orgSlug: fixture.organization.slug,
+    creditNoteId: credit.creditNote.id,
+    method: "cash",
+    amount: "25.00",
+  });
+  expect(
+    (await fixture.api.billing.refundDue({ orgSlug: fixture.organization.slug })).rows,
+  ).toEqual([]);
+});
+
 test("settlement and appointment cancellation serialize without crossing states", async () => {
   const fixture = await createBillingFixture("billing-cancel-race");
   const locker = new pg.Client({ connectionString: process.env.DATABASE_URL });
@@ -1262,7 +1307,11 @@ test("the billing worklist reports what is unbilled and sums what is open", asyn
   const { api, organization } = fixture;
 
   const unbilled = await fixture.createOpdAppointment();
-  await fixture.addCatalogCharge(unbilled.id, "150.00");
+  const unbilledCharge = await fixture.addCatalogCharge(unbilled.id, "150.00");
+  await db
+    .update(charges)
+    .set({ createdAt: new Date(Date.now() - 2 * 3_600_000) })
+    .where(and(eq(charges.orgId, organization.id), eq(charges.id, unbilledCharge.id)));
 
   const partPaid = await createInvoice(fixture, "400.00");
   await api.billing.recordPayments({
@@ -1304,6 +1353,26 @@ test("the billing worklist reports what is unbilled and sums what is open", asyn
     paid: "100.00",
   });
   expect(open.nextCursor).toBeNull();
+});
+
+test("the unbilled threshold hides fresh charges until they age into the worklist", async () => {
+  const fixture = await createBillingFixture("billing-worklist-threshold");
+  const appointment = await fixture.createOpdAppointment();
+  const charge = await fixture.addCatalogCharge(appointment.id, "75.00");
+
+  expect(
+    (await fixture.api.billing.worklist({ orgSlug: fixture.organization.slug })).unbilled,
+  ).toEqual([]);
+
+  await db
+    .update(charges)
+    .set({ createdAt: new Date(Date.now() - 2 * 3_600_000) })
+    .where(and(eq(charges.orgId, fixture.organization.id), eq(charges.id, charge.id)));
+
+  const aged = await fixture.api.billing.worklist({ orgSlug: fixture.organization.slug });
+  expect(aged.unbilled.map((row) => row.appointmentId)).toEqual([appointment.id]);
+  expect(aged.hasMore).toBe(false);
+  expect(aged.summary.toBillCount).toBe(1);
 });
 
 test("open invoices page on a cursor and can be narrowed to the overdue ones", async () => {
@@ -1362,6 +1431,10 @@ test("a voided charge leaves the billing worklist", async () => {
   const { api, organization } = fixture;
   const appointment = await fixture.createOpdAppointment();
   const charge = await fixture.addCatalogCharge(appointment.id, "90.00");
+  await db
+    .update(charges)
+    .set({ createdAt: new Date(Date.now() - 2 * 3_600_000) })
+    .where(and(eq(charges.orgId, organization.id), eq(charges.id, charge.id)));
 
   expect((await api.billing.worklist({ orgSlug: organization.slug })).unbilled).toHaveLength(1);
 

@@ -107,6 +107,7 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     creditNotePrefix: "CN",
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
+    unbilledAlertHours: 24,
   });
   const patient = await api.patient.register({
     orgSlug: organization.slug,

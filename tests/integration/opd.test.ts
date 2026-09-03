@@ -1330,10 +1330,8 @@ test("a scheduled appointment keeps selected services until check-in", async () 
     (await api.billing.worklist({ orgSlug: organization.slug })).unbilled.map(
       (row) => row.appointmentId,
     ),
-  ).toContain(booked.id);
-  expect(Number((await api.dashboard.collections({ orgSlug: organization.slug })).unbilled)).toBe(
-    850,
-  );
+  ).not.toContain(booked.id);
+  expect((await api.dashboard.collections({ orgSlug: organization.slug })).unbilled).toBe("0");
 });
 
 test("day keyset pagination traverses checked-in arrivals once", async () => {

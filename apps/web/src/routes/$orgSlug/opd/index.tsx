@@ -225,21 +225,105 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
               : `No appointments on ${formatBusinessDate(shownDate)}.`
         }
       >
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-16">Token</TableHead>
-              <TableHead>Patient</TableHead>
-              <TableHead className="w-20">Time</TableHead>
-              <TableHead>Practitioner</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Balance</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-16">Token</TableHead>
+                  <TableHead>Patient</TableHead>
+                  <TableHead className="w-20">Time</TableHead>
+                  <TableHead>Practitioner</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((appointment) => (
+                  <TableRow
+                    key={appointment.id}
+                    tabIndex={0}
+                    onClick={() =>
+                      void navigate({
+                        to: "/$orgSlug/opd/$appointmentId",
+                        params: { orgSlug, appointmentId: appointment.id },
+                      })
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      void navigate({
+                        to: "/$orgSlug/opd/$appointmentId",
+                        params: { orgSlug, appointmentId: appointment.id },
+                      });
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <TableCell>
+                      {appointment.tokenNumber === null ? (
+                        <span className="text-muted-foreground">·</span>
+                      ) : (
+                        <span className="font-mono text-sm font-semibold">
+                          {appointment.tokenNumber}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="max-w-0">
+                      <Link
+                        to="/$orgSlug/opd/$appointmentId"
+                        params={{ orgSlug, appointmentId: appointment.id }}
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        title={
+                          appointment.patientName ?? appointment.callerName ?? "Unnamed caller"
+                        }
+                        className="block truncate text-left font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                      >
+                        {appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
+                      </Link>
+                      <p
+                        className="truncate text-muted-foreground"
+                        title={appointment.patientMrn ?? appointment.callerPhone ?? "No phone"}
+                      >
+                        {appointment.patientMrn ?? appointment.callerPhone ?? "No phone"}
+                      </p>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
+                      {formatTime(appointment.dayOrderAt ?? appointment.createdAt, timeZone)}
+                    </TableCell>
+                    <TableCell className="max-w-0">
+                      <div className="truncate" title={appointment.practitionerName}>
+                        {appointment.practitionerName}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <OpdStatusCell
+                        orgSlug={orgSlug}
+                        appointmentId={appointment.id}
+                        patientId={appointment.patientId}
+                        callerName={appointment.callerName}
+                        callerPhone={appointment.callerPhone}
+                        status={appointment.status}
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {toSignedPaise(appointment.balanceDue) > 0 ? (
+                        <Badge variant="destructive">
+                          {formatMoney(appointment.balanceDue, currency)} due
+                        </Badge>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <ul className="md:hidden">
             {items.map((appointment) => (
-              <TableRow
+              <li
                 key={appointment.id}
+                role="link"
                 tabIndex={0}
                 onClick={() =>
                   void navigate({
@@ -255,64 +339,51 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
                     params: { orgSlug, appointmentId: appointment.id },
                   });
                 }}
-                className="cursor-pointer"
+                className="min-h-10 cursor-pointer border-b px-3 py-2 text-xs"
               >
-                <TableCell>
+                <div className="flex min-w-0 items-center gap-2">
                   {appointment.tokenNumber === null ? (
-                    <span className="text-muted-foreground">·</span>
+                    <span className="shrink-0 font-mono text-muted-foreground">·</span>
                   ) : (
-                    <span className="font-mono text-sm font-semibold">
+                    <span className="shrink-0 font-mono font-semibold">
                       {appointment.tokenNumber}
                     </span>
                   )}
-                </TableCell>
-                <TableCell className="max-w-0">
                   <Link
                     to="/$orgSlug/opd/$appointmentId"
                     params={{ orgSlug, appointmentId: appointment.id }}
                     onClick={(event) => event.stopPropagation()}
                     onKeyDown={(event) => event.stopPropagation()}
                     title={appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
-                    className="block truncate text-left font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                    className="min-w-0 flex-1 truncate font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                   >
                     {appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
                   </Link>
-                  <p
-                    className="truncate text-muted-foreground"
-                    title={appointment.patientMrn ?? appointment.callerPhone ?? "No phone"}
-                  >
-                    {appointment.patientMrn ?? appointment.callerPhone ?? "No phone"}
-                  </p>
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-muted-foreground">
-                  {formatTime(appointment.dayOrderAt ?? appointment.createdAt, timeZone)}
-                </TableCell>
-                <TableCell className="max-w-0">
-                  <div className="truncate" title={appointment.practitionerName}>
-                    {appointment.practitionerName}
+                  <div className="shrink-0">
+                    <OpdStatusCell
+                      orgSlug={orgSlug}
+                      appointmentId={appointment.id}
+                      patientId={appointment.patientId}
+                      callerName={appointment.callerName}
+                      callerPhone={appointment.callerPhone}
+                      status={appointment.status}
+                    />
                   </div>
-                </TableCell>
-                <TableCell>
-                  <OpdStatusCell
-                    orgSlug={orgSlug}
-                    appointmentId={appointment.id}
-                    patientId={appointment.patientId}
-                    callerName={appointment.callerName}
-                    callerPhone={appointment.callerPhone}
-                    status={appointment.status}
-                  />
-                </TableCell>
-                <TableCell className="text-right">
-                  {toSignedPaise(appointment.balanceDue) > 0 ? (
-                    <Badge variant="destructive">
-                      {formatMoney(appointment.balanceDue, currency)} due
-                    </Badge>
-                  ) : null}
-                </TableCell>
-              </TableRow>
+                </div>
+                <p className="mt-1 truncate text-muted-foreground">
+                  {formatTime(appointment.dayOrderAt ?? appointment.createdAt, timeZone)}
+                  {" · "}
+                  {appointment.practitionerName}
+                </p>
+                {toSignedPaise(appointment.balanceDue) > 0 ? (
+                  <p className="mt-1 font-medium text-destructive">
+                    {formatMoney(appointment.balanceDue, currency)} due
+                  </p>
+                ) : null}
+              </li>
             ))}
-          </TableBody>
-        </Table>
+          </ul>
+        </>
       </ListState>
     </Panel>
   );

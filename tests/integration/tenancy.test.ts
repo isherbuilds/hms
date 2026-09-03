@@ -4,6 +4,9 @@ import { drainAuditWrites } from "@hms/api/audit";
 import { localMinute } from "@hms/api/lib/business-date";
 import { appRouter, type AppRouterClient } from "@hms/api/routers/index";
 import { auth } from "@hms/auth";
+import { db } from "@hms/db";
+import { charges } from "@hms/db/schema/charges";
+import { and, eq } from "drizzle-orm";
 
 import {
   createOrganization,
@@ -134,6 +137,12 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
   const two = await createOrganization(owner, "today-two");
   const outsider = await createTestUser("today-visitor");
   const api = clientFor(owner);
+  const settings = await api.settings.get({ orgSlug: one.slug });
+  await api.settings.update({
+    orgSlug: one.slug,
+    ...settings,
+    unbilledAlertHours: 1,
+  });
 
   const patient = await api.patient.register({
     orgSlug: one.slug,
@@ -168,12 +177,16 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
     unitPrice: "500.00",
     taxRatePercent: "0",
   });
-  await addPendingCatalogCharge({
+  const charge = await addPendingCatalogCharge({
     orgId: one.id,
     userId: owner.user.id,
     appointmentId: appointment.id,
     catalogItemId: consult.id,
   });
+  await db
+    .update(charges)
+    .set({ createdAt: new Date(Date.now() - 2 * 3_600_000) })
+    .where(and(eq(charges.orgId, one.id), eq(charges.id, charge.id)));
 
   const [todayOne, todayTwo, moneyOne, moneyTwo] = await Promise.all([
     api.dashboard.today({ orgSlug: one.slug }),
@@ -361,6 +374,7 @@ const GUARDED_CALLS = {
       creditNotePrefix: "CN",
       fiscalYearStartMonth: 4,
       followUpValidityDays: 14,
+      unbilledAlertHours: 24,
     }),
   "audit.list": (api, claim) => api.audit.list({ ...claim }),
   "file.list": (api, claim) => api.file.list({ ...claim }),
@@ -495,6 +509,7 @@ const GUARDED_CALLS = {
       attachmentId: Bun.randomUUIDv7(),
     }),
   "billing.worklist": (api, claim) => api.billing.worklist({ ...claim }),
+  "billing.refundDue": (api, claim) => api.billing.refundDue({ ...claim }),
   "billing.openInvoices": (api, claim) => api.billing.openInvoices({ ...claim }),
   "billing.voidCharge": (api, claim) =>
     api.billing.voidCharge({
@@ -1033,6 +1048,7 @@ async function createScopedInvoice(
     creditNotePrefix: "CN",
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
+    unbilledAlertHours: 24,
   });
   const patient = await api.patient.register({
     orgSlug: organization.slug,

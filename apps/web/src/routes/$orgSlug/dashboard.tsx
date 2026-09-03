@@ -189,7 +189,7 @@ function DashboardRoute() {
                 label="Unbilled"
                 icon={ReceiptTextIcon}
                 value={money(collections.data?.unbilled)}
-                note={`${collections.data?.unbilledOpdAppointments ?? 0} OPD appointments with pending charges`}
+                note="Unbilled past alert threshold"
                 pending={collections.isPending}
                 to="/$orgSlug/opd"
                 orgSlug={orgSlug}

@@ -1,0 +1,2 @@
+ALTER TABLE "organization_settings" ADD COLUMN "unbilled_alert_hours" integer DEFAULT 24 NOT NULL;--> statement-breakpoint
+ALTER TABLE "organization_settings" ADD CONSTRAINT "organization_settings_unbilled_alert_hours_check" CHECK ("organization_settings"."unbilled_alert_hours" between 1 and 168);

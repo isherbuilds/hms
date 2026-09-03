@@ -76,6 +76,9 @@ const formSchema = z.object({
   followUpValidityDays: numberText(
     z.number().int().min(1, "Between 1 and 365 days").max(365, "Between 1 and 365 days"),
   ),
+  unbilledAlertHours: numberText(
+    z.number().int().min(1, "Between 1 and 168 hours").max(168, "Between 1 and 168 hours"),
+  ),
 });
 
 function toFormValues(settings: SettingsFields) {
@@ -83,6 +86,7 @@ function toFormValues(settings: SettingsFields) {
     ...settings,
     fiscalYearStartMonth: String(settings.fiscalYearStartMonth),
     followUpValidityDays: String(settings.followUpValidityDays),
+    unbilledAlertHours: String(settings.unbilledAlertHours),
   };
 }
 
@@ -330,6 +334,21 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                   </FormControl>
                   <FormDescription>
                     Consult within this many days of the last appointment bills the follow-up fee.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <RegisteredFormField
+              name="unbilledAlertHours"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Unbilled alert (hours)</FormLabel>
+                  <FormControl>
+                    <Input type="number" min={1} max={168} step={1} {...field} />
+                  </FormControl>
+                  <FormDescription>
+                    Checked-in visits with charges older than this appear as unbilled
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

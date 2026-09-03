@@ -88,6 +88,7 @@ test("billing invalidation scopes every key to the given org", async () => {
   for (const key of emitted) expect(key).toContain('"orgSlug":"org-a"');
   expect(emitted.some((key) => key.includes('"appointmentId":"appointment-1"'))).toBe(true);
   expect(emitted.some((key) => key.includes('"invoiceId":"invoice-1"'))).toBe(true);
+  expect(emitted.some((key) => key.includes('"billing","refundDue"'))).toBe(true);
 });
 
 test("patient invalidation refreshes its detail and the org search", async () => {

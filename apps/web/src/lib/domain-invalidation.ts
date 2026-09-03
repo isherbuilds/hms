@@ -95,6 +95,9 @@ export function invalidateBillingState(
     queryClient.invalidateQueries({
       queryKey: orpc.billing.openInvoices.key({ input: { orgSlug } }),
     }),
+    queryClient.invalidateQueries({
+      queryKey: orpc.billing.refundDue.key({ input: { orgSlug } }),
+    }),
     ...(invoiceId
       ? [
           queryClient.invalidateQueries({

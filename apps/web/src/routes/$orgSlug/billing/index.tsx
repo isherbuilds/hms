@@ -27,7 +27,7 @@ import { type WorklistRow, toWorklistRows, waitedLabel } from "@/lib/billing-wor
 import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { OPERATIONAL_INFINITE_REFETCH, OPERATIONAL_REFETCH } from "@/lib/operational-query";
-import { useOrgDateTime } from "@/lib/org-datetime";
+import { formatBusinessDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
 
@@ -75,6 +75,12 @@ export const Route = createFileRoute("/$orgSlug/billing/")({
         : queryClient
             .infiniteQuery(openInvoicesQuery(orgSlug, "", deps.view === "overdue"))
             .catch(() => {}),
+      queryClient
+        .query({
+          ...orpc.billing.refundDue.queryOptions({ input: { orgSlug } }),
+          staleTime: "static",
+        })
+        .catch(() => {}),
     ]);
   },
   component: BillingIndexRoute,
@@ -100,6 +106,13 @@ function BillingIndexRoute() {
     ...OPERATIONAL_INFINITE_REFETCH,
     enabled: facet !== "to-bill",
   });
+  const refunds = useQuery({
+    ...orpc.billing.refundDue.queryOptions({
+      input: { orgSlug, query: query || undefined },
+    }),
+    ...OPERATIONAL_REFETCH,
+  });
+  const refundData = refunds.data;
 
   const rows = toWorklistRows(
     facet === "all" || facet === "to-bill" ? (worklist.data?.unbilled ?? []) : [],
@@ -197,41 +210,124 @@ function BillingIndexRoute() {
             isEmpty={rows.length === 0}
             empty={query ? "Nothing open matches this search." : "Nothing is owed right now."}
           >
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Patient</TableHead>
+                    <TableHead>Reference</TableHead>
+                    <TableHead>State</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Owed</TableHead>
+                    <TableHead className="text-right">Waiting</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row) => (
+                    <TableRow
+                      key={row.key}
+                      tabIndex={0}
+                      onClick={() => setOpenRowKey(row.key)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") return;
+                        event.preventDefault();
+                        setOpenRowKey(row.key);
+                      }}
+                      className="cursor-pointer"
+                    >
+                      <TableCell className="max-w-0">
+                        <Link
+                          to="/$orgSlug/opd/$appointmentId/billing"
+                          params={{ orgSlug, appointmentId: row.appointmentId }}
+                          title={row.patientName}
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => event.stopPropagation()}
+                          className="block truncate text-left font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                        >
+                          {row.patientName}
+                        </Link>
+                        <p
+                          className="truncate font-mono text-muted-foreground"
+                          title={row.patientMrn}
+                        >
+                          {row.patientMrn}
+                        </p>
+                      </TableCell>
+                      <TableCell className="max-w-0">
+                        <div className="truncate font-mono" title={row.reference}>
+                          {row.reference}
+                        </div>
+                        <div className="truncate text-muted-foreground" title={row.detail}>
+                          {row.detail}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <StateBadge state={row.state} />
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">
+                        {formatMoney(row.total, row.currency)}
+                      </TableCell>
+                      {/* Colour lands on the two things that decide what to do
+                              next: what it is, and how much of it is late. */}
+                      <TableCell
+                        className={`text-right font-medium tabular-nums ${
+                          row.state === "stale"
+                            ? "text-destructive"
+                            : row.state === "late"
+                              ? "text-overdue"
+                              : ""
+                        }`}
+                      >
+                        {formatMoney(row.owed, row.currency)}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap tabular-nums text-muted-foreground">
+                        {waitedLabel(row.at, timeZone)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {(facet === "all" || facet === "to-bill") && worklist.data?.hasMore ? (
+                <p className="text-xs text-muted-foreground">
+                  Showing the {worklist.data.unbilled.length} oldest — search to narrow
+                </p>
+              ) : null}
+            </>
+          </ListState>
+        </Panel>
+
+        <Panel label="Refund due">
+          <ListState
+            query={refunds}
+            errorTitle="Could not load refunds due"
+            isEmpty={(refundData?.rows.length ?? 0) === 0}
+            empty="No refunds due"
+          >
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Invoice</TableHead>
                   <TableHead>Patient</TableHead>
-                  <TableHead>Reference</TableHead>
-                  <TableHead>State</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Owed</TableHead>
-                  <TableHead className="text-right">Waiting</TableHead>
+                  <TableHead>Business date</TableHead>
+                  <TableHead className="text-right">Refund due</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((row) => (
-                  <TableRow
-                    key={row.key}
-                    tabIndex={0}
-                    onClick={() => setOpenRowKey(row.key)}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      event.preventDefault();
-                      setOpenRowKey(row.key);
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <TableCell className="max-w-0">
+                {refundData?.rows.map((row) => (
+                  <TableRow key={row.invoiceId}>
+                    <TableCell className="font-mono whitespace-nowrap">
                       <Link
-                        to="/$orgSlug/opd/$appointmentId/billing"
-                        params={{ orgSlug, appointmentId: row.appointmentId }}
-                        title={row.patientName}
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => event.stopPropagation()}
-                        className="block truncate text-left font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                        to="/$orgSlug/billing/invoices/$invoiceId"
+                        params={{ orgSlug, invoiceId: row.invoiceId }}
+                        className="underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                       >
-                        {row.patientName}
+                        {row.invoiceNumber}
                       </Link>
+                    </TableCell>
+                    <TableCell className="max-w-0">
+                      <p className="truncate font-medium" title={row.patientName}>
+                        {row.patientName}
+                      </p>
                       <p
                         className="truncate font-mono text-muted-foreground"
                         title={row.patientMrn}
@@ -239,35 +335,11 @@ function BillingIndexRoute() {
                         {row.patientMrn}
                       </p>
                     </TableCell>
-                    <TableCell className="max-w-0">
-                      <div className="truncate font-mono" title={row.reference}>
-                        {row.reference}
-                      </div>
-                      <div className="truncate text-muted-foreground" title={row.detail}>
-                        {row.detail}
-                      </div>
+                    <TableCell className="whitespace-nowrap">
+                      {formatBusinessDate(row.businessDate)}
                     </TableCell>
-                    <TableCell>
-                      <StateBadge state={row.state} />
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {formatMoney(row.total, row.currency)}
-                    </TableCell>
-                    {/* Colour lands on the two things that decide what to do
-                            next: what it is, and how much of it is late. */}
-                    <TableCell
-                      className={`text-right font-medium tabular-nums ${
-                        row.state === "stale"
-                          ? "text-destructive"
-                          : row.state === "late"
-                            ? "text-overdue"
-                            : ""
-                      }`}
-                    >
-                      {formatMoney(row.owed, row.currency)}
-                    </TableCell>
-                    <TableCell className="text-right whitespace-nowrap tabular-nums text-muted-foreground">
-                      {waitedLabel(row.at, timeZone)}
+                    <TableCell className="text-right font-medium tabular-nums">
+                      {formatMoney(row.refundDue, refundData.currency)}
                     </TableCell>
                   </TableRow>
                 ))}

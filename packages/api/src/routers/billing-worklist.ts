@@ -12,7 +12,6 @@ import { z } from "zod";
 
 import { businessDate, businessDayWindow } from "../lib/business-date";
 import { invoiceBalancesFor } from "../lib/invoice-balance";
-import { fromPaise, toPaise } from "../lib/invoice-math";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { likePattern, searchQuery } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
@@ -37,111 +36,122 @@ function settledExpression(orgId: string) {
 const daysAgo = (count: number) => new Date(Date.now() - count * 86_400_000);
 
 export const billingWorklistRouter = {
-  worklist: orgProcedure({ billing: ["read"] }, orgInput.extend({ query: searchQuery })).handler(
-    async ({ context, input }) => {
-      const { scope } = context;
-      const settings = await readOrgSettings(scope.orgId);
-      const today = businessDayWindow(
-        businessDate(new Date(), settings.timeZone),
-        settings.timeZone,
-      );
-      const settled = settledExpression(scope.orgId);
-      const staleBefore = daysAgo(STALE_DAYS);
-      const search = input.query ? likePattern(input.query) : undefined;
+  worklist: orgProcedure(
+    { billing: ["read"] },
+    orgInput.extend({
+      query: searchQuery,
+      limit: z.number().int().min(1).max(200).default(50),
+    }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+    const settings = await readOrgSettings(scope.orgId);
+    const today = businessDayWindow(businessDate(new Date(), settings.timeZone), settings.timeZone);
+    const settled = settledExpression(scope.orgId);
+    const staleBefore = daysAgo(STALE_DAYS);
+    const search = input.query ? likePattern(input.query) : undefined;
+    const threshold = new Date(Date.now() - settings.unbilledAlertHours * 3_600_000);
 
-      const [unbilled, [openMoney], [collected]] = await Promise.all([
-        db
-          .select({
-            appointmentId: opdAppointments.id,
-            tokenNumber: opdAppointments.tokenNumber,
-            patientName: patients.name,
-            patientMrn: patients.mrn,
-            patientPhone: patients.phone,
-            practitionerName: practitioners.name,
-            chargeCount: sql<number>`count(*)::integer`,
-            pendingValue: sql<string>`sum(${charges.unitPrice} * ${charges.qty})`,
-            oldestChargeAt: sql<Date>`min(${charges.createdAt})`,
-          })
-          .from(charges)
-          .innerJoin(
-            opdAppointments,
-            and(
-              eq(opdAppointments.orgId, scope.orgId),
-              eq(opdAppointments.id, charges.opdAppointmentId),
-            ),
-          )
-          .innerJoin(
-            patients,
-            and(eq(patients.orgId, scope.orgId), eq(patients.id, opdAppointments.patientId)),
-          )
-          .innerJoin(
-            practitioners,
-            and(
-              eq(practitioners.orgId, scope.orgId),
-              eq(practitioners.id, opdAppointments.practitionerId),
-            ),
-          )
-          .where(
-            and(
-              eq(charges.orgId, scope.orgId),
-              eq(charges.status, "pending"),
-              eq(opdAppointments.status, "checked_in"),
-              search ? or(ilike(patients.name, search), ilike(patients.mrn, search)) : undefined,
-            ),
-          )
-          .groupBy(
-            opdAppointments.id,
-            opdAppointments.tokenNumber,
-            patients.name,
-            patients.mrn,
-            patients.phone,
-            practitioners.name,
-          )
-          // Oldest first: the longest wait is the most likely to walk out unbilled.
-          .orderBy(sql`min(${charges.createdAt}) asc`, asc(opdAppointments.id)),
-        // One scan answers all four figures; four procedures would be four scans per poll.
-        db
-          .select({
-            outstanding: sql<string>`coalesce(sum(case when (${settled}) > 0 then (${settled}) else 0 end), 0)`,
-            openCount: sql<number>`count(*) filter (where (${settled}) > 0)::integer`,
-            staleTotal: sql<string>`coalesce(sum(case when (${settled}) > 0 and ${invoices.createdAt} < ${staleBefore} then (${settled}) else 0 end), 0)`,
-            staleCount: sql<number>`count(*) filter (where (${settled}) > 0 and ${invoices.createdAt} < ${staleBefore})::integer`,
-          })
-          .from(invoices)
-          .where(eq(invoices.orgId, scope.orgId)),
-        db
-          .select({
-            total: sql<string>`coalesce(sum(${payments.amount}), 0)`,
-            receiptCount: sql<number>`count(*)::integer`,
-          })
-          .from(payments)
-          .where(
-            and(
-              eq(payments.orgId, scope.orgId),
-              sql`${payments.createdAt} >= ${today.start}`,
-              sql`${payments.createdAt} < ${today.end}`,
-            ),
+    const [unbilledMatches, [openMoney], [collected]] = await Promise.all([
+      db
+        .select({
+          appointmentId: opdAppointments.id,
+          tokenNumber: opdAppointments.tokenNumber,
+          patientName: patients.name,
+          patientMrn: patients.mrn,
+          patientPhone: patients.phone,
+          practitionerName: practitioners.name,
+          chargeCount: sql<number>`count(*)::integer`,
+          pendingValue: sql<string>`sum(${charges.unitPrice} * ${charges.qty})`,
+          oldestChargeAt: sql<Date>`min(${charges.createdAt})`,
+          matchCount: sql<number>`count(*) over()::integer`,
+          matchValue: sql<string>`sum(sum(${charges.unitPrice} * ${charges.qty})) over()`,
+        })
+        .from(charges)
+        .innerJoin(
+          opdAppointments,
+          and(
+            eq(opdAppointments.orgId, scope.orgId),
+            eq(opdAppointments.id, charges.opdAppointmentId),
           ),
-      ]);
+        )
+        .innerJoin(
+          patients,
+          and(eq(patients.orgId, scope.orgId), eq(patients.id, opdAppointments.patientId)),
+        )
+        .innerJoin(
+          practitioners,
+          and(
+            eq(practitioners.orgId, scope.orgId),
+            eq(practitioners.id, opdAppointments.practitionerId),
+          ),
+        )
+        .where(
+          and(
+            eq(charges.orgId, scope.orgId),
+            eq(charges.status, "pending"),
+            eq(opdAppointments.status, "checked_in"),
+            search ? or(ilike(patients.name, search), ilike(patients.mrn, search)) : undefined,
+          ),
+        )
+        .groupBy(
+          opdAppointments.id,
+          opdAppointments.tokenNumber,
+          patients.name,
+          patients.mrn,
+          patients.phone,
+          practitioners.name,
+        )
+        .having(sql`min(${charges.createdAt}) < ${threshold}`)
+        // Oldest first: the longest wait is the most likely to walk out unbilled.
+        .orderBy(sql`min(${charges.createdAt}) asc`, asc(opdAppointments.id))
+        .limit(input.limit + 1),
+      // One scan answers all four figures; four procedures would be four scans per poll.
+      db
+        .select({
+          outstanding: sql<string>`coalesce(sum(case when (${settled}) > 0 then (${settled}) else 0 end), 0)`,
+          openCount: sql<number>`count(*) filter (where (${settled}) > 0)::integer`,
+          staleTotal: sql<string>`coalesce(sum(case when (${settled}) > 0 and ${invoices.createdAt} < ${staleBefore} then (${settled}) else 0 end), 0)`,
+          staleCount: sql<number>`count(*) filter (where (${settled}) > 0 and ${invoices.createdAt} < ${staleBefore})::integer`,
+        })
+        .from(invoices)
+        .where(eq(invoices.orgId, scope.orgId)),
+      db
+        .select({
+          total: sql<string>`coalesce(sum(${payments.amount}), 0)`,
+          receiptCount: sql<number>`count(*)::integer`,
+        })
+        .from(payments)
+        .where(
+          and(
+            eq(payments.orgId, scope.orgId),
+            sql`${payments.createdAt} >= ${today.start}`,
+            sql`${payments.createdAt} < ${today.end}`,
+          ),
+        ),
+    ]);
 
-      const toBillPaise = unbilled.reduce((sum, row) => sum + toPaise(row.pendingValue), 0);
+    const match = unbilledMatches[0];
+    const hasMore = unbilledMatches.length > input.limit;
+    const unbilled = unbilledMatches
+      .slice(0, input.limit)
+      .map(({ matchCount: _count, matchValue: _value, ...row }) => row);
 
-      return {
-        currency: settings.currency,
-        unbilled,
-        summary: {
-          toBillTotal: fromPaise(toBillPaise),
-          toBillCount: unbilled.length,
-          collectedToday: collected?.total ?? "0",
-          receiptCount: collected?.receiptCount ?? 0,
-          outstanding: openMoney?.outstanding ?? "0",
-          openCount: openMoney?.openCount ?? 0,
-          staleTotal: openMoney?.staleTotal ?? "0",
-          staleCount: openMoney?.staleCount ?? 0,
-        },
-      };
-    },
-  ),
+    return {
+      currency: settings.currency,
+      unbilled,
+      hasMore,
+      summary: {
+        toBillTotal: match?.matchValue ?? "0",
+        toBillCount: match?.matchCount ?? 0,
+        collectedToday: collected?.total ?? "0",
+        receiptCount: collected?.receiptCount ?? 0,
+        outstanding: openMoney?.outstanding ?? "0",
+        openCount: openMoney?.openCount ?? 0,
+        staleTotal: openMoney?.staleTotal ?? "0",
+        staleCount: openMoney?.staleCount ?? 0,
+      },
+    };
+  }),
 
   openInvoices: orgProcedure(
     { billing: ["read"] },
@@ -200,6 +210,55 @@ export const billingWorklistRouter = {
         return { ...invoice, paid: balance.paymentsTotal, outstanding: balance.outstanding };
       }),
       nextCursor: hasNextPage && last ? last.id : null,
+    };
+  }),
+
+  refundDue: orgProcedure(
+    { billing: ["read"] },
+    orgInput.extend({
+      query: searchQuery,
+      limit: z.number().int().min(1).max(200).default(50),
+    }),
+  ).handler(async ({ context, input }) => {
+    const { orgId } = context.scope;
+    const search = input.query ? likePattern(input.query) : undefined;
+    const settled = settledExpression(orgId);
+    const [settings, rows] = await Promise.all([
+      readOrgSettings(orgId),
+      db
+        .select({
+          invoiceId: invoices.id,
+          invoiceNumber: invoices.invoiceNumber,
+          appointmentId: invoices.opdAppointmentId,
+          patientName: patients.name,
+          patientMrn: patients.mrn,
+          businessDate: invoices.businessDate,
+          refundDue: sql<string>`-(${settled})`,
+        })
+        .from(invoices)
+        .innerJoin(
+          opdAppointments,
+          and(eq(opdAppointments.orgId, orgId), eq(opdAppointments.id, invoices.opdAppointmentId)),
+        )
+        .innerJoin(
+          patients,
+          and(eq(patients.orgId, orgId), eq(patients.id, opdAppointments.patientId)),
+        )
+        .where(
+          and(
+            eq(invoices.orgId, orgId),
+            sql`(${settled}) < 0`,
+            search ? or(ilike(patients.name, search), ilike(patients.mrn, search)) : undefined,
+          ),
+        )
+        .orderBy(asc(invoices.createdAt), asc(invoices.id))
+        .limit(input.limit + 1),
+    ]);
+
+    return {
+      currency: settings.currency,
+      rows: rows.slice(0, input.limit),
+      hasMore: rows.length > input.limit,
     };
   }),
 };
