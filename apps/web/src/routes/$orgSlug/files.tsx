@@ -13,7 +13,15 @@ import { DownloadIcon, FileIcon, Trash2, UploadIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import {
+  ListState,
+  ListToolbar,
+  LoadMore,
+  PageBody,
+  PageHeader,
+  Panel,
+  SearchInput,
+} from "@/components/page";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { formatFileSize, openOrgFile, uploadOrgFile } from "@/lib/org-files";
@@ -21,10 +29,11 @@ import { orpc } from "@/lib/orpc";
 import { errorMessage } from "@/lib/orpc-error";
 import { useCan } from "@/lib/membership";
 
-const filesQuery = (orgSlug: string) =>
+const filesQuery = (orgSlug: string, query: string) =>
   orpc.file.list.infiniteOptions({
     input: (cursor: { createdAt: string; id: string } | undefined) => ({
       orgSlug,
+      query: query || undefined,
       cursor,
       limit: 50,
     }),
@@ -35,7 +44,7 @@ const filesQuery = (orgSlug: string) =>
 export const Route = createFileRoute("/$orgSlug/files")({
   head: () => ({ meta: [{ title: "Files · HMS" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
-    await queryClient.infiniteQuery(filesQuery(orgSlug)).catch(() => {});
+    await queryClient.infiniteQuery(filesQuery(orgSlug, "")).catch(() => {});
   },
   component: FilesRoute,
 });
@@ -46,11 +55,12 @@ function FilesRoute() {
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const [confirm, confirmDialog] = useConfirm();
 
   const canDelete = useCan(orgSlug, { file: ["delete"] });
 
-  const files = useInfiniteQuery(filesQuery(orgSlug));
+  const files = useInfiniteQuery(filesQuery(orgSlug, query));
 
   // `file.delete` writes an audit row, so the trail is stale after one.
   const refresh = () =>
@@ -125,104 +135,97 @@ function FilesRoute() {
       />
 
       <PageBody>
-        {/* Every stored file in the house card-in-card language
-            (docs/design.md §1): the tinted tray carries the label, the raised
-            card carries the rows, and it holds its height through a pending
-            read, a failed one and an organization that has uploaded nothing. */}
-        <section className="flex flex-col rounded-xl bg-muted p-1">
-          <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
-            <span className="min-w-0 truncate">Library</span>
-          </div>
-          <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
-            {files.isPending ? null : files.isError ? (
-              <div className="flex min-h-32 flex-col items-start justify-center gap-3 p-4">
-                <ErrorNote title="Could not load files" error={files.error} />
-                <Button variant="outline" size="xs" onClick={() => files.refetch()}>
-                  Try again
-                </Button>
-              </div>
-            ) : items.length === 0 ? (
-              <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground">
-                <FileIcon className="size-5" />
-                <p>No files yet. Upload one to share it with this organization.</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {/* The name takes the slack so the narrow columns hug
+        <ListToolbar>
+          <SearchInput
+            label="Search files"
+            placeholder="Search file name"
+            onQueryChange={setQuery}
+          />
+        </ListToolbar>
+        <Panel label="Library" footer={<LoadMore query={files} shown={items.length} />}>
+          <ListState
+            query={files}
+            errorTitle="Could not load files"
+            isEmpty={items.length === 0}
+            empty={
+              query ? (
+                "No files match this search."
+              ) : (
+                <span className="flex flex-col items-center gap-2">
+                  <FileIcon className="size-5" />
+                  <span>No files yet. Upload one to share it with this organization.</span>
+                </span>
+              )
+            }
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {/* The name takes the slack so the narrow columns hug
                         their content; `max-w-0` on the cell below is what lets
                         it truncate instead of widening the table. */}
-                    <TableHead className="w-full">Name</TableHead>
-                    <TableHead className="text-right">Size</TableHead>
-                    <TableHead>Added</TableHead>
-                    <TableHead className="w-16" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((file) => (
-                    <TableRow key={file.id}>
-                      <TableCell className="max-w-0">
-                        <div className="truncate font-medium">{file.name}</div>
-                        <div className="truncate text-muted-foreground">
-                          {file.mimeType ?? "unknown type"}
-                        </div>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-right text-muted-foreground">
-                        {formatFileSize(file.size)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {formatDateTime(file.createdAt, timeZone)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-1">
+                  <TableHead className="w-full">Name</TableHead>
+                  <TableHead className="text-right">Size</TableHead>
+                  <TableHead>Added</TableHead>
+                  <TableHead className="w-16" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((file) => (
+                  <TableRow key={file.id}>
+                    <TableCell className="max-w-0">
+                      <div className="truncate font-medium" title={file.name}>
+                        {file.name}
+                      </div>
+                      <div
+                        className="truncate text-muted-foreground"
+                        title={file.mimeType ?? "unknown type"}
+                      >
+                        {file.mimeType ?? "unknown type"}
+                      </div>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right text-muted-foreground tabular-nums">
+                      {formatFileSize(file.size)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
+                      {formatDateTime(file.createdAt, timeZone)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          aria-label={`Download ${file.name}`}
+                          onClick={() => download(file.id)}
+                        >
+                          <DownloadIcon />
+                        </Button>
+                        {canDelete ? (
                           <Button
                             variant="ghost"
                             size="icon-xs"
-                            aria-label={`Download ${file.name}`}
-                            onClick={() => download(file.id)}
+                            aria-label={`Delete ${file.name}`}
+                            onClick={() =>
+                              confirm({
+                                title: `Delete ${file.name}?`,
+                                description:
+                                  "The file and its stored object are removed permanently. This cannot be undone.",
+                                confirmLabel: "Delete",
+                                run: () => void remove(file.id, file.name),
+                              })
+                            }
                           >
-                            <DownloadIcon />
+                            <Trash2 />
                           </Button>
-                          {canDelete ? (
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              aria-label={`Delete ${file.name}`}
-                              onClick={() =>
-                                confirm({
-                                  title: `Delete ${file.name}?`,
-                                  description:
-                                    "The file and its stored object are removed permanently. This cannot be undone.",
-                                  confirmLabel: "Delete",
-                                  run: () => void remove(file.id, file.name),
-                                })
-                              }
-                            >
-                              <Trash2 />
-                            </Button>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        </section>
-
-        {/* Under the list only: every other state is the card's business. */}
-        {!files.isError && items.length > 0 && files.hasNextPage ? (
-          <Button
-            variant="outline"
-            className="self-start"
-            disabled={files.isFetchingNextPage}
-            onClick={() => files.fetchNextPage()}
-          >
-            {files.isFetchingNextPage ? "Loading…" : "Load older files"}
-          </Button>
-        ) : null}
+                        ) : null}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ListState>
+        </Panel>
       </PageBody>
       {confirmDialog}
     </>

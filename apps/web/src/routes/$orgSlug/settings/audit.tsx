@@ -1,5 +1,4 @@
 import { Badge } from "@hms/ui/components/badge";
-import { Button } from "@hms/ui/components/button";
 import {
   Table,
   TableBody,
@@ -12,7 +11,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { ScrollTextIcon } from "lucide-react";
 
-import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import { ListState, LoadMore, PageBody, PageHeader, Panel } from "@/components/page";
 import { orpc } from "@/lib/orpc";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { requireOrgPermission } from "@/lib/route-permission";
@@ -25,6 +24,22 @@ const auditQuery = (orgSlug: string) =>
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
+
+function describeMeta(meta: Record<string, unknown> | null | undefined): string {
+  if (!meta) return "—";
+
+  const details = Object.entries(meta).map(([key, value]) => {
+    const formatted =
+      typeof value === "string"
+        ? value
+        : typeof value === "number" || typeof value === "boolean"
+          ? String(value)
+          : JSON.stringify(value);
+    return `${key}=${formatted}`;
+  });
+
+  return details.length > 0 ? details.join(" · ") : "—";
+}
 
 export const Route = createFileRoute("/$orgSlug/settings/audit")({
   head: () => ({ meta: [{ title: "Audit log · HMS" }] }),
@@ -51,43 +66,40 @@ function AuditRoute() {
       <SettingsTabs orgSlug={orgSlug} />
 
       <PageBody>
-        {/* One tray for the trail, in the same shell as the OPD day list
-            (docs/design.md §1), so the two boards read as one product. */}
-        <section className="flex flex-col rounded-xl bg-muted p-1">
-          <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
-            <span className="min-w-0 truncate">Entries</span>
-          </div>
-          {/* The card holds its height through a pending read, a failed one and
-              an organization that has recorded nothing yet. */}
-          <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
-            {audit.isPending ? null : audit.isError ? (
-              <div className="flex min-h-32 flex-col items-start justify-center gap-3 p-4">
-                <ErrorNote title="Could not load the audit trail" error={audit.error} />
-                <Button variant="outline" size="xs" onClick={() => audit.refetch()}>
-                  Try again
-                </Button>
-              </div>
-            ) : entries.length === 0 ? (
-              <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground">
+        <Panel label="Entries" footer={<LoadMore query={audit} shown={entries.length} />}>
+          <ListState
+            query={audit}
+            errorTitle="Could not load the audit trail"
+            isEmpty={entries.length === 0}
+            empty={
+              <span className="flex flex-col items-center gap-2">
                 <ScrollTextIcon className="size-5" />
                 <p className="max-w-sm">
                   Nothing recorded yet. Actions and denials land here as they happen.
                 </p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>When</TableHead>
-                    <TableHead>Action</TableHead>
-                    <TableHead>Actor</TableHead>
-                    <TableHead>Target</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {entries.map((entry) => (
+              </span>
+            }
+          >
+            {/* Fixed columns: file targets run past 100 characters, so an auto
+                layout would hand them the row. Target keeps a UUID on one line
+                and wraps longer ids; Details takes the rest and wraps. */}
+            <Table className="table-fixed">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-36">When</TableHead>
+                  <TableHead className="w-32">Action</TableHead>
+                  <TableHead className="w-40">Actor</TableHead>
+                  <TableHead className="w-96">Target</TableHead>
+                  <TableHead>Details</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {entries.map((entry) => {
+                  const details = describeMeta(entry.meta);
+
+                  return (
                     <TableRow key={entry.id}>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
+                      <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
                         {formatDateTime(entry.createdAt, timeZone)}
                       </TableCell>
                       <TableCell>
@@ -108,29 +120,21 @@ function AuditRoute() {
                         )}
                       </TableCell>
                       {/* `entity:id`, read character by character when someone
-                          is matching a row against a document. */}
-                      <TableCell className="font-mono text-muted-foreground">
+                          is matching a row against a document. It wraps, never
+                          truncates. */}
+                      <TableCell className="break-all font-mono text-muted-foreground">
                         {entry.target ?? "—"}
                       </TableCell>
+                      {/* Prose, not an identifier, so no mono. It wraps: the
+                          amounts and numbers here are why someone opens the log. */}
+                      <TableCell className="break-words text-muted-foreground">{details}</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        </section>
-
-        {/* Under the list only: every other state is the card's business. */}
-        {!audit.isError && entries.length > 0 && audit.hasNextPage ? (
-          <Button
-            variant="outline"
-            className="self-start"
-            disabled={audit.isFetchingNextPage}
-            onClick={() => audit.fetchNextPage()}
-          >
-            {audit.isFetchingNextPage ? "Loading…" : "Load older entries"}
-          </Button>
-        ) : null}
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </ListState>
+        </Panel>
       </PageBody>
     </>
   );

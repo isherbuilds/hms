@@ -1,5 +1,7 @@
 import { getRouteApi } from "@tanstack/react-router";
 
+export { formatBusinessDate } from "./business-date";
+
 const orgRoute = getRouteApi("/$orgSlug");
 
 // An *instant* (`createdAt`) is a point in time, formatted in the org zone. A
@@ -77,13 +79,6 @@ export function formatDay(day: string): string {
   return formatter("day|UTC", "en-IN", {
     day: "numeric",
     month: "short",
-    timeZone: "UTC",
-  }).format(new Date(`${day}T00:00:00Z`));
-}
-
-export function formatBusinessDate(day: string): string {
-  return formatter("businessDate|UTC", "en-IN", {
-    dateStyle: "medium",
     timeZone: "UTC",
   }).format(new Date(`${day}T00:00:00Z`));
 }

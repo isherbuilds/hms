@@ -7,7 +7,7 @@ import { invoices } from "@hms/db/schema/invoices";
 import { journalEntries } from "@hms/db/schema/journal-entries";
 import { journalLines } from "@hms/db/schema/journal-lines";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq, gte, lt, lte, sql, type SQL } from "drizzle-orm";
+import { and, eq, gte, lt, lte, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
@@ -70,8 +70,7 @@ async function accountAggregates(
       and(eq(journalEntries.id, journalLines.entryId), eq(journalEntries.orgId, orgId)),
     )
     .where(and(eq(accounts.orgId, orgId), ...datePredicates))
-    .groupBy(accounts.id, accounts.code, accounts.name, accounts.type)
-    .orderBy(asc(accounts.code));
+    .groupBy(accounts.id, accounts.code, accounts.name, accounts.type);
 }
 
 export const reportRouter = {

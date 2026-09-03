@@ -25,10 +25,11 @@ import { z } from "zod";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { invalidateOpdAppointmentState } from "@/lib/domain-invalidation";
 import { useOpdErrorToast } from "@/lib/opd-error";
+import { hasErrorCode } from "@/lib/orpc-error";
 import { orpc } from "@/lib/orpc";
 
 // Staff copy, not the stored value.
-export const OPD_STATUS_LABELS = {
+const OPD_STATUS_LABELS = {
   booked: "Booked",
   checked_in: "Checked In",
   cancelled: "Cancelled",
@@ -84,13 +85,10 @@ const cancelSchema = z.object({
 export function CancelOpdAppointmentDialog({
   orgSlug,
   appointmentId,
-  onCancelled,
   onClose,
 }: {
   orgSlug: string;
   appointmentId: string;
-  /** Runs only when the appointment was really cancelled, before `onClose`. */
-  onCancelled?: () => void;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -102,10 +100,12 @@ export function CancelOpdAppointmentDialog({
         // Awaited so the dialog closes onto a day that no longer lists this appointment.
         await invalidateOpdAppointmentState(queryClient, orgSlug, appointmentId, "cancel");
         toast.success("OPD appointment cancelled");
-        onCancelled?.();
         onClose();
       },
-      onError: (error) => onOpdError(appointmentId, "cancel", error),
+      onError: (error) => {
+        if (hasErrorCode(error, "CONFLICT")) onClose();
+        return onOpdError(appointmentId, "cancel", error);
+      },
     }),
   );
   const submit = form.handleSubmit(({ cancelReason }) => {

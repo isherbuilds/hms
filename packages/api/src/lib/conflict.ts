@@ -1,25 +1,16 @@
 import { ORPCError } from "@orpc/server";
 
 /**
- * Why a CONFLICT happened. A bare 409 tells the client nothing, so it guesses —
- * and guessing wrong means offering "we refreshed you" for a clash no refresh fixes.
+ * Why a CONFLICT happened, for the three cases where the web client branches on it:
  *
- * - `raced` — another writer moved the row first. A refetch makes the screen correct.
- * - `not_billable` — the appointment left a state that allows billing.
- * - `no_pending_charges` — there is nothing left to settle.
- * - `duplicate` — a unique index rejected the write.
- * - `uid_taken` — that patient UID belongs to someone else.
- * - `stale_record` — the row moved after the operator opened it.
- * - `catalog_price_changed` — prices moved between the quote and the settlement.
+ * - `duplicate` — a catalog code is already in use (mapped to the code field).
+ * - `uid_taken` — that patient UID belongs to someone else (mapped to the UID field).
+ * - `stale_record` — the patient row moved after the operator opened it (offers Refresh).
+ *
+ * Every other CONFLICT is a plain `ORPCError("CONFLICT")`: the client refetches and
+ * shows the server message.
  */
-export type ConflictReason =
-  | "raced"
-  | "not_billable"
-  | "no_pending_charges"
-  | "duplicate"
-  | "uid_taken"
-  | "stale_record"
-  | "catalog_price_changed";
+export type ConflictReason = "duplicate" | "uid_taken" | "stale_record";
 
 /** A clash the operator can act on. Expected, so the server does not log it. */
 export function conflict(reason: ConflictReason, message: string) {

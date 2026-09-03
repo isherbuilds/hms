@@ -1,21 +1,16 @@
 import { db } from "@hms/db";
 import { attachments } from "@hms/db/schema/attachments";
 import { file as fileTable } from "@hms/db/schema/file";
-import {
-  createReadUrl,
-  createUploadUrl,
-  deleteObject,
-  maxUploadBytes,
-  uploadExpiresIn,
-} from "@hms/storage";
+import { createReadUrl, createUploadUrl, deleteObject, maxUploadBytes } from "@hms/storage";
 import { ORPCError } from "@orpc/server";
 import { createHash } from "node:crypto";
-import { and, desc, eq, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
-import { conflict } from "../lib/conflict";
 import { orgInput, orgProcedure, type Scope } from "../lib/procedures/factory";
+import { likePattern, pageLimit, searchQuery } from "../lib/schemas";
+
 const keyInput = orgInput.extend({ key: z.string().min(1) });
 
 // Never audit the key verbatim: a caller could hand a presigned URL as the key and
@@ -62,6 +57,7 @@ export const fileRouter = {
   list: orgProcedure(
     { file: ["read"] },
     orgInput.extend({
+      query: searchQuery,
       cursor: z
         .object({
           createdAt: z
@@ -71,10 +67,15 @@ export const fileRouter = {
           id: z.string(),
         })
         .optional(),
-      limit: z.number().int().min(1).max(100).default(50),
+      limit: pageLimit,
     }),
   ).handler(async ({ context, input }) => {
-    const scoped = and(eq(fileTable.orgId, context.scope.orgId), eq(fileTable.status, "ready"));
+    const search = input.query ? likePattern(input.query) : undefined;
+    const scoped = and(
+      eq(fileTable.orgId, context.scope.orgId),
+      eq(fileTable.status, "ready"),
+      search ? ilike(fileTable.name, search) : undefined,
+    );
 
     const cursorTimestamp = input.cursor ? sql`${input.cursor.createdAt}::timestamptz` : undefined;
     const items = await db
@@ -83,7 +84,6 @@ export const fileRouter = {
         name: fileTable.name,
         mimeType: fileTable.mimeType,
         size: fileTable.size,
-        userId: fileTable.userId,
         createdAt: fileTable.createdAt,
         createdAtCursor: sql<string>`${fileTable.createdAt}::text`,
       })
@@ -148,7 +148,7 @@ export const fileRouter = {
       status: "pending",
     });
 
-    return { key, uploadUrl, expiresIn: uploadExpiresIn };
+    return { key, uploadUrl };
   }),
 
   // Scoped `UPDATE ... RETURNING`: no window between the check and the write.
@@ -190,10 +190,7 @@ export const fileRouter = {
       throw new ORPCError("NOT_FOUND", { message: "File not found" });
     }
 
-    return {
-      url: await createReadUrl(input.key),
-      expiresIn: uploadExpiresIn,
-    };
+    return { url: await createReadUrl(input.key) };
   }),
 
   // Row first, then the object: the reverse could leave a `ready` row pointing at
@@ -223,10 +220,9 @@ export const fileRouter = {
         .limit(1);
 
       if (attached) {
-        throw conflict(
-          "duplicate",
-          "This file is attached to a record. Detach it there before deleting it.",
-        );
+        throw new ORPCError("CONFLICT", {
+          message: "This file is attached to a record. Detach it there before deleting it.",
+        });
       }
 
       const [deleted] = await tx
@@ -237,8 +233,6 @@ export const fileRouter = {
       if (!deleted) {
         throw new ORPCError("NOT_FOUND", { message: "File not found" });
       }
-
-      return deleted;
     });
 
     // Issued right after the committed delete, so no storage failure can sit between

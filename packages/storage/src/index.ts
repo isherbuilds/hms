@@ -48,8 +48,6 @@ export function maxUploadBytes(): number {
   return env.SEAWEEDFS_MAX_UPLOAD_BYTES ?? DEFAULT_MAX_UPLOAD_BYTES;
 }
 
-export const uploadExpiresIn = DEFAULT_EXPIRES_IN;
-
 export function createUploadUrl(
   key: string,
   options: { contentType?: string; size: number },

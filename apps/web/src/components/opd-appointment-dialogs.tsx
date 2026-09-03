@@ -23,10 +23,12 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
+import { useOpdCheckIn } from "@/components/opd-appointment";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { invalidateOpdAppointmentState } from "@/lib/domain-invalidation";
 import { useOpdErrorToast } from "@/lib/opd-error";
 import { localInputValue, nextHalfHour, useOrgDateTime } from "@/lib/org-datetime";
+import { hasErrorCode } from "@/lib/orpc-error";
 import { orpc } from "@/lib/orpc";
 
 export function CheckInOpdAppointmentDialog({
@@ -42,21 +44,8 @@ export function CheckInOpdAppointmentDialog({
   callerPhone?: string | null;
   onClose: () => void;
 }) {
-  const queryClient = useQueryClient();
-  const onOpdError = useOpdErrorToast(orgSlug);
-
+  const checkIn = useOpdCheckIn(orgSlug);
   const [selected, setSelected] = useState<SelectedPatient>();
-
-  const checkIn = useMutation(
-    orpc.opd.checkIn.mutationOptions({
-      onSuccess: async ({ appointment }) => {
-        await invalidateOpdAppointmentState(queryClient, orgSlug, appointment.id, "checkIn");
-        toast.success(`Checked in · Token ${appointment.tokenNumber}`);
-        onClose();
-      },
-      onError: (error) => onOpdError(appointmentId, "checkIn", error),
-    }),
-  );
   const caller = [callerName, callerPhone].filter(Boolean).join(" · ");
 
   return (
@@ -81,13 +70,18 @@ export function CheckInOpdAppointmentDialog({
               </Button>
               <Button
                 disabled={checkIn.isPending}
-                onClick={() =>
-                  checkIn.mutate({
-                    orgSlug,
-                    appointmentId,
-                    patientId: selected.id,
-                  })
-                }
+                onClick={() => {
+                  void checkIn
+                    .mutateAsync({
+                      orgSlug,
+                      appointmentId,
+                      patientId: selected.id,
+                    })
+                    .then(onClose)
+                    .catch((error) => {
+                      if (hasErrorCode(error, "CONFLICT")) onClose();
+                    });
+                }}
               >
                 Check in
               </Button>
@@ -137,7 +131,10 @@ export function RescheduleOpdAppointmentDialog({
         toast.success("Appointment rescheduled");
         onClose();
       },
-      onError: (error) => onOpdError(appointmentId, "reschedule", error),
+      onError: (error) => {
+        if (hasErrorCode(error, "CONFLICT")) onClose();
+        return onOpdError(appointmentId, "reschedule", error);
+      },
     }),
   );
   const submit = form.handleSubmit((values) =>

@@ -154,7 +154,6 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
     orgSlug: one.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
-    departmentId: department.id,
     scheduledLocal: "2030-03-15T10:30",
   });
   const { appointment } = await api.opd.checkIn({
@@ -447,7 +446,6 @@ const GUARDED_CALLS = {
       callerName: "Intrusion",
       callerPhone: "0000",
       practitionerId: Bun.randomUUIDv7(),
-      departmentId: Bun.randomUUIDv7(),
       scheduledLocal: "2026-08-22T10:00",
     }),
   "opd.quoteWalkIn": (api, claim) =>
@@ -455,14 +453,12 @@ const GUARDED_CALLS = {
       ...claim,
       patientId: Bun.randomUUIDv7(),
       practitionerId: Bun.randomUUIDv7(),
-      departmentId: Bun.randomUUIDv7(),
     }),
   "opd.createWalkIn": (api, claim) =>
     api.opd.createWalkIn({
       ...claim,
       patientId: Bun.randomUUIDv7(),
       practitionerId: Bun.randomUUIDv7(),
-      departmentId: Bun.randomUUIDv7(),
       settlement: {
         expectedGrandTotal: "0",
         payments: [],
@@ -534,8 +530,6 @@ const GUARDED_CALLS = {
       method: "cash",
       amount: "1.00",
     }),
-  "billing.invoiceBalance": (api, claim) =>
-    api.billing.invoiceBalance({ ...claim, invoiceId: Bun.randomUUIDv7() }),
   "billing.listInvoices": (api, claim) =>
     api.billing.listInvoices({ ...claim, appointmentId: Bun.randomUUIDv7() }),
   "billing.getInvoice": (api, claim) =>
@@ -755,7 +749,7 @@ test("catalog rows are invisible from another org and cannot be updated by forei
   });
 
   const bobClient = clientFor(bob);
-  expect(await bobClient.catalog.list({ orgSlug: beta.slug })).toEqual([]);
+  expect((await bobClient.catalog.list({ orgSlug: beta.slug })).items).toEqual([]);
   await expectORPCCode(
     bobClient.catalog.update({
       orgSlug: beta.slug,
@@ -800,8 +794,8 @@ test("one client concurrently scopes catalog calls to two organizations", async 
     api.catalog.list({ orgSlug: two.slug }),
   ]);
 
-  expect(seenInOne.map((item) => item.id)).toEqual([inOne.id]);
-  expect(seenInTwo.map((item) => item.id)).toEqual([inTwo.id]);
+  expect(seenInOne.items.map((item) => item.id)).toEqual([inOne.id]);
+  expect(seenInTwo.items.map((item) => item.id)).toEqual([inTwo.id]);
 });
 
 test("staff rows are invisible from another org and cannot be updated by foreign id", async () => {
@@ -883,7 +877,6 @@ test("OPD appointment rows are invisible from another org through queue or get",
     orgSlug: alpha.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
-    departmentId: department.id,
     settlement: {
       expectedGrandTotal: "100.00",
       payments: [],
@@ -894,7 +887,6 @@ test("OPD appointment rows are invisible from another org through queue or get",
     orgSlug: alpha.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
-    departmentId: department.id,
     scheduledLocal: shiftLocalMinute(currentMinute, 1),
   });
 
@@ -986,7 +978,6 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
       orgSlug: one.slug,
       patientId: patientOne.id,
       practitionerId: practitionerOne.id,
-      departmentId: departmentOne.id,
       settlement: {
         expectedGrandTotal: "100.00",
         payments: [{ method: "cash", amount: "100.00" }],
@@ -996,7 +987,6 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
       orgSlug: two.slug,
       patientId: patientTwo.id,
       practitionerId: practitionerTwo.id,
-      departmentId: departmentTwo.id,
       settlement: {
         expectedGrandTotal: "100.00",
         payments: [{ method: "cash", amount: "100.00" }],
@@ -1073,7 +1063,6 @@ async function createScopedInvoice(
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
-    departmentId: department.id,
     settlement,
   });
   if (!created.invoice) throw new Error("Expected walk-in to issue an invoice");

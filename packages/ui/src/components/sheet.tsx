@@ -10,7 +10,7 @@ function Sheet({ ...props }: SheetPrimitive.Root.Props) {
 }
 
 const sheetVariants = cva(
-  "fixed z-50 flex flex-col overflow-hidden overscroll-contain rounded-xl border-8 border-muted bg-popover text-xs/relaxed text-popover-foreground shadow-lg transition duration-150 ease-out data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none",
+  "fixed z-50 flex flex-col overflow-hidden overscroll-contain rounded-md border-8 border-muted bg-popover text-xs/relaxed text-popover-foreground shadow-lg transition duration-150 ease-out data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none",
   {
     variants: {
       side: {

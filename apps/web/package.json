@@ -37,7 +37,7 @@
     "react-hook-form": "catalog:",
     "sonner": "catalog:",
     "tailwindcss": "catalog:",
-    "takumi-pdf": "^0.13.1",
+    "takumi-pdf": "^0.14.0",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -47,7 +47,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "^6.1.1",
-    "oxc-transform-react": "^0.145.0",
+    "oxc-transform-react": "^0.148.0",
     "typescript": "catalog:",
     "vite": "^8.2.2"
   },

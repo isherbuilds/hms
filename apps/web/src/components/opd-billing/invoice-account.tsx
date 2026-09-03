@@ -1,3 +1,4 @@
+import { fromPaise, toSignedPaise } from "@hms/api/lib/invoice-math";
 import { Button } from "@hms/ui/components/button";
 import { Checkbox } from "@hms/ui/components/checkbox";
 import {
@@ -33,14 +34,15 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { ClientOnly, Link } from "@tanstack/react-router";
 import { Trash2Icon } from "lucide-react";
 import { useState } from "react";
-import { useFieldArray, useFormContext, useFormState, Watch } from "react-hook-form";
+import { useFieldArray, useFormState, Watch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { useZodForm } from "@/hooks/use-zod-form";
 import { formatMoney, MONEY_INPUT_PATTERN, parseMoneyInput } from "@/lib/money";
+import { useOpdErrorToast } from "@/lib/opd-error";
+import { hasErrorCode } from "@/lib/orpc-error";
 import { orpc } from "@/lib/orpc";
-import { errorMessage } from "@/lib/orpc-error";
 import { needsReference, PAYMENT_METHODS, type PaymentMethod } from "@/lib/settlement";
 
 import { useBillingInvalidation } from "./use-billing-invalidation";
@@ -51,7 +53,7 @@ const paymentLineFields = z.object({
   amount: z
     .string()
     .regex(MONEY_INPUT_PATTERN, "Amount like 150.00")
-    .refine((value) => Number(value) > 0, "Enter an amount above zero"),
+    .refine((value) => (parseMoneyInput(value) ?? 0) > 0, "Enter an amount above zero"),
   reference: z.string().trim().max(100).optional(),
 });
 
@@ -85,13 +87,7 @@ const creditSchema = z
     ),
   })
   .superRefine((value, context) => {
-    if (
-      !value.lines.some(
-        (line) =>
-          line.full ||
-          (line.gross && MONEY_INPUT_PATTERN.test(line.gross) && Number(line.gross) > 0),
-      )
-    ) {
+    if (!value.lines.some((line) => line.full || (parseMoneyInput(line.gross ?? "") ?? 0) > 0)) {
       context.addIssue({
         code: "custom",
         path: ["lines"],
@@ -99,11 +95,7 @@ const creditSchema = z
       });
     }
     value.lines.forEach((line, index) => {
-      if (
-        !line.full &&
-        line.gross &&
-        (!MONEY_INPUT_PATTERN.test(line.gross) || Number(line.gross) <= 0)
-      ) {
+      if (!line.full && line.gross && (parseMoneyInput(line.gross) ?? 0) <= 0) {
         context.addIssue({
           code: "custom",
           path: ["lines", index, "gross"],
@@ -112,26 +104,6 @@ const creditSchema = z
       }
     });
   });
-
-function PaymentRootError() {
-  const { control } = useFormContext<z.input<typeof paymentSchema>>();
-  const { errors } = useFormState({ control });
-  const message = errors.root?.message;
-
-  return message ? (
-    <p role="alert" className="text-destructive">
-      {message}
-    </p>
-  ) : null;
-}
-
-function CreditLinesError() {
-  const { control } = useFormContext<z.input<typeof creditSchema>>();
-  const { errors } = useFormState({ control, name: "lines" });
-  const message = errors.lines?.root?.message;
-
-  return message ? <p className="text-xs text-destructive">{message}</p> : null;
-}
 
 type InvoiceHeader = {
   id: string;
@@ -149,11 +121,13 @@ export function InvoiceAccount({
   appointmentId,
   invoice,
   canCredit,
+  canPay,
 }: {
   orgSlug: string;
   appointmentId: string;
   invoice: InvoiceHeader;
   canCredit: boolean;
+  canPay: boolean;
 }) {
   const [action, setAction] = useState<"payment" | "credit" | "refund" | null>(null);
   const [documentsOpen, setDocumentsOpen] = useState(false);
@@ -162,8 +136,8 @@ export function InvoiceAccount({
     ...orpc.billing.getInvoice.queryOptions({ input: { orgSlug, invoiceId: invoice.id } }),
     enabled: needsDetail,
   });
-  const outstanding = Number(invoice.outstanding);
-  const isRefundDue = outstanding < 0;
+  const outstandingPaise = toSignedPaise(invoice.outstanding);
+  const isRefundDue = outstandingPaise < 0;
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
@@ -182,19 +156,21 @@ export function InvoiceAccount({
           </p>
           <p className={isRefundDue ? "font-medium text-destructive" : "font-medium"}>
             {isRefundDue
-              ? `Refund due ${formatMoney(Math.abs(outstanding), invoice.currency)}`
+              ? `Refund due ${formatMoney(fromPaise(-outstandingPaise), invoice.currency)}`
               : `Outstanding ${formatMoney(invoice.outstanding, invoice.currency)}`}
           </p>
         </div>
         <div className="flex flex-wrap gap-1">
-          <Button
-            size="xs"
-            variant="outline"
-            disabled={outstanding <= 0}
-            onClick={() => setAction("payment")}
-          >
-            Record payment
-          </Button>
+          {canPay ? (
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={outstandingPaise <= 0}
+              onClick={() => setAction("payment")}
+            >
+              Record payment
+            </Button>
+          ) : null}
           {canCredit ? (
             <>
               <Button size="xs" variant="outline" onClick={() => setAction("credit")}>
@@ -276,8 +252,7 @@ export function InvoiceAccount({
       <ClientOnly fallback={null}>
         {action === "payment" ? (
           <PaymentDialog
-            open
-            onOpenChange={(open) => setAction(open ? "payment" : null)}
+            onClose={() => setAction(null)}
             orgSlug={orgSlug}
             appointmentId={appointmentId}
             invoiceId={invoice.id}
@@ -288,8 +263,7 @@ export function InvoiceAccount({
         ) : null}
         {action === "credit" && detail.data ? (
           <CreditDialog
-            open
-            onOpenChange={(open) => setAction(open ? "credit" : null)}
+            onClose={() => setAction(null)}
             orgSlug={orgSlug}
             appointmentId={appointmentId}
             invoiceId={invoice.id}
@@ -299,8 +273,7 @@ export function InvoiceAccount({
         ) : null}
         {action === "refund" && detail.data ? (
           <RefundDialog
-            open
-            onOpenChange={(open) => setAction(open ? "refund" : null)}
+            onClose={() => setAction(null)}
             orgSlug={orgSlug}
             appointmentId={appointmentId}
             invoiceId={invoice.id}
@@ -314,8 +287,7 @@ export function InvoiceAccount({
 }
 
 function PaymentDialog({
-  open,
-  onOpenChange,
+  onClose,
   orgSlug,
   appointmentId,
   invoiceId,
@@ -323,8 +295,7 @@ function PaymentDialog({
   currency,
   onApplyCredit,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onClose: () => void;
   orgSlug: string;
   appointmentId: string;
   invoiceId: string;
@@ -333,11 +304,13 @@ function PaymentDialog({
   onApplyCredit?: () => void;
 }) {
   const invalidate = useBillingInvalidation(orgSlug, appointmentId);
+  const onOpdError = useOpdErrorToast(orgSlug);
   const form = useZodForm(paymentSchema, {
     defaultValues: {
       payments: [{ id: 1, method: "cash", amount: outstanding, reference: "" }],
     },
   });
+  const paymentRootError = useFormState({ control: form.control }).errors.root?.message;
   const paymentLines = useFieldArray({
     control: form.control,
     name: "payments",
@@ -347,17 +320,20 @@ function PaymentDialog({
     orpc.billing.recordPayments.mutationOptions({
       onSuccess: async (_data, variables) => {
         await invalidate(invoiceId);
-        onOpenChange(false);
+        onClose();
         toast.success(
           variables.payments.length === 1 ? "Payment recorded" : "Split payment recorded",
         );
       },
-      onError: (error) => toast.error(errorMessage(error, "Could not record the payment")),
+      onError: (error) => {
+        if (hasErrorCode(error, "CONFLICT")) onClose();
+        void onOpdError(appointmentId, "billing", error);
+      },
     }),
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Record payment</DialogTitle>
@@ -484,7 +460,11 @@ function PaymentDialog({
             >
               Split payment
             </Button>
-            <PaymentRootError />
+            {paymentRootError ? (
+              <p role="alert" className="text-destructive">
+                {paymentRootError}
+              </p>
+            ) : null}
             <DialogFooter>
               {onApplyCredit ? (
                 <Button type="button" variant="outline" onClick={onApplyCredit}>
@@ -501,16 +481,14 @@ function PaymentDialog({
 }
 
 function CreditDialog({
-  open,
-  onOpenChange,
+  onClose,
   orgSlug,
   appointmentId,
   invoiceId,
   lines,
   currency,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onClose: () => void;
   orgSlug: string;
   appointmentId: string;
   invoiceId: string;
@@ -518,20 +496,28 @@ function CreditDialog({
   currency: string;
 }) {
   const invalidate = useBillingInvalidation(orgSlug, appointmentId);
+  const onOpdError = useOpdErrorToast(orgSlug);
   const form = useZodForm(creditSchema, {
     defaultValues: {
       reason: "",
       lines: lines.map((line) => ({ invoiceLineId: line.id, full: false, gross: "" })),
     },
   });
+  const creditLinesError = useFormState({
+    control: form.control,
+    name: "lines",
+  }).errors.lines?.root?.message;
   const mutation = useMutation(
     orpc.billing.issueCreditNote.mutationOptions({
       onSuccess: async () => {
         await invalidate(invoiceId);
-        onOpenChange(false);
+        onClose();
         toast.success("Credit note issued");
       },
-      onError: (error) => toast.error(errorMessage(error, "Could not issue the credit note")),
+      onError: (error) => {
+        if (hasErrorCode(error, "CONFLICT")) onClose();
+        void onOpdError(appointmentId, "billing", error);
+      },
     }),
   );
   const submit = form.handleSubmit((value) =>
@@ -550,7 +536,7 @@ function CreditDialog({
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Issue credit note</DialogTitle>
@@ -632,7 +618,9 @@ function CreditDialog({
                 </TableBody>
               </Table>
             </div>
-            <CreditLinesError />
+            {creditLinesError ? (
+              <p className="text-xs text-destructive">{creditLinesError}</p>
+            ) : null}
             <DialogFooter>
               <SubmitButton isSubmitting={mutation.isPending}>Issue credit note</SubmitButton>
             </DialogFooter>
@@ -644,16 +632,14 @@ function CreditDialog({
 }
 
 function RefundDialog({
-  open,
-  onOpenChange,
+  onClose,
   orgSlug,
   appointmentId,
   invoiceId,
   creditNotes,
   currency,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onClose: () => void;
   orgSlug: string;
   appointmentId: string;
   invoiceId: string;
@@ -661,6 +647,7 @@ function RefundDialog({
   currency: string;
 }) {
   const invalidate = useBillingInvalidation(orgSlug, appointmentId);
+  const onOpdError = useOpdErrorToast(orgSlug);
   const form = useZodForm(refundSchema, {
     defaultValues: { creditNoteId: "", method: "cash", amount: "", reference: "" },
   });
@@ -668,15 +655,18 @@ function RefundDialog({
     orpc.billing.recordRefund.mutationOptions({
       onSuccess: async () => {
         await invalidate(invoiceId);
-        onOpenChange(false);
+        onClose();
         toast.success("Refund recorded");
       },
-      onError: (error) => toast.error(errorMessage(error, "Could not record the refund")),
+      onError: (error) => {
+        if (hasErrorCode(error, "CONFLICT")) onClose();
+        void onOpdError(appointmentId, "billing", error);
+      },
     }),
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Record refund</DialogTitle>

@@ -64,24 +64,27 @@ function SidebarProvider({
 
   const [_open, _setOpen] = React.useState(defaultOpen);
   const open = openProp ?? _open;
-  const setOpen = (value: boolean | ((value: boolean) => boolean)) => {
-    const openState = typeof value === "function" ? value(open) : value;
-    if (setOpenProp) {
-      setOpenProp(openState);
-    } else {
-      _setOpen(openState);
-    }
+  const setOpen = React.useCallback(
+    (value: boolean | ((value: boolean) => boolean)) => {
+      const openState = typeof value === "function" ? value(open) : value;
+      if (setOpenProp) {
+        setOpenProp(openState);
+      } else {
+        _setOpen(openState);
+      }
 
-    document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
-  };
+      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+    },
+    [open, setOpenProp],
+  );
 
-  const toggleSidebar = () => {
+  const toggleSidebar = React.useCallback(() => {
     if (isMobile) {
       setOpenMobile((open) => !open);
       return;
     }
     setOpen((open) => !open);
-  };
+  }, [isMobile, setOpen]);
 
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -96,15 +99,12 @@ function SidebarProvider({
   }, [toggleSidebar]);
 
   const state = open ? "expanded" : "collapsed";
-  const contextValue: SidebarContextProps = {
-    state,
-    open,
-    setOpen,
-    isMobile,
-    openMobile,
-    setOpenMobile,
-    toggleSidebar,
-  };
+  // Memoised: this provider wraps every org page, so an unstable value would
+  // re-render every `useSidebar` consumer on each render of the tree above it.
+  const contextValue = React.useMemo<SidebarContextProps>(
+    () => ({ state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar }),
+    [state, open, setOpen, isMobile, openMobile, toggleSidebar],
+  );
 
   return (
     <SidebarContext.Provider value={contextValue}>
@@ -221,7 +221,7 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="flex size-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
+          className="flex size-full flex-col bg-sidebar group-data-[variant=floating]:rounded-md group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
         >
           {children}
         </div>
@@ -239,7 +239,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
       data-slot="sidebar-trigger"
       variant="ghost"
       size="icon-sm"
-      className={cn(className)}
+      className={className}
       onClick={(event) => {
         onClick?.(event);
         toggleSidebar();
@@ -282,7 +282,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
     <main
       data-slot="sidebar-inset"
       className={cn(
-        "relative flex w-full flex-1 flex-col bg-card lg:peer-data-[variant=inset]:m-2 lg:peer-data-[variant=inset]:ml-0 lg:peer-data-[variant=inset]:rounded-lg lg:peer-data-[variant=inset]:shadow-sm lg:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
+        "relative flex w-full flex-1 flex-col bg-card lg:peer-data-[variant=inset]:m-2 lg:peer-data-[variant=inset]:ml-0 lg:peer-data-[variant=inset]:rounded-md lg:peer-data-[variant=inset]:shadow-sm lg:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
         className,
       )}
       {...props}

@@ -27,15 +27,23 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { optionalNumberText, optionalText } from "@/lib/form-schema";
 
-import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import {
+  ListState,
+  ListToolbar,
+  LoadMore,
+  PageBody,
+  PageHeader,
+  Panel,
+  SearchInput,
+} from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
@@ -43,6 +51,18 @@ import { errorMessage } from "@/lib/orpc-error";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 import { SettingsTabs } from "./route";
+
+const feeItemsQuery = (orgSlug: string) =>
+  orpc.catalog.list.infiniteOptions({
+    input: (cursor: { name: string; id: string } | undefined) => ({
+      orgSlug,
+      activeOnly: true,
+      cursor,
+      limit: 50,
+    }),
+    initialPageParam: undefined,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+  });
 
 export const Route = createFileRoute("/$orgSlug/settings/staff")({
   head: () => ({ meta: [{ title: "Staff · HMS" }] }),
@@ -58,13 +78,7 @@ export const Route = createFileRoute("/$orgSlug/settings/staff")({
         .query(orpc.staff.listPractitioners.queryOptions({ input: { orgSlug } }))
         .catch(() => {}),
       queryClient.query(orpc.member.list.queryOptions({ input: { orgSlug } })).catch(() => {}),
-      queryClient
-        .query(
-          orpc.catalog.list.queryOptions({
-            input: { orgSlug, category: "consultation", activeOnly: true },
-          }),
-        )
-        .catch(() => {}),
+      queryClient.infiniteQuery(feeItemsQuery(orgSlug)).catch(() => {}),
     ]);
   },
   component: StaffRoute,
@@ -137,15 +151,17 @@ function StaffRoute() {
   const { timeZone } = useOrgDateTime();
   const [departmentDialog, setDepartmentDialog] = useState<DepartmentDialogState>(null);
   const [practitionerDialog, setPractitionerDialog] = useState<PractitionerDialogState>(null);
+  const [query, setQuery] = useState("");
 
   const departments = useQuery(orpc.staff.listDepartments.queryOptions({ input: { orgSlug } }));
-  const practitioners = useQuery(orpc.staff.listPractitioners.queryOptions({ input: { orgSlug } }));
-  const members = useQuery(orpc.member.list.queryOptions({ input: { orgSlug } }));
-  const catalog = useQuery(
-    orpc.catalog.list.queryOptions({
-      input: { orgSlug, category: "consultation", activeOnly: true },
+  const practitioners = useQuery(
+    orpc.staff.listPractitioners.queryOptions({
+      input: { orgSlug, query: query || undefined },
     }),
   );
+  const members = useQuery(orpc.member.list.queryOptions({ input: { orgSlug } }));
+  const catalog = useInfiniteQuery(feeItemsQuery(orgSlug));
+  const catalogItems = catalog.data?.pages.flatMap((page) => page.items) ?? [];
 
   const departmentById = new Map(
     (departments.data ?? []).map((department) => [department.id, department]),
@@ -153,7 +169,8 @@ function StaffRoute() {
   const memberByUserId = new Map(
     (members.data?.members ?? []).map((member) => [member.userId, member]),
   );
-  const catalogById = new Map((catalog.data ?? []).map((item) => [item.id, item]));
+  const catalogById = new Map(catalogItems.map((item) => [item.id, item]));
+  const catalogFooter = <LoadMore query={catalog} shown={catalogItems.length} />;
 
   return (
     <>
@@ -164,82 +181,87 @@ function StaffRoute() {
       <SettingsTabs orgSlug={orgSlug} />
 
       <PageBody>
-        {/* Two genuine groups of rows, so two trays, in the same shell as the
-            OPD day list (docs/design.md §1). The heading lives in the tray's
-            label row rather than above it: one label per group, not two. */}
-        <section className="flex flex-col rounded-xl bg-muted p-1">
-          <div className="flex h-9 items-center justify-between gap-2 px-3 text-muted-foreground">
-            <h2 className="min-w-0 truncate">Departments</h2>
+        <Panel
+          label="Departments"
+          action={
             <Button size="xs" onClick={() => setDepartmentDialog({ mode: "create" })}>
               New department
             </Button>
-          </div>
-          <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
-            {departments.isPending ? null : departments.isError ? (
-              <ErrorNote title="Could not load departments" error={departments.error} inset />
-            ) : departments.data.length === 0 ? (
-              <div className="flex min-h-32 items-center justify-center px-4 text-center text-muted-foreground">
-                No departments yet. A department groups practitioners and carries the fee they
-                consult at.
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Default consult fee</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead className="w-16 text-right">Action</TableHead>
+          }
+        >
+          <ListState
+            query={departments}
+            errorTitle="Could not load departments"
+            isEmpty={departments.data?.length === 0}
+            empty="No departments yet. A department groups practitioners and carries the fee they consult at."
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Default consult fee</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="w-16 text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {departments.data?.map((department) => (
+                  <TableRow key={department.id}>
+                    <TableCell className="font-medium">{department.name}</TableCell>
+                    <TableCell>
+                      {department.defaultConsultFeeItemId
+                        ? (catalogById.get(department.defaultConsultFeeItemId)?.name ?? "—")
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
+                      {formatDate(department.createdAt, timeZone)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => setDepartmentDialog({ mode: "edit", department })}
+                      >
+                        Edit
+                      </Button>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {departments.data.map((department) => (
-                    <TableRow key={department.id}>
-                      <TableCell className="font-medium">{department.name}</TableCell>
-                      <TableCell>
-                        {department.defaultConsultFeeItemId
-                          ? (catalogById.get(department.defaultConsultFeeItemId)?.name ?? "—")
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {formatDate(department.createdAt, timeZone)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          onClick={() => setDepartmentDialog({ mode: "edit", department })}
-                        >
-                          Edit
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        </section>
+                ))}
+              </TableBody>
+            </Table>
+          </ListState>
+        </Panel>
 
-        <section className="flex flex-col rounded-xl bg-muted p-1">
-          <div className="flex h-9 items-center justify-between gap-2 px-3 text-muted-foreground">
-            <h2 className="min-w-0 truncate">Practitioners</h2>
-            <Button
-              size="xs"
-              disabled={!departments.data?.length}
-              onClick={() => setPractitionerDialog({ mode: "create" })}
+        <div className="flex flex-col gap-2">
+          <ListToolbar>
+            <SearchInput
+              label="Search practitioners"
+              placeholder="Search name or registration no."
+              onQueryChange={setQuery}
+            />
+          </ListToolbar>
+          <Panel
+            label="Practitioners"
+            action={
+              <Button
+                size="xs"
+                disabled={!departments.data?.length}
+                onClick={() => setPractitionerDialog({ mode: "create" })}
+              >
+                New practitioner
+              </Button>
+            }
+          >
+            <ListState
+              query={practitioners}
+              errorTitle="Could not load practitioners"
+              isEmpty={practitioners.data?.length === 0}
+              empty={
+                query
+                  ? "No practitioners match this search."
+                  : "No practitioners yet. Add the clinicians a patient can be booked with."
+              }
             >
-              New practitioner
-            </Button>
-          </div>
-          <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
-            {practitioners.isPending ? null : practitioners.isError ? (
-              <ErrorNote title="Could not load practitioners" error={practitioners.error} inset />
-            ) : practitioners.data.length === 0 ? (
-              <div className="flex min-h-32 items-center justify-center px-4 text-center text-muted-foreground">
-                No practitioners yet. Add the clinicians a patient can be booked with.
-              </div>
-            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -253,7 +275,7 @@ function StaffRoute() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {practitioners.data.map((practitioner) => {
+                  {practitioners.data?.map((practitioner) => {
                     const linkedMember = practitioner.memberUserId
                       ? memberByUserId.get(practitioner.memberUserId)
                       : undefined;
@@ -302,17 +324,18 @@ function StaffRoute() {
                   })}
                 </TableBody>
               </Table>
-            )}
-          </div>
-        </section>
+            </ListState>
+          </Panel>
+        </div>
       </PageBody>
 
       {departmentDialog ? (
         <DepartmentDialog
           state={departmentDialog}
           orgSlug={orgSlug}
-          catalogItems={catalog.data ?? []}
+          catalogItems={catalogItems}
           catalogPending={catalog.isPending}
+          catalogFooter={catalogFooter}
           onClose={() => setDepartmentDialog(null)}
         />
       ) : null}
@@ -322,9 +345,10 @@ function StaffRoute() {
           orgSlug={orgSlug}
           departments={departments.data ?? []}
           members={members.data?.members ?? []}
-          catalogItems={catalog.data ?? []}
+          catalogItems={catalogItems}
           membersPending={members.isPending}
           catalogPending={catalog.isPending}
+          catalogFooter={catalogFooter}
           onClose={() => setPractitionerDialog(null)}
         />
       ) : null}
@@ -337,12 +361,14 @@ function DepartmentDialog({
   orgSlug,
   catalogItems,
   catalogPending,
+  catalogFooter,
   onClose,
 }: {
   state: Exclude<DepartmentDialogState, null>;
   orgSlug: string;
   catalogItems: CatalogOption[];
   catalogPending: boolean;
+  catalogFooter: ReactNode;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -354,28 +380,22 @@ function DepartmentDialog({
     },
   });
 
-  // Awaited, so the dialog closes onto a list that has already refetched.
-  const onSuccess = async (message: string) => {
-    await queryClient.invalidateQueries({
-      queryKey: orpc.staff.listDepartments.key({ input: { orgSlug } }),
-    });
-    toast.success(message);
-    onClose();
-  };
-  // The server names the clash now, so there is nothing left to re-word here.
-  const onError = (error: unknown) => toast.error(errorMessage(error));
+  const mutationFeedback = (message: string) => ({
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: orpc.staff.listDepartments.key({ input: { orgSlug } }),
+      });
+      toast.success(message);
+      onClose();
+    },
+    onError: (error: unknown) => toast.error(errorMessage(error)),
+  });
 
   const createDepartment = useMutation(
-    orpc.staff.createDepartment.mutationOptions({
-      onSuccess: () => onSuccess("Department created"),
-      onError,
-    }),
+    orpc.staff.createDepartment.mutationOptions(mutationFeedback("Department created")),
   );
   const updateDepartment = useMutation(
-    orpc.staff.updateDepartment.mutationOptions({
-      onSuccess: () => onSuccess("Department updated"),
-      onError,
-    }),
+    orpc.staff.updateDepartment.mutationOptions(mutationFeedback("Department updated")),
   );
   const isSubmitting = createDepartment.isPending || updateDepartment.isPending;
   const submit = form.handleSubmit(({ name, defaultConsultFeeItemId }) => {
@@ -434,6 +454,7 @@ function DepartmentDialog({
                 </FormItem>
               )}
             />
+            {catalogFooter}
             <DialogFooter>
               <Button type="button" variant="ghost" disabled={isSubmitting} onClick={onClose}>
                 Cancel
@@ -457,6 +478,7 @@ function PractitionerDialog({
   catalogItems,
   membersPending,
   catalogPending,
+  catalogFooter,
   onClose,
 }: {
   state: Exclude<PractitionerDialogState, null>;
@@ -466,6 +488,7 @@ function PractitionerDialog({
   catalogItems: CatalogOption[];
   membersPending: boolean;
   catalogPending: boolean;
+  catalogFooter: ReactNode;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -486,26 +509,22 @@ function PractitionerDialog({
     },
   });
 
-  const onError = (error: unknown) => toast.error(errorMessage(error));
-  const onSuccess = async (message: string) => {
-    await queryClient.invalidateQueries({
-      queryKey: orpc.staff.listPractitioners.key({ input: { orgSlug } }),
-    });
-    toast.success(message);
-    onClose();
-  };
+  const mutationFeedback = (message: string) => ({
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: orpc.staff.listPractitioners.key({ input: { orgSlug } }),
+      });
+      toast.success(message);
+      onClose();
+    },
+    onError: (error: unknown) => toast.error(errorMessage(error)),
+  });
 
   const createPractitioner = useMutation(
-    orpc.staff.createPractitioner.mutationOptions({
-      onSuccess: () => onSuccess("Practitioner created"),
-      onError,
-    }),
+    orpc.staff.createPractitioner.mutationOptions(mutationFeedback("Practitioner created")),
   );
   const updatePractitioner = useMutation(
-    orpc.staff.updatePractitioner.mutationOptions({
-      onSuccess: () => onSuccess("Practitioner updated"),
-      onError,
-    }),
+    orpc.staff.updatePractitioner.mutationOptions(mutationFeedback("Practitioner updated")),
   );
   const isSubmitting = createPractitioner.isPending || updatePractitioner.isPending;
   const submit = form.handleSubmit((values) => {
@@ -670,6 +689,7 @@ function PractitionerDialog({
                 )}
               />
             </div>
+            {catalogFooter}
 
             <DialogFooter>
               <Button type="button" variant="ghost" disabled={isSubmitting} onClick={onClose}>

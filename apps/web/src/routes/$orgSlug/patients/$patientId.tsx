@@ -1,4 +1,5 @@
-import type { AppPermission } from "@hms/auth/access";
+import { toSignedPaise } from "@hms/api/lib/invoice-math";
+import { authorize, type AppPermission } from "@hms/auth/access";
 import { buttonVariants } from "@hms/ui/components/button";
 import { cn } from "@hms/ui/lib/utils";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
@@ -7,8 +8,8 @@ import { CalendarIcon } from "lucide-react";
 import { z } from "zod";
 
 import { Monogram } from "@/components/monogram";
-import { PageBody, PageHeader } from "@/components/page";
-import { PatientBilling } from "@/components/patient-record/billing";
+import { PageBody, PageHeader, PageTab, PageTabs } from "@/components/page";
+import { PatientBilling, type PatientAccount } from "@/components/patient-record/billing";
 import {
   InlineClinicalBlock,
   InlineRow,
@@ -16,7 +17,7 @@ import {
   type EditablePatientRecord,
 } from "@/components/patient-record/inline-fields";
 import { PatientVisits } from "@/components/patient-record/visits";
-import { useCan, useMembership } from "@/lib/membership";
+import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { formatBusinessDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
@@ -51,28 +52,20 @@ export const Route = createFileRoute("/$orgSlug/patients/$patientId")({
 });
 
 function PinnedFacts({
-  orgSlug,
   record,
   ageLabel,
   canReadBilling,
+  account,
   currency,
 }: {
-  orgSlug: string;
   record: EditablePatientRecord;
   ageLabel: string;
   canReadBilling: boolean;
+  account: PatientAccount | undefined;
   currency: string;
 }) {
-  const account = useQuery({
-    ...orpc.patient.account.queryOptions({
-      input: { orgSlug, patientId: record.id },
-      // The bar shows one number; without this every invoice behind it wakes the header.
-      select: (data) => data.outstanding,
-    }),
-    enabled: canReadBilling,
-  });
-  const outstanding = account.data;
-  const owes = outstanding !== undefined && Number(outstanding) !== 0;
+  const outstanding = account?.outstanding;
+  const owes = outstanding !== undefined && toSignedPaise(outstanding) !== 0;
 
   return (
     <div className="shrink-0 border-b border-border bg-card px-3 py-3 lg:px-6">
@@ -266,6 +259,9 @@ function PatientRecordSections({
   ageLabel,
   currency,
   visible,
+  account,
+  accountPending,
+  accountError,
 }: {
   orgSlug: string;
   patientId: string;
@@ -273,35 +269,28 @@ function PatientRecordSections({
   ageLabel: string;
   currency: string;
   visible: (typeof TABS)[number][];
+  account: PatientAccount | undefined;
+  accountPending: boolean;
+  accountError: Error | null;
 }) {
   const { tab } = Route.useSearch();
   const active: TabId = visible.some((entry) => entry.id === tab) ? (tab as TabId) : "record";
 
   return (
     <>
-      <nav
-        aria-label="Patient record sections"
-        className="min-h-10 shrink-0 border-b border-border"
-      >
-        <div className="mx-auto flex min-h-10 w-full max-w-4xl gap-1 px-4">
-          {visible.map(({ id, label }) => (
-            <Link
-              key={id}
-              to="/$orgSlug/patients/$patientId"
-              params={{ orgSlug, patientId }}
-              search={id === "record" ? {} : { tab: id }}
-              data-status={active === id ? "active" : undefined}
-              className={cn(
-                "-mb-px flex shrink-0 items-center border-b-2 border-transparent px-3 text-xs text-muted-foreground transition-colors",
-                "[@media(hover:hover)_and_(pointer:fine)]:hover:text-foreground",
-                "data-[status=active]:border-foreground data-[status=active]:font-medium data-[status=active]:text-foreground",
-              )}
-            >
-              {label}
-            </Link>
-          ))}
-        </div>
-      </nav>
+      <PageTabs label="Patient record sections" className="mx-auto w-full max-w-4xl">
+        {visible.map(({ id, label }) => (
+          <PageTab
+            key={id}
+            to="/$orgSlug/patients/$patientId"
+            params={{ orgSlug, patientId }}
+            search={id === "record" ? {} : { tab: id }}
+            data-status={active === id ? "active" : undefined}
+          >
+            {label}
+          </PageTab>
+        ))}
+      </PageTabs>
 
       <PageBody>
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
@@ -310,7 +299,12 @@ function PatientRecordSections({
           ) : active === "visits" ? (
             <PatientVisits orgSlug={orgSlug} patientId={patientId} currency={currency} />
           ) : (
-            <PatientBilling orgSlug={orgSlug} patientId={patientId} />
+            <PatientBilling
+              orgSlug={orgSlug}
+              account={account}
+              isPending={accountPending}
+              error={accountError}
+            />
           )}
         </div>
       </PageBody>
@@ -326,13 +320,17 @@ function PatientDetailRoute() {
   const record = useSuspenseQuery(
     orpc.patient.get.queryOptions({ input: { orgSlug, patientId } }),
   ).data;
-  const currency = useMembership(orgSlug, (membership) => membership.currency);
-  const canReadPatient = useCan(orgSlug, { patient: ["read"] });
-  const canReadVisits = useCan(orgSlug, { opd: ["read"] });
-  const canReadBilling = useCan(orgSlug, { billing: ["read"] });
+  const { roles, currency } = useMembership(orgSlug);
+  const canReadPatient = authorize(roles, { patient: ["read"] });
+  const canReadVisits = authorize(roles, { opd: ["read"] });
+  const canReadBilling = authorize(roles, { billing: ["read"] });
   const visible = TABS.filter(({ id }) =>
     id === "record" ? canReadPatient : id === "visits" ? canReadVisits : canReadBilling,
   );
+  const account = useQuery({
+    ...orpc.patient.account.queryOptions({ input: { orgSlug, patientId } }),
+    enabled: canReadBilling,
+  });
   const ageLabel = patientAgeLabel(record.dateOfBirth, record.dobEstimated, today);
 
   return (
@@ -354,7 +352,7 @@ function PatientDetailRoute() {
       />
 
       <PinnedFacts
-        orgSlug={orgSlug}
+        account={account.data}
         record={record}
         ageLabel={ageLabel}
         canReadBilling={canReadBilling}
@@ -368,6 +366,9 @@ function PatientDetailRoute() {
         ageLabel={ageLabel}
         currency={currency}
         visible={visible}
+        account={account.data}
+        accountPending={account.isPending}
+        accountError={account.error}
       />
     </>
   );

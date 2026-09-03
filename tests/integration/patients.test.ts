@@ -233,7 +233,7 @@ test("update changes demographics without changing identity or consuming an MRN"
       dobEstimated: true,
       address: "",
     }),
-    "NOT_FOUND",
+    "CONFLICT",
   );
 });
 
@@ -635,7 +635,8 @@ test("fresh CAS succeeds while stale and missing updates emit no success audit",
       ),
     ),
   );
-  expect(missing.code).toBe("NOT_FOUND");
+  expect(missing.code).toBe("CONFLICT");
+  expect(missing.data?.reason).toBe("stale_record");
 
   const winner = await api.patient.get({
     orgSlug: organization.slug,
@@ -733,7 +734,7 @@ test("only the patient UID constraint receives the uid_taken discriminator", asy
     ),
   );
   expect(otherConstraint.code).toBe("CONFLICT");
-  expect(otherConstraint.data?.reason).toBe("duplicate");
+  expect(otherConstraint.data?.reason).toBeUndefined();
   await db
     .update(counter)
     .set({ value: 1 })

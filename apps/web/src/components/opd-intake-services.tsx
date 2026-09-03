@@ -12,36 +12,36 @@ import {
 import { Trash2Icon } from "lucide-react";
 
 import { formatMoney } from "@/lib/money";
-import { type WalkInQuote } from "@/lib/opd-service-preview";
-import { type ServiceLine } from "@/components/opd-service-picker";
+
+type IntakeServiceLine = {
+  key: string;
+  description: string;
+  category: string;
+  qty: number;
+  unitPrice: string;
+  taxRatePercent: string;
+  gross?: string;
+  editable: boolean;
+};
 
 export function ServiceLines({
-  quote,
-  services,
-  onChange,
-  onRemoveConsult,
+  lines,
+  currency,
+  onQuantityChange,
+  onRemove,
 }: {
-  quote: WalkInQuote;
-  services: ServiceLine[];
-  onChange: (services: ServiceLine[]) => void;
-  onRemoveConsult: () => void;
+  lines: IntakeServiceLine[];
+  currency: string;
+  onQuantityChange: (key: string, qty: number) => void;
+  onRemove: (key: string, editable: boolean) => void;
 }) {
-  const { currency } = quote;
-  const remove = (catalogItemId: string) =>
-    onChange(services.filter((service) => service.catalogItemId !== catalogItemId));
-  const setQty = (catalogItemId: string, qty: number) =>
-    onChange(
-      services.map((service) =>
-        service.catalogItemId === catalogItemId ? { ...service, qty } : service,
-      ),
-    );
-  const commitQty = (catalogItemId: string, input: HTMLInputElement) => {
+  const commitQty = (key: string, input: HTMLInputElement) => {
     const qty = Math.min(999, Math.max(1, input.valueAsNumber || 1));
     input.value = String(qty);
-    setQty(catalogItemId, qty);
+    onQuantityChange(key, qty);
   };
 
-  if (quote.lines.length === 0) {
+  if (lines.length === 0) {
     return <p className="text-muted-foreground">No services selected</p>;
   }
 
@@ -63,29 +63,31 @@ export function ServiceLines({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {quote.lines.map((line) => (
-              <TableRow key={`${line.source}:${line.chargeId}`}>
-                <TableCell className="font-medium">{line.description}</TableCell>
+            {lines.map((line) => (
+              <TableRow key={line.key}>
+                <TableCell>
+                  <p className="font-medium">{line.description}</p>
+                </TableCell>
                 <TableCell>
                   <Badge variant="muted" className="capitalize">
                     {line.category}
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  {line.source === "service" ? (
+                  {line.editable ? (
                     <Input
-                      key={`${line.chargeId}:${line.qty}`}
+                      key={`${line.key}:${line.qty}`}
                       type="number"
                       min={1}
                       max={999}
                       defaultValue={line.qty}
                       aria-label={`${line.description} quantity`}
                       className="w-16 tabular-nums"
-                      onBlur={(event) => commitQty(line.chargeId, event.currentTarget)}
+                      onBlur={(event) => commitQty(line.key, event.currentTarget)}
                       onKeyDown={(event) => {
                         if (event.key !== "Enter") return;
                         event.preventDefault();
-                        commitQty(line.chargeId, event.currentTarget);
+                        commitQty(line.key, event.currentTarget);
                       }}
                     />
                   ) : (
@@ -99,7 +101,7 @@ export function ServiceLines({
                   {line.taxRatePercent === "0.00" ? "—" : `${line.taxRatePercent}%`}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {formatMoney(line.gross, currency)}
+                  {line.gross ? formatMoney(line.gross, currency) : "—"}
                 </TableCell>
                 <TableCell>
                   <Button
@@ -107,9 +109,7 @@ export function ServiceLines({
                     size="icon-xs"
                     variant="ghost"
                     aria-label={`Remove ${line.description}`}
-                    onClick={() =>
-                      line.source === "service" ? remove(line.chargeId) : onRemoveConsult()
-                    }
+                    onClick={() => onRemove(line.key, line.editable)}
                   >
                     <Trash2Icon />
                   </Button>
@@ -121,9 +121,9 @@ export function ServiceLines({
       </div>
 
       <div className="grid gap-2 md:hidden">
-        {quote.lines.map((line) => (
+        {lines.map((line) => (
           <article
-            key={`${line.source}:${line.chargeId}`}
+            key={line.key}
             className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-lg border border-border p-3"
           >
             <div className="min-w-0">
@@ -138,53 +138,46 @@ export function ServiceLines({
               </div>
             </div>
             <div className="grid justify-items-end gap-2">
-              <span className="font-medium tabular-nums">{formatMoney(line.gross, currency)}</span>
-              {line.source === "service" ? (
-                <div className="flex items-center gap-1">
+              {line.gross ? (
+                <span className="font-medium tabular-nums">
+                  {formatMoney(line.gross, currency)}
+                </span>
+              ) : null}
+              <div className="flex items-center gap-1">
+                {line.editable ? (
                   <Input
-                    key={`${line.chargeId}:${line.qty}`}
+                    key={`${line.key}:${line.qty}`}
                     type="number"
                     min={1}
                     max={999}
                     defaultValue={line.qty}
                     aria-label={`${line.description} quantity`}
                     className="w-16 tabular-nums"
-                    onBlur={(event) => commitQty(line.chargeId, event.currentTarget)}
+                    onBlur={(event) => commitQty(line.key, event.currentTarget)}
                     onKeyDown={(event) => {
                       if (event.key !== "Enter") return;
                       event.preventDefault();
-                      commitQty(line.chargeId, event.currentTarget);
+                      commitQty(line.key, event.currentTarget);
                     }}
                   />
-                  <Button
-                    type="button"
-                    size="icon-xs"
-                    variant="ghost"
-                    aria-label={`Remove ${line.description}`}
-                    onClick={() => remove(line.chargeId)}
-                  >
-                    <Trash2Icon />
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1">
+                ) : (
                   <span
                     className="flex h-8 w-16 items-center px-2 tabular-nums"
                     aria-label={`${line.description} quantity`}
                   >
                     1
                   </span>
-                  <Button
-                    type="button"
-                    size="icon-xs"
-                    variant="ghost"
-                    aria-label={`Remove ${line.description}`}
-                    onClick={onRemoveConsult}
-                  >
-                    <Trash2Icon />
-                  </Button>
-                </div>
-              )}
+                )}
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label={`Remove ${line.description}`}
+                  onClick={() => onRemove(line.key, line.editable)}
+                >
+                  <Trash2Icon />
+                </Button>
+              </div>
             </div>
           </article>
         ))}

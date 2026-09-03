@@ -1,9 +1,3 @@
-import { formatMoney } from "./money";
-
-export function formatReportMoney(value: string, currency: string): string {
-  return formatMoney(value, currency);
-}
-
 export function validateReportPeriod(
   from: string,
   to: string,

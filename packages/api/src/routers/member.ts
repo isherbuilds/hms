@@ -9,13 +9,9 @@ import { z } from "zod";
 
 import { audit } from "../audit";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
+import { likePattern } from "../lib/schemas";
 
 const roleInput = z.enum(ORG_ROLES);
-
-/** `%`/`_` in user input must match literally, not as LIKE wildcards. */
-function likePattern(q: string): string {
-  return `%${q.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
-}
 
 // A member id from another tenant must not reach Better Auth's own endpoints.
 async function assertMemberIdInScope(memberId: string, orgId: string): Promise<void> {
@@ -35,12 +31,7 @@ async function assertMemberIdInScope(memberId: string, orgId: string): Promise<v
 export const memberRouter = {
   me: orgProcedure({ member: ["read"] }, orgInput).handler(async ({ context }) => {
     const { orgId, roles, userId } = context.scope;
-    // The guard already rejected an anonymous caller; the context type cannot carry
-    // that proof, so fail loud rather than assert it away.
-    const sessionUser = context.session?.user;
-    if (!sessionUser) {
-      throw new ORPCError("UNAUTHORIZED", { message: "Sign in again to continue." });
-    }
+    const sessionUser = context.session!.user;
 
     const [organizations, [settings]] = await Promise.all([
       // Predicate on `userId` by design: this lists which orgs the user belongs to, never
@@ -91,8 +82,6 @@ export const memberRouter = {
           role: member.role,
           name: user.name,
           email: user.email,
-          image: user.image,
-          joinedAt: member.createdAt,
         })
         .from(member)
         .innerJoin(user, eq(member.userId, user.id))

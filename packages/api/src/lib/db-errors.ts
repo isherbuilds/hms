@@ -9,31 +9,18 @@ type DatabaseError = {
  * `code` is never on the outermost one. The `seen` set stops a self-referential
  * cause from looping forever.
  */
-function* causes(error: unknown): Generator<DatabaseError> {
+export function uniqueViolationConstraint(error: unknown): string | null | undefined {
   const seen = new Set<unknown>();
   let current = error;
 
   while (current && typeof current === "object" && !seen.has(current)) {
     seen.add(current);
-    yield current as DatabaseError;
-    current = (current as DatabaseError).cause;
-  }
-}
-
-/** `23505` is Postgres for "unique violation". */
-function uniqueViolation(error: unknown): DatabaseError | undefined {
-  for (const link of causes(error)) {
-    if (link.code === "23505") return link;
+    const databaseError = current as DatabaseError;
+    if (databaseError.code === "23505") {
+      return typeof databaseError.constraint === "string" ? databaseError.constraint : null;
+    }
+    current = databaseError.cause;
   }
 
   return undefined;
-}
-
-export function uniqueViolationConstraint(error: unknown): string | undefined {
-  const constraint = uniqueViolation(error)?.constraint;
-  return typeof constraint === "string" ? constraint : undefined;
-}
-
-export function isUniqueViolation(error: unknown): boolean {
-  return uniqueViolation(error) !== undefined;
 }

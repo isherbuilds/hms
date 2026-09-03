@@ -8,23 +8,8 @@ import { journalLines } from "@hms/db/schema/journal-lines";
 
 import { businessDate } from "./business-date";
 import { fromPaise, toPaise } from "./invoice-math";
-export type SystemAccountKey =
-  | "cash"
-  | "bank"
-  | "patient_receivables"
-  | "gst_output"
-  | "revenue_consultation"
-  | "revenue_procedure"
-  | "revenue_lab"
-  | "revenue_radiology"
-  | "revenue_other";
 
-const SYSTEM_ACCOUNTS: ReadonlyArray<{
-  key: SystemAccountKey;
-  code: string;
-  name: string;
-  type: AccountType;
-}> = [
+const SYSTEM_ACCOUNTS = [
   { key: "cash", code: "1000", name: "Cash in Hand", type: "asset" },
   { key: "bank", code: "1100", name: "Bank", type: "asset" },
   {
@@ -59,22 +44,17 @@ const SYSTEM_ACCOUNTS: ReadonlyArray<{
     type: "income",
   },
   { key: "revenue_other", code: "4900", name: "Other Revenue", type: "income" },
-];
+] as const satisfies ReadonlyArray<{
+  key: string;
+  code: string;
+  name: string;
+  type: AccountType;
+}>;
 
-const SYSTEM_ACCOUNT_KEYS: Record<SystemAccountKey, true> = {
-  cash: true,
-  bank: true,
-  patient_receivables: true,
-  gst_output: true,
-  revenue_consultation: true,
-  revenue_procedure: true,
-  revenue_lab: true,
-  revenue_radiology: true,
-  revenue_other: true,
-};
+export type SystemAccountKey = (typeof SYSTEM_ACCOUNTS)[number]["key"];
 
 function isSystemAccountKey(value: string): value is SystemAccountKey {
-  return SYSTEM_ACCOUNT_KEYS[value as SystemAccountKey] === true;
+  return SYSTEM_ACCOUNTS.some((account) => account.key === value);
 }
 
 export function revenueAccountFor(category: string | null): SystemAccountKey {

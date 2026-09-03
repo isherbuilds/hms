@@ -106,12 +106,6 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   { to: "/$orgSlug/settings/audit", label: "Audit", permission: { audit: ["read"] } },
 ];
 
-// Reachable for anyone who can open at least one tab, so the entry does not vanish
-// for a role that can read members but not save settings.
-export const SETTINGS_PERMISSIONS: readonly AppPermission[] = SETTINGS_TABS.map(
-  ({ permission }) => permission,
-);
-
 export type ReportLink = NavEntry<
   "/$orgSlug/reports/gst" | "/$orgSlug/reports/trial-balance" | "/$orgSlug/reports/balance-sheet"
 > & { icon: LucideIcon; description: string };

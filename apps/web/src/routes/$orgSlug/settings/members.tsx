@@ -38,14 +38,20 @@ import {
 } from "@hms/ui/components/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
-import { CopyIcon, MoreHorizontalIcon, SearchIcon, UsersIcon } from "lucide-react";
+import { CopyIcon, MoreHorizontalIcon, UsersIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useConfirm } from "@/components/confirm-dialog";
-import { useDebouncedCallback } from "@/hooks/use-debounced-value";
+import {
+  ListState,
+  ListToolbar,
+  PageBody,
+  PageHeader,
+  Panel,
+  SearchInput,
+} from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 import { errorMessage } from "@/lib/orpc-error";
@@ -77,23 +83,6 @@ function RoleBadge({ role }: { role: string }) {
         </Badge>
       ))}
     </span>
-  );
-}
-
-function MemberSearch({ onSettledChange }: { onSettledChange: (search: string) => void }) {
-  const handleChange = useDebouncedCallback(onSettledChange, 300);
-
-  return (
-    <div className="relative max-w-xs">
-      <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        type="search"
-        aria-label="Search members"
-        placeholder="Search by name or email"
-        className="pl-8"
-        onChange={(event) => handleChange(event.currentTarget.value.trim())}
-      />
-    </div>
   );
 }
 
@@ -322,166 +311,153 @@ function MemberResults({ orgSlug, q }: { orgSlug: string; q: string }) {
 
   return (
     <>
-      {/* One tray, one list: an invitation is the same person a step earlier,
-            so both sit in the same board rather than in two boxes. Same shell
-            as the OPD day list (docs/design.md §1). */}
-      <section className="flex flex-col rounded-xl bg-muted p-1">
-        <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
-          {/* The count lives here, beside the rows it counts, so the page
-              header needs no second read of the same list. */}
-          <span className="min-w-0 truncate">
-            People
+      <Panel
+        label="People"
+        action={
+          <span className="shrink-0 tabular-nums">
             {people.length === MEMBER_PAGE_LIMIT
-              ? ` · first ${MEMBER_PAGE_LIMIT} — search to narrow`
-              : ` · ${people.length}`}
+              ? `first ${MEMBER_PAGE_LIMIT} — search to narrow`
+              : people.length}
             {invitations.length > 0 ? ` · ${invitations.length} invited` : ""}
           </span>
-        </div>
-        {/* The card holds its height through a pending read, a failed one and
-              a search that matches nobody, so the page keeps its shape. */}
-        <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
-          {members.isPending ? null : members.isError ? (
-            <div className="flex min-h-32 flex-col items-start justify-center gap-3 p-4">
-              <ErrorNote title="Could not load members" error={members.error} />
-              <Button variant="outline" size="xs" onClick={() => members.refetch()}>
-                Try again
-              </Button>
-            </div>
-          ) : people.length === 0 && invitations.length === 0 && q ? (
-            <div className="flex min-h-32 flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground">
-              <SearchIcon className="size-5" />
+        }
+      >
+        <ListState
+          query={members}
+          errorTitle="Could not load members"
+          isEmpty={people.length === 0 && invitations.length === 0}
+          empty={
+            q ? (
               <p className="max-w-sm">
                 Nobody matches “{q}”. Search covers names, email addresses and invitations.
               </p>
-            </div>
-          ) : people.length === 0 && invitations.length === 0 ? (
-            <div className="flex min-h-32 flex-col items-center justify-center gap-3 px-4 text-center">
-              <UsersIcon className="size-5 text-muted-foreground" />
-              <p className="max-w-sm text-muted-foreground">
-                You are the only one here. Accounts are created by an administrator, then invited
-                into this organization.
-              </p>
-              <InviteAction orgSlug={orgSlug} compact />
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Person</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-8" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {people.map((person) => (
-                  <TableRow key={person.id}>
-                    <TableCell>
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{person.name}</div>
-                        <div className="truncate text-muted-foreground">{person.email}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <RoleBadge role={person.role} />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">active</TableCell>
-                    <TableCell className="text-right">
-                      <ClientOnly fallback={null}>
-                        {canManage ? (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              render={<Button variant="ghost" size="icon-xs" />}
-                              aria-label={`Actions for ${person.name || person.email}`}
+            ) : (
+              <div className="flex flex-col items-center gap-3">
+                <UsersIcon className="size-5 text-muted-foreground" />
+                <p className="max-w-sm">
+                  You are the only one here. Accounts are created by an administrator, then invited
+                  into this organization.
+                </p>
+                <InviteAction orgSlug={orgSlug} compact />
+              </div>
+            )
+          }
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Person</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-8" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {people.map((person) => (
+                <TableRow key={person.id}>
+                  <TableCell>
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{person.name}</div>
+                      <div className="truncate text-muted-foreground">{person.email}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <RoleBadge role={person.role} />
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">active</TableCell>
+                  <TableCell className="text-right">
+                    <ClientOnly fallback={null}>
+                      {canManage ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={<Button variant="ghost" size="icon-xs" />}
+                            aria-label={`Actions for ${person.name || person.email}`}
+                          >
+                            <MoreHorizontalIcon />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-40">
+                            <DropdownMenuGroup>
+                              <DropdownMenuLabel>Change role</DropdownMenuLabel>
+                              {ORG_ROLES.map((option) => (
+                                <DropdownMenuItem
+                                  key={option}
+                                  disabled={
+                                    parseRoles(person.role).includes(option) || updateRole.isPending
+                                  }
+                                  onClick={() =>
+                                    updateRole.mutate({
+                                      orgSlug,
+                                      memberId: person.id,
+                                      role: option,
+                                    })
+                                  }
+                                >
+                                  {option}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuGroup>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              disabled={removeMember.isPending}
+                              onClick={() =>
+                                confirm({
+                                  title: "Remove from organization?",
+                                  description: `${person.name || person.email} loses access to this organization immediately. Their audit history is kept.`,
+                                  confirmLabel: "Remove",
+                                  run: () => removeMember.mutate({ orgSlug, memberId: person.id }),
+                                })
+                              }
                             >
-                              <MoreHorizontalIcon />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="min-w-40">
-                              <DropdownMenuGroup>
-                                <DropdownMenuLabel>Change role</DropdownMenuLabel>
-                                {ORG_ROLES.map((option) => (
-                                  <DropdownMenuItem
-                                    key={option}
-                                    disabled={
-                                      parseRoles(person.role).includes(option) ||
-                                      updateRole.isPending
-                                    }
-                                    onClick={() =>
-                                      updateRole.mutate({
-                                        orgSlug,
-                                        memberId: person.id,
-                                        role: option,
-                                      })
-                                    }
-                                  >
-                                    {option}
-                                  </DropdownMenuItem>
-                                ))}
-                              </DropdownMenuGroup>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                variant="destructive"
-                                disabled={removeMember.isPending}
-                                onClick={() =>
-                                  confirm({
-                                    title: "Remove from organization?",
-                                    description: `${person.name || person.email} loses access to this organization immediately. Their audit history is kept.`,
-                                    confirmLabel: "Remove",
-                                    run: () =>
-                                      removeMember.mutate({ orgSlug, memberId: person.id }),
-                                  })
-                                }
-                              >
-                                Remove from organization
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        ) : null}
-                      </ClientOnly>
-                    </TableCell>
-                  </TableRow>
-                ))}
-
-                {invitations.map((invitation) => (
-                  <TableRow key={invitation.id} className="text-muted-foreground">
-                    <TableCell>
-                      <div className="truncate">{invitation.email}</div>
-                    </TableCell>
-                    <TableCell>
-                      <RoleBadge role={invitation.role ?? "member"} />
-                    </TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-2 whitespace-nowrap">
-                        <Badge variant="outline">invited</Badge>
-                        expires {formatDate(invitation.expiresAt, timeZone)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {canRevoke ? (
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          disabled={revoke.isPending}
-                          onClick={() =>
-                            confirm({
-                              title: "Revoke this invitation?",
-                              description: `The link sent to ${invitation.email} stops working. You can invite them again afterwards.`,
-                              confirmLabel: "Revoke",
-                              run: () => revoke.mutate({ orgSlug, invitationId: invitation.id }),
-                            })
-                          }
-                        >
-                          Revoke
-                        </Button>
+                              Remove from organization
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       ) : null}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
-      </section>
+                    </ClientOnly>
+                  </TableCell>
+                </TableRow>
+              ))}
+
+              {invitations.map((invitation) => (
+                <TableRow key={invitation.id} className="text-muted-foreground">
+                  <TableCell>
+                    <div className="truncate">{invitation.email}</div>
+                  </TableCell>
+                  <TableCell>
+                    <RoleBadge role={invitation.role ?? "member"} />
+                  </TableCell>
+                  <TableCell>
+                    <span className="flex items-center gap-2 whitespace-nowrap">
+                      <Badge variant="outline">invited</Badge>
+                      expires {formatDate(invitation.expiresAt, timeZone)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {canRevoke ? (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        disabled={revoke.isPending}
+                        onClick={() =>
+                          confirm({
+                            title: "Revoke this invitation?",
+                            description: `The link sent to ${invitation.email} stops working. You can invite them again afterwards.`,
+                            confirmLabel: "Revoke",
+                            run: () => revoke.mutate({ orgSlug, invitationId: invitation.id }),
+                          })
+                        }
+                      >
+                        Revoke
+                      </Button>
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ListState>
+      </Panel>
       {confirmDialog}
     </>
   );
@@ -492,7 +468,13 @@ function MemberDirectory({ orgSlug }: { orgSlug: string }) {
 
   return (
     <PageBody>
-      <MemberSearch onSettledChange={setQ} />
+      <ListToolbar>
+        <SearchInput
+          label="Search members"
+          placeholder="Search by name or email"
+          onQueryChange={setQ}
+        />
+      </ListToolbar>
       <MemberResults orgSlug={orgSlug} q={q} />
     </PageBody>
   );

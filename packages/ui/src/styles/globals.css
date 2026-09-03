@@ -173,8 +173,10 @@
 }
 
 @layer base {
+  /* `width` sizes vertical bars only; `height` is the horizontal one. */
   ::-webkit-scrollbar {
     width: 6px;
+    height: 6px;
   }
   ::-webkit-scrollbar-thumb {
     background-color: gray;

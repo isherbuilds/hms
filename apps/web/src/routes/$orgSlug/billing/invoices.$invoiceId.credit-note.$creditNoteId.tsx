@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { BillingDocumentView } from "@/components/billing-document-view";
-import { billingPdfUrl } from "@/lib/billing-document";
+import { BillingDocumentRoute } from "@/components/billing-document-view";
 
 export const Route = createFileRoute(
   "/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId",
@@ -12,16 +11,12 @@ export const Route = createFileRoute(
 
 function CreditNoteDocumentRoute() {
   const { orgSlug, invoiceId, creditNoteId } = Route.useParams();
-
   return (
-    <BillingDocumentView
-      title="Credit note"
-      description="Credit note PDF"
-      pdfUrl={billingPdfUrl({
-        orgSlug,
-        invoiceId,
-        request: { kind: "credit-note", documentId: creditNoteId, layout: "a4" },
-      })}
+    <BillingDocumentRoute
+      orgSlug={orgSlug}
+      invoiceId={invoiceId}
+      kind="credit-note"
+      creditNoteId={creditNoteId}
     />
   );
 }

@@ -18,7 +18,8 @@ import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
 import { downloadXlsx } from "@/lib/report-export";
-import { REPORT_PRINT_LANDSCAPE_CSS, formatReportMoney } from "@/lib/report-presentation";
+import { formatMoney } from "@/lib/money";
+import { REPORT_PRINT_LANDSCAPE_CSS } from "@/lib/report-presentation";
 import { orgMonthToDate as defaultRange } from "@/lib/org-datetime";
 import { requireOrgPermission } from "@/lib/route-permission";
 
@@ -52,7 +53,6 @@ function GstReportRoute() {
   const { from, to } = Route.useLoaderData();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const report = useQuery(orpc.report.gst.queryOptions({ input: { orgSlug, from, to } }));
-  const money = (value: string) => formatReportMoney(value, currency);
 
   const exportReport = () => {
     if (!report.data) return;
@@ -218,34 +218,38 @@ function GstReportRoute() {
                         <TableCell>{row.patientName}</TableCell>
                         <TableCell className="font-mono">{row.patientMrn}</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {money(row.taxableValue)}
+                          {formatMoney(row.taxableValue, currency)}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">{money(row.cgst)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{money(row.sgst)}</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {money(row.taxAmount)}
+                          {formatMoney(row.cgst, currency)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatMoney(row.sgst, currency)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatMoney(row.taxAmount, currency)}
                         </TableCell>
                         <TableCell className="text-right font-medium tabular-nums">
-                          {money(row.gross)}
+                          {formatMoney(row.gross, currency)}
                         </TableCell>
                       </TableRow>
                     ))}
                     <TableRow className="border-t-2 font-semibold">
                       <TableCell colSpan={5}>Total</TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {money(report.data.totals.taxableValue)}
+                        {formatMoney(report.data.totals.taxableValue, currency)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {money(report.data.totals.cgst)}
+                        {formatMoney(report.data.totals.cgst, currency)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {money(report.data.totals.sgst)}
+                        {formatMoney(report.data.totals.sgst, currency)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {money(report.data.totals.taxAmount)}
+                        {formatMoney(report.data.totals.taxAmount, currency)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {money(report.data.totals.gross)}
+                        {formatMoney(report.data.totals.gross, currency)}
                       </TableCell>
                     </TableRow>
                   </TableBody>
@@ -274,32 +278,32 @@ function GstReportRoute() {
                             {row.taxRatePercent}%
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {money(row.taxableValue)}
+                            {formatMoney(row.taxableValue, currency)}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {money(row.cgst)}
+                            {formatMoney(row.cgst, currency)}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {money(row.sgst)}
+                            {formatMoney(row.sgst, currency)}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {money(row.taxAmount)}
+                            {formatMoney(row.taxAmount, currency)}
                           </TableCell>
                         </TableRow>
                       ))}
                       <TableRow className="border-t-2 font-semibold">
                         <TableCell>Total</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {money(report.data.totals.taxableValue)}
+                          {formatMoney(report.data.totals.taxableValue, currency)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {money(report.data.totals.cgst)}
+                          {formatMoney(report.data.totals.cgst, currency)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {money(report.data.totals.sgst)}
+                          {formatMoney(report.data.totals.sgst, currency)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {money(report.data.totals.taxAmount)}
+                          {formatMoney(report.data.totals.taxAmount, currency)}
                         </TableCell>
                       </TableRow>
                     </TableBody>
@@ -327,20 +331,20 @@ function GstReportRoute() {
                           </TableCell>
                           <TableCell className="tabular-nums">{row.taxRatePercent}%</TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {money(row.taxableValue)}
+                            {formatMoney(row.taxableValue, currency)}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {money(row.taxAmount)}
+                            {formatMoney(row.taxAmount, currency)}
                           </TableCell>
                         </TableRow>
                       ))}
                       <TableRow className="border-t-2 font-semibold">
                         <TableCell colSpan={2}>Total</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {money(report.data.totals.taxableValue)}
+                          {formatMoney(report.data.totals.taxableValue, currency)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {money(report.data.totals.taxAmount)}
+                          {formatMoney(report.data.totals.taxAmount, currency)}
                         </TableCell>
                       </TableRow>
                     </TableBody>

@@ -23,46 +23,27 @@ import { z } from "zod";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { invalidatePatientState } from "@/lib/domain-invalidation";
-import { optionalNumberText, optionalText } from "@/lib/form-schema";
+import {
+  optionalNumberText,
+  optionalText,
+  patientFieldSchema,
+  type PatientFields,
+} from "@/lib/form-schema";
 import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { applyOrpcFieldError, errorReason } from "@/lib/orpc-error";
 import { ageYearsToEstimatedDateOfBirth, patientAgeYears } from "@/lib/patient-age";
 
-export type EditablePatient = {
+export type EditablePatient = PatientFields & {
   id: string;
   updatedAt: string;
-  name: string;
-  phone: string;
-  sex: "male" | "female" | "other" | "unknown";
-  dateOfBirth: string;
-  dobEstimated: boolean;
-  address: string;
-  email: string | null;
-  bloodGroup: "A+" | "A-" | "B+" | "B-" | "AB+" | "AB-" | "O+" | "O-" | null;
-  allergies: string | null;
-  medicalHistory: string | null;
-  uid: string | null;
 };
 
-const patientFormSchema = z
-  .object({
-    name: z.string().trim().min(1, "Enter the patient's name").max(200),
-    phone: z.string().trim().min(4, "Enter at least 4 characters").max(20),
-    // `""`, not `undefined`, is what the empty `<select>` holds — a default the control
-    // does not match makes the form dirty before anyone touches it.
-    sex: z
-      .string()
-      .min(1, "Choose sex")
-      .pipe(z.enum(["male", "female", "other", "unknown"])),
-    dateOfBirth: optionalText(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date")),
+const patientFormSchema = patientFieldSchema
+  .omit({ dobEstimated: true })
+  .extend({
+    dateOfBirth: optionalText(patientFieldSchema.shape.dateOfBirth),
     age: optionalNumberText(z.number().int().min(0).max(150)),
-    address: z.string().trim().max(500),
-    email: optionalText(z.email("Enter a valid email address")),
-    bloodGroup: optionalText(z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"])),
-    allergies: optionalText(z.string()),
-    medicalHistory: optionalText(z.string()),
-    uid: optionalText(z.string().max(100)),
   })
   .refine((values) => values.dateOfBirth !== null || values.age !== null, {
     message: "Enter a date of birth or age",

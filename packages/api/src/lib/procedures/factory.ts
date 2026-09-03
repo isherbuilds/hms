@@ -30,9 +30,7 @@ async function resolveMembership(
   userId: string,
   orgSlug: string,
 ): Promise<OrgMembership | null> {
-  // A slug cannot contain a NUL, so no two (user, slug) pairs can collide.
-  const key = `${userId}\u0000${orgSlug}`;
-  const memoized = context.memberships.get(key);
+  const memoized = context.memberships.get(orgSlug);
   if (memoized) {
     return memoized;
   }
@@ -47,7 +45,7 @@ async function resolveMembership(
     .limit(1)
     .then(([row]) => (row ? { orgId: row.orgId, roles: parseRoles(row.role) } : null));
 
-  context.memberships.set(key, pending);
+  context.memberships.set(orgSlug, pending);
   return pending;
 }
 
@@ -55,7 +53,7 @@ async function resolveMembership(
 // leak the existence that answering FORBIDDEN instead of NOT_FOUND exists to hide.
 const NO_ORG_ACCESS = "You do not have access to this organization.";
 
-export async function authorizeOrg(
+async function authorizeOrg(
   context: ORPCContext,
   orgSlug: string,
   permission: AppPermission,

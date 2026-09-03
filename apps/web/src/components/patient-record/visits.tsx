@@ -1,4 +1,4 @@
-import { Button, buttonVariants } from "@hms/ui/components/button";
+import { buttonVariants } from "@hms/ui/components/button";
 import {
   Table,
   TableBody,
@@ -14,7 +14,7 @@ import { ChevronDownIcon, FileTextIcon, ImageIcon, PaperclipIcon } from "lucide-
 import { useState } from "react";
 
 import { OpdAppointmentStatusBadge } from "@/components/opd-appointment";
-import { ErrorNote } from "@/components/page";
+import { ErrorNote, ListState, LoadMore, Panel } from "@/components/page";
 import { formatMoney } from "@/lib/money";
 import { formatBusinessDate, formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { formatFileSize, openOrgFile } from "@/lib/org-files";
@@ -232,39 +232,23 @@ export function PatientVisits({
   currency: string;
 }) {
   const visits = useInfiniteQuery(visitsQuery(orgSlug, patientId));
-
-  if (visits.isPending) return null;
-  if (visits.isError) {
-    return <ErrorNote title="Could not load visits" error={visits.error} />;
-  }
-
-  const rows = visits.data.pages.flatMap((page) => page.items);
-
-  if (rows.length === 0) {
-    return <p className="text-muted-foreground">This patient has no visits yet.</p>;
-  }
+  const rows = visits.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
-    <section className="flex flex-col gap-2">
-      <p className="flex min-h-6 items-center text-xs text-muted-foreground">
-        Visits · open a row to see its files and charges
-      </p>
-      <div className="rounded-lg border border-border bg-card">
+    <Panel
+      label="Visits · open a row to see its files and charges"
+      footer={<LoadMore query={visits} shown={rows.length} />}
+    >
+      <ListState
+        query={visits}
+        errorTitle="Could not load visits"
+        isEmpty={rows.length === 0}
+        empty="This patient has no visits yet."
+      >
         {rows.map((visit) => (
           <VisitAccordionRow key={visit.id} orgSlug={orgSlug} visit={visit} currency={currency} />
         ))}
-      </div>
-      {visits.hasNextPage ? (
-        <Button
-          size="xs"
-          variant="outline"
-          className="w-fit"
-          disabled={visits.isFetchingNextPage}
-          onClick={() => visits.fetchNextPage()}
-        >
-          {visits.isFetchingNextPage ? "Loading…" : "Show earlier visits"}
-        </Button>
-      ) : null}
-    </section>
+      </ListState>
+    </Panel>
   );
 }

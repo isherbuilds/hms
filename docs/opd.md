@@ -41,10 +41,11 @@ cancelled or no-show attendance is not follow-up evidence.
 `opd.day` is tenant-scoped, keyset-paged, and ordered newest first by
 `(dayOrderAt, id)`, where `dayOrderAt = coalesce(arrivedAt, scheduledFor)`.
 
-Search is temporary client state and matches Patient name, MRN, phone, or an
-exact numeric token. The selected date and `includeClosed` filter are validated
-URL state. The register polls every 10 seconds, refetches on focus, and includes
-cancelled and no-show rows only when requested.
+Search is temporary client state and matches Patient name, MRN, phone, caller
+name, caller phone, or an exact numeric token. The selected date and
+`includeClosed` filter are validated URL state. The register polls every 10
+seconds, refetches on focus, and includes cancelled and no-show rows only when
+requested.
 
 The page has one **New appointment** entry. A booked row offers **Check in**;
 clicking or pressing Enter on a row opens the full OPD record. Cancel and no-show
@@ -60,10 +61,14 @@ older or direct caller-only bookings remain valid and require a Patient at
 check-in.
 
 Both paths use the same optional, server-searched Services picker. The picker
-returns at most six active tenant-scoped catalog matches. Selected rows and their
-first subtotal, tax, and total preview are local editable state while the current
-trusted quote fetches; the immediate path quotes every selected id and quantity
-on the server, and the server re-reads every id, price, and tax fact before writing.
+returns at most six active tenant-scoped catalog matches. Selected rows are local
+editable state. For **Now**, every amount on screen comes from one server quote
+(`opd.quoteWalkIn`) that re-reads each id, price, and tax fact. The financial
+shell stays visible at zero before a quote and while its inputs change; submit
+waits for the current quote. For **Later**,
+the form lists the chosen services with their catalog rate and no totals, because
+a booking collects nothing. The client sends the practitioner only; the server
+derives the department from the practitioner record.
 
 ### Now
 
@@ -109,7 +114,7 @@ mechanism.
 
 Catalog categories are `consultation | procedure | lab | radiology | other`, but
 an OPD attendance may only be charged for `OPD_BILLABLE_CATEGORIES` —
-consultation and procedure (D024). `findActiveServiceItems` and
+consultation and procedure (D024). `resolveOpdPricing` and
 `catalog.searchServices` both enforce it, so `opd.book`, `opd.createWalkIn`, and
 `opd.quoteWalkIn` cannot take a lab or radiology line. Those bill where the work
 is ordered, once those domains ship.
@@ -135,9 +140,8 @@ The OPD Billing tab is the operational checkout for this care setting. It prices
 the Charges the appointment already carries: staff review the pending lines,
 void a wrong one, and settle. **There is no catalog picker at the desk.** Charges
 reach an appointment through intake or check-in only, because the desk must not
-be the place that decides which revenue stream earned the money (D024). The
-`settleCharges` procedure still accepts `lines`, but no shipped surface sends
-them.
+be the place that decides which revenue stream earned the money (D024).
+`settleCharges` takes no line input.
 
 Each OPD appointment owns a monotonic `chargeRevision`, an
 optimistic-concurrency token over its Charge set (D020). Foreground polling does

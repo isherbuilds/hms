@@ -5,18 +5,20 @@ import {
   OPD_BILLABLE_CATEGORIES,
 } from "@hms/db/schema/catalog-items";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq, ilike, inArray, ne, or } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
 import { conflict } from "../lib/conflict";
-import { isUniqueViolation } from "../lib/db-errors";
+import { uniqueViolationConstraint } from "../lib/db-errors";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
+import { likePattern, money, pageLimit, searchQuery, shortName } from "../lib/schemas";
+
 const catalogFields = z.object({
-  name: z.string().trim().min(1).max(200),
+  name: shortName,
   code: z.string().trim().min(1).max(20),
   category: z.enum(CATALOG_CATEGORIES),
-  unitPrice: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/),
+  unitPrice: money,
   taxRatePercent: z
     .string()
     .regex(/^\d{1,2}(\.\d{1,2})?$/)
@@ -34,7 +36,7 @@ export const catalogRouter = {
       includeConsultation: z.boolean(),
     }),
   ).handler(async ({ context, input }) => {
-    const pattern = input.query ? `%${input.query}%` : undefined;
+    const pattern = input.query ? likePattern(input.query) : undefined;
     return db
       .select({
         id: catalogItems.id,
@@ -49,7 +51,7 @@ export const catalogRouter = {
         and(
           eq(catalogItems.orgId, context.scope.orgId),
           eq(catalogItems.active, true),
-          // `findActiveServiceItems` refuses the rest anyway; showing it would be an
+          // `resolveOpdPricing` refuses the rest anyway; showing it would be an
           // invitation to fail.
           inArray(catalogItems.category, [...OPD_BILLABLE_CATEGORIES]),
           input.includeConsultation ? undefined : ne(catalogItems.category, "consultation"),
@@ -69,11 +71,16 @@ export const catalogRouter = {
   list: orgProcedure(
     { catalog: ["read"] },
     orgInput.extend({
+      query: searchQuery,
       category: z.enum(CATALOG_CATEGORIES).optional(),
       activeOnly: z.boolean().default(false),
+      // The keyset is (name, id) because the list orders by name and ids break ties.
+      cursor: z.object({ name: z.string(), id: z.string() }).optional(),
+      limit: pageLimit,
     }),
   ).handler(async ({ context, input }) => {
-    return db
+    const pattern = input.query ? likePattern(input.query) : undefined;
+    const items = await db
       .select()
       .from(catalogItems)
       .where(
@@ -81,9 +88,27 @@ export const catalogRouter = {
           eq(catalogItems.orgId, context.scope.orgId),
           input.category ? eq(catalogItems.category, input.category) : undefined,
           input.activeOnly ? eq(catalogItems.active, true) : undefined,
+          pattern
+            ? or(ilike(catalogItems.code, pattern), ilike(catalogItems.name, pattern))
+            : undefined,
+          input.cursor
+            ? sql`(${catalogItems.name}, ${catalogItems.id}) > (${input.cursor.name}, ${input.cursor.id})`
+            : undefined,
         ),
       )
-      .orderBy(asc(catalogItems.name), asc(catalogItems.id));
+      .orderBy(asc(catalogItems.name), asc(catalogItems.id))
+      .limit(input.limit + 1);
+
+    const hasNextPage = items.length > input.limit;
+    if (hasNextPage) {
+      items.pop();
+    }
+    const last = items.at(-1);
+
+    return {
+      items,
+      nextCursor: hasNextPage && last ? { name: last.name, id: last.id } : null,
+    };
   }),
 
   create: orgProcedure({ catalog: ["create"] }, orgInput.extend(catalogFields.shape)).handler(
@@ -124,7 +149,7 @@ export const catalogRouter = {
 
         return item;
       } catch (error) {
-        if (isUniqueViolation(error)) {
+        if (uniqueViolationConstraint(error) !== undefined) {
           throw conflict("duplicate", "A catalog item with this code already exists.");
         }
         throw error;
@@ -174,7 +199,7 @@ export const catalogRouter = {
 
       return item;
     } catch (error) {
-      if (isUniqueViolation(error)) {
+      if (uniqueViolationConstraint(error) !== undefined) {
         throw conflict("duplicate", "A catalog item with this code already exists.");
       }
       throw error;

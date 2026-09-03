@@ -2,10 +2,10 @@ import { authorize, type AppPermission } from "@hms/auth/access";
 import { Button } from "@hms/ui/components/button";
 import { Separator } from "@hms/ui/components/separator";
 import { cn } from "@hms/ui/lib/utils";
-import { useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ClientOnly, Link, Outlet, createFileRoute, useChildMatches } from "@tanstack/react-router";
 import { PrinterIcon } from "lucide-react";
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { useConfirm } from "@/components/confirm-dialog";
 import {
@@ -18,7 +18,7 @@ import {
   CheckInOpdAppointmentDialog,
   RescheduleOpdAppointmentDialog,
 } from "@/components/opd-appointment-dialogs";
-import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import { ErrorNote, PageBody, PageHeader, PageTab, PageTabs } from "@/components/page";
 import { StaleDataNotice } from "@/components/stale-data-notice";
 import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { useMembership } from "@/lib/membership";
@@ -118,15 +118,6 @@ function OpdRecordLayout() {
   }
 
   const record = detail.data;
-  // A screen is only as fresh as its oldest read, and the cashier polls the invoice
-  // list beside the record.
-  const freshnessKeys = isClinical
-    ? [orpc.opd.get.key({ input: { orgSlug, appointmentId } })]
-    : [
-        orpc.opd.get.key({ input: { orgSlug, appointmentId } }),
-        orpc.billing.listInvoices.key({ input: { orgSlug, appointmentId } }),
-      ];
-
   return (
     <OpdRecordContext.Provider value={{ record, refreshError: detail.error }}>
       {/* `contents` so the bands stay direct children of the page column. The
@@ -138,7 +129,7 @@ function OpdRecordLayout() {
           description={<OpdRecordDescription orgSlug={orgSlug} record={record} />}
           action={
             <>
-              <RecordFreshness queryKeys={freshnessKeys} />
+              <RecordFreshness orgSlug={orgSlug} appointmentId={appointmentId} />
               {isClinical ? (
                 <Button
                   disabled={record.appointment.tokenNumber == null || !record.patient}
@@ -174,20 +165,11 @@ function OpdRecordLayout() {
   );
 }
 
-// Read straight out of the cache. Taking `dataUpdatedAt` as a prop put the 10s poll
-// in the same reactive scope as the body, re-rendering every charge on every poll.
-function RecordFreshness({ queryKeys }: { queryKeys: QueryKey[] }) {
-  const queryClient = useQueryClient();
-  const dataUpdatedAt = useSyncExternalStore(
-    (onStoreChange) => queryClient.getQueryCache().subscribe(onStoreChange),
-    () =>
-      queryKeys.reduce(
-        (oldest, key) => Math.min(oldest, queryClient.getQueryState(key)?.dataUpdatedAt ?? 0),
-        Number.POSITIVE_INFINITY,
-      ),
-    () => 0,
-  );
-
+function RecordFreshness({ orgSlug, appointmentId }: { orgSlug: string; appointmentId: string }) {
+  const { dataUpdatedAt } = useQuery({
+    ...orpc.opd.get.queryOptions({ input: { orgSlug, appointmentId } }),
+    enabled: false,
+  });
   return <StaleDataNotice dataUpdatedAt={dataUpdatedAt} />;
 }
 
@@ -298,30 +280,20 @@ function OpdRecordTabs({ orgSlug, appointmentId }: { orgSlug: string; appointmen
   const visible = OPD_TABS.filter(({ permission }) => authorize(roles, permission));
 
   return (
-    <nav
-      aria-label="Outpatient appointment sections"
-      className="min-h-10 border-b border-border print:hidden"
-    >
-      <div className="mx-auto flex min-h-10 w-full max-w-5xl gap-1 px-4">
-        {visible.map(({ to, label }) => (
-          <Link
-            key={to}
-            to={to}
-            params={{ orgSlug, appointmentId }}
-            // The clinical tab is the index route, so prefix matching would keep it active
-            // while Billing is open.
-            activeOptions={{ exact: to === "/$orgSlug/opd/$appointmentId" }}
-            className={cn(
-              "-mb-px flex shrink-0 items-center border-b-2 border-transparent px-3 text-xs text-muted-foreground transition-colors",
-              "[@media(hover:hover)_and_(pointer:fine)]:hover:text-foreground",
-              "data-[status=active]:border-foreground data-[status=active]:font-medium data-[status=active]:text-foreground",
-            )}
-          >
-            {label}
-          </Link>
-        ))}
-      </div>
-    </nav>
+    <PageTabs label="Outpatient appointment sections" className="mx-auto w-full max-w-5xl">
+      {visible.map(({ to, label }) => (
+        <PageTab
+          key={to}
+          to={to}
+          params={{ orgSlug, appointmentId }}
+          // The clinical tab is the index route, so prefix matching would keep it active
+          // while Billing is open.
+          activeOptions={{ exact: to === "/$orgSlug/opd/$appointmentId" }}
+        >
+          {label}
+        </PageTab>
+      ))}
+    </PageTabs>
   );
 }
 
@@ -437,38 +409,5 @@ function OpdRecordFacts({ record }: { record: OpdRecordIdentity }) {
         <p className="text-muted-foreground">{department.name}</p>
       </div>
     </section>
-  );
-}
-
-export function RecordCard({
-  label,
-  action,
-  children,
-}: {
-  label: string;
-  action?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section className="flex flex-col rounded-xl bg-muted p-1">
-      <div className="flex h-9 items-center justify-between gap-2 px-3 text-muted-foreground">
-        <h2 className="min-w-0 truncate">{label}</h2>
-        {action}
-      </div>
-      {/* One row's worth of reserved height, not a day's: the shape stays put
-          while a poll is in flight, and a record that carries two rows is not
-          padded out into a hole. */}
-      <div className="flex min-h-16 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">
-        {children}
-      </div>
-    </section>
-  );
-}
-
-export function RecordEmpty({ children }: { children: ReactNode }) {
-  return (
-    <p className="flex flex-1 items-center justify-center px-4 text-center text-muted-foreground">
-      {children}
-    </p>
   );
 }

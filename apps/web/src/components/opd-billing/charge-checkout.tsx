@@ -20,7 +20,7 @@ import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settle
 import { formatMoney } from "@/lib/money";
 import { servicePreview } from "@/lib/opd-service-preview";
 import { useOpdErrorToast } from "@/lib/opd-error";
-import { errorReason } from "@/lib/orpc-error";
+import { hasErrorCode } from "@/lib/orpc-error";
 import { orpc } from "@/lib/orpc";
 
 import { useBillingInvalidation } from "./use-billing-invalidation";
@@ -97,18 +97,8 @@ export function ChargeCheckout({
         void invalidate(invoice.id);
       },
       onError: (error) => {
-        // Nothing is staged here, so a price move can only mean the pending charges moved.
-        if (errorReason(error) === "catalog_price_changed") {
-          setCollecting(false);
-          toast.error("Charge prices changed. Review the current charges before settling.");
-          return;
-        }
-        onOpdError(
-          appointmentId,
-          "billing",
-          error,
-          "Another terminal changed these charges — refreshed to the current billing state.",
-        );
+        if (hasErrorCode(error, "CONFLICT")) setCollecting(false);
+        return onOpdError(appointmentId, "billing", error);
       },
     }),
   );

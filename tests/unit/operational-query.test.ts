@@ -14,6 +14,6 @@ test("operational queries poll frequently while remaining focus-aware", () => {
 });
 
 test("a conflict reason survives the transport's cause wrapper", () => {
-  expect(errorReason({ cause: { data: { reason: "raced" } } })).toBe("raced");
+  expect(errorReason({ cause: { data: { reason: "stale_record" } } })).toBe("stale_record");
   expect(errorReason({ code: "BAD_REQUEST" })).toBeUndefined();
 });

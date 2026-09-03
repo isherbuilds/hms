@@ -1,7 +1,7 @@
+import { toSignedPaise } from "@hms/api/lib/invoice-math";
 import { authorize } from "@hms/auth/access";
 import { Badge } from "@hms/ui/components/badge";
 import { Button, buttonVariants } from "@hms/ui/components/button";
-import { Checkbox } from "@hms/ui/components/checkbox";
 import { Input } from "@hms/ui/components/input";
 import {
   Table,
@@ -13,15 +13,23 @@ import {
 } from "@hms/ui/components/table";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { ClientOnly, Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 
 import { OpdAppointmentStatusBadge, useOpdCheckIn } from "@/components/opd-appointment";
 import { CheckInOpdAppointmentDialog } from "@/components/opd-appointment-dialogs";
-import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import {
+  FilterGroup,
+  ListState,
+  ListToolbar,
+  LoadMore,
+  PageBody,
+  PageHeader,
+  Panel,
+  SearchInput,
+} from "@/components/page";
 import { StaleDataNotice } from "@/components/stale-data-notice";
-import { useDebouncedCallback } from "@/hooks/use-debounced-value";
 import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { OPERATIONAL_INFINITE_REFETCH } from "@/lib/operational-query";
@@ -77,22 +85,6 @@ function DayStepper({
   );
 }
 
-function OpdSearchInput({ onDebouncedChange }: { onDebouncedChange: (value: string) => void }) {
-  const handleChange = useDebouncedCallback(onDebouncedChange, 300);
-
-  return (
-    <div className="relative min-w-56 max-w-md flex-1">
-      <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        onChange={(event) => handleChange(event.currentTarget.value.trim())}
-        placeholder="Search name, MRN, phone or token"
-        aria-label="Search outpatient appointments"
-        className="pl-8"
-      />
-    </div>
-  );
-}
-
 const opdDaySearchSchema = z.object({
   date: z
     .string()
@@ -131,28 +123,6 @@ export const Route = createFileRoute("/$orgSlug/opd/")({
   },
   component: OpdRoute,
 });
-
-function OpdClosedFilter({ orgSlug }: { orgSlug: string }) {
-  const { date, includeClosed } = Route.useSearch();
-  const navigate = useNavigate();
-
-  return (
-    <label className="flex h-8 shrink-0 items-center gap-2 rounded-md border border-border bg-background px-2.5 font-medium">
-      <Checkbox
-        checked={includeClosed ?? false}
-        onCheckedChange={(checked) =>
-          void navigate({
-            to: "/$orgSlug/opd",
-            params: { orgSlug },
-            search: { date, includeClosed: checked ? true : undefined },
-            replace: true,
-          })
-        }
-      />
-      Include cancelled and no shows
-    </label>
-  );
-}
 
 function OpdStatusCell({
   orgSlug,
@@ -222,160 +192,171 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
   const items = day.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
-    <>
-      <section className="flex min-h-64 flex-1 flex-col rounded-xl bg-muted p-1">
-        <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
-          <span className="min-w-0 truncate">Appointments</span>
-          <div className="ml-auto flex items-center gap-2">
-            <StaleDataNotice dataUpdatedAt={day.dataUpdatedAt} />
-            {(day.data?.pages.length ?? 0) > 1 ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={day.isFetching}
-                onClick={() => void day.refetch()}
+    <Panel
+      label="Appointments"
+      minHeight="min-h-64"
+      grow
+      action={
+        <div className="flex items-center gap-2">
+          <StaleDataNotice dataUpdatedAt={day.dataUpdatedAt} />
+          {(day.data?.pages.length ?? 0) > 1 ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={day.isFetching}
+              onClick={() => void day.refetch()}
+            >
+              Refresh
+            </Button>
+          ) : null}
+        </div>
+      }
+      footer={<LoadMore query={day} shown={items.length} />}
+    >
+      <ListState
+        query={day}
+        errorTitle="Could not load the outpatient day"
+        isEmpty={items.length === 0}
+        empty={
+          search
+            ? "No appointments match this search."
+            : shownDate === today
+              ? "No appointments today."
+              : `No appointments on ${formatBusinessDate(shownDate)}.`
+        }
+      >
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-16">Token</TableHead>
+              <TableHead>Patient</TableHead>
+              <TableHead className="w-20">Time</TableHead>
+              <TableHead>Practitioner</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Balance</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((appointment) => (
+              <TableRow
+                key={appointment.id}
+                tabIndex={0}
+                onClick={() =>
+                  void navigate({
+                    to: "/$orgSlug/opd/$appointmentId",
+                    params: { orgSlug, appointmentId: appointment.id },
+                  })
+                }
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  void navigate({
+                    to: "/$orgSlug/opd/$appointmentId",
+                    params: { orgSlug, appointmentId: appointment.id },
+                  });
+                }}
+                className="cursor-pointer"
               >
-                Refresh
-              </Button>
-            ) : null}
-          </div>
-        </div>
-        <div className="min-h-64 flex-1 overflow-x-auto rounded-lg border border-border bg-card">
-          {day.isPending ? null : day.isError ? (
-            <ErrorNote title="Could not load the outpatient day" error={day.error} inset />
-          ) : items.length === 0 ? (
-            <div className="flex min-h-64 items-center justify-center px-4 text-center text-muted-foreground">
-              {search
-                ? "No appointments match this search."
-                : shownDate === today
-                  ? "No appointments today."
-                  : `No appointments on ${formatBusinessDate(shownDate)}.`}
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-16">Token</TableHead>
-                  <TableHead>Patient</TableHead>
-                  <TableHead className="w-20">Time</TableHead>
-                  <TableHead>Practitioner</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Balance</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((appointment) => (
-                  <TableRow
-                    key={appointment.id}
-                    tabIndex={0}
-                    onClick={() =>
-                      void navigate({
-                        to: "/$orgSlug/opd/$appointmentId",
-                        params: { orgSlug, appointmentId: appointment.id },
-                      })
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      event.preventDefault();
-                      void navigate({
-                        to: "/$orgSlug/opd/$appointmentId",
-                        params: { orgSlug, appointmentId: appointment.id },
-                      });
-                    }}
-                    className="cursor-pointer"
+                <TableCell>
+                  {appointment.tokenNumber === null ? (
+                    <span className="text-muted-foreground">·</span>
+                  ) : (
+                    <span className="font-mono text-sm font-semibold">
+                      {appointment.tokenNumber}
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell className="max-w-0">
+                  <Link
+                    to="/$orgSlug/opd/$appointmentId"
+                    params={{ orgSlug, appointmentId: appointment.id }}
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    title={appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
+                    className="block truncate text-left font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                   >
-                    <TableCell>
-                      {appointment.tokenNumber === null ? (
-                        <span className="text-muted-foreground">·</span>
-                      ) : (
-                        <span className="font-mono text-sm font-semibold">
-                          {appointment.tokenNumber}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        to="/$orgSlug/opd/$appointmentId"
-                        params={{ orgSlug, appointmentId: appointment.id }}
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => event.stopPropagation()}
-                        className="text-left font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-                      >
-                        {appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
-                      </Link>
-                      <p className="text-muted-foreground">
-                        {appointment.patientMrn ?? appointment.callerPhone ?? "No phone"}
-                      </p>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {formatTime(appointment.dayOrderAt ?? appointment.createdAt, timeZone)}
-                    </TableCell>
-                    <TableCell>{appointment.practitionerName}</TableCell>
-                    <TableCell>
-                      <OpdStatusCell
-                        orgSlug={orgSlug}
-                        appointmentId={appointment.id}
-                        patientId={appointment.patientId}
-                        callerName={appointment.callerName}
-                        callerPhone={appointment.callerPhone}
-                        status={appointment.status}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {currency && Number(appointment.balanceDue) > 0 ? (
-                        <Badge variant="destructive">
-                          {formatMoney(appointment.balanceDue, currency)} due
-                        </Badge>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
-      </section>
-
-      {!day.isError && items.length > 0 && day.hasNextPage ? (
-        <Button
-          variant="outline"
-          className="self-start"
-          disabled={day.isFetchingNextPage}
-          onClick={() => day.fetchNextPage()}
-        >
-          {day.isFetchingNextPage ? "Loading…" : "Load more"}
-        </Button>
-      ) : null}
-    </>
+                    {appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
+                  </Link>
+                  <p
+                    className="truncate text-muted-foreground"
+                    title={appointment.patientMrn ?? appointment.callerPhone ?? "No phone"}
+                  >
+                    {appointment.patientMrn ?? appointment.callerPhone ?? "No phone"}
+                  </p>
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">
+                  {formatTime(appointment.dayOrderAt ?? appointment.createdAt, timeZone)}
+                </TableCell>
+                <TableCell className="max-w-0">
+                  <div className="truncate" title={appointment.practitionerName}>
+                    {appointment.practitionerName}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <OpdStatusCell
+                    orgSlug={orgSlug}
+                    appointmentId={appointment.id}
+                    patientId={appointment.patientId}
+                    callerName={appointment.callerName}
+                    callerPhone={appointment.callerPhone}
+                    status={appointment.status}
+                  />
+                </TableCell>
+                <TableCell className="text-right">
+                  {toSignedPaise(appointment.balanceDue) > 0 ? (
+                    <Badge variant="destructive">
+                      {formatMoney(appointment.balanceDue, currency)} due
+                    </Badge>
+                  ) : null}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </ListState>
+    </Panel>
   );
 }
 
 // Owns the settled search term so the page header above never sees a keystroke.
-// The input takes only the stable setter, so it is skipped on re-render.
 function OpdDayView({ orgSlug }: { orgSlug: string }) {
   const [search, setSearch] = useState("");
+  const { date, includeClosed } = Route.useSearch();
+  const navigate = useNavigate();
 
   return (
     <PageBody>
-      <div className="flex flex-wrap items-center gap-2">
-        <OpdSearchInput onDebouncedChange={setSearch} />
-        <OpdClosedFilter orgSlug={orgSlug} />
-      </div>
+      <ListToolbar>
+        <SearchInput
+          label="Search outpatient appointments"
+          placeholder="Search name, MRN, phone or token"
+          onQueryChange={setSearch}
+        />
+        <FilterGroup
+          label="Status"
+          value={includeClosed ? "all" : "open"}
+          options={[
+            { value: "open", label: "Open" },
+            { value: "all", label: "All" },
+          ]}
+          onValueChange={(next) =>
+            void navigate({
+              to: "/$orgSlug/opd",
+              params: { orgSlug },
+              search: { date, includeClosed: next === "all" ? true : undefined },
+              replace: true,
+            })
+          }
+        />
+      </ListToolbar>
       <OpdAppointments orgSlug={orgSlug} search={search} />
     </PageBody>
   );
 }
 
 function NewAppointmentLink({ orgSlug }: { orgSlug: string }) {
-  const includeClosed = Route.useSearch({ select: (search) => search.includeClosed });
-
   return (
-    <Link
-      className={buttonVariants()}
-      to="/$orgSlug/opd/new"
-      params={{ orgSlug }}
-      search={{ includeClosed: includeClosed ? true : undefined }}
-    >
+    <Link className={buttonVariants()} to="/$orgSlug/opd/new" params={{ orgSlug }}>
       <PlusIcon data-icon="inline-start" />
       <span className="sm:hidden">New</span>
       <span className="hidden sm:inline">New appointment</span>

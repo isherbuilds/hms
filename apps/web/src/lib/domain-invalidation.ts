@@ -2,17 +2,11 @@ import type { QueryKey } from "@tanstack/react-query";
 
 import { orpc } from "./orpc";
 
-export type QueryInvalidator = {
+type QueryInvalidator = {
   invalidateQueries: (filters: { queryKey: QueryKey }) => Promise<unknown>;
 };
 
-export type OpdAppointmentTransition =
-  | "billing"
-  | "create"
-  | "cancel"
-  | "checkIn"
-  | "noShow"
-  | "reschedule";
+export type OpdAppointmentTransition = "create" | "cancel" | "checkIn" | "noShow" | "reschedule";
 
 export function invalidateOpdAppointmentState(
   queryClient: QueryInvalidator,
@@ -38,7 +32,6 @@ export function invalidateOpdAppointmentState(
       }),
     );
   }
-
   if (transition === "create" || transition === "checkIn" || transition === "cancel") {
     invalidations.push(
       queryClient.invalidateQueries({

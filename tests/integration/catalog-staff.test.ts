@@ -1,5 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 
+import { uniqueViolationConstraint } from "@hms/api/lib/db-errors";
+
 import { createOrganization, createTestUser, joinOrganization } from "../support/auth";
 import { clientFor, eventually, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
@@ -19,6 +21,16 @@ function catalogItemInput(orgSlug: string, code: string, name = "Consultation") 
   };
 }
 
+test("unique violations remain distinguishable when Postgres omits the constraint name", () => {
+  expect(uniqueViolationConstraint({ cause: { code: "23505" } })).toBeNull();
+  expect(
+    uniqueViolationConstraint({
+      cause: { code: "23505", constraint: "catalog_items_org_code_idx" },
+    }),
+  ).toBe("catalog_items_org_code_idx");
+  expect(uniqueViolationConstraint({ cause: { code: "23503" } })).toBeUndefined();
+});
+
 test("catalog CRUD, filters, deactivation, and code uniqueness are organization-scoped", async () => {
   const owner = await createTestUser("catalog-crud-owner");
   const one = await createOrganization(owner, "catalog-crud-one");
@@ -37,7 +49,7 @@ test("catalog CRUD, filters, deactivation, and code uniqueness are organization-
   });
   expect(typeof created.unitPrice).toBe("string");
   expect(typeof created.taxRatePercent).toBe("string");
-  expect((await api.catalog.list({ orgSlug: one.slug })).map((item) => item.id)).toContain(
+  expect((await api.catalog.list({ orgSlug: one.slug })).items.map((item) => item.id)).toContain(
     created.id,
   );
 
@@ -80,12 +92,46 @@ test("catalog CRUD, filters, deactivation, and code uniqueness are organization-
   });
 
   const active = await api.catalog.list({ orgSlug: one.slug, activeOnly: true });
-  expect(active.map((item) => item.id)).not.toContain(created.id);
+  expect(active.items.map((item) => item.id)).not.toContain(created.id);
   const all = await api.catalog.list({ orgSlug: one.slug });
-  expect(all.map((item) => item.id)).toContain(created.id);
+  expect(all.items.map((item) => item.id)).toContain(created.id);
   const procedures = await api.catalog.list({ orgSlug: one.slug, category: "procedure" });
-  expect(procedures.map((item) => item.id)).toEqual([procedure.id]);
-  expect(procedures.every((item) => item.category === "procedure")).toBe(true);
+  expect(procedures.items.map((item) => item.id)).toEqual([procedure.id]);
+  expect(procedures.items.every((item) => item.category === "procedure")).toBe(true);
+});
+
+test("catalog list searches and paginates by name and id", async () => {
+  const owner = await createTestUser("catalog-list-owner");
+  const organization = await createOrganization(owner, "catalog-list");
+  const api = clientFor(owner);
+  const prefix = `Page ${uniqueSuffix()}`;
+  const names = [`${prefix} Alpha`, `${prefix} Bravo`, `${prefix} Charlie`];
+
+  await Promise.all(
+    names.map((name) =>
+      api.catalog.create(catalogItemInput(organization.slug, `PAGE-${uniqueSuffix()}`, name)),
+    ),
+  );
+
+  const first = await api.catalog.list({
+    orgSlug: organization.slug,
+    query: prefix,
+    limit: 2,
+  });
+  expect(first.items.map((item) => item.name)).toEqual(names.slice(0, 2));
+  expect(first.nextCursor).not.toBeNull();
+  if (!first.nextCursor) {
+    throw new Error("Expected a catalog cursor");
+  }
+
+  const second = await api.catalog.list({
+    orgSlug: organization.slug,
+    query: prefix,
+    limit: 2,
+    cursor: first.nextCursor,
+  });
+  expect(second.items.map((item) => item.name)).toEqual(names.slice(2));
+  expect(second.nextCursor).toBeNull();
 });
 
 test("plain members can read catalog and staff but cannot mutate either domain", async () => {
@@ -99,7 +145,9 @@ test("plain members can read catalog and staff but cannot mutate either domain",
     catalogItemInput(organization.slug, `GATE-${uniqueSuffix()}`),
   );
 
-  expect(await memberClient.catalog.list({ orgSlug: organization.slug })).toContainEqual(item);
+  expect((await memberClient.catalog.list({ orgSlug: organization.slug })).items).toContainEqual(
+    item,
+  );
   expect(await memberClient.staff.listPractitioners({ orgSlug: organization.slug })).toEqual([]);
 
   await expectORPCCode(
@@ -275,6 +323,20 @@ test("departments and practitioners support linked CRUD within an organization",
   expect(
     (await api.staff.listPractitioners({ orgSlug: organization.slug })).map((row) => row.id),
   ).toContain(practitioner.id);
+  expect(
+    (
+      await api.staff.listPractitioners({
+        orgSlug: organization.slug,
+        query: "Ada",
+      })
+    ).map((row) => row.id),
+  ).toEqual([practitioner.id]);
+  expect(
+    await api.staff.listPractitioners({
+      orgSlug: organization.slug,
+      query: "No Such Practitioner",
+    }),
+  ).toEqual([]);
 
   const cleared = await api.staff.updatePractitioner({
     orgSlug: organization.slug,

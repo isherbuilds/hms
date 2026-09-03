@@ -1,6 +1,5 @@
 import { db } from "@hms/db";
 import { nextCounter, type DbTransaction } from "@hms/db/counter";
-import { catalogItems } from "@hms/db/schema/catalog-items";
 import { charges } from "@hms/db/schema/charges";
 import { creditNoteLines } from "@hms/db/schema/credit-note-lines";
 import { creditNotes } from "@hms/db/schema/credit-notes";
@@ -16,7 +15,7 @@ import { z } from "zod";
 
 import { audit } from "../audit";
 import { businessDate, businessDateAnchor } from "../lib/business-date";
-import { conflict, impossible } from "../lib/conflict";
+import { impossible } from "../lib/conflict";
 import { invoiceBalanceFor, invoiceBalancesFor } from "../lib/invoice-balance";
 import {
   calculateInvoiceBalance,
@@ -34,33 +33,17 @@ import {
   settlementAccountFor,
   type SystemAccountKey,
 } from "../lib/ledger";
+import {
+  money,
+  paymentLine,
+  paymentMethod,
+  positiveMoney,
+  reason,
+  type PaymentMethod,
+} from "../lib/schemas";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
 import { billingWorklistRouter } from "./billing-worklist";
-const money = z.string().regex(/^\d{1,10}(\.\d{1,2})?$/);
-const positiveMoney = money.refine((value) => toPaise(value) > 0);
-const paymentMethod = z.enum(["cash", "upi", "card"]);
-type PaymentMethod = z.infer<typeof paymentMethod>;
-
-// These statuses guarantee a linked patient via the schema's arrived check; booked
-// rows may have none, and closed rows must not accumulate charges.
-const BILLABLE_STATUSES: (typeof opdAppointments.$inferSelect)["status"][] = ["checked_in"];
-
-const chargeLineInput = z.object({
-  catalogItemId: z.string(),
-  qty: z.number().int().min(1).max(999).default(1),
-});
-
-const chargeLinesInput = z
-  .array(chargeLineInput)
-  .max(20)
-  .refine((lines) => new Set(lines.map((line) => line.catalogItemId)).size === lines.length);
-
-const paymentLineInput = z.object({
-  method: paymentMethod,
-  amount: positiveMoney,
-  reference: z.string().trim().min(1).max(100).optional(),
-});
 
 const creditLineInput = z.union([
   z.object({ invoiceLineId: z.string(), full: z.literal(true) }).strict(),
@@ -95,8 +78,8 @@ async function lockInvoice(tx: DbTransaction, orgId: string, invoiceId: string) 
   return invoice;
 }
 
-// The caller owns the transaction: the walk-in desk settles token, charge, invoice
-// and receipt in one commit.
+// The caller owns the transaction: `opd.createWalkIn` and
+// `billing.settleCharges` both issue inside their own.
 async function issueInvoiceTx(
   tx: DbTransaction,
   args: {
@@ -139,14 +122,16 @@ async function issueInvoiceTx(
   if (!appointmentAndPatient) {
     throw new ORPCError("NOT_FOUND", { message: "That appointment no longer exists." });
   }
-  if (!BILLABLE_STATUSES.includes(appointmentAndPatient.appointmentStatus)) {
-    throw conflict("not_billable", "This appointment can no longer be billed.");
+  if (appointmentAndPatient.appointmentStatus !== "checked_in") {
+    throw new ORPCError("CONFLICT", { message: "This appointment can no longer be billed." });
   }
   if (
     args.expectedChargeRevision !== "fresh" &&
     appointmentAndPatient.chargeRevision !== args.expectedChargeRevision
   ) {
-    throw conflict("raced", "The charges changed. Review the invoice and try again");
+    throw new ORPCError("CONFLICT", {
+      message: "The charges changed. Review the invoice and try again",
+    });
   }
 
   const pendingCharges = await tx
@@ -171,7 +156,9 @@ async function issueInvoiceTx(
     .for("update");
 
   if (pendingCharges.length === 0) {
-    throw conflict("no_pending_charges", "These charges were already settled or voided.");
+    throw new ORPCError("CONFLICT", {
+      message: "These charges were already settled or voided.",
+    });
   }
   const subtotalPaise = pendingCharges.reduce(
     (sum, charge) => sum + charge.qty * toPaise(charge.unitPrice),
@@ -398,10 +385,9 @@ export async function settleInvoiceTx(
 ) {
   const issued = await issueInvoiceTx(tx, args);
   if (toPaise(issued.invoice.grandTotal) !== toPaise(args.expectedGrandTotal)) {
-    throw conflict(
-      "catalog_price_changed",
-      "The charges changed. Review the invoice and try again",
-    );
+    throw new ORPCError("CONFLICT", {
+      message: "The charges changed. Review the invoice and try again",
+    });
   }
 
   const collected = args.payments.reduce((sum, payment) => sum + toPaise(payment.amount), 0);
@@ -416,6 +402,9 @@ export async function settleInvoiceTx(
       message: "Add a reason for the outstanding balance",
     });
   }
+  if (args.payments.length === 0) {
+    return { ...issued, payments: [] };
+  }
   const recorded = await recordPaymentsTx(tx, {
     scope: args.scope,
     invoiceId: args.invoiceId,
@@ -427,128 +416,33 @@ export async function settleInvoiceTx(
   return { ...issued, payments: recorded };
 }
 
-async function addChargesTx(
-  tx: DbTransaction,
-  args: {
-    scope: { orgId: string; userId: string };
-    appointmentId: string;
-    lines: Array<{ catalogItemId: string; qty: number }>;
-    expectedChargeRevision: number;
-  },
-) {
-  const { scope } = args;
-  // Cancellation updates this row before voiding pending charges. Taking the
-  // same lock makes the state check and all inserts one serial decision.
-  const [appointment] = await tx
-    .select({
-      status: opdAppointments.status,
-      id: opdAppointments.id,
-      chargeRevision: opdAppointments.chargeRevision,
-    })
-    .from(opdAppointments)
-    .where(and(eq(opdAppointments.orgId, scope.orgId), eq(opdAppointments.id, args.appointmentId)))
-    .limit(1)
-    .for("update");
-
-  if (!appointment)
-    throw new ORPCError("NOT_FOUND", { message: "That appointment no longer exists." });
-  if (!BILLABLE_STATUSES.includes(appointment.status)) {
-    throw conflict("not_billable", "This appointment can no longer be billed.");
-  }
-  if (appointment.chargeRevision !== args.expectedChargeRevision) {
-    throw conflict("raced", "The charges changed. Review the invoice and try again");
-  }
-
-  const requestedIds = args.lines.map((line) => line.catalogItemId);
-  const catalog = await tx
-    .select({
-      id: catalogItems.id,
-      name: catalogItems.name,
-      category: catalogItems.category,
-      unitPrice: catalogItems.unitPrice,
-      taxRatePercent: catalogItems.taxRatePercent,
-      taxCode: catalogItems.taxCode,
-    })
-    .from(catalogItems)
-    .where(
-      and(
-        eq(catalogItems.orgId, scope.orgId),
-        inArray(catalogItems.id, requestedIds),
-        eq(catalogItems.active, true),
-      ),
-    );
-
-  if (catalog.length !== requestedIds.length)
-    throw new ORPCError("NOT_FOUND", { message: "One of those services is no longer available." });
-  const catalogById = new Map(catalog.map((item) => [item.id, item]));
-  const inserted = await tx
-    .insert(charges)
-    .values(
-      args.lines.map((line) => {
-        const item = catalogById.get(line.catalogItemId);
-        if (!item)
-          throw new ORPCError("NOT_FOUND", {
-            message: "One of those services is no longer available.",
-          });
-        return {
-          id: Bun.randomUUIDv7(),
-          orgId: scope.orgId,
-          opdAppointmentId: appointment.id,
-          catalogItemId: item.id,
-          description: item.name,
-          qty: line.qty,
-          unitPrice: item.unitPrice,
-          taxRatePercent: item.taxRatePercent,
-          taxCode: item.taxCode,
-          revenueCategory: item.category,
-          sourceType: "catalog" as const,
-          sourceId: null,
-          status: "pending" as const,
-          createdBy: scope.userId,
-        };
-      }),
-    )
-    .returning();
-
-  if (inserted.length !== args.lines.length) throw impossible("charge insert dropped rows");
-  const [versionedAppointment] = await tx
-    .update(opdAppointments)
-    .set({ chargeRevision: sql`${opdAppointments.chargeRevision} + 1` })
-    .where(and(eq(opdAppointments.orgId, scope.orgId), eq(opdAppointments.id, appointment.id)))
-    .returning({ chargeRevision: opdAppointments.chargeRevision });
-  if (!versionedAppointment) throw impossible("locked appointment vanished before versioning");
-  return { charges: inserted, chargeRevision: versionedAppointment.chargeRevision };
-}
-
 export const billingRouter = {
   ...billingWorklistRouter,
   voidCharge: orgProcedure(
     { billing: ["write"] },
-    orgInput.extend({ chargeId: z.string(), reason: z.string().trim().min(1).max(500) }),
+    orgInput.extend({ chargeId: z.string(), reason }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const charge = await db.transaction(async (tx) => {
       const [candidate] = await tx
-        .select({ appointmentId: charges.opdAppointmentId })
+        .select({
+          id: charges.id,
+          appointmentId: charges.opdAppointmentId,
+        })
         .from(charges)
-        .where(and(eq(charges.orgId, scope.orgId), eq(charges.id, input.chargeId)))
-        .limit(1);
-      if (!candidate)
-        throw new ORPCError("NOT_FOUND", { message: "That charge no longer exists." });
-
-      const [appointment] = await tx
-        .select({ id: opdAppointments.id })
-        .from(opdAppointments)
-        .where(
+        .innerJoin(
+          opdAppointments,
           and(
             eq(opdAppointments.orgId, scope.orgId),
-            eq(opdAppointments.id, candidate.appointmentId),
+            eq(opdAppointments.id, charges.opdAppointmentId),
           ),
         )
+        .where(and(eq(charges.orgId, scope.orgId), eq(charges.id, input.chargeId)))
         .limit(1)
-        .for("update");
-      if (!appointment)
-        throw new ORPCError("NOT_FOUND", { message: "That appointment no longer exists." });
+        .for("update", { of: opdAppointments });
+      if (!candidate) {
+        throw new ORPCError("NOT_FOUND", { message: "That charge no longer exists." });
+      }
 
       const [voided] = await tx
         .update(charges)
@@ -561,12 +455,21 @@ export const billingRouter = {
           ),
         )
         .returning();
-      if (!voided) throw conflict("raced", "This charge was already settled or voided.");
+      if (!voided) {
+        throw new ORPCError("CONFLICT", {
+          message: "This charge was already settled or voided.",
+        });
+      }
 
       await tx
         .update(opdAppointments)
         .set({ chargeRevision: sql`${opdAppointments.chargeRevision} + 1` })
-        .where(and(eq(opdAppointments.orgId, scope.orgId), eq(opdAppointments.id, appointment.id)));
+        .where(
+          and(
+            eq(opdAppointments.orgId, scope.orgId),
+            eq(opdAppointments.id, candidate.appointmentId),
+          ),
+        );
       return voided;
     });
 
@@ -584,31 +487,19 @@ export const billingRouter = {
     { billing: ["write"] },
     orgInput.extend({
       appointmentId: z.string(),
-      lines: chargeLinesInput.default([]),
       expectedChargeRevision: z.number().int().nonnegative(),
       expectedGrandTotal: money,
       discountAmount: money.default("0"),
       note: z.string().trim().max(500).optional(),
-      payments: z.array(paymentLineInput).max(4).default([]),
+      payments: z.array(paymentLine).max(4).default([]),
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
     const invoiceId = Bun.randomUUIDv7();
 
-    const result = await db.transaction(async (tx) => {
-      let chargeRevision = input.expectedChargeRevision;
-      if (input.lines.length > 0) {
-        const added = await addChargesTx(tx, {
-          scope,
-          appointmentId: input.appointmentId,
-          lines: input.lines,
-          expectedChargeRevision: chargeRevision,
-        });
-        chargeRevision = added.chargeRevision;
-      }
-
-      return settleInvoiceTx(tx, {
+    const result = await db.transaction((tx) =>
+      settleInvoiceTx(tx, {
         scope,
         appointmentId: input.appointmentId,
         discountAmount: input.discountAmount,
@@ -619,9 +510,9 @@ export const billingRouter = {
         invoiceId,
         payments: input.payments,
         expectedGrandTotal: input.expectedGrandTotal,
-        expectedChargeRevision: chargeRevision,
-      });
-    });
+        expectedChargeRevision: input.expectedChargeRevision,
+      }),
+    );
 
     audit({
       action: "invoice.issue",
@@ -651,7 +542,7 @@ export const billingRouter = {
     { billing: ["write"] },
     orgInput.extend({
       invoiceId: z.string(),
-      payments: z.array(paymentLineInput).min(1).max(4),
+      payments: z.array(paymentLine).min(1).max(4),
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
@@ -683,7 +574,7 @@ export const billingRouter = {
     { billing: ["creditNote"] },
     orgInput.extend({
       invoiceId: z.string(),
-      reason: z.string().trim().min(1).max(500),
+      reason,
       lines: z.array(creditLineInput).min(1),
     }),
   ).handler(async ({ context, input }) => {
@@ -716,7 +607,7 @@ export const billingRouter = {
       }
 
       const priorNotes = await tx
-        .select({ id: creditNotes.id, total: creditNotes.total })
+        .select({ total: creditNotes.total })
         .from(creditNotes)
         .where(and(eq(creditNotes.orgId, scope.orgId), eq(creditNotes.invoiceId, input.invoiceId)));
       const priorLines = await tx
@@ -757,12 +648,7 @@ export const billingRouter = {
 
       const sourceById = new Map(sourceLines.map((line) => [line.id, line]));
       const computedLines = input.lines.map((requested) => {
-        const source = sourceById.get(requested.invoiceLineId);
-        if (!source) {
-          throw new ORPCError("NOT_FOUND", {
-            message: "One of those invoice lines no longer exists.",
-          });
-        }
+        const source = sourceById.get(requested.invoiceLineId)!;
         const prior = creditedByLine.get(source.id) ?? {
           taxableValue: 0,
           taxAmount: 0,
@@ -920,7 +806,6 @@ export const billingRouter = {
     const refund = await db.transaction(async (tx) => {
       const [creditNote] = await tx
         .select({
-          id: creditNotes.id,
           invoiceId: creditNotes.invoiceId,
           total: creditNotes.total,
         })
@@ -1001,23 +886,6 @@ export const billingRouter = {
     return refund;
   }),
 
-  invoiceBalance: orgProcedure(
-    { billing: ["read"] },
-    orgInput.extend({ invoiceId: z.string() }),
-  ).handler(async ({ context, input }) => {
-    const [invoice] = await db
-      .select({ id: invoices.id, grandTotal: invoices.grandTotal })
-      .from(invoices)
-      .where(and(eq(invoices.orgId, context.scope.orgId), eq(invoices.id, input.invoiceId)))
-      .limit(1);
-
-    if (!invoice) {
-      throw new ORPCError("NOT_FOUND", { message: "That invoice no longer exists." });
-    }
-
-    return invoiceBalanceFor(db, context.scope.orgId, invoice);
-  }),
-
   listInvoices: orgProcedure(
     { billing: ["read"] },
     orgInput.extend({ appointmentId: z.string() }),
@@ -1067,7 +935,7 @@ export const billingRouter = {
       throw new ORPCError("NOT_FOUND", { message: "That invoice no longer exists." });
     }
 
-    const [lines, invoicePayments, notes, invoiceRefunds] = await Promise.all([
+    const [lines, invoicePayments, noteRows, invoiceRefunds] = await Promise.all([
       db
         .select()
         .from(invoiceLines)
@@ -1080,8 +948,15 @@ export const billingRouter = {
         .where(and(eq(payments.orgId, scope.orgId), eq(payments.invoiceId, input.invoiceId)))
         .orderBy(asc(payments.createdAt)),
       db
-        .select()
+        .select({ creditNote: creditNotes, line: creditNoteLines })
         .from(creditNotes)
+        .leftJoin(
+          creditNoteLines,
+          and(
+            eq(creditNoteLines.orgId, scope.orgId),
+            eq(creditNotes.id, creditNoteLines.creditNoteId),
+          ),
+        )
         .where(and(eq(creditNotes.orgId, scope.orgId), eq(creditNotes.invoiceId, input.invoiceId)))
         .orderBy(asc(creditNotes.createdAt)),
       db
@@ -1091,20 +966,17 @@ export const billingRouter = {
         .orderBy(asc(refunds.createdAt)),
     ]);
 
-    const notesWithLines = await Promise.all(
-      notes.map(async (creditNote) => ({
-        ...creditNote,
-        lines: await db
-          .select()
-          .from(creditNoteLines)
-          .where(
-            and(
-              eq(creditNoteLines.orgId, scope.orgId),
-              eq(creditNoteLines.creditNoteId, creditNote.id),
-            ),
-          ),
-      })),
-    );
+    type NoteRow = (typeof noteRows)[number];
+    const notesById = new Map<
+      string,
+      NoteRow["creditNote"] & { lines: NonNullable<NoteRow["line"]>[] }
+    >();
+    for (const { creditNote, line } of noteRows) {
+      const note = notesById.get(creditNote.id) ?? { ...creditNote, lines: [] };
+      if (line) note.lines.push(line);
+      notesById.set(creditNote.id, note);
+    }
+    const notesWithLines = [...notesById.values()];
 
     return {
       invoice,
@@ -1114,7 +986,7 @@ export const billingRouter = {
       refunds: invoiceRefunds,
       balance: calculateInvoiceBalance({
         grandTotal: invoice.grandTotal,
-        credits: notes.map((note) => note.total),
+        credits: notesWithLines.map((note) => note.total),
         payments: invoicePayments.map((payment) => payment.amount),
         refunds: invoiceRefunds.map((refund) => refund.amount),
       }),

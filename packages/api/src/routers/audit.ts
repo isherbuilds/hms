@@ -5,13 +5,14 @@ import { and, desc, eq, lt } from "drizzle-orm";
 import { z } from "zod";
 
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
+import { pageLimit } from "../lib/schemas";
 
 export const auditRouter = {
   list: orgProcedure(
     { audit: ["read"] },
     orgInput.extend({
       cursor: z.number().int().positive().optional(),
-      limit: z.number().int().min(1).max(100).default(50),
+      limit: pageLimit,
     }),
   ).handler(async ({ context, input }) => {
     const orgFilter = eq(auditLog.orgId, context.scope.orgId);

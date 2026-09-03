@@ -13,31 +13,39 @@ import { and, asc, desc, eq, getTableColumns, ilike, inArray, like, lt, ne, or }
 import { z } from "zod";
 
 import { audit } from "../audit";
-import { conflict, impossible } from "../lib/conflict";
-import { businessDate, businessDateAnchor, localDateTime, localMinute } from "../lib/business-date";
+import { impossible } from "../lib/conflict";
+import { businessDate, localDateTime, localMinute } from "../lib/business-date";
 import { invoiceBalancesFor } from "../lib/invoice-balance";
-import {
-  computeInvoiceLines,
-  fiscalYearLabel,
-  fromPaise,
-  toPaise,
-  toSignedPaise,
-} from "../lib/invoice-math";
-import {
-  chooseConsultFee,
-  createConsultCharge,
-  findActiveServiceItems,
-  requireCareTeam,
-  requireCatalogItem,
-  serviceChargeValues,
-} from "../lib/opd-charges";
+import { computeInvoiceLines, fromPaise, toPaise, toSignedPaise } from "../lib/invoice-math";
+import { chargeRow, resolveOpdPricing } from "../lib/opd-charges";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
-import { settleInvoiceTx } from "./billing";
+import {
+  dateOnly,
+  money,
+  paymentLine,
+  phone,
+  reason,
+  likePattern,
+  searchQuery,
+  shortName,
+} from "../lib/schemas";
+import { billingDocumentContext, settleInvoiceTx } from "./billing";
 
-const dateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const appointmentIdInput = orgInput.extend({ appointmentId: z.string() });
 const localMinuteInput = z.iso.datetime({ local: true, precision: -1 });
+const serviceLines = z
+  .array(
+    z.object({
+      catalogItemId: z.string(),
+      qty: z.number().int().min(1).max(999).default(1),
+    }),
+  )
+  .max(20)
+  .refine((lines) => new Set(lines.map((line) => line.catalogItemId)).size === lines.length, {
+    message: "Add each service once and change its quantity instead",
+  });
+
 function futureLocalDateTime(scheduledLocal: string, timeZone: string, now: Date) {
   if (scheduledLocal <= localMinute(now, timeZone)) {
     throw new ORPCError("BAD_REQUEST", {
@@ -46,49 +54,14 @@ function futureLocalDateTime(scheduledLocal: string, timeZone: string, now: Date
   }
   return localDateTime(scheduledLocal, timeZone);
 }
-const money = z.string().regex(/^\d{1,10}(\.\d{1,2})?$/);
-const walkInServices = z
-  .array(
-    z.object({
-      catalogItemId: z.string(),
-      qty: z.number().int().min(1).max(999).default(1),
-    }),
-  )
-  .max(20)
-  .refine(
-    (services) =>
-      new Set(services.map((service) => service.catalogItemId)).size === services.length,
-    { message: "Add each service once and change its quantity instead" },
-  )
-  .default([]);
-const settlementPayment = z
-  .object({
-    method: z.enum(["cash", "upi", "card"]),
-    amount: money.refine((value: string) => toPaise(value) > 0),
-    reference: z.string().trim().min(1).max(100).optional(),
-  })
-  .superRefine((payment, context) => {
-    if (payment.method === "cash" || payment.reference) return;
-    context.addIssue({
-      code: "custom",
-      path: ["reference"],
-      message: "Add the transaction reference for a non-cash payment",
-    });
+const settlementPayment = paymentLine.superRefine((payment, context) => {
+  if (payment.method === "cash" || payment.reference) return;
+  context.addIssue({
+    code: "custom",
+    path: ["reference"],
+    message: "Add the transaction reference for a non-cash payment",
   });
-
-async function throwForMissingOrStaleAppointment(
-  appointmentId: string,
-  orgId: string,
-): Promise<never> {
-  const [existing] = await db
-    .select({ id: opdAppointments.id })
-    .from(opdAppointments)
-    .where(and(eq(opdAppointments.orgId, orgId), eq(opdAppointments.id, appointmentId)))
-    .limit(1);
-  if (!existing)
-    throw new ORPCError("NOT_FOUND", { message: "That appointment no longer exists." });
-  throw conflict("raced", "Another terminal already moved this appointment.");
-}
+});
 
 // The status predicate keeps the UPDATE a no-op when a concurrent command already
 // moved the row — load-bearing even after a FOR UPDATE read.
@@ -111,40 +84,43 @@ async function transitionAppointment(options: {
       ),
     )
     .returning();
-  if (!appointment) return throwForMissingOrStaleAppointment(appointmentId, orgId);
+  if (!appointment) {
+    throw new ORPCError("CONFLICT", {
+      message: "That appointment was already moved or no longer exists.",
+    });
+  }
   return appointment;
 }
 
 async function voidPendingCharges(options: {
   tx: DbTransaction;
   orgId: string;
-  appointmentId: string;
+  appointmentIds: string[];
   reason: string;
   now: Date;
 }) {
-  const voided = await options.tx
+  if (options.appointmentIds.length === 0) return [];
+  return options.tx
     .update(charges)
     .set({ status: "voided", voidReason: options.reason, updatedAt: options.now })
     .where(
       and(
         eq(charges.orgId, options.orgId),
-        eq(charges.opdAppointmentId, options.appointmentId),
+        inArray(charges.opdAppointmentId, options.appointmentIds),
         eq(charges.status, "pending"),
       ),
     )
-    .returning({ id: charges.id });
-  return voided.length;
+    .returning({ appointmentId: charges.opdAppointmentId });
 }
 
 const bookInput = orgInput
   .extend({
     patientId: z.string().nullable().optional(),
-    callerName: z.string().trim().min(1).max(200).optional(),
-    callerPhone: z.string().trim().min(4).max(20).optional(),
+    callerName: shortName.optional(),
+    callerPhone: phone.optional(),
     practitionerId: z.string(),
-    departmentId: z.string(),
     scheduledLocal: localMinuteInput,
-    services: walkInServices,
+    services: serviceLines.default([]),
   })
   .superRefine((value, context) => {
     if (!value.patientId && (!value.callerName || !value.callerPhone)) {
@@ -159,27 +135,32 @@ const bookInput = orgInput
 export const opdRouter = {
   book: orgProcedure({ opd: ["create"] }, bookInput).handler(async ({ context, input }) => {
     const { scope } = context;
-    const { timeZone } = await readOrgSettings(scope.orgId);
+    const settings = await readOrgSettings(scope.orgId);
     const now = new Date();
-    const scheduledFor = futureLocalDateTime(input.scheduledLocal, timeZone, now);
-    return db.transaction(async (tx) => {
-      const appointmentId = Bun.randomUUIDv7();
-      await requireCareTeam({
-        executor: tx,
+    const scheduledFor = futureLocalDateTime(input.scheduledLocal, settings.timeZone, now);
+    const pricing = await resolveOpdPricing({
+      orgId: scope.orgId,
+      practitionerId: input.practitionerId,
+      patientId: input.patientId ?? null,
+      services: input.services,
+      consultation: "none",
+      followUpValidityDays: settings.followUpValidityDays,
+      now,
+    });
+    const appointmentId = Bun.randomUUIDv7();
+    const chargeRows = pricing.serviceItems.map(({ item, qty }) =>
+      chargeRow({
         orgId: scope.orgId,
-        practitionerId: input.practitionerId,
-        departmentId: input.departmentId,
-        patientId: input.patientId ?? null,
-      });
-      const serviceCharges = await serviceChargeValues({
-        executor: tx,
         appointmentId,
-        services: input.services,
-        orgId: scope.orgId,
-        includeConsultation: false,
+        item,
+        qty,
+        sourceType: "catalog",
         userId: scope.userId,
         now,
-      });
+      }),
+    );
+
+    return db.transaction(async (tx) => {
       const [appointment] = await tx
         .insert(opdAppointments)
         .values({
@@ -189,10 +170,10 @@ export const opdRouter = {
           callerName: input.callerName ?? null,
           callerPhone: input.callerPhone ?? null,
           practitionerId: input.practitionerId,
-          departmentId: input.departmentId,
+          departmentId: pricing.departmentId,
           arrivalMode: "scheduled",
           status: "booked",
-          businessDate: businessDate(scheduledFor, timeZone),
+          businessDate: businessDate(scheduledFor, settings.timeZone),
           scheduledFor,
           createdBy: scope.userId,
           createdAt: now,
@@ -200,7 +181,9 @@ export const opdRouter = {
         })
         .returning();
       if (!appointment) throw impossible("appointment insert returned no row");
-      if (serviceCharges.length > 0) await tx.insert(charges).values(serviceCharges);
+      if (chargeRows.length > 0) {
+        await tx.insert(charges).values(chargeRows);
+      }
       return appointment;
     });
   }),
@@ -212,45 +195,29 @@ export const opdRouter = {
     orgInput.extend({
       patientId: z.string(),
       practitionerId: z.string(),
-      departmentId: z.string(),
-      services: walkInServices,
+      services: serviceLines.default([]),
       omitConsultFee: z.boolean().optional(),
       discountAmount: money.default("0"),
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
-    const [{ practitioner, department }, settings, serviceItems] = await Promise.all([
-      requireCareTeam({
-        executor: db,
-        orgId: scope.orgId,
-        practitionerId: input.practitionerId,
-        departmentId: input.departmentId,
-        patientId: input.patientId,
-      }),
-      readOrgSettings(scope.orgId),
-      findActiveServiceItems({
-        executor: db,
-        catalogItemIds: input.services.map((service) => service.catalogItemId),
-        orgId: scope.orgId,
-        includeConsultation: true,
-      }),
-    ]);
-    const feeItem = !input.omitConsultFee
-      ? await chooseConsultFee({
-          executor: db,
-          orgId: scope.orgId,
-          patientId: input.patientId,
-          practitioner,
-          department,
-          followUpValidityDays: settings.followUpValidityDays,
-          now: new Date(),
-        })
-      : undefined;
+    const settings = await readOrgSettings(scope.orgId);
+    const pricing = await resolveOpdPricing({
+      orgId: scope.orgId,
+      practitionerId: input.practitionerId,
+      patientId: input.patientId,
+      services: input.services,
+      consultation: input.omitConsultFee ? "omit" : "auto",
+      followUpValidityDays: settings.followUpValidityDays,
+      now: new Date(),
+    });
     const quotedItems = [
-      ...(feeItem ? [{ item: feeItem, qty: 1, source: "consultation" as const }] : []),
-      ...input.services.map((service) => ({
-        item: requireCatalogItem(serviceItems, service.catalogItemId),
-        qty: service.qty,
+      ...(pricing.feeItem
+        ? [{ item: pricing.feeItem, qty: 1, source: "consultation" as const }]
+        : []),
+      ...pricing.serviceItems.map(({ item, qty }) => ({
+        item,
+        qty,
         source: "service" as const,
       })),
     ];
@@ -292,9 +259,8 @@ export const opdRouter = {
     orgInput.extend({
       patientId: z.string(),
       practitionerId: z.string(),
-      departmentId: z.string(),
       settlement: z.object({
-        services: walkInServices,
+        services: serviceLines.default([]),
         omitConsultFee: z.boolean().optional(),
         discountAmount: money.default("0"),
         // Rejects catalog or fee changes between quote and commit.
@@ -306,51 +272,47 @@ export const opdRouter = {
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
-    const settings = await readOrgSettings(scope.orgId);
-    const now = new Date();
-    const day = businessDate(now, settings.timeZone);
+    const billing = await billingDocumentContext(scope.orgId);
+    const day = businessDate(billing.now, billing.settings.timeZone);
     const appointmentId = Bun.randomUUIDv7();
     const settlement = input.settlement;
-    const billing = {
-      settings,
-      now,
-      fiscalYear: fiscalYearLabel(
-        businessDateAnchor(now, settings.timeZone),
-        settings.fiscalYearStartMonth,
+    const pricing = await resolveOpdPricing({
+      orgId: scope.orgId,
+      practitionerId: input.practitionerId,
+      patientId: input.patientId,
+      services: settlement.services,
+      consultation: settlement.omitConsultFee ? "omit" : "auto",
+      followUpValidityDays: billing.settings.followUpValidityDays,
+      now: billing.now,
+    });
+    const chargeRows = [
+      ...(pricing.feeItem
+        ? [
+            chargeRow({
+              orgId: scope.orgId,
+              appointmentId,
+              item: pricing.feeItem,
+              qty: 1,
+              sourceType: "consult_fee",
+              userId: scope.userId,
+              now: billing.now,
+            }),
+          ]
+        : []),
+      ...pricing.serviceItems.map(({ item, qty }) =>
+        chargeRow({
+          orgId: scope.orgId,
+          appointmentId,
+          item,
+          qty,
+          sourceType: "catalog",
+          userId: scope.userId,
+          now: billing.now,
+        }),
       ),
-    };
+    ];
 
     const result = await db.transaction(async (tx) => {
-      const { practitioner, department } = await requireCareTeam({
-        executor: tx,
-        orgId: scope.orgId,
-        practitionerId: input.practitionerId,
-        departmentId: input.departmentId,
-        patientId: input.patientId,
-      });
-      const feeItem = input.settlement.omitConsultFee
-        ? undefined
-        : await chooseConsultFee({
-            executor: tx,
-            orgId: scope.orgId,
-            patientId: input.patientId,
-            practitioner,
-            department,
-            followUpValidityDays: settings.followUpValidityDays,
-            now,
-          });
-      // Charges share one transaction timestamp, so allocate ids in quote order — id is
-      // the stable tiebreak at invoice issuance.
-      const feeChargeId = feeItem ? Bun.randomUUIDv7() : undefined;
-      const serviceCharges = await serviceChargeValues({
-        executor: tx,
-        appointmentId,
-        services: input.settlement.services,
-        orgId: scope.orgId,
-        includeConsultation: true,
-        userId: scope.userId,
-        now,
-      });
       const tokenNumber = await nextCounter(
         tx,
         scope.orgId,
@@ -363,40 +325,34 @@ export const opdRouter = {
           orgId: scope.orgId,
           patientId: input.patientId,
           practitionerId: input.practitionerId,
-          departmentId: input.departmentId,
+          departmentId: pricing.departmentId,
           arrivalMode: "walk_in",
           status: "checked_in",
           businessDate: day,
           tokenNumber,
-          arrivedAt: now,
+          arrivedAt: billing.now,
           createdBy: scope.userId,
-          createdAt: now,
-          updatedAt: now,
+          createdAt: billing.now,
+          updatedAt: billing.now,
         })
         .returning();
       if (!appointment) throw impossible("appointment insert returned no row");
-      const charge = await createConsultCharge({
-        tx,
-        appointmentId: appointment.id,
-        feeItem,
-        orgId: scope.orgId,
-        userId: scope.userId,
-        now,
-        chargeId: feeChargeId,
-      });
+      if (chargeRows.length > 0) {
+        await tx.insert(charges).values(chargeRows);
+      }
 
-      if (serviceCharges.length > 0) await tx.insert(charges).values(serviceCharges);
-
-      if (!charge && settlement.services.length === 0) {
+      if (chargeRows.length === 0) {
         if (toPaise(settlement.expectedGrandTotal) !== 0) {
-          throw conflict("raced", "The charges changed. Review the settlement and try again");
+          throw new ORPCError("CONFLICT", {
+            message: "The charges changed. Review the settlement and try again",
+          });
         }
         if (toPaise(settlement.discountAmount) > 0 || settlement.payments.length > 0) {
           throw new ORPCError("BAD_REQUEST", {
             message: "A zero-value walk-in cannot record a discount or payment",
           });
         }
-        return { appointment, charge: null, invoice: null, payments: [] };
+        return { appointment, invoice: null, payments: [] };
       }
 
       // All or nothing: there is no state where a token exists owing money nobody chose to owe.
@@ -416,11 +372,8 @@ export const opdRouter = {
         expectedChargeRevision: "fresh",
       });
 
-      // `issueInvoiceTx` just marked these charges invoiced, so return that rather than
-      // the pre-settlement row captured above.
       return {
         appointment: { ...appointment, chargeRevision: settled.chargeRevision },
-        charge: charge ? { ...charge, status: "invoiced" as const, invoiceId } : charge,
         invoice: settled.invoice,
         payments: settled.payments,
       };
@@ -460,11 +413,55 @@ export const opdRouter = {
     appointmentIdInput.extend({ patientId: z.string().optional() }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
-    const settings = await readOrgSettings(scope.orgId);
     const now = new Date();
-    const result = await db.transaction(async (tx) => {
+    const [settings, [snapshot]] = await Promise.all([
+      readOrgSettings(scope.orgId),
+      db
+        .select({
+          patientId: opdAppointments.patientId,
+          practitionerId: opdAppointments.practitionerId,
+          departmentId: opdAppointments.departmentId,
+          status: opdAppointments.status,
+        })
+        .from(opdAppointments)
+        .where(
+          and(eq(opdAppointments.orgId, scope.orgId), eq(opdAppointments.id, input.appointmentId)),
+        )
+        .limit(1),
+    ]);
+    if (!snapshot) {
+      throw new ORPCError("NOT_FOUND", { message: "That appointment no longer exists." });
+    }
+    if (snapshot.status !== "booked") {
+      throw new ORPCError("CONFLICT", {
+        message: "That appointment was already moved.",
+      });
+    }
+    const patientId = input.patientId ?? snapshot.patientId;
+    if (!patientId) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Choose a patient before check-in",
+      });
+    }
+    const pricing = await resolveOpdPricing({
+      orgId: scope.orgId,
+      practitionerId: snapshot.practitionerId,
+      patientId,
+      services: [],
+      consultation: "auto",
+      followUpValidityDays: settings.followUpValidityDays,
+      now,
+    });
+    if (pricing.departmentId !== snapshot.departmentId) {
+      throw new ORPCError("CONFLICT", {
+        message: "That practitioner moved departments after this appointment was booked.",
+      });
+    }
+    const day = businessDate(now, settings.timeZone);
+
+    return db.transaction(async (tx) => {
       const [booked] = await tx
-        .select()
+        .select({ id: opdAppointments.id })
         .from(opdAppointments)
         .where(
           and(
@@ -475,35 +472,16 @@ export const opdRouter = {
         )
         .limit(1)
         .for("update");
-      if (!booked) return undefined;
-      const patientId = input.patientId ?? booked.patientId;
-      if (!patientId) {
-        throw new ORPCError("BAD_REQUEST", {
-          message: "Choose a patient before check-in",
+      if (!booked) {
+        throw new ORPCError("CONFLICT", {
+          message: "That appointment was already moved or no longer exists.",
         });
       }
-      const { practitioner, department } = await requireCareTeam({
-        executor: tx,
-        orgId: scope.orgId,
-        practitionerId: booked.practitionerId,
-        departmentId: booked.departmentId,
-        patientId,
-      });
-      const day = businessDate(now, settings.timeZone);
       const tokenNumber = await nextCounter(
         tx,
         scope.orgId,
-        `opd-token:${booked.practitionerId}:${day}`,
+        `opd-token:${snapshot.practitionerId}:${day}`,
       );
-      const feeItem = await chooseConsultFee({
-        executor: tx,
-        orgId: scope.orgId,
-        patientId,
-        practitioner,
-        department,
-        followUpValidityDays: settings.followUpValidityDays,
-        now,
-      });
       const appointment = await transitionAppointment({
         executor: tx,
         orgId: scope.orgId,
@@ -518,19 +496,28 @@ export const opdRouter = {
           updatedAt: now,
         },
       });
-      const charge = await createConsultCharge({
-        tx,
-        appointmentId: appointment.id,
-        feeItem,
-        orgId: scope.orgId,
-        userId: scope.userId,
-        now,
-      });
+      let charge: typeof charges.$inferSelect | null = null;
+      if (pricing.feeItem) {
+        const [inserted] = await tx
+          .insert(charges)
+          .values(
+            chargeRow({
+              orgId: scope.orgId,
+              appointmentId: appointment.id,
+              item: pricing.feeItem,
+              qty: 1,
+              sourceType: "consult_fee",
+              userId: scope.userId,
+              now,
+            }),
+          )
+          .returning();
+        if (!inserted) throw impossible("consult fee charge insert returned no row");
+        charge = inserted;
+      }
 
       return { appointment, charge };
     });
-    if (!result) return throwForMissingOrStaleAppointment(input.appointmentId, scope.orgId);
-    return result;
   }),
 
   reschedule: orgProcedure(
@@ -556,38 +543,43 @@ export const opdRouter = {
     });
   }),
 
-  cancel: orgProcedure(
-    { opd: ["update"] },
-    appointmentIdInput.extend({ reason: z.string().trim().min(1).max(500) }),
-  ).handler(async ({ context, input }) => {
-    const { scope } = context;
-    const now = new Date();
-    const result = await db.transaction(async (tx) => {
-      const appointment = await transitionAppointment({
-        executor: tx,
-        orgId: scope.orgId,
-        appointmentId: input.appointmentId,
-        from: ["booked", "checked_in"],
-        set: { status: "cancelled", cancelledAt: now, cancelReason: input.reason, updatedAt: now },
+  cancel: orgProcedure({ opd: ["update"] }, appointmentIdInput.extend({ reason })).handler(
+    async ({ context, input }) => {
+      const { scope } = context;
+      const now = new Date();
+      const result = await db.transaction(async (tx) => {
+        const appointment = await transitionAppointment({
+          executor: tx,
+          orgId: scope.orgId,
+          appointmentId: input.appointmentId,
+          from: ["booked", "checked_in"],
+          set: {
+            status: "cancelled",
+            cancelledAt: now,
+            cancelReason: input.reason,
+            updatedAt: now,
+          },
+        });
+        const voided = await voidPendingCharges({
+          tx,
+          orgId: scope.orgId,
+          appointmentIds: [appointment.id],
+          reason: input.reason,
+          now,
+        });
+        const voidedCharges = voided.length;
+        return { appointment, voidedCharges };
       });
-      const voidedCharges = await voidPendingCharges({
-        tx,
+      audit({
+        action: "opd.cancel",
+        actorId: scope.userId,
         orgId: scope.orgId,
-        appointmentId: appointment.id,
-        reason: input.reason,
-        now,
+        target: `opd:${input.appointmentId}`,
+        meta: { voidedCharges: result.voidedCharges },
       });
-      return { appointment, voidedCharges };
-    });
-    audit({
-      action: "opd.cancel",
-      actorId: scope.userId,
-      orgId: scope.orgId,
-      target: `opd:${input.appointmentId}`,
-      meta: { voidedCharges: result.voidedCharges },
-    });
-    return result.appointment;
-  }),
+      return result.appointment;
+    },
+  ),
 
   markNoShow: orgProcedure({ opd: ["update"] }, appointmentIdInput).handler(
     async ({ context, input }) => {
@@ -601,13 +593,14 @@ export const opdRouter = {
           from: ["booked"],
           set: { status: "no_show", noShowAt: now, updatedAt: now },
         });
-        const voidedCharges = await voidPendingCharges({
+        const voided = await voidPendingCharges({
           tx,
           orgId: scope.orgId,
-          appointmentId: appointment.id,
+          appointmentIds: [appointment.id],
           reason: "No-show",
           now,
         });
+        const voidedCharges = voided.length;
         return { appointment, voidedCharges };
       });
       audit({
@@ -624,8 +617,8 @@ export const opdRouter = {
   day: orgProcedure(
     { opd: ["read"] },
     orgInput.extend({
-      date: dateInput.optional(),
-      q: z.string().trim().min(1).max(100).optional(),
+      date: dateOnly.optional(),
+      q: searchQuery,
       includeClosed: z.boolean().default(false),
       cursor: z.object({ dayOrderAt: z.coerce.date(), id: z.string() }).optional(),
       limit: z.number().int().min(1).max(200).default(100),
@@ -650,22 +643,13 @@ export const opdRouter = {
             ),
           )
           .returning({ id: opdAppointments.id });
-        if (closed.length === 0) return [];
-
-        const voided = await tx
-          .update(charges)
-          .set({ status: "voided", voidReason: "No-show", updatedAt: now })
-          .where(
-            and(
-              eq(charges.orgId, scope.orgId),
-              inArray(
-                charges.opdAppointmentId,
-                closed.map((appointment) => appointment.id),
-              ),
-              eq(charges.status, "pending"),
-            ),
-          )
-          .returning({ appointmentId: charges.opdAppointmentId });
+        const voided = await voidPendingCharges({
+          tx,
+          orgId: scope.orgId,
+          appointmentIds: closed.map((appointment) => appointment.id),
+          reason: "No-show",
+          now,
+        });
         const voidedByAppointment = new Map<string, number>();
         for (const charge of voided) {
           voidedByAppointment.set(
@@ -704,43 +688,11 @@ export const opdRouter = {
           )
         : undefined,
     );
-    const pageColumns = { id: opdAppointments.id, dayOrderAt: opdAppointments.dayOrderAt };
     const tokenNumber =
       input.q && /^\d+$/.test(input.q) && Number(input.q) <= 2_147_483_647
         ? Number(input.q)
         : undefined;
-    const page = input.q
-      ? db
-          .select(pageColumns)
-          .from(opdAppointments)
-          .leftJoin(
-            patients,
-            and(eq(patients.orgId, scope.orgId), eq(patients.id, opdAppointments.patientId)),
-          )
-          .where(
-            and(
-              pagePredicate,
-              or(
-                ilike(patients.name, `%${input.q}%`),
-                ilike(patients.mrn, `%${input.q}%`),
-                ilike(patients.phone, `%${input.q}%`),
-                tokenNumber === undefined
-                  ? undefined
-                  : eq(opdAppointments.tokenNumber, tokenNumber),
-              ),
-            ),
-          )
-          .orderBy(desc(opdAppointments.dayOrderAt), desc(opdAppointments.id))
-          .limit(input.limit + 1)
-          .as("opd_day_page")
-      : db
-          .select(pageColumns)
-          .from(opdAppointments)
-          .where(pagePredicate)
-          .orderBy(desc(opdAppointments.dayOrderAt), desc(opdAppointments.id))
-          .limit(input.limit + 1)
-          .as("opd_day_page");
-
+    const search = input.q ? likePattern(input.q) : undefined;
     const rows = await db
       .select({
         ...getTableColumns(opdAppointments),
@@ -750,11 +702,7 @@ export const opdRouter = {
         practitionerName: practitioners.name,
         departmentName: departments.name,
       })
-      .from(page)
-      .innerJoin(
-        opdAppointments,
-        and(eq(opdAppointments.orgId, scope.orgId), eq(opdAppointments.id, page.id)),
-      )
+      .from(opdAppointments)
       .leftJoin(
         patients,
         and(eq(patients.id, opdAppointments.patientId), eq(patients.orgId, scope.orgId)),
@@ -770,7 +718,25 @@ export const opdRouter = {
         departments,
         and(eq(departments.id, opdAppointments.departmentId), eq(departments.orgId, scope.orgId)),
       )
-      .orderBy(desc(page.dayOrderAt), desc(page.id));
+      .where(
+        and(
+          pagePredicate,
+          search
+            ? or(
+                ilike(patients.name, search),
+                ilike(patients.mrn, search),
+                ilike(patients.phone, search),
+                ilike(opdAppointments.callerName, search),
+                ilike(opdAppointments.callerPhone, search),
+                tokenNumber === undefined
+                  ? undefined
+                  : eq(opdAppointments.tokenNumber, tokenNumber),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(desc(opdAppointments.dayOrderAt), desc(opdAppointments.id))
+      .limit(input.limit + 1);
 
     const pageRows = rows.slice(0, input.limit);
     const appointmentInvoices =
@@ -898,6 +864,7 @@ export const opdRouter = {
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const attachment = await db.transaction(async (tx) => {
+      // Locks: the file row so `file.delete` waits, the appointment row so a concurrent cancel is seen.
       const [appointment] = await tx
         .select({ id: opdAppointments.id })
         .from(opdAppointments)
@@ -923,11 +890,12 @@ export const opdRouter = {
         )
         .limit(1)
         .for("key share");
-      if (!appointment || !readyFile)
+      if (!appointment || !readyFile) {
         throw new ORPCError("NOT_FOUND", {
           message: "That appointment or file is no longer available.",
         });
-      const [created] = await tx
+      }
+      const [attachment] = await tx
         .insert(attachments)
         .values({
           id: Bun.randomUUIDv7(),
@@ -939,8 +907,10 @@ export const opdRouter = {
         })
         .onConflictDoNothing()
         .returning();
-      if (!created) throw conflict("duplicate", "That scan is already attached.");
-      return created;
+      if (!attachment) {
+        throw new ORPCError("CONFLICT", { message: "That scan is already attached." });
+      }
+      return attachment;
     });
     audit({
       action: "opd.prescription.attach",

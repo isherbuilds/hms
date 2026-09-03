@@ -13,7 +13,7 @@ change as code.
 - [Design](./docs/design.md) — **the UI source of truth**
 - [Current work registry](./docs/README.md#work-lifecycle) — the only list of unfinished documentation-backed work
 - [Research ledger](./docs/research/README.md) — evidence, not product authority
-- Skills: [`org-scoped-feature`](./.agents/skills/org-scoped-feature/SKILL.md) to add an org-scoped domain, [`tenancy-review`](./.agents/skills/tenancy-review/SKILL.md) to audit a diff for cross-tenant leaks
+- Skills: [`org-scoped-feature`](./.agents/skills/org-scoped-feature/SKILL.md) to add an org-scoped domain, [`tenancy-review`](./.agents/skills/tenancy-review/SKILL.md) to audit a diff for cross-tenant leaks, [`lean-code`](./.agents/skills/lean-code/SKILL.md) before implementing or reviewing anything — the smallest correct code, no redundant checks, no thin wrappers, parallel reads, one query per fact on the client
 
 ## Commands
 

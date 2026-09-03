@@ -50,6 +50,9 @@ test("a file is uploaded, finalized, read only via a signature, and deleted", as
 
   const listed = await api.file.list({ orgSlug: org.slug });
   expect(listed.items.map((file) => file.id)).toContain(upload.key);
+  const matching = await api.file.list({ orgSlug: org.slug, query: "OTES.T" });
+  expect(matching.items.map((file) => file.id)).toContain(upload.key);
+  expect((await api.file.list({ orgSlug: org.slug, query: "no-such-file-zz" })).items).toEqual([]);
 
   const read = await api.file.getReadUrl({ orgSlug: org.slug, key: upload.key });
   expect(read.url).toContain("X-Amz-Signature");

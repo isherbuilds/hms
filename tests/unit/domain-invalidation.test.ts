@@ -61,7 +61,7 @@ test("a reschedule leaves financial caches alone", async () => {
 });
 
 test("charge-changing appointment transitions invalidate the paired appointment detail", async () => {
-  for (const transition of ["billing", "checkIn", "cancel", "noShow"] as const) {
+  for (const transition of ["checkIn", "cancel", "noShow"] as const) {
     const { client, keys } = recordingInvalidator();
     await invalidateOpdAppointmentState(client, "org-a", "appointment-1", transition);
 

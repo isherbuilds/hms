@@ -1,4 +1,5 @@
 import { toPaise } from "@hms/api/lib/invoice-math";
+import { authorize } from "@hms/auth/access";
 import { Button } from "@hms/ui/components/button";
 import {
   Form,
@@ -13,20 +14,14 @@ import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { cn } from "@hms/ui/lib/utils";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClientOnly, useNavigate } from "@tanstack/react-router";
-import {
-  createContext,
-  useContext,
-  useMemo,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ClientOnly, useBlocker, useNavigate } from "@tanstack/react-router";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useFormContext, useFormState, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Monogram } from "@/components/monogram";
 import { FinancialSummary } from "@/components/opd-financial-summary";
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
@@ -35,19 +30,12 @@ import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient
 import { ServicePicker, type ServiceLine } from "@/components/opd-service-picker";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { invalidateOpdAppointmentState } from "@/lib/domain-invalidation";
-import { useCan, useMembership } from "@/lib/membership";
+import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
-import { servicePreview, type WalkInQuote } from "@/lib/opd-service-preview";
+import { type WalkInQuote } from "@/lib/opd-service-preview";
 import { formatBusinessDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-
-// On the element rather than in route state: lifting it up would cost a render of
-// the page on the first keystroke. Same arrangement as PatientForm and PatientSheet.
-const INTAKE_FORM = "[data-intake-form]";
-
-export function isIntakeFormDirty(): boolean {
-  return document.querySelector(INTAKE_FORM)?.getAttribute("data-dirty") === "true";
-}
+import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
 
 const intakeSchema = z
   .object({
@@ -70,18 +58,8 @@ const intakeSchema = z
   });
 
 type IntakeValues = z.input<typeof intakeSchema>;
-
-function defaultValues(patient: SelectedPatient | null): IntakeValues {
-  return {
-    patient,
-    when: "now",
-    departmentId: "",
-    practitionerId: "",
-    scheduledLocal: "",
-    services: [],
-    omitConsultFee: false,
-  };
-}
+type IntakeDepartment = { id: string; name: string };
+type IntakePractitioner = { id: string; name: string; departmentId: string };
 
 function serviceClaims(services: ServiceLine[]) {
   return services.map(({ catalogItemId, qty }) => ({ catalogItemId, qty }));
@@ -93,13 +71,12 @@ function omitsConsultFee(values: IntakeValues) {
 }
 
 function quoteInput(orgSlug: string, values: IntakeValues) {
-  if (values.when !== "now" || !values.patient || !values.departmentId || !values.practitionerId) {
+  if (values.when !== "now" || !values.patient || !values.practitionerId) {
     return null;
   }
   return {
     orgSlug,
     patientId: values.patient.id,
-    departmentId: values.departmentId,
     practitionerId: values.practitionerId,
     services: serviceClaims(values.services),
     omitConsultFee: omitsConsultFee(values),
@@ -107,101 +84,12 @@ function quoteInput(orgSlug: string, values: IntakeValues) {
   };
 }
 
-type QuoteInput = NonNullable<ReturnType<typeof quoteInput>>;
-
-// The query is disabled here, so this is never fetched; a stable key keeps
-// half-built inputs out of the cache.
-const NO_QUOTE: QuoteInput = {
-  orgSlug: "",
-  patientId: "",
-  departmentId: "",
-  practitionerId: "",
-  services: [],
-  omitConsultFee: false,
-  discountAmount: "0",
-};
-
 type QuoteState = {
-  current: WalkInQuote | undefined;
-  data: WalkInQuote | undefined;
+  data: WalkInQuote;
   fetching: boolean;
-  error: string | undefined;
-  waiting: boolean;
+  error: Error | null;
+  ready: boolean;
 };
-
-// Split, because a refetch flips the status twice while the totals stand still:
-// the footer and the aside draw only the bill and stay asleep through it.
-const BillContext = createContext<WalkInQuote | null>(null);
-const QuoteStateContext = createContext<QuoteState | null>(null);
-
-function useBill(): WalkInQuote {
-  const bill = useContext(BillContext);
-  if (!bill) throw new Error("useBill must be used inside <QuoteProvider>");
-  return bill;
-}
-
-function useQuoteState(): QuoteState {
-  const state = useContext(QuoteStateContext);
-  if (!state) throw new Error("useQuoteState must be used inside <QuoteProvider>");
-  return state;
-}
-
-function QuoteProvider({ orgSlug, children }: { orgSlug: string; children: ReactNode }) {
-  const { control } = useFormContext<IntakeValues>();
-  const currency = useMembership(orgSlug, (membership) => membership.currency);
-  // Compared structurally, so typing a date never rebuilds the input or refetches.
-  // A second `useWatch` would cost another form emission per keystroke.
-  const { input, services } = useWatch({
-    control,
-    compute: (values: IntakeValues) => ({
-      input: quoteInput(orgSlug, values),
-      services: values.services,
-    }),
-  });
-
-  const quote = useQuery({
-    ...orpc.opd.quoteWalkIn.queryOptions({ input: input ?? NO_QUOTE }),
-    enabled: input !== null,
-    // Keeps the last good bill on screen, so an open settlement overlay is never torn
-    // down mid-draft by a refetch.
-    placeholderData: keepPreviousData,
-  });
-  // `isPlaceholderData` separates the kept-around bill from a fresh one: without it
-  // a stale quote reads as current and the desk settles the wrong total.
-  const current =
-    input !== null && quote.isSuccess && !quote.isFetching && !quote.isPlaceholderData
-      ? quote.data
-      : undefined;
-  // React Hook Form clones `services` on every emission, so memoise on the values,
-  // not the array — otherwise every keystroke publishes a new bill.
-  const previewKey = services
-    .map((s) => `${s.catalogItemId}:${s.qty}:${s.unitPrice}:${s.taxRatePercent}`)
-    .join(",");
-  const preview = useMemo(
-    () => servicePreview(services, currency),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `previewKey` is `services` by value
-    [previewKey, currency],
-  );
-  // `quote.data`, not `current`: falling back to the preview here swapped the totals
-  // out and back on every refetch, flickering every priced line.
-  const bill = input !== null && quote.data ? quote.data : preview;
-
-  return (
-    <BillContext.Provider value={bill}>
-      <QuoteStateContext.Provider
-        value={{
-          current,
-          data: input !== null ? quote.data : undefined,
-          fetching: input !== null && quote.isFetching,
-          error: quote.isError ? quote.error.message : undefined,
-          waiting: input !== null && current === undefined,
-        }}
-      >
-        {children}
-      </QuoteStateContext.Provider>
-    </BillContext.Provider>
-  );
-}
 
 function IntakeSection({
   title,
@@ -209,32 +97,17 @@ function IntakeSection({
   children,
 }: {
   title: string;
-  description: string;
+  description?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="grid gap-3 border-b border-border p-4 last:border-b-0 md:grid-cols-[10rem_minmax(0,1fr)] md:gap-4">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-xs text-muted-foreground">{title}</h2>
-        <p className="text-muted-foreground">{description}</p>
+    <section className="grid gap-3 border-b border-border p-4 last:border-b-0">
+      <div className="flex flex-wrap items-baseline gap-x-3">
+        <h2 className="font-medium">{title}</h2>
+        {description ? <p className="text-muted-foreground">{description}</p> : null}
       </div>
       <div className="min-w-0">{children}</div>
     </section>
-  );
-}
-
-function ChosenPatient({ patient, onChange }: { patient: SelectedPatient; onChange: () => void }) {
-  return (
-    <div className="flex min-h-10 items-center gap-2 rounded-md bg-muted px-3">
-      <Monogram label={patient.name} />
-      <span className="flex min-w-0 flex-col leading-tight">
-        <span className="truncate font-medium">{patient.name}</span>
-        <span className="truncate font-mono text-muted-foreground">{patient.mrn}</span>
-      </span>
-      <Button type="button" size="sm" variant="ghost" className="ml-auto" onClick={onChange}>
-        Change
-      </Button>
-    </div>
   );
 }
 
@@ -246,10 +119,22 @@ function PatientField({ orgSlug }: { orgSlug: string }) {
 
   if (patient) {
     return (
-      <ChosenPatient
-        patient={patient}
-        onChange={() => setValue("patient", null, { shouldDirty: true })}
-      />
+      <div className="flex min-h-10 items-center gap-2 rounded-md bg-muted px-3">
+        <Monogram label={patient.name} />
+        <span className="flex min-w-0 flex-col leading-tight">
+          <span className="truncate font-medium">{patient.name}</span>
+          <span className="truncate font-mono text-muted-foreground">{patient.mrn}</span>
+        </span>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="ml-auto"
+          onClick={() => setValue("patient", null, { shouldDirty: true })}
+        >
+          Change
+        </Button>
+      </div>
     );
   }
 
@@ -264,62 +149,31 @@ function PatientField({ orgSlug }: { orgSlug: string }) {
   );
 }
 
-// The only place that reads `isDirty` — it flips once a session, so publishing it
-// here keeps the fields out of the subscription.
-function IntakeFrame({
-  pending,
-  onSubmit,
-  children,
-}: {
-  pending: boolean;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  children: ReactNode;
-}) {
-  const { control } = useFormContext<IntakeValues>();
-  const { isDirty } = useFormState({ control });
-
-  return (
-    // `noValidate`: Zod owns every message, so the browser must not pre-empt it.
-    <form noValidate data-intake-form data-dirty={isDirty} onSubmit={onSubmit}>
-      <fieldset disabled={pending} className="contents">
-        {children}
-      </fieldset>
-    </form>
-  );
-}
-
 function CareTeamFields({
-  orgSlug,
+  departments,
+  practitioners,
   canSettleWalkIn,
 }: {
-  orgSlug: string;
+  departments: IntakeDepartment[];
+  practitioners: IntakePractitioner[];
   canSettleWalkIn: boolean;
 }) {
   const form = useFormContext<IntakeValues>();
   const { timeZone } = useOrgDateTime();
-  const departments = useQuery(orpc.staff.listDepartments.queryOptions({ input: { orgSlug } }));
-  const practitioners = useQuery(orpc.staff.listPractitioners.queryOptions({ input: { orgSlug } }));
-  const departmentId = useWatch({ control: form.control, name: "departmentId", exact: true });
+  const departmentId = useWatch({
+    control: form.control,
+    name: "departmentId",
+    exact: true,
+  });
   const when = useWatch({ control: form.control, name: "when", exact: true });
 
-  const error = departments.error ?? practitioners.error;
-  const optionsPending = departments.isPending || practitioners.isPending;
-  const practitionerOptions = (practitioners.data ?? []).filter(
+  const practitionerOptions = practitioners.filter(
     (practitioner) => practitioner.departmentId === departmentId,
   );
 
   return (
     <div className="grid gap-3">
-      {error ? (
-        <div role="alert" className="border-l-2 border-destructive pl-3">
-          <p className="font-medium">Could not load intake options</p>
-          <p className="text-muted-foreground">{error.message}</p>
-        </div>
-      ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
-        {/* Both selects take their options from a query, so they must be
-            controlled — `register` writes the DOM value once and the browser
-            drops it while the list is still empty. */}
         <FormField
           control={form.control}
           name="departmentId"
@@ -331,11 +185,10 @@ function CareTeamFields({
               <FormControl>
                 <NativeSelect
                   {...field}
-                  disabled={optionsPending}
                   onChange={(event) => {
-                    field.onChange(event);
                     // The old practitioner belongs to the old department.
                     form.setValue("practitionerId", "", { shouldDirty: true });
+                    field.onChange(event);
                   }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && event.currentTarget.value) {
@@ -345,7 +198,7 @@ function CareTeamFields({
                   }}
                 >
                   <option value="">Choose a department</option>
-                  {(departments.data ?? []).map((department) => (
+                  {departments.map((department) => (
                     <option key={department.id} value={department.id}>
                       {department.name}
                     </option>
@@ -368,7 +221,7 @@ function CareTeamFields({
               <FormControl>
                 <NativeSelect
                   {...field}
-                  disabled={!departmentId || optionsPending}
+                  disabled={!departmentId}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && event.currentTarget.value) {
                       event.preventDefault();
@@ -401,13 +254,17 @@ function CareTeamFields({
                   {...field}
                   onChange={(event) => {
                     field.onChange(event);
-                    // Booking rejects consultation items; drop them rather than surface the server
-                    // error on the date-and-time field.
-                    if (event.target.value !== "later") return;
-                    const kept = form
-                      .getValues("services")
-                      .filter((service) => service.category !== "consultation");
-                    form.setValue("services", kept, { shouldDirty: true });
+                    if (event.currentTarget.value !== "later") return;
+                    const services = form.getValues("services");
+                    const bookable = services.filter(
+                      (service) => service.category !== "consultation",
+                    );
+                    if (bookable.length !== services.length) {
+                      form.setValue("services", bookable, { shouldDirty: true });
+                    }
+                    if (form.getValues("omitConsultFee")) {
+                      form.setValue("omitConsultFee", false, { shouldDirty: true });
+                    }
                   }}
                 >
                   <option value="now">Now</option>
@@ -444,100 +301,119 @@ function CareTeamFields({
   );
 }
 
-// Nothing here reads the patient: the catalog is priced the same for everyone and
-// the submit button already refuses without one.
-function ServicesFields({ orgSlug }: { orgSlug: string }) {
+function ServicesFields({
+  orgSlug,
+  currency,
+  quoteState,
+}: {
+  orgSlug: string;
+  currency: string;
+  quoteState: QuoteState;
+}) {
   const form = useFormContext<IntakeValues>();
-  const bill = useBill();
-  const quote = useQuoteState();
   const when = useWatch({ control: form.control, name: "when", exact: true });
-  const services = useWatch({ control: form.control, name: "services", exact: true });
-  const omitConsultFee = useWatch({ control: form.control, name: "omitConsultFee", exact: true });
+  const services = useWatch({
+    control: form.control,
+    name: "services",
+    exact: true,
+  });
+  const omitConsultFee = useWatch({
+    control: form.control,
+    name: "omitConsultFee",
+    exact: true,
+  });
+  const consultation = quoteState.data.lines.find((line) => line.source === "consultation");
+  const serviceGross = new Map(
+    quoteState.data.lines
+      .filter((line) => line.source === "service")
+      .map((line) => [line.chargeId, line.gross]),
+  );
+  const chosen = new Set([
+    ...services.map((service) => service.catalogItemId),
+    ...(consultation ? [consultation.chargeId] : []),
+  ]);
+  const lines = [
+    ...(when === "now" && consultation
+      ? [
+          {
+            key: "consultation",
+            description: consultation.description,
+            category: consultation.category,
+            qty: 1,
+            unitPrice: consultation.unitPrice,
+            taxRatePercent: consultation.taxRatePercent,
+            gross: consultation.gross,
+            editable: false,
+          },
+        ]
+      : []),
+    ...services.map((service) => ({
+      key: service.catalogItemId,
+      description: service.name,
+      category: service.category,
+      qty: service.qty,
+      unitPrice: service.unitPrice,
+      taxRatePercent: service.taxRatePercent,
+      gross: when === "now" ? serviceGross.get(service.catalogItemId) : undefined,
+      editable: true,
+    })),
+  ];
 
-  // Identity, not payload: a quantity edit leaves the picker's props untouched.
-  const chosenIds = services.map((service) => service.catalogItemId).join(" ");
-  const setServices = (next: ServiceLine[]) =>
-    form.setValue("services", next, { shouldDirty: true });
-  const addService = (line: ServiceLine) =>
-    form.setValue("services", [...form.getValues("services"), line], { shouldDirty: true });
-  const manualConsult = services.some((service) => service.category === "consultation");
-  const quotedConsult = quote.current?.lines.some((line) => line.source === "consultation");
+  const setQty = (catalogItemId: string, qty: number) =>
+    form.setValue(
+      "services",
+      services.map((service) =>
+        service.catalogItemId === catalogItemId ? { ...service, qty } : service,
+      ),
+      { shouldDirty: true },
+    );
+
+  const remove = (catalogItemId: string, editable: boolean) => {
+    if (!editable) {
+      form.setValue("omitConsultFee", true, { shouldDirty: true });
+      return;
+    }
+    form.setValue(
+      "services",
+      services.filter((service) => service.catalogItemId !== catalogItemId),
+      { shouldDirty: true },
+    );
+  };
 
   return (
     <div className="grid gap-3">
       <ServicePicker
         orgSlug={orgSlug}
-        chosenIds={chosenIds}
+        chosen={chosen}
         allowConsultation={when === "now"}
-        onAdd={addService}
+        onAdd={(line) => form.setValue("services", [...services, line], { shouldDirty: true })}
       />
-      {quote.fetching ? (
-        <p role="status" className="text-muted-foreground">
-          Recalculating subtotal, discount and tax…
-        </p>
-      ) : null}
-      {when === "now" && quote.error ? (
+      {when === "now" && !quoteState.ready && quoteState.error ? (
         <div role="alert" className="border-l-2 border-destructive pl-3">
           <p className="font-medium">Could not calculate the bill</p>
-          <p className="text-muted-foreground">{quote.error}</p>
+          <p className="text-muted-foreground">{quoteState.error.message}</p>
         </div>
       ) : null}
-      <ServiceLines
-        quote={bill}
-        services={services}
-        onChange={setServices}
-        onRemoveConsult={() => form.setValue("omitConsultFee", true, { shouldDirty: true })}
-      />
-      <div className="border-t border-border pt-3 xl:hidden">
-        <FinancialSummary quote={bill} />
-      </div>
-      <div className="grid gap-1 text-muted-foreground">
-        {when === "now" ? (
-          manualConsult ? (
-            <p>Using the consultation you picked</p>
-          ) : omitConsultFee ? (
-            <p className="flex items-center gap-1">
-              <span>
-                {quote.current && !quotedConsult
-                  ? "Consultation fee removed"
-                  : "Updating consultation fee"}
-              </span>
-              <span aria-hidden="true">·</span>
-              <Button
-                type="button"
-                size="xs"
-                variant="ghost"
-                onClick={() => form.setValue("omitConsultFee", false, { shouldDirty: true })}
-              >
-                Restore fee
-              </Button>
-            </p>
-          ) : quote.current && !quotedConsult ? (
-            <p>
-              No consultation fee is configured for this practitioner. Search the catalog to add
-              one.
-            </p>
-          ) : null
-        ) : null}
-        <p>Billing a procedure, lab test or X-ray does not mark that clinical work as completed</p>
-      </div>
+      <ServiceLines lines={lines} currency={currency} onQuantityChange={setQty} onRemove={remove} />
+      {/* A line-level action, so it stays with the lines rather than below the totals. */}
+      {when === "now" && omitConsultFee ? (
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          className="justify-self-start"
+          onClick={() => form.setValue("omitConsultFee", false, { shouldDirty: true })}
+        >
+          Restore consultation fee
+        </Button>
+      ) : null}
+      {when === "now" ? (
+        <div className="border-t border-border pt-3 lg:hidden">
+          <FinancialSummary quote={quoteState.data} />
+        </div>
+      ) : null}
     </div>
   );
-}
-
-// Only the reasons no field owns: the schema and `handleSubmit` cover the rest and
-// land the cursor on the offending control themselves.
-function blockingReason(
-  hasPatient: boolean,
-  canSettleWalkIn: boolean,
-  when: IntakeValues["when"],
-  quote: QuoteState,
-): string | undefined {
-  if (!hasPatient) return "Choose or register a patient.";
-  if (when !== "now") return undefined;
-  if (!canSettleWalkIn) return "Your role cannot settle an immediate appointment.";
-  if (quote.waiting) return quote.error ?? "Waiting for the current quote.";
-  return undefined;
 }
 
 function IntakeSubmit({
@@ -545,12 +421,14 @@ function IntakeSubmit({
   canSettleWalkIn,
   pending,
   actionError,
+  quoteState,
   messageClassName,
 }: {
   id: string;
   canSettleWalkIn: boolean;
   pending: boolean;
   actionError: string | undefined;
+  quoteState: QuoteState;
   messageClassName?: string;
 }) {
   const { control } = useFormContext<IntakeValues>();
@@ -561,9 +439,19 @@ function IntakeSubmit({
     exact: true,
     compute: (patient: SelectedPatient | null) => patient !== null,
   });
-  const quote = useQuoteState();
-  const reason = blockingReason(hasPatient, canSettleWalkIn, when, quote);
-  const zeroWalkIn = quote.current !== undefined && toPaise(quote.current.grandTotal) === 0;
+  let reason: string | undefined;
+  if (!hasPatient) {
+    reason = "Choose or register a patient.";
+  } else if (when === "now" && !canSettleWalkIn) {
+    reason = "Your role cannot settle an immediate appointment.";
+  } else if (when === "now" && !quoteState.ready) {
+    reason =
+      quoteState.error?.message ??
+      (quoteState.fetching
+        ? "Quote is updating. Wait to confirm."
+        : "Waiting for the current quote.");
+  }
+  const zeroWalkIn = quoteState.ready && toPaise(quoteState.data.grandTotal) === 0;
 
   return (
     <>
@@ -602,14 +490,27 @@ function useScheduledPreview() {
   });
 }
 
+function SummaryRow({ term, children }: { term: string; children: ReactNode }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="text-muted-foreground">{term}</dt>
+      <dd className="min-w-0 truncate text-right">{children}</dd>
+    </div>
+  );
+}
+
 function FinancialAside({
+  practitioners,
   canSettleWalkIn,
   pending,
   actionError,
+  quoteState,
 }: {
+  practitioners: IntakePractitioner[];
   canSettleWalkIn: boolean;
   pending: boolean;
   actionError: string | undefined;
+  quoteState: QuoteState;
 }) {
   const { control } = useFormContext<IntakeValues>();
   const when = useWatch({ control, name: "when", exact: true });
@@ -619,24 +520,34 @@ function FinancialAside({
     exact: true,
     compute: (patient: SelectedPatient | null) => patient?.name ?? "—",
   });
-  const bill = useBill();
+  const practitionerId = useWatch({ control, name: "practitionerId", exact: true });
+  const serviceCount = useWatch({
+    control,
+    name: "services",
+    exact: true,
+    compute: (services: ServiceLine[]) => services.length,
+  });
   const previewTime = useScheduledPreview();
+  const practitionerName =
+    practitioners.find((practitioner) => practitioner.id === practitionerId)?.name ?? "—";
 
   return (
     <div className="sticky top-4 flex flex-col gap-4 rounded-lg border border-border bg-card p-4">
       <div className="flex flex-col gap-3">
-        <h2 className="text-xs text-muted-foreground">Financial preview</h2>
-        <FinancialSummary quote={bill} />
+        <h2 className="font-medium">{when === "now" ? "Payment" : "Booking"}</h2>
+        {when === "now" ? <FinancialSummary quote={quoteState.data} /> : null}
         {when === "later" ? (
+          // Nothing is billed at booking, so the panel confirms the appointment
+          // itself rather than showing a column of zeroes.
           <dl className="grid gap-2">
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Patient</dt>
-              <dd>{patientName}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Time</dt>
-              <dd className="tabular-nums">{previewTime || "—"}</dd>
-            </div>
+            <SummaryRow term="Patient">{patientName}</SummaryRow>
+            <SummaryRow term="Seen by">{practitionerName}</SummaryRow>
+            <SummaryRow term="Time">
+              <span className="tabular-nums">{previewTime || "—"}</span>
+            </SummaryRow>
+            <SummaryRow term="Services">
+              {serviceCount === 0 ? "None" : `${serviceCount} queued`}
+            </SummaryRow>
           </dl>
         ) : null}
       </div>
@@ -645,6 +556,7 @@ function FinancialAside({
         canSettleWalkIn={canSettleWalkIn}
         pending={pending}
         actionError={actionError}
+        quoteState={quoteState}
       />
     </div>
   );
@@ -654,19 +566,20 @@ function IntakeFooter({
   canSettleWalkIn,
   pending,
   actionError,
+  quoteState,
 }: {
   canSettleWalkIn: boolean;
   pending: boolean;
   actionError: string | undefined;
+  quoteState: QuoteState;
 }) {
   const { control } = useFormContext<IntakeValues>();
   const when = useWatch({ control, name: "when", exact: true });
-  const bill = useBill();
   const previewTime = useScheduledPreview();
-  const lineCount = bill.lines.length;
+  const lineCount = quoteState.data.lines.length;
 
   return (
-    <footer className="absolute inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card p-3 xl:hidden">
+    <footer className="absolute inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card p-3 lg:hidden">
       <div className="min-w-0">
         <p className="truncate text-muted-foreground">
           {when === "now"
@@ -675,7 +588,7 @@ function IntakeFooter({
         </p>
         <p className="truncate text-sm font-medium tabular-nums">
           {when === "now"
-            ? formatMoney(bill.grandTotal, bill.currency)
+            ? formatMoney(quoteState.data.grandTotal, quoteState.data.currency)
             : previewTime || "Choose a time"}
         </p>
       </div>
@@ -685,6 +598,7 @@ function IntakeFooter({
           canSettleWalkIn={canSettleWalkIn}
           pending={pending}
           actionError={actionError}
+          quoteState={quoteState}
           messageClassName="max-w-48 text-right"
         />
       </div>
@@ -692,76 +606,66 @@ function IntakeFooter({
   );
 }
 
-/** Stays mounted while its displayed bill refreshes. */
-function SettlementGate({
-  pending,
-  error,
-  onOpenChange,
-  onConfirm,
-}: {
-  pending: boolean;
-  error: string | undefined;
-  onOpenChange: (open: boolean) => void;
-  onConfirm: (settlement: SettlementDraft) => void;
-}) {
-  const { control } = useFormContext<IntakeValues>();
-  const patientName = useWatch({
-    control,
-    name: "patient",
-    exact: true,
-    compute: (patient: SelectedPatient | null) => patient?.name ?? "",
-  });
-  const quote = useQuoteState();
-  if (!quote.data || !patientName) return null;
-
-  const blockedReason = quote.current
-    ? undefined
-    : (quote.error ??
-      (quote.fetching ? "Quote is updating. Wait to confirm." : "Waiting for the current quote."));
-
-  return (
-    <ClientOnly fallback={null}>
-      <SettlementOverlay
-        quote={quote.data}
-        description={`${patientName} · walk-in now`}
-        label="Confirm walk-in"
-        blockedReason={blockedReason}
-        pending={pending}
-        error={error}
-        onOpenChange={onOpenChange}
-        onConfirm={onConfirm}
-      />
-    </ClientOnly>
-  );
-}
-
 export function OpdIntakeForm({
   orgSlug,
-  /** From `?patientId`: the patient this page opened with, if the link named one. */
-  seedPatientId,
+  seedPatient,
+  departments,
+  practitioners,
 }: {
   orgSlug: string;
-  seedPatientId?: string;
+  seedPatient?: SelectedPatient;
+  departments: IntakeDepartment[];
+  practitioners: IntakePractitioner[];
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const canSettleWalkIn = useCan(orgSlug, { billing: ["write"] });
-  // Read, not subscribed: the loader already awaited this record, and it never
-  // changes while this page is open.
-  const [initialPatient] = useState<SelectedPatient | null>(() => {
-    if (!seedPatientId) return null;
-    const record = queryClient.getQueryData(
-      orpc.patient.get.queryOptions({ input: { orgSlug, patientId: seedPatientId } }).queryKey,
-    );
-    if (!record) throw new Error(`Patient ${seedPatientId} was not loaded for intake`);
-    return { id: record.id, name: record.name, mrn: record.mrn };
+  const { roles, currency } = useMembership(orgSlug);
+  const canSettleWalkIn = authorize(roles, { billing: ["write"] });
+  const intake = useZodForm(intakeSchema, {
+    defaultValues: {
+      patient: seedPatient ?? null,
+      when: "now",
+      departmentId: "",
+      practitionerId: "",
+      scheduledLocal: "",
+      services: [],
+      omitConsultFee: false,
+    },
   });
-  const intake = useZodForm(intakeSchema, { defaultValues: defaultValues(initialPatient) });
+  const { isDirty } = useFormState({ control: intake.control });
+  const blocker = useBlocker({
+    shouldBlockFn: () => isDirty,
+    enableBeforeUnload: isDirty,
+    withResolver: true,
+  });
+  const input = useWatch({
+    control: intake.control,
+    compute: (values: IntakeValues) => quoteInput(orgSlug, values),
+  });
+  const quote = useQuery({
+    ...orpc.opd.quoteWalkIn.queryOptions({ input: input ?? skipToken }),
+    staleTime: 0,
+  });
+  const quoteReady = input !== null && quote.isSuccess && !quote.isFetching;
+  const quoteState: QuoteState = {
+    data:
+      input !== null && quote.data
+        ? quote.data
+        : {
+            currency,
+            subtotal: "0.00",
+            discountAmount: "0.00",
+            taxTotal: "0.00",
+            grandTotal: "0.00",
+            lines: [],
+          },
+    fetching: input !== null && quote.isFetching,
+    error: input !== null && quote.isError ? quote.error : null,
+    ready: quoteReady,
+  };
   const [settlementOpen, setSettlementOpen] = useState(false);
 
   const goToAppointment = async (appointmentId: string) => {
-    // `ignoreBlocker`: the appointment is saved, so the unsaved-changes guard has
-    // nothing left to protect.
     await navigate({
       to: "/$orgSlug/opd/$appointmentId",
       params: { orgSlug, appointmentId },
@@ -788,122 +692,151 @@ export function OpdIntakeForm({
         toast.success(`Token ${appointment.tokenNumber} created`);
         await goToAppointment(appointment.id);
       },
+      onError: async (error) => {
+        if (!hasErrorCode(error, "CONFLICT")) return;
+        setSettlementOpen(false);
+        await quote.refetch();
+        toast.error(errorMessage(error, "The quote changed. Review it and try again."));
+      },
     }),
   );
 
   const pending = book.isPending || createWalkIn.isPending;
 
-  // Read from the cache rather than subscribed to, so pricing a walk-in never
-  // re-renders this component or the fields under it.
-  const settleableQuote = (values: IntakeValues) => {
-    const input = quoteInput(orgSlug, values);
-    if (!input) return undefined;
-    const { queryKey } = orpc.opd.quoteWalkIn.queryOptions({ input });
-    const state = queryClient.getQueryState<WalkInQuote>(queryKey);
-    return state?.status === "success" && state.fetchStatus === "idle" ? state.data : undefined;
-  };
-
   const settleWalkIn = (settlement: SettlementDraft) => {
-    const values = intake.getValues();
-    if (!values.patient || !canSettleWalkIn || !settleableQuote(values)) return;
+    const current = intake.getValues();
+    if (!current.patient || !canSettleWalkIn || !quoteState.ready) return;
     createWalkIn.mutate({
       orgSlug,
-      patientId: values.patient.id,
-      departmentId: values.departmentId,
-      practitionerId: values.practitionerId,
+      patientId: current.patient.id,
+      practitionerId: current.practitionerId,
       settlement: {
-        services: serviceClaims(values.services),
-        omitConsultFee: omitsConsultFee(values),
+        services: serviceClaims(current.services),
+        omitConsultFee: omitsConsultFee(current),
         ...settlement,
       },
     });
   };
 
-  const submitValidated = intake.handleSubmit((values) => {
-    if (!values.patient) return;
+  const submitValidated = intake.handleSubmit((current) => {
+    if (!current.patient) return;
 
-    if (values.when === "later") {
+    if (current.when === "later") {
       book.mutate({
         orgSlug,
-        patientId: values.patient.id,
-        departmentId: values.departmentId,
-        practitionerId: values.practitionerId,
-        scheduledLocal: values.scheduledLocal,
-        services: serviceClaims(values.services),
+        patientId: current.patient.id,
+        practitionerId: current.practitionerId,
+        scheduledLocal: current.scheduledLocal,
+        services: serviceClaims(current.services),
       });
       return;
     }
 
-    const quote = settleableQuote(values);
-    if (!canSettleWalkIn || !quote) return;
-    // Nothing to collect, so there is nothing for the overlay to ask.
-    if (toPaise(quote.grandTotal) === 0) {
-      return settleWalkIn({
+    if (!canSettleWalkIn || !quoteState.ready) return;
+    if (toPaise(quoteState.data.grandTotal) === 0) {
+      settleWalkIn({
         discountAmount: "0",
-        expectedGrandTotal: quote.grandTotal,
+        expectedGrandTotal: quoteState.data.grandTotal,
         payments: [],
       });
+      return;
     }
     setSettlementOpen(true);
   });
 
-  // The patient has no control of its own, so it is checked before the schema runs —
-  // otherwise the message says "choose a patient" while the cursor lands in Department.
+  // The patient has no control of its own, so it is checked before the schema runs.
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     if (intake.getValues("patient")) return void submitValidated(event);
     event.preventDefault();
     document.getElementById("patient-search")?.focus();
   };
 
-  const actionError = settlementOpen ? undefined : createWalkIn.error?.message;
+  const walkInError = hasErrorCode(createWalkIn.error, "CONFLICT")
+    ? undefined
+    : createWalkIn.error?.message;
+  const actionError = settlementOpen ? undefined : walkInError;
+  const settlementBlockedReason = quoteState.ready
+    ? undefined
+    : (quoteState.error?.message ??
+      (quoteState.fetching
+        ? "Quote is updating. Wait to confirm."
+        : "Waiting for the current quote."));
 
+  // The overlay opens from a submit that already proved a patient is chosen, and the
+  // form behind a modal cannot change it.
+  const settlementPatient = settlementOpen ? intake.getValues("patient") : null;
   return (
-    <Form {...intake}>
-      <QuoteProvider orgSlug={orgSlug}>
-        <IntakeFrame pending={pending} onSubmit={onSubmit}>
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
-            <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
-              <IntakeSection title="Patient" description="Search or register">
-                <PatientField orgSlug={orgSlug} />
-              </IntakeSection>
+    <>
+      <Form {...intake}>
+        <form noValidate onSubmit={onSubmit}>
+          <fieldset disabled={pending} className="contents">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+              <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
+                <IntakeSection title="Patient">
+                  <PatientField orgSlug={orgSlug} />
+                </IntakeSection>
 
-              <IntakeSection
-                title="Care team"
-                description="Configured attendance fees appear in Services"
-              >
-                <CareTeamFields orgSlug={orgSlug} canSettleWalkIn={canSettleWalkIn} />
-              </IntakeSection>
+                <IntakeSection
+                  title="Care team"
+                  description="Configured attendance fees appear in Services"
+                >
+                  <CareTeamFields
+                    departments={departments}
+                    practitioners={practitioners}
+                    canSettleWalkIn={canSettleWalkIn}
+                  />
+                </IntakeSection>
 
-              <IntakeSection title="Services" description="Optional for Now and Later">
-                <ServicesFields orgSlug={orgSlug} />
-              </IntakeSection>
+                <IntakeSection title="Services" description="Optional for Now and Later">
+                  <ServicesFields orgSlug={orgSlug} currency={currency} quoteState={quoteState} />
+                </IntakeSection>
+              </div>
+
+              <aside className="hidden lg:block">
+                <FinancialAside
+                  practitioners={practitioners}
+                  canSettleWalkIn={canSettleWalkIn}
+                  pending={pending}
+                  actionError={actionError}
+                  quoteState={quoteState}
+                />
+              </aside>
             </div>
 
-            <aside className="hidden xl:block">
-              <FinancialAside
-                canSettleWalkIn={canSettleWalkIn}
-                pending={pending}
-                actionError={actionError}
-              />
-            </aside>
-          </div>
-
-          <IntakeFooter
-            canSettleWalkIn={canSettleWalkIn}
-            pending={pending}
-            actionError={actionError}
-          />
-
-          {settlementOpen ? (
-            <SettlementGate
-              pending={createWalkIn.isPending}
-              error={createWalkIn.error?.message}
-              onOpenChange={setSettlementOpen}
-              onConfirm={settleWalkIn}
+            <IntakeFooter
+              canSettleWalkIn={canSettleWalkIn}
+              pending={pending}
+              actionError={actionError}
+              quoteState={quoteState}
             />
-          ) : null}
-        </IntakeFrame>
-      </QuoteProvider>
-    </Form>
+
+            {settlementOpen && settlementPatient ? (
+              <ClientOnly fallback={null}>
+                <SettlementOverlay
+                  quote={quoteState.data}
+                  description={`${settlementPatient.name} · walk-in now`}
+                  label="Confirm walk-in"
+                  blockedReason={settlementBlockedReason}
+                  pending={createWalkIn.isPending}
+                  error={walkInError}
+                  onOpenChange={setSettlementOpen}
+                  onConfirm={settleWalkIn}
+                />
+              </ClientOnly>
+            ) : null}
+          </fieldset>
+        </form>
+      </Form>
+      {blocker.status === "blocked" ? (
+        <ConfirmDialog
+          title="Discard unsaved appointment?"
+          description="This appointment has changes that have not been saved."
+          confirmLabel="Discard changes"
+          open
+          onConfirm={blocker.proceed}
+          onCancel={blocker.reset}
+        />
+      ) : null}
+    </>
   );
 }

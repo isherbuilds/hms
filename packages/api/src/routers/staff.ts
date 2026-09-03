@@ -4,17 +4,21 @@ import { catalogItems } from "@hms/db/schema/catalog-items";
 import { departments } from "@hms/db/schema/departments";
 import { practitioners } from "@hms/db/schema/practitioners";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
-import { conflict } from "../lib/conflict";
-import { isUniqueViolation } from "../lib/db-errors";
+import { uniqueViolationConstraint } from "../lib/db-errors";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
-const departmentName = z.string().trim().min(1).max(200);
+import { likePattern, searchQuery, shortName } from "../lib/schemas";
+
+const departmentFields = z.object({
+  name: shortName,
+  defaultConsultFeeItemId: z.string().nullish(),
+});
 
 const practitionerFields = z.object({
-  name: z.string().trim().min(1).max(200),
+  name: shortName,
   departmentId: z.string(),
   registrationNumber: z.string().trim().max(50).nullish(),
   memberUserId: z.string().nullish(),
@@ -68,24 +72,36 @@ async function assertPractitionerReferences(
   },
   orgId: string,
 ): Promise<void> {
-  await Promise.all([
+  const feeItemIds = [...new Set([fields.consultFeeItemId, fields.followUpFeeItemId])].filter(
+    (id): id is string => id != null,
+  );
+  const [, feeItems] = await Promise.all([
     assertDepartmentInScope(fields.departmentId, orgId),
-    fields.consultFeeItemId != null
-      ? assertCatalogItemInScope(fields.consultFeeItemId, orgId)
-      : Promise.resolve(),
-    fields.followUpFeeItemId != null
-      ? assertCatalogItemInScope(fields.followUpFeeItemId, orgId)
-      : Promise.resolve(),
+    feeItemIds.length
+      ? db
+          .select({ id: catalogItems.id })
+          .from(catalogItems)
+          .where(and(eq(catalogItems.orgId, orgId), inArray(catalogItems.id, feeItemIds)))
+      : Promise.resolve([]),
     fields.memberUserId != null
       ? assertMemberUserInScope(fields.memberUserId, orgId)
       : Promise.resolve(),
   ]);
+
+  if (feeItems.length !== feeItemIds.length) {
+    throw new ORPCError("NOT_FOUND", { message: "That catalog item no longer exists." });
+  }
 }
 
 export const staffRouter = {
   listDepartments: orgProcedure({ staff: ["read"] }, orgInput).handler(async ({ context }) => {
     return db
-      .select()
+      .select({
+        id: departments.id,
+        name: departments.name,
+        defaultConsultFeeItemId: departments.defaultConsultFeeItemId,
+        createdAt: departments.createdAt,
+      })
       .from(departments)
       .where(eq(departments.orgId, context.scope.orgId))
       .orderBy(asc(departments.name));
@@ -93,10 +109,7 @@ export const staffRouter = {
 
   createDepartment: orgProcedure(
     { staff: ["create"] },
-    orgInput.extend({
-      name: departmentName,
-      defaultConsultFeeItemId: z.string().nullish(),
-    }),
+    orgInput.extend(departmentFields.shape),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const id = Bun.randomUUIDv7();
@@ -130,8 +143,10 @@ export const staffRouter = {
 
       return department;
     } catch (error) {
-      if (isUniqueViolation(error)) {
-        throw conflict("duplicate", "A department with this name already exists.");
+      if (uniqueViolationConstraint(error) !== undefined) {
+        throw new ORPCError("CONFLICT", {
+          message: "A department with this name already exists.",
+        });
       }
       throw error;
     }
@@ -139,11 +154,7 @@ export const staffRouter = {
 
   updateDepartment: orgProcedure(
     { staff: ["update"] },
-    orgInput.extend({
-      departmentId: z.string(),
-      name: departmentName,
-      defaultConsultFeeItemId: z.string().nullish(),
-    }),
+    orgInput.extend({ departmentId: z.string(), ...departmentFields.shape }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     if (input.defaultConsultFeeItemId != null) {
@@ -162,8 +173,10 @@ export const staffRouter = {
         .where(and(eq(departments.orgId, scope.orgId), eq(departments.id, input.departmentId)))
         .returning();
     } catch (error) {
-      if (isUniqueViolation(error)) {
-        throw conflict("duplicate", "A department with this name already exists.");
+      if (uniqueViolationConstraint(error) !== undefined) {
+        throw new ORPCError("CONFLICT", {
+          message: "A department with this name already exists.",
+        });
       }
       throw error;
     }
@@ -182,11 +195,35 @@ export const staffRouter = {
     return department;
   }),
 
-  listPractitioners: orgProcedure({ staff: ["read"] }, orgInput).handler(async ({ context }) => {
+  listPractitioners: orgProcedure(
+    { staff: ["read"] },
+    orgInput.extend({ query: searchQuery }),
+  ).handler(async ({ context, input }) => {
+    const pattern = input.query ? likePattern(input.query) : undefined;
+
     return db
-      .select()
+      .select({
+        id: practitioners.id,
+        name: practitioners.name,
+        departmentId: practitioners.departmentId,
+        registrationNumber: practitioners.registrationNumber,
+        memberUserId: practitioners.memberUserId,
+        consultFeeItemId: practitioners.consultFeeItemId,
+        followUpFeeItemId: practitioners.followUpFeeItemId,
+        followUpValidityDays: practitioners.followUpValidityDays,
+      })
       .from(practitioners)
-      .where(eq(practitioners.orgId, context.scope.orgId))
+      .where(
+        and(
+          eq(practitioners.orgId, context.scope.orgId),
+          pattern
+            ? or(
+                ilike(practitioners.name, pattern),
+                ilike(practitioners.registrationNumber, pattern),
+              )
+            : undefined,
+        ),
+      )
       .orderBy(asc(practitioners.name));
   }),
 

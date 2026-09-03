@@ -21,8 +21,9 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { useZodForm } from "@/hooks/use-zod-form";
+import { useOpdErrorToast } from "@/lib/opd-error";
+import { hasErrorCode } from "@/lib/orpc-error";
 import { orpc } from "@/lib/orpc";
-import { errorMessage } from "@/lib/orpc-error";
 
 import { useBillingInvalidation } from "./use-billing-invalidation";
 
@@ -40,6 +41,7 @@ export function VoidChargeDialog({
   onClose: () => void;
 }) {
   const invalidate = useBillingInvalidation(orgSlug, appointmentId);
+  const onOpdError = useOpdErrorToast(orgSlug);
   const form = useZodForm(voidSchema, { defaultValues: { reason: "" } });
   const mutation = useMutation(
     orpc.billing.voidCharge.mutationOptions({
@@ -48,7 +50,10 @@ export function VoidChargeDialog({
         toast.success("Charge voided");
         void invalidate();
       },
-      onError: (error) => toast.error(errorMessage(error, "Could not void the charge")),
+      onError: (error) => {
+        if (hasErrorCode(error, "CONFLICT")) onClose();
+        void onOpdError(appointmentId, "billing", error);
+      },
     }),
   );
 

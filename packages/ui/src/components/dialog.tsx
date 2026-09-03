@@ -25,9 +25,8 @@ function DialogContent({
         data-slot="dialog-content"
         className={cn(
           // Portal content cannot inherit PageBody's text size.
-          "fixed top-1/2 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto overscroll-contain rounded-lg bg-popover p-4 text-xs text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none [&>*]:min-w-0",
+          "fixed top-1/2 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto overscroll-contain rounded-md bg-popover p-4 text-xs text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none [&>*]:min-w-0",
           "duration-150 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-          "motion-reduce:duration-0 motion-reduce:data-open:animate-none motion-reduce:data-closed:animate-none",
           className,
         )}
         {...props}

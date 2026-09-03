@@ -7,7 +7,7 @@ import { env } from "@hms/env/server";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { OpenAPIReferencePlugin } from "@orpc/openapi/plugins";
 import { ORPCError, onError } from "@orpc/server";
-import { BodyLimitPlugin, RPCHandler } from "@orpc/server/fetch";
+import { RPCHandler } from "@orpc/server/fetch";
 import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { sql } from "drizzle-orm";
 import { initLogger } from "evlog";
@@ -73,22 +73,17 @@ function logORPCError(error: unknown): void {
   console.error(error);
 }
 
-const MAX_RPC_BODY_BYTES = 1024 * 1024;
+const procedureBodyLimit = bodyLimit({
+  maxSize: 1024 * 1024,
+  onError: (c) => c.json({ error: "Request too large" }, 413),
+});
 
 const rpcHandler = new RPCHandler(appRouter, {
-  plugins: [new BodyLimitPlugin({ maxBodySize: MAX_RPC_BODY_BYTES })],
   interceptors: [onError(logORPCError)],
 });
 
-// Before session resolution. The oRPC plugin repeats the limit at the protocol
-// adapter boundary for callers mounted elsewhere.
-app.use(
-  "/rpc/*",
-  bodyLimit({
-    maxSize: MAX_RPC_BODY_BYTES,
-    onError: (c) => c.json({ error: "Request too large" }, 413),
-  }),
-);
+// Reject oversized requests before session resolution.
+app.use("/rpc/*", procedureBodyLimit);
 app.use("/rpc/*", async (c) => {
   const context = await createLoggedRequestContext(c);
   const result = await rpcHandler.handle(c.req.raw, {
@@ -113,6 +108,7 @@ if (!isProduction) {
     interceptors: [onError(logORPCError)],
   });
 
+  app.use("/api-reference/*", procedureBodyLimit);
   app.use("/api-reference/*", async (c) => {
     const context = await createLoggedRequestContext(c);
     const result = await apiHandler.handle(c.req.raw, {

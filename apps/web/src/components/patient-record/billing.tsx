@@ -1,3 +1,4 @@
+import { toSignedPaise } from "@hms/api/lib/invoice-math";
 import {
   Table,
   TableBody,
@@ -7,54 +8,70 @@ import {
   TableRow,
 } from "@hms/ui/components/table";
 import { cn } from "@hms/ui/lib/utils";
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronRightIcon } from "lucide-react";
 
-import { ErrorNote } from "@/components/page";
+import { ErrorNote, Panel, PanelEmpty } from "@/components/page";
 import { formatMoney } from "@/lib/money";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
-import { orpc } from "@/lib/orpc";
 
-export function PatientBilling({ orgSlug, patientId }: { orgSlug: string; patientId: string }) {
+export type PatientAccount = {
+  invoices: {
+    id: string;
+    invoiceNumber: string;
+    grandTotal: string;
+    currency: string;
+    createdAt: string | Date;
+    paymentsTotal: string;
+    outstanding: string;
+  }[];
+  openCount: number;
+  outstanding: string;
+};
+
+export function PatientBilling({
+  orgSlug,
+  account,
+  isPending,
+  error,
+}: {
+  orgSlug: string;
+  account: PatientAccount | undefined;
+  isPending: boolean;
+  error: Error | null;
+}) {
   const { timeZone } = useOrgDateTime();
-  const account = useQuery(orpc.patient.account.queryOptions({ input: { orgSlug, patientId } }));
 
-  if (account.isPending) return null;
-  if (account.isError) {
-    return <ErrorNote title="Could not load billing" error={account.error} />;
-  }
-
-  const { invoices, outstanding, openCount } = account.data;
+  const invoices = account?.invoices ?? [];
   const [firstInvoice] = invoices;
-
-  if (!firstInvoice) {
-    return <p className="text-muted-foreground">No invoice has been raised for this patient.</p>;
-  }
-  const currency = firstInvoice.currency;
 
   return (
     <div className="flex flex-col gap-4">
-      <section className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <p className="text-muted-foreground">Outstanding</p>
-        <p
-          className={cn(
-            "text-sm font-medium tabular-nums",
-            openCount > 0 ? "text-clinical-alert" : undefined,
-          )}
-        >
-          {formatMoney(outstanding, currency)}
-        </p>
-        <p className="text-muted-foreground">
-          {openCount === 0
-            ? "every invoice is settled"
-            : `across ${openCount} open ${openCount === 1 ? "invoice" : "invoices"}`}
-        </p>
-      </section>
+      {account && firstInvoice ? (
+        <section className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <p className="text-muted-foreground">Outstanding</p>
+          <p
+            className={cn(
+              "text-sm font-medium tabular-nums",
+              account.openCount > 0 ? "text-clinical-alert" : undefined,
+            )}
+          >
+            {formatMoney(account.outstanding, firstInvoice.currency)}
+          </p>
+          <p className="text-muted-foreground">
+            {account.openCount === 0
+              ? "every invoice is settled"
+              : `across ${account.openCount} open ${account.openCount === 1 ? "invoice" : "invoices"}`}
+          </p>
+        </section>
+      ) : null}
 
-      <section className="rounded-xl bg-muted p-1">
-        <p className="flex h-9 items-center px-3 text-xs text-muted-foreground">Invoices</p>
-        <div className="rounded-lg border border-border bg-card">
+      <Panel label="Invoices">
+        {error ? <ErrorNote title="Could not load billing" error={error} inset /> : null}
+        {!error && !isPending && account && !firstInvoice ? (
+          <PanelEmpty>No invoice has been raised for this patient.</PanelEmpty>
+        ) : null}
+        {firstInvoice ? (
           <Table>
             <TableHeader>
               <TableRow>
@@ -68,7 +85,7 @@ export function PatientBilling({ orgSlug, patientId }: { orgSlug: string; patien
             </TableHeader>
             <TableBody>
               {invoices.map((invoice) => {
-                const due = Number(invoice.outstanding) !== 0;
+                const due = toSignedPaise(invoice.outstanding) !== 0;
                 return (
                   <TableRow key={invoice.id}>
                     <TableCell className="font-mono whitespace-nowrap">
@@ -105,8 +122,8 @@ export function PatientBilling({ orgSlug, patientId }: { orgSlug: string; patien
               })}
             </TableBody>
           </Table>
-        </div>
-      </section>
+        ) : null}
+      </Panel>
     </div>
   );
 }

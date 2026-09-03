@@ -42,17 +42,18 @@ test("the server resolves authentication only where needed and at most once", as
   }
 });
 
-test("RPC rejects an oversized body before resolving authentication", async () => {
+test("procedure endpoints reject an oversized body before resolving authentication", async () => {
   const getSession = spyOn(auth.api, "getSession");
 
   try {
-    const response = await app.request("http://localhost/rpc/dashboard/today", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ json: { orgSlug: "x".repeat(1_100_000) } }),
-    });
-
-    expect(response.status).toBe(413);
+    for (const path of ["rpc", "api-reference"]) {
+      const response = await app.request(`http://localhost/${path}/dashboard/today`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ json: { orgSlug: "x".repeat(1_100_000) } }),
+      });
+      expect(response.status).toBe(413);
+    }
     expect(getSession).toHaveBeenCalledTimes(0);
   } finally {
     getSession.mockRestore();

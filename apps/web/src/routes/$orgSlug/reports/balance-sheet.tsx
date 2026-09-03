@@ -18,7 +18,8 @@ import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
 import { downloadXlsx } from "@/lib/report-export";
-import { REPORT_PRINT_PORTRAIT_CSS, formatReportMoney } from "@/lib/report-presentation";
+import { formatMoney } from "@/lib/money";
+import { REPORT_PRINT_PORTRAIT_CSS } from "@/lib/report-presentation";
 import { orgToday as today } from "@/lib/org-datetime";
 import { requireOrgPermission } from "@/lib/route-permission";
 
@@ -52,7 +53,6 @@ function BalanceSheetRoute() {
   const { asOf } = Route.useLoaderData();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const report = useQuery(orpc.report.balanceSheet.queryOptions({ input: { orgSlug, asOf } }));
-  const money = (value: string) => formatReportMoney(value, currency);
 
   // `asOf` lives in the URL, so the report on screen is one you can send to someone
   // else. A cleared date input reports "", which is not a date to run on.
@@ -161,8 +161,9 @@ function BalanceSheetRoute() {
                 role="alert"
                 className="border-2 border-destructive bg-destructive/10 p-3 font-medium text-destructive"
               >
-                Billing ledger mismatch: assets {money(report.data.totals.assets)} do not equal
-                liabilities and equity {money(report.data.totals.liabilitiesAndEquity)}.
+                Billing ledger mismatch: assets {formatMoney(report.data.totals.assets, currency)}{" "}
+                do not equal liabilities and equity{" "}
+                {formatMoney(report.data.totals.liabilitiesAndEquity, currency)}.
               </div>
             ) : null}
 
@@ -184,14 +185,14 @@ function BalanceSheetRoute() {
                           <TableCell className="font-mono font-medium">{row.code}</TableCell>
                           <TableCell>{row.name}</TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {money(row.balance)}
+                            {formatMoney(row.balance, currency)}
                           </TableCell>
                         </TableRow>
                       ))}
                       <TableRow className="border-t-2 font-semibold">
                         <TableCell colSpan={2}>Total assets</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {money(report.data.totals.assets)}
+                          {formatMoney(report.data.totals.assets, currency)}
                         </TableCell>
                       </TableRow>
                     </TableBody>
@@ -216,7 +217,7 @@ function BalanceSheetRoute() {
                           <TableCell className="font-mono font-medium">{row.code}</TableCell>
                           <TableCell>{row.name}</TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {money(row.balance)}
+                            {formatMoney(row.balance, currency)}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -225,14 +226,14 @@ function BalanceSheetRoute() {
                           <TableCell className="font-mono font-medium">{row.code}</TableCell>
                           <TableCell>{row.name}</TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {money(row.balance)}
+                            {formatMoney(row.balance, currency)}
                           </TableCell>
                         </TableRow>
                       ))}
                       <TableRow className="border-t-2 font-semibold">
                         <TableCell colSpan={2}>Total liabilities and equity</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {money(report.data.totals.liabilitiesAndEquity)}
+                          {formatMoney(report.data.totals.liabilitiesAndEquity, currency)}
                         </TableCell>
                       </TableRow>
                     </TableBody>

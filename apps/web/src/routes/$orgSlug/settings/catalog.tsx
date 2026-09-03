@@ -29,13 +29,28 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type InfiniteData,
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
 import { memo, useCallback, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import {
+  FilterGroup,
+  FilterSelect,
+  ListState,
+  ListToolbar,
+  LoadMore,
+  PageBody,
+  PageHeader,
+  Panel,
+  SearchInput,
+} from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { MONEY_INPUT_PATTERN } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
@@ -57,6 +72,24 @@ const CATEGORY_LABELS: Record<CatalogCategory, string> = {
   radiology: "Radiology",
   other: "Other",
 };
+
+const catalogListQuery = (
+  orgSlug: string,
+  filters: { query: string; category?: CatalogCategory; activeOnly: boolean },
+) =>
+  orpc.catalog.list.infiniteOptions({
+    input: (cursor: { name: string; id: string } | undefined) => ({
+      orgSlug,
+      query: filters.query || undefined,
+      category: filters.category,
+      activeOnly: filters.activeOnly,
+      cursor,
+      limit: 50,
+    }),
+    initialPageParam: undefined,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+  });
+
 export const Route = createFileRoute("/$orgSlug/settings/catalog")({
   head: () => ({ meta: [{ title: "Catalog · HMS" }] }),
   validateSearch: z.object({
@@ -69,9 +102,11 @@ export const Route = createFileRoute("/$orgSlug/settings/catalog")({
     // it on `update` too.
     await requireOrgPermission(queryClient, orgSlug, { catalog: ["update"] }, "/$orgSlug/settings");
     await queryClient
-      .query(
-        orpc.catalog.list.queryOptions({
-          input: { orgSlug, category: deps.category, activeOnly: deps.activeOnly ?? false },
+      .infiniteQuery(
+        catalogListQuery(orgSlug, {
+          query: "",
+          category: deps.category,
+          activeOnly: deps.activeOnly ?? false,
         }),
       )
       .catch(() => {});
@@ -119,19 +154,38 @@ function CatalogRoute() {
   // Filters live in the URL, so a filtered view is shareable and Back restores it.
   const { category, activeOnly } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const [query, setQuery] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<CatalogItem | null>(null);
   const toggleActive = useMutation(
     orpc.catalog.update.mutationOptions({
       onMutate: async (variables) => {
-        const queryKey = orpc.catalog.list.key({ input: { orgSlug } });
+        const queryKey = orpc.catalog.list.key({ input: { orgSlug }, type: "infinite" });
         await queryClient.cancelQueries({ queryKey });
-        const snapshot = queryClient.getQueriesData<CatalogItem[]>({ queryKey });
+        const snapshot = queryClient.getQueriesData<
+          InfiniteData<{
+            items: CatalogItem[];
+            nextCursor: { name: string; id: string } | null;
+          }>
+        >({ queryKey });
 
-        queryClient.setQueriesData<CatalogItem[]>({ queryKey }, (items) =>
-          items?.map((item) =>
-            item.id === variables.itemId ? { ...item, active: variables.active } : item,
-          ),
+        queryClient.setQueriesData<
+          InfiniteData<{
+            items: CatalogItem[];
+            nextCursor: { name: string; id: string } | null;
+          }>
+        >({ queryKey }, (data) =>
+          data
+            ? {
+                ...data,
+                pages: data.pages.map((page) => ({
+                  ...page,
+                  items: page.items.map((item) =>
+                    item.id === variables.itemId ? { ...item, active: variables.active } : item,
+                  ),
+                })),
+              }
+            : data,
         );
 
         return { snapshot };
@@ -171,15 +225,14 @@ function CatalogRoute() {
       }),
     [mutateToggle, orgSlug],
   );
-  const catalog = useQuery(
-    orpc.catalog.list.queryOptions({
-      input: {
-        orgSlug,
-        category,
-        activeOnly: activeOnly ?? false,
-      },
+  const catalog = useInfiniteQuery(
+    catalogListQuery(orgSlug, {
+      query,
+      category,
+      activeOnly: activeOnly ?? false,
     }),
   );
+  const items = catalog.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
     <>
@@ -191,87 +244,92 @@ function CatalogRoute() {
       <SettingsTabs orgSlug={orgSlug} />
 
       <PageBody>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex w-48 flex-col gap-2 text-xs font-medium">
-            Category
-            <NativeSelect
-              value={category ?? ""}
-              onChange={(event) => {
-                const next = (event.target.value || undefined) as CatalogCategory | undefined;
-                void navigate({
-                  search: (previous) => ({ ...previous, category: next }),
-                  replace: true,
-                });
-              }}
-            >
-              <option value="">All categories</option>
-              {CATALOG_CATEGORIES.map((option) => (
-                <option key={option} value={option}>
-                  {CATEGORY_LABELS[option]}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-          <label className="flex h-8 items-center gap-2 text-xs font-medium">
-            <Checkbox
-              checked={activeOnly ?? false}
-              onCheckedChange={(checked) => {
-                void navigate({
-                  search: (previous) => ({ ...previous, activeOnly: checked || undefined }),
-                  replace: true,
-                });
-              }}
-            />
-            Active only
-          </label>
-        </div>
+        <ListToolbar>
+          <SearchInput
+            label="Search catalog"
+            placeholder="Search code or name"
+            onQueryChange={setQuery}
+          />
+          {/* A select, not a toggle group: categories are data, not a fixed set. */}
+          <FilterSelect<"all" | CatalogCategory>
+            label="Category"
+            value={category ?? "all"}
+            options={[
+              { value: "all", label: "All categories" },
+              ...CATALOG_CATEGORIES.map((value) => ({
+                value,
+                label: CATEGORY_LABELS[value],
+              })),
+            ]}
+            onValueChange={(next) => {
+              void navigate({
+                search: (previous) => ({
+                  ...previous,
+                  category: next === "all" ? undefined : next,
+                }),
+                replace: true,
+              });
+            }}
+          />
+          <FilterGroup<"all" | "active">
+            label="Status"
+            value={activeOnly ? "active" : "all"}
+            options={[
+              { value: "all", label: "All" },
+              { value: "active", label: "Active" },
+            ]}
+            onValueChange={(next) => {
+              void navigate({
+                search: (previous) => ({
+                  ...previous,
+                  activeOnly: next === "active" ? true : undefined,
+                }),
+                replace: true,
+              });
+            }}
+          />
+        </ListToolbar>
 
-        {/* One tray for the catalog, in the same shell as the OPD day list
-            (docs/design.md §1), so the boards read as one product. */}
-        <section className="flex flex-col rounded-xl bg-muted p-1">
-          <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
-            <span className="min-w-0 truncate">Items</span>
-          </div>
-          {/* The card holds its height through a pending read, a failed one and
-              a filter that matches nothing. */}
-          <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
-            {catalog.isPending ? null : catalog.isError ? (
-              <ErrorNote title="Could not load service catalog" error={catalog.error} inset />
-            ) : catalog.data.length === 0 ? (
-              <div className="flex min-h-32 items-center justify-center px-4 text-center text-muted-foreground">
-                {category || activeOnly
+        <Panel label="Items" footer={<LoadMore query={catalog} shown={items.length} />}>
+          <ListState
+            query={catalog}
+            errorTitle="Could not load service catalog"
+            isEmpty={items.length === 0}
+            empty={
+              query
+                ? "No catalog items match this search."
+                : category || activeOnly
                   ? "No catalog items match these filters."
-                  : "No catalog items yet."}
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Unit price</TableHead>
-                    <TableHead className="text-right">Tax %</TableHead>
-                    <TableHead>Tax code</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {catalog.data.map((item) => (
-                    <CatalogRow
-                      key={item.id}
-                      item={item}
-                      pending={toggleActive.isPending && toggleActive.variables?.itemId === item.id}
-                      onToggle={toggleItem}
-                      onEdit={setEditing}
-                    />
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        </section>
+                  : "No catalog items yet."
+            }
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead className="text-right">Unit price</TableHead>
+                  <TableHead className="text-right">Tax %</TableHead>
+                  <TableHead>Tax code</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((item) => (
+                  <CatalogRow
+                    key={item.id}
+                    item={item}
+                    pending={toggleActive.isPending && toggleActive.variables?.itemId === item.id}
+                    onToggle={toggleItem}
+                    onEdit={setEditing}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          </ListState>
+        </Panel>
       </PageBody>
 
       <CatalogItemDialog
@@ -313,8 +371,8 @@ const CatalogRow = memo(function CatalogRow({
       <TableCell className="font-mono">{item.code}</TableCell>
       <TableCell className="font-medium">{item.name}</TableCell>
       <TableCell>{CATEGORY_LABELS[item.category]}</TableCell>
-      <TableCell className="text-right">{item.unitPrice}</TableCell>
-      <TableCell className="text-right">{item.taxRatePercent}</TableCell>
+      <TableCell className="text-right tabular-nums">{item.unitPrice}</TableCell>
+      <TableCell className="text-right tabular-nums">{item.taxRatePercent}</TableCell>
       <TableCell className="font-mono">{item.taxCode || "—"}</TableCell>
       <TableCell>
         <div className="flex items-center gap-2">

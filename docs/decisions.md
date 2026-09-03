@@ -156,6 +156,8 @@ _D018 amends this decision. It removes the desk-side catalog exclusion but keeps
 
 **Accepted 2026-08-28; amended by D024; living behavior: [OPD](./opd.md).** Consultation is a normal catalog item for intake. `catalog.searchServices` requires the caller to state consultation eligibility explicitly; immediate intake passes true, Later intake passes false. The consultation gates are removed from `billing.addChargesTx` and walk-in service resolution in `opd.ts`. The automatic practitioner and department fee ladder remains the default. `opd.book` still rejects consultation items because check-in has no mechanism to supersede the automatic fee. An OPD Appointment may contain two consultation charges; staff correct a duplicate by voiding it. A picked item keeps `sourceType: "catalog"` because `sourceType` records how the charge came to exist. Its item category sets `revenueCategory`, which records what kind of revenue it is.
 
+_The functions named above were removed on 2026-09-03: `billing.settleCharges` no longer accepts lines, and walk-in pricing is `resolveOpdPricing`. The consultation contract is unchanged._
+
 **Context:** Practitioner and department default fee items accept any category. A non-consultation default books to that category's revenue account through `revenueAccountFor`. Consultation revenue reporting therefore requires consultation-category defaults.
 
 _D024 removed the billing desk's own catalog picker, so "Billing passes true" no longer describes a shipped caller. Intake remains the only one._
@@ -241,12 +243,13 @@ after a network failure.
 ### D024 — An outpatient appointment carries only consultation and procedure charges.
 
 **Accepted 2026-09-01.** `OPD_BILLABLE_CATEGORIES` in
-`@hms/db/schema/catalog-items` is the single statement of what an OPD visit may
-be charged for. `findActiveServiceItems` refuses anything else, so the rule holds
-for `opd.book`, `opd.createWalkIn` and `opd.quoteWalkIn` alike, and
-`catalog.searchServices` offers only the same set. The outpatient billing desk
-no longer carries a catalog picker at all: it prices the charges the appointment
-already has and issues one invoice for them.
+`@hms/db/schema/catalog-items` is the single statement of what staff may pick as
+an OPD service. `resolveOpdPricing` refuses selected services outside that set,
+so the rule holds for `opd.book`, `opd.createWalkIn` and `opd.quoteWalkIn` alike,
+and `catalog.searchServices` offers only the same set. D018's automatic fee
+ladder remains category-agnostic. The outpatient billing desk no longer carries
+a catalog picker at all: it prices the charges the appointment already has and
+issues one invoice for them.
 
 **Context:** Revenue posts to a per-category account (`revenueAccountFor`), so a
 lab test attached at the outpatient desk books lab revenue against an OPD
@@ -268,6 +271,20 @@ own numbering series.
 immutable (`docs/product.md`), so changing granularity afterwards means
 migrating documents the product promises never to rewrite. Decide before the
 first non-OPD invoice exists, not after.
+
+### D026 — Conditional state writes collapse missing and stale rows into one conflict
+
+**Accepted 2026-09-03.** A tenant-scoped conditional `UPDATE … RETURNING` does
+not issue a second existence query when no row matches. Patient compare-and-swap
+and appointment state transitions return one `CONFLICT` for a missing, foreign,
+stale, or already-moved row. Reads and direct writes still return `NOT_FOUND` for
+foreign ids. A command that already needs a pre-read may distinguish the two
+without adding a fallback query.
+
+**Context:** The scoped predicate prevents cross-tenant access either way. A
+second read only changes the error label, adds latency, and races with another
+write; clients recover from the combined conflict by closing stale overlays and
+refreshing authoritative state.
 
 ## Superseded history
 

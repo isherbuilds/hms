@@ -105,13 +105,13 @@ CDN: the app must work on a hospital LAN with no outbound internet.
 
 Set by the component layer, never at a call site.
 
-| Radius         | Where                                                        |
-| -------------- | ------------------------------------------------------------ |
-| `rounded-md`   | Controls: buttons, inputs, menu items, badges                |
-| `rounded-sm`   | Checkbox indicator only                                      |
-| `rounded-lg`   | Cards, dialogs, popovers, the login context panel            |
-| `rounded-xl`   | The card shell                                               |
-| `rounded-full` | `Button shape="pill"` only — currently the sign-in CTA alone |
+| Radius         | Where                                                                                                      |
+| -------------- | ---------------------------------------------------------------------------------------------------------- |
+| `rounded-md`   | The default. Every component in `packages/ui`: controls, dialogs, sheets, popovers, tooltips, empty states |
+| `rounded-sm`   | Checkbox only — `rounded-md` on a `size-4` box reads as a circle                                           |
+| `rounded-lg`   | Page-level cards in `apps/web`                                                                             |
+| `rounded-xl`   | The card shell in `apps/web`                                                                               |
+| `rounded-full` | `Button shape="pill"` only — currently the sign-in CTA alone                                               |
 
 A component in `packages/ui` owns its radius. If a page is writing `rounded-*`,
 either it is building a shell (allowed) or the component is missing a variant.
@@ -206,10 +206,10 @@ description: `MRN · Name` or `Token N` identity on record pages, or a short phr
 with no trailing period. A date appears only when it is an interactive part of
 the screen: operational day navigation belongs in the header action area, while
 screens fixed to today (such as Dashboard) do not repeat today's date. Actions
-align to the right in the header. Tab strips render below the header. Sibling record
-tab pages — views of one entity, like the OPD record's Clinical and Billing —
-share one title and description, so switching tabs does not shift the layout.
-Section tabs over distinct pages, like Settings, keep their own titles.
+align to the right in the header. Sibling record tab pages — views of one entity,
+like the OPD record's Clinical and Billing — share one title and description, so
+switching tabs does not shift the layout. Section tabs over distinct pages, like
+Settings, keep their own titles.
 
 Page-header actions use the default 32 px control height (`icon` when icon-only),
 including secondary actions and operational date navigation. This keeps sibling
@@ -236,6 +236,38 @@ numerals stay aligned because ragged digit columns are a document defect, not a
 style choice.
 
 - **`ErrorNote`** — the one way a page reports a failed read.
+- **`PageTabs` / `PageTab`** — the one tab strip below `PageHeader`. `PageTab`
+  keeps typed route links, active state, and tab styling consistent.
+- **`ListToolbar`** — the row above a list. Search comes first, followed by
+  filters.
+- **`SearchInput`** — the one uncontrolled search box. It trims the query and
+  applies it after a 300 ms pause.
+- **`FilterGroup`** — a segmented, one-of-N list filter that cannot be
+  deselected. For a fixed set of two to five options.
+- **`FilterSelect`** — the same filter as a native select. For options that come
+  from data, or more than five.
+- **`Panel` / `PanelEmpty`** — the muted tray, label row, raised card, optional
+  footer, and centered empty copy used by every list. `grow` fills the page for
+  the one list on an operational desk.
+- **`ListState`** — the only pending, error, retry, and empty-state branch for a
+  list.
+- **`LoadMore`** — the count and the only control that grows a cursor list. It
+  belongs in the panel footer.
+
+**List grammar.** Every list page puts `ListToolbar`, with search first and
+filters after it, above a `Panel`. Search is temporary client state. It applies
+after a 300 ms pause and has no submit button. Filters are URL search state. A
+fixed set of two to five options is a `FilterGroup`; a boolean is a two-option
+group such as `All | Active`. Options that come from data, such as catalog
+categories, or that run past five are a `FilterSelect`. Read states come only
+from `ListState`. A cursor list grows only through `LoadMore` in the panel
+footer, which also shows the count. Tables never scroll horizontally, and a
+scrollbar is 6 px on both axes; the sidebar rail hides its own because a rail is
+not a data region. A long text cell wraps with `break-words` when its content is
+why the reader is there, or uses `max-w-0` with an inner `truncate` `div` and a
+`title` when it is secondary. Identifiers stay whole: when one can outgrow the
+row, the table is `table-fixed` with declared column widths and the identifier
+cell wraps with `break-all`.
 
 A new bespoke layout wrapper is a signal that one of these is missing a prop.
 

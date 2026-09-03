@@ -1,5 +1,4 @@
 import { Button } from "@hms/ui/components/button";
-import { Input } from "@hms/ui/components/input";
 import {
   Table,
   TableBody,
@@ -8,15 +7,21 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { SearchIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { z } from "zod";
 
-import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import {
+  ListState,
+  ListToolbar,
+  LoadMore,
+  PageBody,
+  PageHeader,
+  Panel,
+  SearchInput,
+} from "@/components/page";
 import { PatientSheet } from "@/components/patient-sheet";
-import { useDebouncedCallback } from "@/hooks/use-debounced-value";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { patientAgeLabel } from "@/lib/patient-age";
@@ -33,104 +38,57 @@ const patientSearchQuery = (orgSlug: string, query: string) =>
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
 
-// Uncontrolled on purpose: the list re-renders per pause, not per keystroke.
-function PatientSearch({ onQueryChange }: { onQueryChange: (query: string) => void }) {
-  const handleChange = useDebouncedCallback(onQueryChange, 300);
-
-  return (
-    <div className="relative max-w-md">
-      <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        onChange={(event) => handleChange(event.currentTarget.value.trim())}
-        placeholder="Search name, MRN, or phone"
-        aria-label="Search patients"
-        className="pl-8"
-      />
-    </div>
-  );
-}
-
 function PatientResults({ orgSlug, query }: { orgSlug: string; query: string }) {
   const { timeZone, today } = useOrgDateTime();
-  const patients = useInfiniteQuery({
-    ...patientSearchQuery(orgSlug, query),
-    placeholderData: keepPreviousData,
-  });
+  const patients = useInfiniteQuery(patientSearchQuery(orgSlug, query));
   const items = patients.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
-    <>
-      {/* The registry in the house card-in-card language (docs/design.md
-          §1): the tinted tray carries the label, the raised card carries the
-          rows, and it holds its height through a pending read, a failed one
-          and a search that matches nobody. */}
-      <section className="flex flex-col rounded-xl bg-muted p-1">
-        <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
-          <span className="min-w-0 truncate">Registry</span>
-        </div>
-        <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
-          {patients.isPending ? null : patients.isError ? (
-            <ErrorNote title="Could not load patients" error={patients.error} inset />
-          ) : items.length === 0 ? (
-            <div className="flex min-h-32 items-center justify-center px-4 text-center text-muted-foreground">
-              {query ? "No patients match this search." : "No patients registered yet."}
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>MRN</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Sex</TableHead>
-                  <TableHead className="w-16 text-right">Age</TableHead>
-                  <TableHead>Created</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((patient) => (
-                  <TableRow key={patient.id}>
-                    <TableCell className="font-mono">{patient.mrn}</TableCell>
-                    <TableCell>
-                      <Link
-                        to="/$orgSlug/patients/$patientId"
-                        params={{ orgSlug, patientId: patient.id }}
-                        className="font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-                      >
-                        {patient.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="font-mono tabular-nums">{patient.phone}</TableCell>
-                    <TableCell className="capitalize">{patient.sex}</TableCell>
-                    <TableCell className="text-right">
-                      {patientAgeLabel(patient.dateOfBirth, patient.dobEstimated, today)}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {formatDate(patient.createdAt, timeZone)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
-      </section>
-
-      {/* Under the list only: every other state is the card's business. */}
-      {!patients.isError &&
-      !patients.isPlaceholderData &&
-      items.length > 0 &&
-      patients.hasNextPage ? (
-        <Button
-          variant="outline"
-          className="self-start"
-          disabled={patients.isFetchingNextPage}
-          onClick={() => patients.fetchNextPage()}
-        >
-          {patients.isFetchingNextPage ? "Loading…" : "Load more"}
-        </Button>
-      ) : null}
-    </>
+    <Panel label="Registry" footer={<LoadMore query={patients} shown={items.length} />}>
+      <ListState
+        query={patients}
+        errorTitle="Could not load patients"
+        isEmpty={items.length === 0}
+        empty={query ? "No patients match this search." : "No patients registered yet."}
+      >
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>MRN</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Sex</TableHead>
+              <TableHead className="w-16 text-right">Age</TableHead>
+              <TableHead>Created</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((patient) => (
+              <TableRow key={patient.id}>
+                <TableCell className="font-mono">{patient.mrn}</TableCell>
+                <TableCell>
+                  <Link
+                    to="/$orgSlug/patients/$patientId"
+                    params={{ orgSlug, patientId: patient.id }}
+                    className="font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                  >
+                    {patient.name}
+                  </Link>
+                </TableCell>
+                <TableCell className="font-mono tabular-nums">{patient.phone}</TableCell>
+                <TableCell className="capitalize">{patient.sex}</TableCell>
+                <TableCell className="text-right">
+                  {patientAgeLabel(patient.dateOfBirth, patient.dobEstimated, today)}
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">
+                  {formatDate(patient.createdAt, timeZone)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </ListState>
+    </Panel>
   );
 }
 
@@ -139,7 +97,13 @@ function PatientRegistry({ orgSlug }: { orgSlug: string }) {
 
   return (
     <PageBody>
-      <PatientSearch onQueryChange={setQuery} />
+      <ListToolbar>
+        <SearchInput
+          label="Search patients"
+          placeholder="Search name, MRN, or phone"
+          onQueryChange={setQuery}
+        />
+      </ListToolbar>
       <PatientResults orgSlug={orgSlug} query={query} />
     </PageBody>
   );

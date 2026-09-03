@@ -19,12 +19,15 @@ import { SubmitButton } from "@hms/ui/components/submit-button";
 import { useIsMobile } from "@hms/ui/hooks/use-mobile";
 import { useState, type ReactNode } from "react";
 
-import { SettlementFields, type PaymentLine } from "@/components/opd-settlement-fields";
+import { SettlementFields } from "@/components/opd-settlement-fields";
 import { MONEY_INPUT_PATTERN, parseMoneyInput } from "@/lib/money";
 import { applyDiscount, type WalkInQuote } from "@/lib/opd-service-preview";
-import { amountOf, settlementProblems, type PaymentMethod } from "@/lib/settlement";
-
-export type { PaymentLine } from "@/components/opd-settlement-fields";
+import {
+  amountOf,
+  type PaymentLine,
+  type PaymentMethod,
+  settlementProblems,
+} from "@/lib/settlement";
 
 export type SettlementDraft = {
   discountAmount: string;

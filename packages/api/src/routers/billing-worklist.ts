@@ -14,15 +14,14 @@ import { businessDate, businessDayWindow } from "../lib/business-date";
 import { invoiceBalancesFor } from "../lib/invoice-balance";
 import { fromPaise, toPaise } from "../lib/invoice-math";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
+import { likePattern, searchQuery } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
 
-// `worklist` is bounded by the day and polls. `openInvoices` grows forever, so it
-// pages on a keyset and filters in SQL.
+// `worklist` polls pending charges for checked-in visits, all open invoice totals,
+// and today's collections. `openInvoices` grows forever, so it pages on a keyset.
 
 const OVERDUE_DAYS = 7;
 const STALE_DAYS = 30;
-
-const searchQuery = z.string().trim().min(1).max(100).optional();
 
 function settledExpression(orgId: string) {
   return sql`
@@ -48,84 +47,82 @@ export const billingWorklistRouter = {
       );
       const settled = settledExpression(scope.orgId);
       const staleBefore = daysAgo(STALE_DAYS);
-      const search = input.query;
+      const search = input.query ? likePattern(input.query) : undefined;
 
-      const unbilled = await db
-        .select({
-          appointmentId: opdAppointments.id,
-          tokenNumber: opdAppointments.tokenNumber,
-          patientName: patients.name,
-          patientMrn: patients.mrn,
-          patientPhone: patients.phone,
-          practitionerName: practitioners.name,
-          chargeCount: sql<number>`count(*)::integer`,
-          pendingValue: sql<string>`sum(${charges.unitPrice} * ${charges.qty})`,
-          oldestChargeAt: sql<Date>`min(${charges.createdAt})`,
-        })
-        .from(charges)
-        .innerJoin(
-          opdAppointments,
-          and(
-            eq(opdAppointments.orgId, scope.orgId),
-            eq(opdAppointments.id, charges.opdAppointmentId),
+      const [unbilled, [openMoney], [collected]] = await Promise.all([
+        db
+          .select({
+            appointmentId: opdAppointments.id,
+            tokenNumber: opdAppointments.tokenNumber,
+            patientName: patients.name,
+            patientMrn: patients.mrn,
+            patientPhone: patients.phone,
+            practitionerName: practitioners.name,
+            chargeCount: sql<number>`count(*)::integer`,
+            pendingValue: sql<string>`sum(${charges.unitPrice} * ${charges.qty})`,
+            oldestChargeAt: sql<Date>`min(${charges.createdAt})`,
+          })
+          .from(charges)
+          .innerJoin(
+            opdAppointments,
+            and(
+              eq(opdAppointments.orgId, scope.orgId),
+              eq(opdAppointments.id, charges.opdAppointmentId),
+            ),
+          )
+          .innerJoin(
+            patients,
+            and(eq(patients.orgId, scope.orgId), eq(patients.id, opdAppointments.patientId)),
+          )
+          .innerJoin(
+            practitioners,
+            and(
+              eq(practitioners.orgId, scope.orgId),
+              eq(practitioners.id, opdAppointments.practitionerId),
+            ),
+          )
+          .where(
+            and(
+              eq(charges.orgId, scope.orgId),
+              eq(charges.status, "pending"),
+              eq(opdAppointments.status, "checked_in"),
+              search ? or(ilike(patients.name, search), ilike(patients.mrn, search)) : undefined,
+            ),
+          )
+          .groupBy(
+            opdAppointments.id,
+            opdAppointments.tokenNumber,
+            patients.name,
+            patients.mrn,
+            patients.phone,
+            practitioners.name,
+          )
+          // Oldest first: the longest wait is the most likely to walk out unbilled.
+          .orderBy(sql`min(${charges.createdAt}) asc`, asc(opdAppointments.id)),
+        // One scan answers all four figures; four procedures would be four scans per poll.
+        db
+          .select({
+            outstanding: sql<string>`coalesce(sum(case when (${settled}) > 0 then (${settled}) else 0 end), 0)`,
+            openCount: sql<number>`count(*) filter (where (${settled}) > 0)::integer`,
+            staleTotal: sql<string>`coalesce(sum(case when (${settled}) > 0 and ${invoices.createdAt} < ${staleBefore} then (${settled}) else 0 end), 0)`,
+            staleCount: sql<number>`count(*) filter (where (${settled}) > 0 and ${invoices.createdAt} < ${staleBefore})::integer`,
+          })
+          .from(invoices)
+          .where(eq(invoices.orgId, scope.orgId)),
+        db
+          .select({
+            total: sql<string>`coalesce(sum(${payments.amount}), 0)`,
+            receiptCount: sql<number>`count(*)::integer`,
+          })
+          .from(payments)
+          .where(
+            and(
+              eq(payments.orgId, scope.orgId),
+              sql`${payments.createdAt} >= ${today.start}`,
+              sql`${payments.createdAt} < ${today.end}`,
+            ),
           ),
-        )
-        .innerJoin(
-          patients,
-          and(eq(patients.orgId, scope.orgId), eq(patients.id, opdAppointments.patientId)),
-        )
-        .innerJoin(
-          practitioners,
-          and(
-            eq(practitioners.orgId, scope.orgId),
-            eq(practitioners.id, opdAppointments.practitionerId),
-          ),
-        )
-        .where(
-          and(
-            eq(charges.orgId, scope.orgId),
-            eq(charges.status, "pending"),
-            eq(opdAppointments.status, "checked_in"),
-            search
-              ? or(ilike(patients.name, `%${search}%`), ilike(patients.mrn, `%${search}%`))
-              : undefined,
-          ),
-        )
-        .groupBy(
-          opdAppointments.id,
-          opdAppointments.tokenNumber,
-          patients.name,
-          patients.mrn,
-          patients.phone,
-          practitioners.name,
-        )
-        // Oldest first: the longest wait is the most likely to walk out unbilled.
-        .orderBy(sql`min(${charges.createdAt}) asc`, asc(opdAppointments.id));
-
-      // One scan answers all four figures; four procedures would be four scans per poll.
-      const [openMoney] = await db
-        .select({
-          outstanding: sql<string>`coalesce(sum(case when (${settled}) > 0 then (${settled}) else 0 end), 0)`,
-          openCount: sql<number>`count(*) filter (where (${settled}) > 0)::integer`,
-          staleTotal: sql<string>`coalesce(sum(case when (${settled}) > 0 and ${invoices.createdAt} < ${staleBefore} then (${settled}) else 0 end), 0)`,
-          staleCount: sql<number>`count(*) filter (where (${settled}) > 0 and ${invoices.createdAt} < ${staleBefore})::integer`,
-        })
-        .from(invoices)
-        .where(eq(invoices.orgId, scope.orgId));
-
-      const [collected] = await db
-        .select({
-          total: sql<string>`coalesce(sum(${payments.amount}), 0)`,
-          receiptCount: sql<number>`count(*)::integer`,
-        })
-        .from(payments)
-        .where(
-          and(
-            eq(payments.orgId, scope.orgId),
-            sql`${payments.createdAt} >= ${today.start}`,
-            sql`${payments.createdAt} < ${today.end}`,
-          ),
-        );
+      ]);
 
       const toBillPaise = unbilled.reduce((sum, row) => sum + toPaise(row.pendingValue), 0);
 
@@ -158,7 +155,7 @@ export const billingWorklistRouter = {
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
-    const search = input.query;
+    const search = input.query ? likePattern(input.query) : undefined;
     const rows = await db
       .select({
         id: invoices.id,
@@ -179,9 +176,9 @@ export const billingWorklistRouter = {
           input.overdueOnly ? lt(invoices.createdAt, daysAgo(OVERDUE_DAYS)) : undefined,
           search
             ? or(
-                ilike(invoices.patientName, `%${search}%`),
-                ilike(invoices.patientMrn, `%${search}%`),
-                ilike(invoices.invoiceNumber, `%${search}%`),
+                ilike(invoices.patientName, search),
+                ilike(invoices.patientMrn, search),
+                ilike(invoices.invoiceNumber, search),
               )
             : undefined,
         ),

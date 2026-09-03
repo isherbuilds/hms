@@ -1,7 +1,7 @@
 import { authorize } from "@hms/auth/access";
-import { cn } from "@hms/ui/lib/utils";
-import { Link, Outlet, createFileRoute } from "@tanstack/react-router";
+import { Outlet, createFileRoute } from "@tanstack/react-router";
 
+import { PageTab, PageTabs } from "@/components/page";
 import { useMembership } from "@/lib/membership";
 import { SETTINGS_TABS } from "@/lib/navigation";
 
@@ -14,24 +14,12 @@ export function SettingsTabs({ orgSlug }: { orgSlug: string }) {
   const visible = SETTINGS_TABS.filter(({ permission }) => authorize(roles, permission));
 
   return (
-    <nav
-      aria-label="Settings sections"
-      className="flex gap-1 overflow-x-auto border-b border-border px-4 print:hidden"
-    >
+    <PageTabs label="Settings sections">
       {visible.map(({ to, label }) => (
-        <Link
-          key={to}
-          to={to}
-          params={{ orgSlug }}
-          className={cn(
-            "-mb-px shrink-0 border-b-2 border-transparent px-2 py-2 text-xs text-muted-foreground transition-colors",
-            "[@media(hover:hover)_and_(pointer:fine)]:hover:text-foreground",
-            "data-[status=active]:border-foreground data-[status=active]:font-medium data-[status=active]:text-foreground",
-          )}
-        >
+        <PageTab key={to} to={to} params={{ orgSlug }}>
           {label}
-        </Link>
+        </PageTab>
       ))}
-    </nav>
+    </PageTabs>
   );
 }

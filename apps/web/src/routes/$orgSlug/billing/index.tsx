@@ -1,6 +1,4 @@
 import { Badge } from "@hms/ui/components/badge";
-import { Button } from "@hms/ui/components/button";
-import { Input } from "@hms/ui/components/input";
 import {
   Table,
   TableBody,
@@ -9,15 +7,22 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { ToggleGroup, ToggleGroupItem } from "@hms/ui/components/toggle-group";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { SearchIcon } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 
 import { BillingWorklistSheet } from "@/components/billing-worklist-sheet";
-import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import {
+  FilterGroup,
+  ListState,
+  ListToolbar,
+  LoadMore,
+  PageBody,
+  PageHeader,
+  Panel,
+  SearchInput,
+} from "@/components/page";
 import { type WorklistRow, toWorklistRows, waitedLabel } from "@/lib/billing-worklist-row";
 import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
@@ -56,73 +61,32 @@ const openInvoicesQuery = (orgSlug: string, query: string, overdueOnly: boolean)
 export const Route = createFileRoute("/$orgSlug/billing/")({
   head: () => ({ meta: [{ title: "Billing · HMS" }] }),
   validateSearch: z.object({
-    q: z
-      .string()
-      .trim()
-      .optional()
-      .catch(undefined)
-      .transform((value) => value || undefined),
     view: facetSchema.optional().catch(undefined),
   }),
-  loaderDeps: ({ search }) => ({ q: search.q, view: search.view }),
+  loaderDeps: ({ search }) => ({ view: search.view }),
   loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {
     // The worklist below is fetched without a catch, so a denial would otherwise reach
     // the generic error page and offer a Try again that reruns the same denial.
     await requireOrgPermission(queryClient, orgSlug, { billing: ["read"] }, "/$orgSlug/dashboard");
-    const query = deps.q ?? "";
     await Promise.all([
-      queryClient.query({ ...worklistQuery(orgSlug, query), staleTime: "static" }),
+      queryClient.query({ ...worklistQuery(orgSlug, ""), staleTime: "static" }),
       deps.view === "to-bill"
         ? null
         : queryClient
-            .infiniteQuery(openInvoicesQuery(orgSlug, query, deps.view === "overdue"))
+            .infiniteQuery(openInvoicesQuery(orgSlug, "", deps.view === "overdue"))
             .catch(() => {}),
     ]);
   },
   component: BillingIndexRoute,
 });
 
-function BillingSearchForm({ q }: { q: string | undefined }) {
-  const navigate = useNavigate({ from: Route.fullPath });
-
-  return (
-    <form
-      key={q ?? ""}
-      method="get"
-      className="flex min-w-48 flex-1 items-center gap-2 sm:max-w-md"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const nextQuery =
-          String(new FormData(event.currentTarget).get("q") ?? "").trim() || undefined;
-        if (nextQuery === q) return;
-        void navigate({ search: (previous) => ({ ...previous, q: nextQuery }) });
-      }}
-    >
-      <div className="relative flex-1">
-        <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          name="q"
-          defaultValue={q ?? ""}
-          placeholder="Search patient, MRN, or invoice number"
-          aria-label="Search open money"
-          className="pl-8"
-        />
-      </div>
-      <Button type="submit" size="sm">
-        Search
-      </Button>
-    </form>
-  );
-}
-
 function BillingIndexRoute() {
   const { orgSlug } = Route.useParams();
-  const { q, view } = Route.useSearch();
+  const { view } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const { timeZone } = useOrgDateTime();
 
-  const query = q ?? "";
+  const [query, setQuery] = useState("");
   const facet: Facet = view ?? "all";
   const [openRowKey, setOpenRowKey] = useState<string | null>(null);
   const currency = useMembership(orgSlug, (membership) => membership.currency);
@@ -145,173 +109,172 @@ function BillingIndexRoute() {
   // The sheet holds a key, not a row, so it always shows what the list shows.
   const openRow = rows.find((row) => row.key === openRowKey) ?? null;
 
-  const failure = worklist.error ?? invoices.error;
-  const summary = worklist.data?.summary;
   const pending = worklist.isPending || (facet !== "to-bill" && invoices.isPending);
+  const failure = worklist.error ?? (facet !== "to-bill" ? invoices.error : null);
+  // ListState receives one read state because this list combines two queries.
+  const listQuery = {
+    isPending: pending,
+    isError: worklist.isError || (facet !== "to-bill" && invoices.isError),
+    error: failure,
+    refetch: () =>
+      Promise.all([worklist.refetch(), ...(facet === "to-bill" ? [] : [invoices.refetch()])]),
+  };
+  const summary = worklist.data?.summary;
 
   return (
     <>
       <PageHeader title="Billing" description="Money owed to the hospital right now" />
       <PageBody>
         {summary ? (
-          <section className="flex flex-col rounded-xl bg-muted p-1">
-            <div className="flex h-9 items-center justify-between gap-2 px-3 text-muted-foreground">
-              <h2 className="min-w-0 truncate">Today</h2>
-              <span className="shrink-0 tabular-nums">{summary.receiptCount} receipts</span>
-            </div>
-            <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-card sm:grid-cols-4 sm:divide-x sm:divide-border">
-              <Stat
-                label="Waiting to be billed"
-                value={formatMoney(summary.toBillTotal, currency)}
-                detail={`${summary.toBillCount} in the building`}
-              />
-              <Stat
-                label="Collected"
-                value={formatMoney(summary.collectedToday, currency)}
-                detail="All payment methods"
-              />
-              <Stat
-                label="Outstanding"
-                value={formatMoney(summary.outstanding, currency)}
-                detail={`${summary.openCount} open invoices`}
-              />
-              <Stat
-                label="Over 30 days"
-                value={formatMoney(summary.staleTotal, currency)}
-                detail={`${summary.staleCount} nobody has chased`}
-                alarm={Number(summary.staleTotal) > 0}
-              />
-            </div>
-          </section>
+          <Panel
+            label="Today"
+            minHeight="min-h-16"
+            action={<span className="shrink-0 tabular-nums">{summary.receiptCount} receipts</span>}
+            className="grid grid-cols-2 sm:grid-cols-4 sm:divide-x sm:divide-border"
+          >
+            <Stat
+              label="Waiting to be billed"
+              value={formatMoney(summary.toBillTotal, currency)}
+              detail={`${summary.toBillCount} in the building`}
+            />
+            <Stat
+              label="Collected"
+              value={formatMoney(summary.collectedToday, currency)}
+              detail="All payment methods"
+            />
+            <Stat
+              label="Outstanding"
+              value={formatMoney(summary.outstanding, currency)}
+              detail={`${summary.openCount} open invoices`}
+            />
+            <Stat
+              label="Over 30 days"
+              value={formatMoney(summary.staleTotal, currency)}
+              detail={`${summary.staleCount} nobody has chased`}
+              alarm={Number(summary.staleTotal) > 0}
+            />
+          </Panel>
         ) : null}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <BillingSearchForm q={q} />
-          <div className="flex items-center rounded-lg bg-muted p-0.5">
-            <ToggleGroup
-              aria-label="Filter"
-              value={[facet]}
-              size="sm"
-              spacing={1}
-              onValueChange={(value) => {
-                const next = value[0] as Facet | undefined;
-                if (!next) return;
-                void navigate({
-                  search: (previous) => ({ ...previous, view: next === "all" ? undefined : next }),
-                  replace: true,
-                });
-              }}
-            >
-              {FACETS.map((option) => (
-                <ToggleGroupItem key={option.id} value={option.id}>
-                  {option.label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </div>
-        </div>
+        <ListToolbar>
+          <SearchInput
+            label="Search open money"
+            placeholder="Search patient, MRN, or invoice number"
+            onQueryChange={setQuery}
+          />
+          <FilterGroup
+            label="Filter"
+            value={facet}
+            options={FACETS.map((option) => ({ value: option.id, label: option.label }))}
+            onValueChange={(next) =>
+              void navigate({
+                search: (previous) => ({
+                  ...previous,
+                  view: next === "all" ? undefined : next,
+                }),
+                replace: true,
+              })
+            }
+          />
+        </ListToolbar>
 
-        <section className="flex flex-col rounded-xl bg-muted p-1">
-          <div className="flex h-9 items-center justify-between gap-2 px-3 text-muted-foreground">
-            <h2 className="min-w-0 truncate">Open money</h2>
-            {pending || failure ? null : (
-              <Badge variant={rows.length === 0 ? "muted" : "secondary"}>{rows.length}</Badge>
-            )}
-          </div>
-          {/* The card holds every state the list can be in, so the page keeps
-              one shape through a poll, a failure and an empty search. */}
-          <div className="min-h-32 overflow-hidden rounded-lg border border-border bg-card">
-            {pending ? null : failure ? (
-              <ErrorNote title="Could not load what is owed" error={failure} inset />
-            ) : rows.length === 0 ? (
-              <div className="flex min-h-32 items-center justify-center px-4 text-center text-muted-foreground">
-                {query ? "Nothing open matches this search." : "Nothing is owed right now."}
-              </div>
-            ) : (
-              <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Patient</TableHead>
-                      <TableHead>Reference</TableHead>
-                      <TableHead>State</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-right">Owed</TableHead>
-                      <TableHead className="text-right">Waiting</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rows.map((row) => (
-                      <TableRow
-                        key={row.key}
-                        tabIndex={0}
-                        onClick={() => setOpenRowKey(row.key)}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter") return;
-                          event.preventDefault();
-                          setOpenRowKey(row.key);
-                        }}
-                        className="cursor-pointer"
+        <Panel
+          label="Open money"
+          action={
+            pending || failure ? null : (
+              <Badge className="tabular-nums" variant={rows.length === 0 ? "muted" : "secondary"}>
+                {rows.length}
+              </Badge>
+            )
+          }
+          footer={
+            facet === "to-bill" ? undefined : <LoadMore query={invoices} shown={rows.length} />
+          }
+        >
+          <ListState
+            query={listQuery}
+            errorTitle="Could not load open money"
+            isEmpty={rows.length === 0}
+            empty={query ? "Nothing open matches this search." : "Nothing is owed right now."}
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Patient</TableHead>
+                  <TableHead>Reference</TableHead>
+                  <TableHead>State</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Owed</TableHead>
+                  <TableHead className="text-right">Waiting</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow
+                    key={row.key}
+                    tabIndex={0}
+                    onClick={() => setOpenRowKey(row.key)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      setOpenRowKey(row.key);
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <TableCell className="max-w-0">
+                      <Link
+                        to="/$orgSlug/opd/$appointmentId/billing"
+                        params={{ orgSlug, appointmentId: row.appointmentId }}
+                        title={row.patientName}
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        className="block truncate text-left font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                       >
-                        <TableCell>
-                          <Link
-                            to="/$orgSlug/opd/$appointmentId/billing"
-                            params={{ orgSlug, appointmentId: row.appointmentId }}
-                            onClick={(event) => event.stopPropagation()}
-                            onKeyDown={(event) => event.stopPropagation()}
-                            className="text-left font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-                          >
-                            {row.patientName}
-                          </Link>
-                          <p className="font-mono text-muted-foreground">{row.patientMrn}</p>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          <span className="font-mono">{row.reference}</span>
-                          <p className="text-muted-foreground">{row.detail}</p>
-                        </TableCell>
-                        <TableCell>
-                          <StateBadge state={row.state} />
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-muted-foreground">
-                          {formatMoney(row.total, row.currency)}
-                        </TableCell>
-                        {/* Colour lands on the two things that decide what to do
+                        {row.patientName}
+                      </Link>
+                      <p
+                        className="truncate font-mono text-muted-foreground"
+                        title={row.patientMrn}
+                      >
+                        {row.patientMrn}
+                      </p>
+                    </TableCell>
+                    <TableCell className="max-w-0">
+                      <div className="truncate font-mono" title={row.reference}>
+                        {row.reference}
+                      </div>
+                      <div className="truncate text-muted-foreground" title={row.detail}>
+                        {row.detail}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <StateBadge state={row.state} />
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {formatMoney(row.total, row.currency)}
+                    </TableCell>
+                    {/* Colour lands on the two things that decide what to do
                             next: what it is, and how much of it is late. */}
-                        <TableCell
-                          className={`text-right font-medium tabular-nums ${
-                            row.state === "stale"
-                              ? "text-destructive"
-                              : row.state === "late"
-                                ? "text-overdue"
-                                : ""
-                          }`}
-                        >
-                          {formatMoney(row.owed, row.currency)}
-                        </TableCell>
-                        <TableCell className="text-right whitespace-nowrap tabular-nums text-muted-foreground">
-                          {waitedLabel(row.at, timeZone)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                {facet !== "to-bill" && invoices.hasNextPage ? (
-                  <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2 text-muted-foreground">
-                    <span className="tabular-nums">{rows.length} shown</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={invoices.isFetchingNextPage}
-                      onClick={() => void invoices.fetchNextPage()}
+                    <TableCell
+                      className={`text-right font-medium tabular-nums ${
+                        row.state === "stale"
+                          ? "text-destructive"
+                          : row.state === "late"
+                            ? "text-overdue"
+                            : ""
+                      }`}
                     >
-                      Load 25 more
-                    </Button>
-                  </div>
-                ) : null}
-              </>
-            )}
-          </div>
-        </section>
+                      {formatMoney(row.owed, row.currency)}
+                    </TableCell>
+                    <TableCell className="text-right whitespace-nowrap tabular-nums text-muted-foreground">
+                      {waitedLabel(row.at, timeZone)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ListState>
+        </Panel>
       </PageBody>
 
       <BillingWorklistSheet
@@ -341,7 +304,7 @@ function Stat({
       <span className={`text-sm font-medium tabular-nums ${alarm ? "text-destructive" : ""}`}>
         {value}
       </span>
-      <span className="text-muted-foreground">{detail}</span>
+      <span className="tabular-nums text-muted-foreground">{detail}</span>
     </div>
   );
 }

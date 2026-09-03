@@ -9,7 +9,6 @@ mock.module("@hms/storage", () => ({
     throw new Error("storage unavailable");
   },
   maxUploadBytes: () => 100,
-  uploadExpiresIn: 900,
 }));
 
 const { drainAuditWrites } = await import("@hms/api/audit");

@@ -1,9 +1,9 @@
 import { Combobox } from "@hms/ui/components/combobox";
 import { Input } from "@hms/ui/components/input";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ClientOnly } from "@tanstack/react-router";
 import { SearchIcon } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { useDebouncedCallback } from "@/hooks/use-debounced-value";
 import { useMembership } from "@/lib/membership";
@@ -20,22 +20,14 @@ export type ServiceLine = {
   qty: number;
 };
 
-const NO_RESULTS: never[] = [];
-
-type CatalogMatch = { id: string; name: string };
-const matchKey = (item: CatalogMatch) => item.id;
-const matchLabel = (item: CatalogMatch) => item.name;
-
 export function ServicePicker({
   orgSlug,
-  // A string, not the lines themselves: a quantity edit hands back a freshly cloned
-  // array that would otherwise re-render the whole combobox.
-  chosenIds,
+  chosen,
   allowConsultation,
   onAdd,
 }: {
   orgSlug: string;
-  chosenIds: string;
+  chosen: ReadonlySet<string>;
   allowConsultation: boolean;
   onAdd: (line: ServiceLine) => void;
 }) {
@@ -58,15 +50,8 @@ export function ServicePicker({
       },
     }),
     enabled: searching,
-    // Keeps the prior answer cached so Base UI does not close and reopen the popup.
-    placeholderData: keepPreviousData,
   });
-  const catalog = catalogSearch.isPlaceholderData ? undefined : catalogSearch.data;
-  const results = useMemo(() => {
-    if (!catalog) return NO_RESULTS;
-    const chosen = new Set(chosenIds.split(" "));
-    return catalog.filter((item) => !chosen.has(item.id));
-  }, [catalog, chosenIds]);
+  const results = (catalogSearch.data ?? []).filter((item) => !chosen.has(item.id));
 
   const renderMatch = (item: (typeof results)[number]) => (
     <>
@@ -101,8 +86,8 @@ export function ServicePicker({
           <Combobox
             key={box}
             items={results}
-            getItemKey={matchKey}
-            getItemLabel={matchLabel}
+            getItemKey={(item) => item.id}
+            getItemLabel={(item) => item.name}
             onInputValueChange={(value) => settle(value.trim())}
             onSelect={(item) => {
               onAdd({
@@ -144,7 +129,7 @@ export function ServicePicker({
                 <p className="px-3 py-2 text-muted-foreground">
                   {catalogSearch.isError
                     ? catalogSearch.error.message
-                    : catalogSearch.isPending || catalogSearch.isPlaceholderData
+                    : catalogSearch.isPending
                       ? "Searching…"
                       : "No unused service matches"}
                 </p>

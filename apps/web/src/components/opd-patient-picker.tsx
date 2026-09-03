@@ -8,7 +8,7 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@hms/ui/components/empty";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { SearchIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -39,12 +39,6 @@ function callerSeed(value: string): { name?: string; phone?: string } {
   return { name: value };
 }
 
-const NO_MATCHES: never[] = [];
-
-type PatientMatch = { id: string; name: string };
-const matchKey = (match: PatientMatch) => match.id;
-const matchLabel = (match: PatientMatch) => match.name;
-
 // Uncontrolled: the DOM holds what is typed and only the settled term becomes
 // state, so a keystroke never re-renders this component.
 function PatientSearchInput({
@@ -73,13 +67,9 @@ function PatientSearchInput({
         : { orgSlug, query: search, limit: 20 },
     }),
     enabled: search.length > 0 && !incomplete,
-    // Keeps the prior answer cached so Base UI does not close and reopen the popup
-    // mid-word. Rows stay hidden until the answer belongs to the settled term.
-    placeholderData: keepPreviousData,
   });
-  const matches = results.isPlaceholderData ? NO_MATCHES : (results.data?.items ?? NO_MATCHES);
-  const searched =
-    !incomplete && search.length > 0 && results.isSuccess && !results.isPlaceholderData;
+  const matches = results.data?.items ?? [];
+  const searched = !incomplete && search.length > 0 && results.isSuccess;
   const error = results.isError ? results.error : null;
 
   const typed = () => inputRef.current?.value.trim() ?? search;
@@ -112,8 +102,8 @@ function PatientSearchInput({
         <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
         <Combobox
           items={matches}
-          getItemKey={matchKey}
-          getItemLabel={matchLabel}
+          getItemKey={(match) => match.id}
+          getItemLabel={(match) => match.name}
           defaultInputValue={initialQuery}
           onInputValueChange={(value) => settle(value.trim())}
           onSelect={(match) => {
@@ -142,7 +132,7 @@ function PatientSearchInput({
           itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-none border-b border-border px-3 py-2 last:border-b-0"
           renderItem={renderMatch}
           emptyContent={
-            results.isPlaceholderData ? (
+            results.isPending && !incomplete && search.length > 0 ? (
               <p className="px-3 py-2 text-muted-foreground">Searching…</p>
             ) : searched ? (
               <Empty>

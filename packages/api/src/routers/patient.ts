@@ -7,22 +7,24 @@ import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { patients } from "@hms/db/schema/patients";
 import { practitioners } from "@hms/db/schema/practitioners";
 import { ORPCError } from "@orpc/server";
-import { and, asc, count, desc, eq, ilike, inArray, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
 import { conflict } from "../lib/conflict";
-import { isUniqueViolation, uniqueViolationConstraint } from "../lib/db-errors";
+import { uniqueViolationConstraint } from "../lib/db-errors";
 import { invoiceBalancesFor } from "../lib/invoice-balance";
 import { fromPaise, toPaise } from "../lib/invoice-math";
 import { normalizePhone } from "../lib/phone";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
+import { dateOnly, likePattern, phone, searchQuery, shortName } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
+
 const patientFields = z.object({
-  name: z.string().trim().min(1).max(200),
-  phone: z.string().trim().min(4).max(20),
+  name: shortName,
+  phone,
   sex: z.enum(["male", "female", "other", "unknown"]),
-  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  dateOfBirth: dateOnly,
   dobEstimated: z.boolean(),
   address: z.string().trim().max(500).default(""),
   email: z.email().nullish(),
@@ -76,8 +78,6 @@ export const patientRouter = {
               id,
               orgId: scope.orgId,
               mrn,
-              dateOfBirth: fields.dateOfBirth,
-              dobEstimated: fields.dobEstimated,
               email: fields.email ?? null,
               bloodGroup: fields.bloodGroup ?? null,
               allergies: fields.allergies ?? null,
@@ -95,11 +95,14 @@ export const patientRouter = {
           return row;
         });
       } catch (error) {
-        if (uniqueViolationConstraint(error) === "patients_org_uid_idx") {
+        const constraint = uniqueViolationConstraint(error);
+        if (constraint === "patients_org_uid_idx") {
           throw conflict("uid_taken", "A patient with this UID already exists.");
         }
-        if (isUniqueViolation(error)) {
-          throw conflict("duplicate", "Those details match a patient who already exists.");
+        if (constraint !== undefined) {
+          throw new ORPCError("CONFLICT", {
+            message: "Those details match a patient who already exists.",
+          });
         }
         throw error;
       }
@@ -118,7 +121,7 @@ export const patientRouter = {
   search: orgProcedure(
     { patient: ["read"] },
     orgInput.extend({
-      query: z.string().trim().optional(),
+      query: searchQuery,
       phone: z
         .string()
         .trim()
@@ -135,22 +138,24 @@ export const patientRouter = {
   ).handler(async ({ context, input }) => {
     const normalizedPhone = input.phone ? normalizePhone(input.phone) : undefined;
     const normalizedQuery = input.query ? normalizePhone(input.query) : "";
+    const queryPattern = input.query ? likePattern(input.query) : undefined;
     const phoneDigits = sql<string>`regexp_replace(${patients.phone}, '\\D', '', 'g')`;
     const scoped = and(
       eq(patients.orgId, context.scope.orgId),
       input.cursor ? lt(patients.id, input.cursor) : undefined,
       normalizedPhone ? eq(phoneDigits, normalizedPhone) : undefined,
-      input.query
+      queryPattern
         ? or(
-            ilike(patients.name, `%${input.query}%`),
-            ilike(patients.mrn, `%${input.query}%`),
-            normalizedQuery.length >= 4 ? ilike(phoneDigits, `%${normalizedQuery}%`) : undefined,
+            ilike(patients.name, queryPattern),
+            ilike(patients.mrn, queryPattern),
+            normalizedQuery.length >= 4
+              ? ilike(phoneDigits, likePattern(normalizedQuery))
+              : undefined,
           )
         : undefined,
     );
 
-    // A directory boundary, not a lightweight `get`: clinical history and contact
-    // extras stay behind the record endpoint.
+    // Clinical history and extended contact fields stay behind the record endpoint.
     const items = await db
       .select({
         id: patients.id,
@@ -191,43 +196,41 @@ export const patientRouter = {
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
-    await assertPatientInScope(scope.orgId, input.patientId);
-
-    const rows = await db
-      .select({
-        id: opdAppointments.id,
-        businessDate: opdAppointments.businessDate,
-        status: opdAppointments.status,
-        tokenNumber: opdAppointments.tokenNumber,
-        scheduledFor: opdAppointments.scheduledFor,
-        arrivedAt: opdAppointments.arrivedAt,
-        createdAt: opdAppointments.createdAt,
-        practitionerName: practitioners.name,
-        departmentName: departments.name,
-      })
-      .from(opdAppointments)
-      .innerJoin(
-        practitioners,
-        and(
-          eq(practitioners.orgId, scope.orgId),
-          eq(practitioners.id, opdAppointments.practitionerId),
-        ),
-      )
-      .innerJoin(
-        departments,
-        and(eq(departments.orgId, scope.orgId), eq(departments.id, opdAppointments.departmentId)),
-      )
-      .where(
-        and(
-          eq(opdAppointments.orgId, scope.orgId),
-          eq(opdAppointments.patientId, input.patientId),
-          input.cursor
-            ? sql`(${opdAppointments.businessDate}, ${opdAppointments.id}) < (${input.cursor.businessDate}::date, ${input.cursor.id})`
-            : undefined,
-        ),
-      )
-      .orderBy(desc(opdAppointments.businessDate), desc(opdAppointments.id))
-      .limit(input.limit + 1);
+    const [, rows] = await Promise.all([
+      assertPatientInScope(scope.orgId, input.patientId),
+      db
+        .select({
+          id: opdAppointments.id,
+          businessDate: opdAppointments.businessDate,
+          status: opdAppointments.status,
+          tokenNumber: opdAppointments.tokenNumber,
+          practitionerName: practitioners.name,
+          departmentName: departments.name,
+        })
+        .from(opdAppointments)
+        .innerJoin(
+          practitioners,
+          and(
+            eq(practitioners.orgId, scope.orgId),
+            eq(practitioners.id, opdAppointments.practitionerId),
+          ),
+        )
+        .innerJoin(
+          departments,
+          and(eq(departments.orgId, scope.orgId), eq(departments.id, opdAppointments.departmentId)),
+        )
+        .where(
+          and(
+            eq(opdAppointments.orgId, scope.orgId),
+            eq(opdAppointments.patientId, input.patientId),
+            input.cursor
+              ? sql`(${opdAppointments.businessDate}, ${opdAppointments.id}) < (${input.cursor.businessDate}::date, ${input.cursor.id})`
+              : undefined,
+          ),
+        )
+        .orderBy(desc(opdAppointments.businessDate), desc(opdAppointments.id))
+        .limit(input.limit + 1),
+    ]);
 
     const hasNextPage = rows.length > input.limit;
     if (hasNextPage) {
@@ -252,43 +255,31 @@ export const patientRouter = {
             .select({
               id: invoices.id,
               opdAppointmentId: invoices.opdAppointmentId,
-              invoiceNumber: invoices.invoiceNumber,
               grandTotal: invoices.grandTotal,
-              createdAt: invoices.createdAt,
             })
             .from(invoices)
             .where(
               and(eq(invoices.orgId, scope.orgId), inArray(invoices.opdAppointmentId, visitIds)),
-            )
-            .orderBy(asc(invoices.createdAt)),
+            ),
         ])
       : [[], []];
 
     const balances = await invoiceBalancesFor(db, scope.orgId, visitInvoices);
     const countByVisit = new Map(prescriptionCounts.map((row) => [row.targetId, row.total]));
-    const invoicesByVisit = new Map<string, typeof visitInvoices>();
+    const outstandingByVisit = new Map<string, number>();
     for (const invoice of visitInvoices) {
-      const list = invoicesByVisit.get(invoice.opdAppointmentId) ?? [];
-      list.push(invoice);
-      invoicesByVisit.set(invoice.opdAppointmentId, list);
+      const outstanding = balances.get(invoice.id)?.outstanding ?? "0.00";
+      outstandingByVisit.set(
+        invoice.opdAppointmentId,
+        (outstandingByVisit.get(invoice.opdAppointmentId) ?? 0) + toPaise(outstanding),
+      );
     }
 
-    const items = rows.map((row) => {
-      const rowInvoices = (invoicesByVisit.get(row.id) ?? []).map((invoice) => ({
-        id: invoice.id,
-        invoiceNumber: invoice.invoiceNumber,
-        grandTotal: invoice.grandTotal,
-        outstanding: balances.get(invoice.id)?.outstanding ?? "0.00",
-      }));
-      return {
-        ...row,
-        prescriptionCount: countByVisit.get(row.id) ?? 0,
-        invoices: rowInvoices,
-        outstanding: fromPaise(
-          rowInvoices.reduce((sum, invoice) => sum + toPaise(invoice.outstanding), 0),
-        ),
-      };
-    });
+    const items = rows.map((row) => ({
+      ...row,
+      prescriptionCount: countByVisit.get(row.id) ?? 0,
+      outstanding: fromPaise(outstandingByVisit.get(row.id) ?? 0),
+    }));
 
     const last = rows[rows.length - 1];
     return {
@@ -300,32 +291,30 @@ export const patientRouter = {
   account: orgProcedure({ billing: ["read"] }, orgInput.extend({ patientId: z.string() })).handler(
     async ({ context, input }) => {
       const { scope } = context;
-      await assertPatientInScope(scope.orgId, input.patientId);
-
-      const rows = await db
-        .select({
-          id: invoices.id,
-          opdAppointmentId: invoices.opdAppointmentId,
-          invoiceNumber: invoices.invoiceNumber,
-          grandTotal: invoices.grandTotal,
-          currency: invoices.currency,
-          createdAt: invoices.createdAt,
-        })
-        .from(invoices)
-        .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.patientId, input.patientId)))
-        .orderBy(desc(invoices.createdAt), desc(invoices.id));
+      const [, rows] = await Promise.all([
+        assertPatientInScope(scope.orgId, input.patientId),
+        db
+          .select({
+            id: invoices.id,
+            invoiceNumber: invoices.invoiceNumber,
+            grandTotal: invoices.grandTotal,
+            currency: invoices.currency,
+            createdAt: invoices.createdAt,
+          })
+          .from(invoices)
+          .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.patientId, input.patientId)))
+          .orderBy(desc(invoices.createdAt), desc(invoices.id)),
+      ]);
 
       const balances = await invoiceBalancesFor(db, scope.orgId, rows);
-      const items = rows.map((invoice) => ({
-        ...invoice,
-        ...(balances.get(invoice.id) ?? {
-          grandTotal: invoice.grandTotal,
-          creditTotal: "0.00",
-          paymentsTotal: "0.00",
-          refundsTotal: "0.00",
-          outstanding: "0.00",
-        }),
-      }));
+      const items = rows.map((invoice) => {
+        const balance = balances.get(invoice.id);
+        return {
+          ...invoice,
+          paymentsTotal: balance?.paymentsTotal ?? "0.00",
+          outstanding: balance?.outstanding ?? "0.00",
+        };
+      });
 
       const openInvoices = items.filter((invoice) => toPaise(invoice.outstanding) !== 0);
 
@@ -363,8 +352,6 @@ export const patientRouter = {
         .update(patients)
         .set({
           ...fields,
-          dateOfBirth: fields.dateOfBirth,
-          dobEstimated: fields.dobEstimated,
           email: fields.email ?? null,
           bloodGroup: fields.bloodGroup ?? null,
           allergies: fields.allergies ?? null,
@@ -381,26 +368,20 @@ export const patientRouter = {
         )
         .returning();
     } catch (error) {
-      if (uniqueViolationConstraint(error) === "patients_org_uid_idx") {
+      const constraint = uniqueViolationConstraint(error);
+      if (constraint === "patients_org_uid_idx") {
         throw conflict("uid_taken", "A patient with this UID already exists.");
       }
-      if (isUniqueViolation(error)) {
-        throw conflict("duplicate", "Those details match a patient who already exists.");
+      if (constraint !== undefined) {
+        throw new ORPCError("CONFLICT", {
+          message: "Those details match a patient who already exists.",
+        });
       }
       throw error;
     }
 
     if (!patient) {
-      const [existing] = await db
-        .select({ id: patients.id })
-        .from(patients)
-        .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, patientId)))
-        .limit(1);
-
-      if (existing) {
-        throw conflict("stale_record", "This patient changed after you opened it.");
-      }
-      throw new ORPCError("NOT_FOUND", { message: "That patient no longer exists." });
+      throw conflict("stale_record", "This patient changed after you opened it.");
     }
 
     audit({

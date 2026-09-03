@@ -81,7 +81,8 @@ Non-negotiable in every handler:
   `NOT_FOUND` instead of a leak.
 - Use `context.scope`; never derive scope from the session, URL, or input.
 - Mutations are a single scoped `UPDATE`/`DELETE ... RETURNING`, not
-  select-then-write. Missing row → `NOT_FOUND`.
+  select-then-write. Missing direct writes return `NOT_FOUND`; conditional state
+  writes may collapse missing and stale rows into one `CONFLICT` (D026).
 - Keyset pagination, never `OFFSET`.
 - `audit()` for destructive or sensitive successes only. Verified role denials
   are audited centrally in `orgProcedure`'s internal guard; an unverified foreign

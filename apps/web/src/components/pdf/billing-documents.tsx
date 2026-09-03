@@ -1,6 +1,9 @@
+import { fromPaise, toPaise } from "@hms/api/lib/invoice-math";
 import type { AppRouter } from "@hms/api/routers/index";
 import type { RouterClient } from "@orpc/server";
 import type { CSSProperties, ReactNode } from "react";
+import { formatBusinessDate } from "@/lib/business-date";
+import { formatMoney } from "@/lib/money";
 
 export type InvoiceBundle = Awaited<ReturnType<RouterClient<AppRouter>["billing"]["getInvoice"]>>;
 type Invoice = InvoiceBundle["invoice"];
@@ -44,29 +47,6 @@ const cellStyle: CSSProperties = {
   padding: "7px 6px",
   verticalAlign: "top",
 };
-
-function formatBusinessDate(value: string): string {
-  return new Intl.DateTimeFormat("en-IN", {
-    dateStyle: "medium",
-    timeZone: "UTC",
-  }).format(new Date(`${value}T00:00:00Z`));
-}
-
-/** Display-only grouping; persisted arithmetic stays exact decimal-string math. */
-function money(value: string | number, currency: string): string {
-  const amount = Number(value);
-  const grouped = new Intl.NumberFormat("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Math.abs(amount));
-  return `${amount < 0 ? "-" : ""}${currency} ${grouped}`;
-}
-
-function splitTax(value: string): { cgst: string; sgst: string } {
-  const paise = Math.round(Number(value) * 100);
-  const cgst = Math.floor((paise + 1) / 2);
-  return { cgst: (cgst / 100).toFixed(2), sgst: ((paise - cgst) / 100).toFixed(2) };
-}
 
 function DocumentShell({
   invoice,
@@ -230,7 +210,7 @@ export function InvoiceDocument({
             >
               <div style={{ display: "flex", fontWeight: 700, justifyContent: "space-between" }}>
                 <span>{`${line.description} × ${line.qty}`}</span>
-                <span>{money(line.gross, currency)}</span>
+                <span>{formatMoney(line.gross, currency)}</span>
               </div>
               <div style={{ color: colors.muted, fontSize: 8 }}>
                 {`Unit ${line.unitPrice} · taxable ${line.taxableValue} · tax ${line.taxAmount} @ ${line.taxRatePercent}%`}
@@ -241,10 +221,10 @@ export function InvoiceDocument({
         <Details
           roomy
           rows={[
-            { label: "Subtotal", value: money(invoice.subtotal, currency) },
-            { label: "Discount", value: money(invoice.discountAmount, currency) },
-            { label: "Tax", value: money(invoice.taxTotal, currency) },
-            { label: "Grand total", value: money(invoice.grandTotal, currency) },
+            { label: "Subtotal", value: formatMoney(invoice.subtotal, currency) },
+            { label: "Discount", value: formatMoney(invoice.discountAmount, currency) },
+            { label: "Tax", value: formatMoney(invoice.taxTotal, currency) },
+            { label: "Grand total", value: formatMoney(invoice.grandTotal, currency) },
           ]}
         />
       </DocumentShell>
@@ -254,8 +234,8 @@ export function InvoiceDocument({
   const taxSummary = Array.from(
     lines.reduce((groups, line) => {
       const current = groups.get(line.taxRatePercent) ?? { taxable: 0, tax: 0 };
-      current.taxable += Math.round(Number(line.taxableValue) * 100);
-      current.tax += Math.round(Number(line.taxAmount) * 100);
+      current.taxable += toPaise(line.taxableValue);
+      current.tax += toPaise(line.taxAmount);
       groups.set(line.taxRatePercent, current);
       return groups;
     }, new Map<string, { taxable: number; tax: number }>()),
@@ -334,15 +314,17 @@ export function InvoiceDocument({
             </thead>
             <tbody>
               {taxSummary.map(([rate, amounts]) => {
-                const split = splitTax((amounts.tax / 100).toFixed(2));
+                const cgst = Math.floor((amounts.tax + 1) / 2);
                 return (
                   <tr key={rate}>
                     <td style={cellStyle}>{rate}%</td>
                     <td style={{ ...cellStyle, textAlign: "right" }}>
-                      {(amounts.taxable / 100).toFixed(2)}
+                      {fromPaise(amounts.taxable)}
                     </td>
-                    <td style={{ ...cellStyle, textAlign: "right" }}>{split.cgst}</td>
-                    <td style={{ ...cellStyle, textAlign: "right" }}>{split.sgst}</td>
+                    <td style={{ ...cellStyle, textAlign: "right" }}>{fromPaise(cgst)}</td>
+                    <td style={{ ...cellStyle, textAlign: "right" }}>
+                      {fromPaise(amounts.tax - cgst)}
+                    </td>
                   </tr>
                 );
               })}
@@ -353,10 +335,10 @@ export function InvoiceDocument({
 
       <SummaryBox
         rows={[
-          { label: "Subtotal", value: money(invoice.subtotal, currency) },
-          { label: "Discount", value: money(invoice.discountAmount, currency) },
-          { label: "Tax", value: money(invoice.taxTotal, currency) },
-          { label: "Grand total", value: money(invoice.grandTotal, currency), total: true },
+          { label: "Subtotal", value: formatMoney(invoice.subtotal, currency) },
+          { label: "Discount", value: formatMoney(invoice.discountAmount, currency) },
+          { label: "Tax", value: formatMoney(invoice.taxTotal, currency) },
+          { label: "Grand total", value: formatMoney(invoice.grandTotal, currency), total: true },
         ]}
       />
     </DocumentShell>
@@ -375,7 +357,7 @@ export function ReceiptDocument({ invoice, payment }: { invoice: Invoice; paymen
           { label: "Against invoice", value: invoice.invoiceNumber },
           { label: "Method", value: payment.method.toUpperCase() },
           ...(payment.reference ? [{ label: "Reference", value: payment.reference }] : []),
-          { label: "Amount received", value: money(payment.amount, invoice.currency) },
+          { label: "Amount received", value: formatMoney(payment.amount, invoice.currency) },
         ]}
       />
     </DocumentShell>
@@ -446,9 +428,9 @@ export function CreditNoteDocument({
       </table>
       <SummaryBox
         rows={[
-          { label: "Taxable", value: money(note.subtotal, invoice.currency) },
-          { label: "Tax", value: money(note.taxTotal, invoice.currency) },
-          { label: "Credit total", value: money(note.total, invoice.currency), total: true },
+          { label: "Taxable", value: formatMoney(note.subtotal, invoice.currency) },
+          { label: "Tax", value: formatMoney(note.taxTotal, invoice.currency) },
+          { label: "Credit total", value: formatMoney(note.total, invoice.currency), total: true },
         ]}
       />
     </DocumentShell>
@@ -476,7 +458,7 @@ export function RefundDocument({
           { label: "Credit note", value: creditNote.creditNoteNumber },
           { label: "Method", value: refund.method.toUpperCase() },
           ...(refund.reference ? [{ label: "Reference", value: refund.reference }] : []),
-          { label: "Amount refunded", value: money(refund.amount, invoice.currency) },
+          { label: "Amount refunded", value: formatMoney(refund.amount, invoice.currency) },
         ]}
       />
     </DocumentShell>

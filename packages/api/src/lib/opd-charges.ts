@@ -1,261 +1,164 @@
-import type { db } from "@hms/db";
-import type { DbTransaction } from "@hms/db/counter";
+import { db } from "@hms/db";
 import { catalogItems, OPD_BILLABLE_CATEGORIES } from "@hms/db/schema/catalog-items";
-import { charges } from "@hms/db/schema/charges";
 import { departments } from "@hms/db/schema/departments";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { patients } from "@hms/db/schema/patients";
 import { practitioners } from "@hms/db/schema/practitioners";
 import { ORPCError } from "@orpc/server";
-
-import { impossible } from "./conflict";
-import { and, eq, gte, inArray, ne } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 
 const DAY_MS = 86_400_000;
 
-type Executor = typeof db | DbTransaction;
-
-/** The catalog fields a charge copies at creation. Charges never re-read the item. */
-export type FeeItemSnapshot = Pick<
+type OpdItemSnapshot = Pick<
   typeof catalogItems.$inferSelect,
   "id" | "name" | "category" | "unitPrice" | "taxRatePercent" | "taxCode"
 >;
 
-const FEE_ITEM_COLUMNS = {
-  id: catalogItems.id,
-  name: catalogItems.name,
-  category: catalogItems.category,
-  unitPrice: catalogItems.unitPrice,
-  taxRatePercent: catalogItems.taxRatePercent,
-  taxCode: catalogItems.taxCode,
-} as const;
-
-export async function findActiveCatalogItem(options: {
-  executor: Executor;
-  catalogItemId: string | null;
-  orgId: string;
-}): Promise<FeeItemSnapshot | undefined> {
-  if (options.catalogItemId == null) return undefined;
-  const [item] = await options.executor
-    .select(FEE_ITEM_COLUMNS)
-    .from(catalogItems)
-    .where(
-      and(
-        eq(catalogItems.orgId, options.orgId),
-        eq(catalogItems.id, options.catalogItemId),
-        eq(catalogItems.active, true),
-      ),
-    )
-    .limit(1);
-  return item;
-}
-
-// Walk-in paths accept consultation items; booking rejects them because check-in
-// would stack a second ladder fee.
-export async function findActiveServiceItems(options: {
-  executor: Executor;
-  catalogItemIds: string[];
-  orgId: string;
-  includeConsultation: boolean;
-}): Promise<Map<string, FeeItemSnapshot>> {
-  if (options.catalogItemIds.length === 0) return new Map();
-  const rows = await options.executor
-    .select(FEE_ITEM_COLUMNS)
-    .from(catalogItems)
-    .where(
-      and(
-        eq(catalogItems.orgId, options.orgId),
-        inArray(catalogItems.id, options.catalogItemIds),
-        eq(catalogItems.active, true),
-        // The backstop for revenue bifurcation: hiding an option in the picker is not a
-        // rule, so an item this appointment may not carry resolves to nothing here.
-        inArray(catalogItems.category, [...OPD_BILLABLE_CATEGORIES]),
-        options.includeConsultation ? undefined : ne(catalogItems.category, "consultation"),
-      ),
-    );
-  return new Map(rows.map((row) => [row.id, row]));
-}
-
-export function requireCatalogItem(
-  items: Map<string, FeeItemSnapshot>,
-  catalogItemId: string,
-): FeeItemSnapshot {
-  const item = items.get(catalogItemId);
-  if (!item) throw new ORPCError("NOT_FOUND", { message: "That service is no longer available." });
-  return item;
-}
-
-export async function requireCareTeam(options: {
-  executor: Executor;
+export async function resolveOpdPricing(options: {
   orgId: string;
   practitionerId: string;
-  departmentId: string;
   patientId: string | null;
+  services: readonly { catalogItemId: string; qty: number }[];
+  consultation: "auto" | "omit" | "none";
+  followUpValidityDays: number;
+  now: Date;
 }) {
-  const { executor, orgId, patientId } = options;
-  const [[practitioner], [department], patientRows] = await Promise.all([
-    executor
-      .select({
-        id: practitioners.id,
-        departmentId: practitioners.departmentId,
-        consultFeeItemId: practitioners.consultFeeItemId,
-        followUpFeeItemId: practitioners.followUpFeeItemId,
-        followUpValidityDays: practitioners.followUpValidityDays,
-      })
-      .from(practitioners)
-      .where(and(eq(practitioners.orgId, orgId), eq(practitioners.id, options.practitionerId)))
-      .limit(1),
-    executor
-      .select({ id: departments.id, defaultConsultFeeItemId: departments.defaultConsultFeeItemId })
-      .from(departments)
-      .where(and(eq(departments.orgId, orgId), eq(departments.id, options.departmentId)))
-      .limit(1),
+  const { orgId, patientId } = options;
+  const [careTeam] = await db
+    .select({
+      id: practitioners.id,
+      departmentId: practitioners.departmentId,
+      consultFeeItemId: practitioners.consultFeeItemId,
+      followUpFeeItemId: practitioners.followUpFeeItemId,
+      followUpValidityDays: practitioners.followUpValidityDays,
+      defaultConsultFeeItemId: departments.defaultConsultFeeItemId,
+    })
+    .from(practitioners)
+    .innerJoin(
+      departments,
+      and(eq(departments.orgId, orgId), eq(departments.id, practitioners.departmentId)),
+    )
+    .where(and(eq(practitioners.orgId, orgId), eq(practitioners.id, options.practitionerId)))
+    .limit(1);
+  if (!careTeam) {
+    throw new ORPCError("NOT_FOUND", { message: "That practitioner no longer exists." });
+  }
+
+  const serviceIds = options.services.map((service) => service.catalogItemId);
+  const feeIds =
+    options.consultation === "auto"
+      ? [
+          careTeam.followUpFeeItemId,
+          careTeam.consultFeeItemId,
+          careTeam.defaultConsultFeeItemId,
+        ].filter((id): id is string => id != null)
+      : [];
+  const catalogItemIds = [...new Set([...feeIds, ...serviceIds])];
+  const followUpDays = careTeam.followUpValidityDays ?? options.followUpValidityDays;
+
+  const [patientRows, recentRows, itemRows] = await Promise.all([
     patientId
-      ? executor
+      ? db
           .select({ id: patients.id })
           .from(patients)
           .where(and(eq(patients.orgId, orgId), eq(patients.id, patientId)))
           .limit(1)
       : Promise.resolve([]),
+    options.consultation === "auto" && careTeam.followUpFeeItemId != null && patientId != null
+      ? db
+          .select({ id: opdAppointments.id })
+          .from(opdAppointments)
+          .where(
+            and(
+              eq(opdAppointments.orgId, orgId),
+              eq(opdAppointments.patientId, patientId),
+              eq(opdAppointments.practitionerId, careTeam.id),
+              eq(opdAppointments.status, "checked_in"),
+              gte(
+                opdAppointments.arrivedAt,
+                new Date(options.now.getTime() - followUpDays * DAY_MS),
+              ),
+            ),
+          )
+          .limit(1)
+      : Promise.resolve([]),
+    catalogItemIds.length > 0
+      ? db
+          .select({
+            id: catalogItems.id,
+            name: catalogItems.name,
+            category: catalogItems.category,
+            unitPrice: catalogItems.unitPrice,
+            taxRatePercent: catalogItems.taxRatePercent,
+            taxCode: catalogItems.taxCode,
+          })
+          .from(catalogItems)
+          .where(
+            and(
+              eq(catalogItems.orgId, orgId),
+              eq(catalogItems.active, true),
+              inArray(catalogItems.id, catalogItemIds),
+            ),
+          )
+      : Promise.resolve([] as OpdItemSnapshot[]),
   ]);
 
-  if (
-    !practitioner ||
-    !department ||
-    practitioner.departmentId !== department.id ||
-    (patientId != null && !patientRows[0])
-  ) {
-    throw new ORPCError("NOT_FOUND", {
-      message: "The practitioner, department, or patient on this appointment no longer exists.",
-    });
-  }
-  return { practitioner, department };
-}
-
-export type CareTeam = Awaited<ReturnType<typeof requireCareTeam>>;
-
-export async function chooseConsultFee(options: {
-  executor: Executor;
-  orgId: string;
-  patientId: string;
-  practitioner: CareTeam["practitioner"];
-  department: CareTeam["department"];
-  followUpValidityDays: number;
-  now: Date;
-}): Promise<FeeItemSnapshot | undefined> {
-  const { executor, orgId, practitioner, department, now } = options;
-
-  if (practitioner.followUpFeeItemId != null) {
-    const windowDays = practitioner.followUpValidityDays ?? options.followUpValidityDays;
-    const [recent] = await executor
-      .select({ id: opdAppointments.id })
-      .from(opdAppointments)
-      .where(
-        and(
-          eq(opdAppointments.orgId, orgId),
-          eq(opdAppointments.patientId, options.patientId),
-          eq(opdAppointments.practitionerId, practitioner.id),
-          eq(opdAppointments.status, "checked_in"),
-          gte(opdAppointments.arrivedAt, new Date(now.getTime() - windowDays * DAY_MS)),
-        ),
-      )
-      .limit(1);
-    if (recent) {
-      const fee = await findActiveCatalogItem({
-        executor,
-        catalogItemId: practitioner.followUpFeeItemId,
-        orgId,
-      });
-      if (fee) return fee;
-    }
+  if (patientId != null && !patientRows[0]) {
+    throw new ORPCError("NOT_FOUND", { message: "That patient no longer exists." });
   }
 
-  return (
-    (await findActiveCatalogItem({
-      executor,
-      catalogItemId: practitioner.consultFeeItemId,
-      orgId,
-    })) ??
-    (await findActiveCatalogItem({
-      executor,
-      catalogItemId: department.defaultConsultFeeItemId,
-      orgId,
-    }))
+  const items: Record<string, OpdItemSnapshot> = Object.fromEntries(
+    itemRows.map((item) => [item.id, item]),
   );
+  const feeItem =
+    options.consultation === "auto"
+      ? ((recentRows[0] && careTeam.followUpFeeItemId
+          ? items[careTeam.followUpFeeItemId]
+          : undefined) ??
+        (careTeam.consultFeeItemId ? items[careTeam.consultFeeItemId] : undefined) ??
+        (careTeam.defaultConsultFeeItemId ? items[careTeam.defaultConsultFeeItemId] : undefined))
+      : undefined;
+  const serviceItems = options.services.map((service) => {
+    const item = items[service.catalogItemId];
+    const billable = item && OPD_BILLABLE_CATEGORIES.some((category) => category === item.category);
+    if (
+      !item ||
+      !billable ||
+      (options.consultation === "none" && item.category === "consultation")
+    ) {
+      throw new ORPCError("NOT_FOUND", { message: "That service is no longer available." });
+    }
+    return { item, qty: service.qty };
+  });
+
+  return { departmentId: careTeam.departmentId, feeItem, serviceItems };
 }
 
-export async function createConsultCharge(options: {
-  tx: DbTransaction;
-  appointmentId: string;
-  feeItem: FeeItemSnapshot | undefined;
+export function chargeRow(args: {
   orgId: string;
-  userId: string;
-  now: Date;
-  chargeId?: string;
-}) {
-  const { feeItem, now } = options;
-  if (!feeItem) return null;
-  const [charge] = await options.tx
-    .insert(charges)
-    .values({
-      id: options.chargeId ?? Bun.randomUUIDv7(),
-      orgId: options.orgId,
-      opdAppointmentId: options.appointmentId,
-      catalogItemId: feeItem.id,
-      description: feeItem.name,
-      unitPrice: feeItem.unitPrice,
-      taxRatePercent: feeItem.taxRatePercent,
-      taxCode: feeItem.taxCode,
-      revenueCategory: feeItem.category,
-      qty: 1,
-      sourceType: "consult_fee",
-      sourceId: null,
-      status: "pending",
-      createdBy: options.userId,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning();
-  if (!charge) throw impossible("consult fee charge insert returned no row");
-  return charge;
-}
-
-export async function serviceChargeValues(options: {
-  executor: Executor;
   appointmentId: string;
-  services: readonly { catalogItemId: string; qty: number }[];
-  orgId: string;
-  includeConsultation: boolean;
+  item: OpdItemSnapshot;
+  qty: number;
+  sourceType: "consult_fee" | "catalog";
   userId: string;
   now: Date;
 }) {
-  const { orgId, now, services } = options;
-  const serviceItems = await findActiveServiceItems({
-    executor: options.executor,
-    catalogItemIds: services.map((service) => service.catalogItemId),
-    orgId,
-    includeConsultation: options.includeConsultation,
-  });
-
-  return services.map((service) => {
-    const item = requireCatalogItem(serviceItems, service.catalogItemId);
-    return {
-      id: Bun.randomUUIDv7(),
-      orgId,
-      opdAppointmentId: options.appointmentId,
-      catalogItemId: item.id,
-      description: item.name,
-      qty: service.qty,
-      unitPrice: item.unitPrice,
-      taxRatePercent: item.taxRatePercent,
-      taxCode: item.taxCode,
-      revenueCategory: item.category,
-      sourceType: "catalog",
-      sourceId: null,
-      status: "pending",
-      createdBy: options.userId,
-      createdAt: now,
-      updatedAt: now,
-    } as const;
-  });
+  return {
+    id: Bun.randomUUIDv7(),
+    orgId: args.orgId,
+    opdAppointmentId: args.appointmentId,
+    catalogItemId: args.item.id,
+    description: args.item.name,
+    qty: args.qty,
+    unitPrice: args.item.unitPrice,
+    taxRatePercent: args.item.taxRatePercent,
+    taxCode: args.item.taxCode,
+    revenueCategory: args.item.category,
+    sourceType: args.sourceType,
+    sourceId: null,
+    status: "pending",
+    createdBy: args.userId,
+    createdAt: args.now,
+    updatedAt: args.now,
+  } as const;
 }

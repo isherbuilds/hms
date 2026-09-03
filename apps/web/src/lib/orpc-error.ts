@@ -39,8 +39,7 @@ export function hasErrorCode(error: unknown, code: string): boolean {
   return false;
 }
 
-// Two CONFLICTs can mean opposite things to an operator — a lost race is worth
-// retrying, an already-issued invoice never is — so the cause must survive transport.
+// Conflict reasons identify field errors that the web client can handle.
 // `ConflictReason` is the server's own union, so a stale name fails to compile.
 export function errorReason(error: unknown): ConflictReason | undefined {
   return dataString(error, "reason") as ConflictReason | undefined;

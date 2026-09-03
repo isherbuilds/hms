@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { BillingDocumentView } from "@/components/billing-document-view";
-import { billingPdfUrl } from "@/lib/billing-document";
+import { BillingDocumentRoute } from "@/components/billing-document-view";
 
 export const Route = createFileRoute("/$orgSlug/billing/invoices/$invoiceId/refund/$refundId")({
   head: () => ({ meta: [{ title: "Refund voucher · HMS" }] }),
@@ -10,16 +9,12 @@ export const Route = createFileRoute("/$orgSlug/billing/invoices/$invoiceId/refu
 
 function RefundDocumentRoute() {
   const { orgSlug, invoiceId, refundId } = Route.useParams();
-
   return (
-    <BillingDocumentView
-      title="Refund voucher"
-      description="Refund voucher PDF"
-      pdfUrl={billingPdfUrl({
-        orgSlug,
-        invoiceId,
-        request: { kind: "refund", documentId: refundId, layout: "a4" },
-      })}
+    <BillingDocumentRoute
+      orgSlug={orgSlug}
+      invoiceId={invoiceId}
+      kind="refund"
+      refundId={refundId}
     />
   );
 }

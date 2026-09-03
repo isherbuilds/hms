@@ -26,8 +26,6 @@ import {
   type SettlementProblem,
 } from "@/lib/settlement";
 
-export type { PaymentLine } from "@/lib/settlement";
-
 const loudProblem = (problems: SettlementProblem[], key: string) =>
   problems.find((problem) => problem.key === key && !problem.quiet);
 

@@ -1,6 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 
 import { businessDate } from "@hms/api/lib/business-date";
+import { invoiceBalanceFor } from "@hms/api/lib/invoice-balance";
 import { postJournalEntry } from "@hms/api/lib/ledger";
 import type { AppRouterClient } from "@hms/api/routers/index";
 
@@ -131,7 +132,6 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
       orgSlug: organization.slug,
       patientId: patient.id,
       practitionerId: practitioner.id,
-      departmentId: department.id,
       scheduledLocal: "2030-03-15T10:30",
     });
     return (
@@ -191,7 +191,6 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
       orgSlug: organization.slug,
       patientId: patient.id,
       practitionerId: consultant.id,
-      departmentId: department.id,
       scheduledLocal: "2030-03-15T10:30",
     });
     const checkedIn = await api.opd.checkIn({
@@ -481,10 +480,7 @@ test("trial balance is balanced, agrees with invoice outstanding, and carries pr
   const fixture = await createAccountingFixture("accounting-trial");
   const issued = await issueConsultationInvoice(fixture, "Trial");
   const today = reportDate();
-  const balance = await fixture.api.billing.invoiceBalance({
-    orgSlug: fixture.organization.slug,
-    invoiceId: issued.invoice.id,
-  });
+  const balance = await invoiceBalanceFor(db, fixture.organization.id, issued.invoice);
 
   const active = await fixture.api.report.trialBalance({
     orgSlug: fixture.organization.slug,

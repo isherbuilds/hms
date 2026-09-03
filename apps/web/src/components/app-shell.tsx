@@ -33,7 +33,7 @@ import { Monogram } from "@/components/monogram";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { authClient } from "@/lib/auth-client";
 import { useMembership } from "@/lib/membership";
-import { NAV_GROUPS, PRIMARY_NAV, SETTINGS_PERMISSIONS } from "@/lib/navigation";
+import { NAV_GROUPS, PRIMARY_NAV, SETTINGS_TABS } from "@/lib/navigation";
 
 function OrgSwitcher({ activeOrgSlug }: { activeOrgSlug: string }) {
   const organizations = useMembership(activeOrgSlug, (membership) => membership.organizations);
@@ -131,7 +131,7 @@ function OrgSidebar({ orgSlug }: { orgSlug: string }) {
   // already cached: no pending nav that shows every link and then removes some.
   const roles = useMembership(orgSlug, (membership) => membership.roles);
   const visible = PRIMARY_NAV.filter(({ permission }) => authorize(roles, permission));
-  const showSettings = SETTINGS_PERMISSIONS.some((permission) => authorize(roles, permission));
+  const showSettings = SETTINGS_TABS.some(({ permission }) => authorize(roles, permission));
 
   return (
     <Sidebar variant="inset">

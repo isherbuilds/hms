@@ -15,64 +15,20 @@ import {
 import { toast } from "sonner";
 
 import { invalidatePatientState } from "@/lib/domain-invalidation";
+import { patientFieldSchema, type PatientFields } from "@/lib/form-schema";
 import { orpc } from "@/lib/orpc";
 import { errorMessage, errorReason } from "@/lib/orpc-error";
 
 // The procedure takes the whole record, not a patch: every commit sends the current
 // row with one value replaced and its latest compare-and-swap token.
-export type EditablePatientRecord = {
+export type EditablePatientRecord = PatientFields & {
   id: string;
   mrn: string;
   updatedAt: string;
-  name: string;
-  phone: string;
-  sex: "male" | "female" | "other" | "unknown";
-  dateOfBirth: string;
-  dobEstimated: boolean;
-  address: string;
-  email: string | null;
-  bloodGroup: "A+" | "A-" | "B+" | "B-" | "AB+" | "AB-" | "O+" | "O-" | null;
-  allergies: string | null;
-  medicalHistory: string | null;
-  uid: string | null;
 };
 
-type FieldKey = Exclude<keyof EditablePatientRecord, "id" | "mrn" | "updatedAt" | "dobEstimated">;
+type FieldKey = Exclude<keyof PatientFields, "dobEstimated">;
 type FieldKind = "text" | "date" | "sex" | "blood" | "textarea";
-
-function nextRecord(
-  record: EditablePatientRecord,
-  field: FieldKey,
-  raw: string,
-): EditablePatientRecord | { error: string } {
-  const trimmed = raw.trim();
-
-  switch (field) {
-    case "name":
-      if (!trimmed) return { error: "A patient needs a name." };
-      return { ...record, name: trimmed };
-    case "phone":
-      if (trimmed.length < 4) return { error: "Enter at least 4 characters." };
-      return { ...record, phone: trimmed };
-    case "sex":
-      return { ...record, sex: trimmed as EditablePatientRecord["sex"] };
-    case "bloodGroup":
-      return { ...record, bloodGroup: (trimmed || null) as EditablePatientRecord["bloodGroup"] };
-    case "dateOfBirth":
-      if (!trimmed) return { error: "Enter a date of birth." };
-      return { ...record, dateOfBirth: trimmed, dobEstimated: false };
-    case "email":
-      return { ...record, email: trimmed || null };
-    case "uid":
-      return { ...record, uid: trimmed || null };
-    case "address":
-      return { ...record, address: trimmed };
-    case "allergies":
-      return { ...record, allergies: trimmed || null };
-    case "medicalHistory":
-      return { ...record, medicalHistory: trimmed || null };
-  }
-}
 
 export function usePatientFieldSave(orgSlug: string, record: EditablePatientRecord) {
   const queryClient = useQueryClient();
@@ -124,11 +80,16 @@ export function usePatientFieldSave(orgSlug: string, record: EditablePatientReco
     (field: FieldKey, raw: string) => {
       const { record, pending } = latest.current;
       if (pending) return;
-      const next = nextRecord(record, field, raw);
-      if ("error" in next) {
-        toast.error(next.error);
+      const parsed = patientFieldSchema.shape[field].safeParse(raw);
+      if (!parsed.success) {
+        toast.error(parsed.error.issues[0]?.message ?? "Enter a valid value.");
         return;
       }
+      const next = {
+        ...record,
+        [field]: parsed.data,
+        ...(field === "dateOfBirth" ? { dobEstimated: false } : {}),
+      };
       const { id: _id, mrn: _mrn, updatedAt, ...fields } = next;
       mutate(
         { orgSlug, patientId: record.id, updatedAt, ...fields },

@@ -18,7 +18,8 @@ import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
 import { downloadXlsx } from "@/lib/report-export";
-import { REPORT_PRINT_LANDSCAPE_CSS, formatReportMoney } from "@/lib/report-presentation";
+import { formatMoney } from "@/lib/money";
+import { REPORT_PRINT_LANDSCAPE_CSS } from "@/lib/report-presentation";
 import { orgMonthToDate as defaultRange } from "@/lib/org-datetime";
 import { requireOrgPermission } from "@/lib/route-permission";
 
@@ -52,7 +53,6 @@ function TrialBalanceRoute() {
   const { from, to } = Route.useLoaderData();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const report = useQuery(orpc.report.trialBalance.queryOptions({ input: { orgSlug, from, to } }));
-  const money = (value: string) => formatReportMoney(value, currency);
 
   const exportReport = () => {
     if (!report.data) return;
@@ -156,40 +156,44 @@ function TrialBalanceRoute() {
                       <TableCell>{row.name}</TableCell>
                       <TableCell className="capitalize text-muted-foreground">{row.type}</TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {money(row.openingDebit)}
+                        {formatMoney(row.openingDebit, currency)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {money(row.openingCredit)}
+                        {formatMoney(row.openingCredit, currency)}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">{money(row.debit)}</TableCell>
-                      <TableCell className="text-right tabular-nums">{money(row.credit)}</TableCell>
-                      <TableCell className="text-right font-medium tabular-nums">
-                        {money(row.closingDebit)}
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(row.debit, currency)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(row.credit, currency)}
                       </TableCell>
                       <TableCell className="text-right font-medium tabular-nums">
-                        {money(row.closingCredit)}
+                        {formatMoney(row.closingDebit, currency)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">
+                        {formatMoney(row.closingCredit, currency)}
                       </TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="border-t-2 font-semibold">
                     <TableCell colSpan={3}>Total</TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {money(report.data.totals.openingDebit)}
+                      {formatMoney(report.data.totals.openingDebit, currency)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {money(report.data.totals.openingCredit)}
+                      {formatMoney(report.data.totals.openingCredit, currency)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {money(report.data.totals.debit)}
+                      {formatMoney(report.data.totals.debit, currency)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {money(report.data.totals.credit)}
+                      {formatMoney(report.data.totals.credit, currency)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {money(report.data.totals.closingDebit)}
+                      {formatMoney(report.data.totals.closingDebit, currency)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {money(report.data.totals.closingCredit)}
+                      {formatMoney(report.data.totals.closingCredit, currency)}
                     </TableCell>
                   </TableRow>
                 </TableBody>

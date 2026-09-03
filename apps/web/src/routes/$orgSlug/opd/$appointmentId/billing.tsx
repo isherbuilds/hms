@@ -1,3 +1,4 @@
+import { authorize } from "@hms/auth/access";
 import { useQuery } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
@@ -5,12 +6,12 @@ import { useState } from "react";
 import { ChargeCheckout } from "@/components/opd-billing/charge-checkout";
 import { InvoiceAccount } from "@/components/opd-billing/invoice-account";
 import { VoidChargeDialog } from "@/components/opd-billing/void-charge-dialog";
-import { ErrorNote } from "@/components/page";
-import { useCan, useMembership } from "@/lib/membership";
+import { ErrorNote, Panel, PanelEmpty } from "@/components/page";
+import { StaleDataNotice } from "@/components/stale-data-notice";
+import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
 import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 
-import { RecordCard, RecordEmpty } from "./route";
 import { useOpdRecord } from "@/lib/opd-record";
 
 export const Route = createFileRoute("/$orgSlug/opd/$appointmentId/billing")({
@@ -34,8 +35,9 @@ function BillingOpdAppointmentRoute() {
   });
   // From membership, not `settings.get`: the same currency, already loaded by the org
   // layout, and readable by a cashier who has no `settings:read` grant.
-  const currency = useMembership(orgSlug, (membership) => membership.currency);
-  const canCredit = useCan(orgSlug, { billing: ["creditNote"] });
+  const { roles, currency } = useMembership(orgSlug);
+  const canCredit = authorize(roles, { billing: ["creditNote"] });
+  const canWrite = authorize(roles, { billing: ["write"] });
 
   // The layout has proven the record; only the invoice list can be missing here.
   if (!invoices.data) {
@@ -50,6 +52,7 @@ function BillingOpdAppointmentRoute() {
 
   return (
     <>
+      <BillingFreshness orgSlug={orgSlug} appointmentId={appointmentId} />
       {refreshError ? (
         <ErrorNote
           title="Billing data could not refresh"
@@ -60,9 +63,9 @@ function BillingOpdAppointmentRoute() {
       {/* One list for both roles now that the counter cannot add to it: the
           cashier gets a Void column and the invoice beside it, nobody gets a
           catalog. */}
-      <RecordCard label="Charges">
+      <Panel label="Charges" minHeight="min-h-16">
         {pending.length === 0 ? (
-          <RecordEmpty>No charge is waiting to be invoiced.</RecordEmpty>
+          <PanelEmpty>No charge is waiting to be invoiced.</PanelEmpty>
         ) : (
           <ChargeCheckout
             orgSlug={orgSlug}
@@ -70,11 +73,11 @@ function BillingOpdAppointmentRoute() {
             pending={pending}
             chargeRevision={record.appointment.chargeRevision}
             currency={currency}
-            canSettle={canChangeCharges}
+            canSettle={canChangeCharges && canWrite}
             onVoid={setVoiding}
           />
         )}
-      </RecordCard>
+      </Panel>
 
       {/* Each invoice already carries its own surface and its own actions, so
           the list stays flat: a card around a stack of boxes is noise. The
@@ -93,13 +96,14 @@ function BillingOpdAppointmentRoute() {
                 appointmentId={appointmentId}
                 invoice={invoice}
                 canCredit={canCredit}
+                canPay={canWrite}
               />
             ))}
           </div>
         )}
       </section>
 
-      {canChangeCharges ? (
+      {canChangeCharges && canWrite ? (
         <ClientOnly fallback={null}>
           {voiding ? (
             <VoidChargeDialog
@@ -113,4 +117,12 @@ function BillingOpdAppointmentRoute() {
       ) : null}
     </>
   );
+}
+
+function BillingFreshness({ orgSlug, appointmentId }: { orgSlug: string; appointmentId: string }) {
+  const { dataUpdatedAt } = useQuery({
+    ...orpc.billing.listInvoices.queryOptions({ input: { orgSlug, appointmentId } }),
+    enabled: false,
+  });
+  return <StaleDataNotice dataUpdatedAt={dataUpdatedAt} />;
 }

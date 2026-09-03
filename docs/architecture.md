@@ -19,8 +19,8 @@ tests ─────────in-process router client───────�
 Every router entry point builds the same request context. SSR, billing-document
 routes, and integration tests therefore exercise the same router and
 authorization guard as HTTP. The API server also exposes development-only
-reference pages; they never mount in production. RPC bodies are limited to 1 MiB
-before expensive context work.
+reference pages; they never mount in production. RPC and development reference
+bodies are limited to 1 MiB before expensive context work.
 
 Source-of-truth code:
 
@@ -61,8 +61,9 @@ session state and never falls back:
   procedure still checks its own permission and denial audit. Nothing survives
   the request, so revocation applies on the next request.
 - Handlers use only `context.scope.orgId` for SQL. `userId` is attribution.
-- Every primary-key lookup and write includes the tenant predicate. Foreign ids
-  become `NOT_FOUND` rather than existence leaks.
+- Every primary-key lookup and write includes the tenant predicate. Reads and
+  direct writes turn foreign ids into `NOT_FOUND`; conditional state writes may
+  deliberately return the same `CONFLICT` for missing and already-moved rows.
 - Every referenced id is re-verified under the same tenant. Prices and taxes
   come from server-read catalog rows, never browser claims.
 - RLS is not currently used. Application predicates plus integration guardrails
@@ -158,10 +159,9 @@ classification compare digits only, while the stored and displayed phone text
 keeps the operator's formatting.
 
 Patient edits are an Organization-scoped compare-and-swap against the loaded,
-millisecond-exact `updatedAt`. A zero-row update performs a second scoped
-existence read: an existing Patient is a stale-record `CONFLICT`, while an
-absent or foreign Patient is `NOT_FOUND`. The server does not retry a stale
-write.
+millisecond-exact `updatedAt`. A zero-row update is a stale-record `CONFLICT`
+with no second read; the client offers a refresh, which also reveals a Patient
+that no longer exists. The server does not retry a stale write.
 
 The catalog is a flat chargeable-item registry. Charges snapshot name/code,
 category, unit price, tax rate, and tax code so later catalog edits never
