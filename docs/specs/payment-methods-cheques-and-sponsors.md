@@ -137,11 +137,10 @@ method` and render the breakdown from what actually came in.
 
 ### UI
 
-- The Sponsor section is a `FieldSet` in `apps/web/src/components/patient-form.tsx`,
-  which currently has no section boundaries. Default is self-paying; the payer
-  picker, policy number, and employee number are revealed only when a sponsor
-  type is chosen. Label it **Sponsor** — "Advanced" is developer language and the
-  page-header grammar in Design calls for a plain noun.
+- The Sponsor section in `apps/web/src/components/patient-form.tsx` defaults to
+  self-paying; the payer picker, policy number, and employee number are revealed
+  only when a sponsor is chosen. The patient Record tab exposes the same fields
+  after registration so a receptionist can correct or remove the sponsor.
 - The payer master is administered from a Settings page, following the existing
   catalog settings pattern.
 
@@ -204,14 +203,14 @@ four-question tenancy harness.
 ["create", "read", "update"]` permission statement; `payer.list`,
     `payer.create`, `payer.update`.
 
-- [x] **Slice 3: Sponsor on registration**
-  - Acceptance: registration shows a collapsed Sponsor section defaulting to
-    self-paying; choosing a sponsor reveals the payer picker, policy number, and
-    employee number; the sponsor round-trips through register and update;
-    clearing it removes the link row in the same transaction as the patient
-    write; a foreign `payerId` is `NOT_FOUND`; help text states that the bill is
-    still addressed to the patient; a self-paying registration requires no extra
-    keystrokes.
+- [x] **Slice 3: Sponsor capture**
+  - Acceptance: registration defaults to self-paying; choosing a sponsor reveals
+    the payer picker, policy number, and employee number; the patient Record tab
+    permits those fields to be corrected or cleared after registration; the
+    sponsor round-trips through register and update; clearing it removes the link
+    row in the same transaction as the patient write; a foreign `payerId` is
+    `NOT_FOUND`; help text states that the bill is still addressed to the
+    patient; a self-paying registration requires no extra keystrokes.
   - Verify: `bun run check-types && bun run check && bun run test`
   - Depends on: Slice 2
   - Owns/Touches: `packages/api/src/routers/patient.ts`,

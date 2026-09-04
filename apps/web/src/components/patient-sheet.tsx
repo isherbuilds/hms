@@ -3,7 +3,7 @@ import { ClientOnly, useBlocker } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { PatientForm } from "@/components/patient-form";
+import { PatientForm, type EditablePatient } from "@/components/patient-form";
 
 const DISCARD = {
   title: "Discard unsaved changes?",
@@ -13,12 +13,15 @@ const DISCARD = {
 
 export function PatientSheet({
   orgSlug,
+  patient,
   seed,
   open,
   onOpenChange,
   onRegistered,
 }: {
   orgSlug: string;
+  /** Set to edit an existing record; absent registers a new one. */
+  patient?: EditablePatient;
   seed?: { name?: string; phone?: string };
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -75,13 +78,14 @@ export function PatientSheet({
         <Sheet open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
           <SheetContent ref={panel}>
             <SheetHeader>
-              <SheetTitle>Register patient</SheetTitle>
+              <SheetTitle>{patient ? `Edit ${patient.mrn}` : "Register patient"}</SheetTitle>
             </SheetHeader>
             <PatientForm
               // Every open builds its form from the props it had then, so reopening after a
               // different search cannot keep the previous defaults.
               key={opens}
               orgSlug={orgSlug}
+              patient={patient}
               seed={seed}
               onCancel={close}
               onSaved={closeWithoutBlocking}

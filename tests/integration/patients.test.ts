@@ -275,6 +275,24 @@ test("patient sponsor round-trips, can be removed, and rejects a foreign payer",
 
   const updated = await api.patient.update({
     ...updateInput(organization.slug, registered.id, loaded.updatedAt, "Sponsored Patient"),
+    sponsor: {
+      payerId: sponsor.id,
+      policyNumber: "POL-43",
+      employeeNumber: "EMP-8",
+    },
+  });
+  expect(
+    await api.patient.get({ orgSlug: organization.slug, patientId: registered.id }),
+  ).toMatchObject({
+    sponsor: {
+      payerId: sponsor.id,
+      policyNumber: "POL-43",
+      employeeNumber: "EMP-8",
+    },
+  });
+
+  const removed = await api.patient.update({
+    ...updateInput(organization.slug, registered.id, updated.updatedAt, "Sponsored Patient"),
     sponsor: null,
   });
   expect(
@@ -283,7 +301,7 @@ test("patient sponsor round-trips, can be removed, and rejects a foreign payer",
 
   await expectORPCCode(
     api.patient.update({
-      ...updateInput(organization.slug, registered.id, updated.updatedAt, "Sponsored Patient"),
+      ...updateInput(organization.slug, registered.id, removed.updatedAt, "Sponsored Patient"),
       sponsor: { payerId: foreignSponsor.id },
     }),
     "NOT_FOUND",

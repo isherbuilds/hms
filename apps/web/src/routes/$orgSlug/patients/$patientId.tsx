@@ -1,22 +1,19 @@
 import { toSignedPaise } from "@hms/api/lib/invoice-math";
 import { authorize, type AppPermission } from "@hms/auth/access";
-import { buttonVariants } from "@hms/ui/components/button";
+import { Button, buttonVariants } from "@hms/ui/components/button";
 import { cn } from "@hms/ui/lib/utils";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, PencilIcon } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { z } from "zod";
 
 import { Monogram } from "@/components/monogram";
 import { PageBody, PageHeader, PageTab, PageTabs } from "@/components/page";
+import type { EditablePatient } from "@/components/patient-form";
 import { PatientBilling, type PatientAccount } from "@/components/patient-record/billing";
-import {
-  InlineClinicalBlock,
-  InlineRow,
-  usePatientFieldSave,
-  type EditablePatientRecord,
-} from "@/components/patient-record/inline-fields";
 import { PatientVisits } from "@/components/patient-record/visits";
+import { PatientSheet } from "@/components/patient-sheet";
 import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { formatBusinessDate, useOrgDateTime } from "@/lib/org-datetime";
@@ -59,7 +56,7 @@ function PinnedFacts({
   account,
   currency,
 }: {
-  record: EditablePatientRecord;
+  record: EditablePatient;
   ageLabel: string;
   canReadBilling: boolean;
   account: PatientAccount | undefined;
@@ -81,21 +78,11 @@ function PinnedFacts({
             {` · ${ageLabel} years`}
             {record.bloodGroup ? ` · ${record.bloodGroup}` : ""}
           </p>
+          {/* Who is covering this patient, nothing more: the policy and employee
+              numbers belong beside the Edit button that changes them. */}
           {record.sponsor ? (
-            <p className="text-xs text-muted-foreground">
-              Sponsor: {record.sponsor.payerName} ({PAYER_TYPE_LABELS[record.sponsor.payerType]})
-              {record.sponsor.policyNumber ? (
-                <>
-                  {" · Policy "}
-                  <span className="font-mono">{record.sponsor.policyNumber}</span>
-                </>
-              ) : null}
-              {record.sponsor.employeeNumber ? (
-                <>
-                  {" · Emp "}
-                  <span className="font-mono">{record.sponsor.employeeNumber}</span>
-                </>
-              ) : null}
+            <p className="truncate text-xs text-muted-foreground">
+              Sponsor: {record.sponsor.payerName}
             </p>
           ) : null}
         </div>
@@ -129,143 +116,130 @@ function PinnedFacts({
   );
 }
 
+function ClinicalBlock({
+  title,
+  tone,
+  children,
+}: {
+  title: string;
+  // The colour is the claim — see docs/design.md §5 for why these tokens are the
+  // only chromatic exception.
+  tone: "alert" | "note" | "clear";
+  children: ReactNode;
+}) {
+  return (
+    <section
+      className={cn(
+        "flex flex-col gap-1 rounded-lg border p-3",
+        tone === "alert" && "border-clinical-alert-border bg-clinical-alert-surface",
+        tone === "note" && "border-clinical-note-border bg-clinical-note-surface",
+        tone === "clear" && "border-clinical-clear-border bg-clinical-clear-surface",
+      )}
+    >
+      <p className="font-medium">{title}</p>
+      {children}
+    </section>
+  );
+}
+
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-1 items-center gap-1 border-b border-border/60 py-2 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 truncate">{children}</dd>
+    </div>
+  );
+}
+
+function Empty({ children }: { children: ReactNode }) {
+  return <span className="text-muted-foreground">{children}</span>;
+}
+
 function RecordTab({
   orgSlug,
   record,
   ageLabel,
 }: {
   orgSlug: string;
-  record: EditablePatientRecord;
+  record: EditablePatient;
   ageLabel: string;
 }) {
-  const { savedField, pending, save } = usePatientFieldSave(orgSlug, record);
+  const { roles } = useMembership(orgSlug);
+  const [editing, setEditing] = useState(false);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <InlineClinicalBlock
+        <ClinicalBlock
           title={record.allergies ? "Allergies" : "No known allergies"}
-          field="allergies"
           tone={record.allergies ? "alert" : "clear"}
-          value={record.allergies ?? ""}
-          placeholder="Nothing recorded at registration."
-          saved={savedField === "allergies"}
-          pending={pending}
-          onSave={save}
-        />
-        <InlineClinicalBlock
-          title="Medical history"
-          field="medicalHistory"
-          tone="note"
-          value={record.medicalHistory ?? ""}
-          placeholder="Nothing recorded."
-          saved={savedField === "medicalHistory"}
-          pending={pending}
-          onSave={save}
-        />
+        >
+          {record.allergies ?? <Empty>Nothing recorded at registration.</Empty>}
+        </ClinicalBlock>
+        <ClinicalBlock title="Medical history" tone="note">
+          {record.medicalHistory ?? <Empty>Nothing recorded.</Empty>}
+        </ClinicalBlock>
       </div>
 
       <section className="flex flex-col">
-        <p className="flex min-h-6 items-center text-xs text-muted-foreground">Details</p>
-        <p className="pb-1 text-muted-foreground">
-          Click a field to correct it. Enter saves, Escape reverts.
-        </p>
+        <div className="flex min-h-8 items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">Details</p>
+          {authorize(roles, { patient: ["update"] }) ? (
+            <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
+              <PencilIcon />
+              Edit
+            </Button>
+          ) : null}
+        </div>
         <dl className="grid grid-cols-1 sm:grid-cols-2 sm:gap-x-8">
-          <div className="grid grid-cols-1 items-center gap-1 border-b border-border/60 py-2 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-3">
-            <dt className="text-muted-foreground">MRN</dt>
-            <dd className="text-muted-foreground">
-              <span className="font-mono">{record.mrn}</span> · issued
-            </dd>
-          </div>
-          <InlineRow
-            compact
-            label="Name"
-            field="name"
-            kind="text"
-            value={record.name}
-            saved={savedField === "name"}
-            pending={pending}
-            onSave={save}
-          />
-          <InlineRow
-            compact
-            label="Phone"
-            field="phone"
-            kind="text"
-            value={record.phone}
-            display={<span className="font-mono tabular-nums">{record.phone}</span>}
-            saved={savedField === "phone"}
-            pending={pending}
-            onSave={save}
-          />
-          <InlineRow
-            compact
-            label="Sex"
-            field="sex"
-            kind="sex"
-            value={record.sex}
-            display={<span className="capitalize">{record.sex}</span>}
-            saved={savedField === "sex"}
-            pending={pending}
-            onSave={save}
-          />
-          <InlineRow
-            compact
-            label="Blood group"
-            field="bloodGroup"
-            kind="blood"
-            value={record.bloodGroup ?? ""}
-            saved={savedField === "bloodGroup"}
-            pending={pending}
-            onSave={save}
-          />
-          <InlineRow
-            compact
-            label="Date of birth"
-            field="dateOfBirth"
-            kind="date"
-            value={record.dateOfBirth}
-            display={formatBusinessDate(record.dateOfBirth)}
-            saved={savedField === "dateOfBirth"}
-            pending={pending}
-            onSave={save}
-          />
-          <div className="grid grid-cols-1 items-center gap-1 border-b border-border/60 py-2 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-3">
-            <dt className="text-muted-foreground">Age</dt>
-            <dd>{ageLabel} years</dd>
-          </div>
-          <InlineRow
-            compact
-            label="Email"
-            field="email"
-            kind="text"
-            value={record.email ?? ""}
-            saved={savedField === "email"}
-            pending={pending}
-            onSave={save}
-          />
-          <InlineRow
-            compact
-            label="National ID / UID"
-            field="uid"
-            kind="text"
-            value={record.uid ?? ""}
-            display={record.uid ? <span className="font-mono">{record.uid}</span> : undefined}
-            saved={savedField === "uid"}
-            pending={pending}
-            onSave={save}
-          />
-          <InlineRow
-            compact
-            label="Address"
-            field="address"
-            kind="textarea"
-            value={record.address}
-            saved={savedField === "address"}
-            pending={pending}
-            onSave={save}
-          />
+          <Row label="MRN">
+            <span className="font-mono text-muted-foreground">{record.mrn}</span>
+          </Row>
+          <Row label="Name">{record.name}</Row>
+          <Row label="Phone">
+            <span className="font-mono tabular-nums">{record.phone}</span>
+          </Row>
+          <Row label="Sex">
+            <span className="capitalize">{record.sex}</span>
+          </Row>
+          <Row label="Blood group">{record.bloodGroup ?? <Empty>Not recorded</Empty>}</Row>
+          <Row label="Date of birth">
+            {formatBusinessDate(record.dateOfBirth)}
+            {record.dobEstimated ? <Empty> · estimated from age</Empty> : null}
+          </Row>
+          <Row label="Age">{ageLabel} years</Row>
+          <Row label="Email">{record.email ?? <Empty>Not recorded</Empty>}</Row>
+          <Row label="National ID / UID">
+            {record.uid ? (
+              <span className="font-mono">{record.uid}</span>
+            ) : (
+              <Empty>Not recorded</Empty>
+            )}
+          </Row>
+          <Row label="Address">{record.address || <Empty>Not recorded</Empty>}</Row>
+          <Row label="Sponsor">
+            {record.sponsor ? (
+              <>
+                {record.sponsor.payerName} ({PAYER_TYPE_LABELS[record.sponsor.payerType]})
+              </>
+            ) : (
+              <Empty>Self-paying</Empty>
+            )}
+          </Row>
+          {record.sponsor?.policyNumber ? (
+            <Row label="Policy number">
+              <span className="font-mono">{record.sponsor.policyNumber}</span>
+            </Row>
+          ) : null}
+          {record.sponsor?.employeeNumber ? (
+            <Row label="Employee number">
+              <span className="font-mono">{record.sponsor.employeeNumber}</span>
+            </Row>
+          ) : null}
         </dl>
       </section>
+
+      <PatientSheet orgSlug={orgSlug} patient={record} open={editing} onOpenChange={setEditing} />
     </div>
   );
 }
@@ -283,7 +257,7 @@ function PatientRecordSections({
 }: {
   orgSlug: string;
   patientId: string;
-  record: EditablePatientRecord;
+  record: EditablePatient;
   ageLabel: string;
   currency: string;
   visible: (typeof TABS)[number][];

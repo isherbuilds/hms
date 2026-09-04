@@ -16,18 +16,25 @@ import { Textarea } from "@hms/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { AlertTriangleIcon, MailIcon, PhoneIcon } from "lucide-react";
-import { type FormEventHandler, type ReactNode } from "react";
+import { useState, type FormEventHandler, type ReactNode } from "react";
 import { useFormContext, useFormState, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useZodForm } from "@/hooks/use-zod-form";
-import { optionalNumberText, optionalText, patientFieldSchema } from "@/lib/form-schema";
+import { invalidatePatientState } from "@/lib/domain-invalidation";
+import {
+  optionalNumberText,
+  optionalText,
+  patientFieldSchema,
+  type PatientFields,
+} from "@/lib/form-schema";
 import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { applyOrpcFieldError, errorMessage } from "@/lib/orpc-error";
-import { ageYearsToEstimatedDateOfBirth } from "@/lib/patient-age";
+import type { PayerType } from "@/lib/payer";
+import { ageYearsToEstimatedDateOfBirth, patientAgeYears } from "@/lib/patient-age";
 
 const patientFormSchema = patientFieldSchema
   .omit({ dobEstimated: true })
@@ -45,6 +52,69 @@ const patientFormSchema = patientFieldSchema
 
 type PatientFormValues = z.input<typeof patientFormSchema>;
 
+const UID_CONFLICT = {
+  uid_taken: { field: "uid", message: "A patient with this UID already exists." },
+} as const;
+
+/** The record the form edits. `updatedAt` is the compare-and-swap token the save needs. */
+export type EditablePatient = PatientFields & {
+  id: string;
+  mrn: string;
+  updatedAt: string;
+  sponsor: {
+    payerId: string;
+    payerName: string;
+    payerType: PayerType;
+    policyNumber: string | null;
+    employeeNumber: string | null;
+  } | null;
+};
+
+/** Controls are uncontrolled, so every default is the string the DOM holds. */
+function defaultValues(
+  patient: EditablePatient | undefined,
+  seed: { name?: string; phone?: string } | undefined,
+  today: string,
+): PatientFormValues {
+  if (!patient) {
+    return {
+      name: seed?.name ?? "",
+      phone: seed?.phone ?? "",
+      sex: "",
+      dateOfBirth: "",
+      age: "",
+      address: "",
+      email: "",
+      bloodGroup: "",
+      allergies: "",
+      medicalHistory: "",
+      uid: "",
+      sponsorPayerId: "",
+      sponsorPolicyNumber: "",
+      sponsorEmployeeNumber: "",
+    };
+  }
+
+  return {
+    name: patient.name,
+    phone: patient.phone,
+    sex: patient.sex,
+    // An estimated birth date was computed from an age, so it is offered back as the
+    // age. Editing it as a date would turn a guess into a fact.
+    dateOfBirth: patient.dobEstimated ? "" : patient.dateOfBirth,
+    age: patient.dobEstimated ? String(patientAgeYears(patient.dateOfBirth, today)) : "",
+    address: patient.address,
+    email: patient.email ?? "",
+    bloodGroup: patient.bloodGroup ?? "",
+    allergies: patient.allergies ?? "",
+    medicalHistory: patient.medicalHistory ?? "",
+    uid: patient.uid ?? "",
+    sponsorPayerId: patient.sponsor?.payerId ?? "",
+    sponsorPolicyNumber: patient.sponsor?.policyNumber ?? "",
+    sponsorEmployeeNumber: patient.sponsor?.employeeNumber ?? "",
+  };
+}
+
 /** Inputs only — a textarea has no vertical centre to hang a glyph on. */
 function WithIcon({ icon: Icon, children }: { icon: typeof PhoneIcon; children: ReactNode }) {
   return (
@@ -55,7 +125,14 @@ function WithIcon({ icon: Icon, children }: { icon: typeof PhoneIcon; children: 
   );
 }
 
-function PatientPhoneDuplicateWarning({ orgSlug }: { orgSlug: string }) {
+function PatientPhoneDuplicateWarning({
+  orgSlug,
+  selfId,
+}: {
+  orgSlug: string;
+  /** The record being edited: its own number is not a duplicate of itself. */
+  selfId: string | undefined;
+}) {
   const { control } = useFormContext<PatientFormValues>();
   const phone = useWatch({ control, name: "phone", exact: true });
   const debouncedPhone = useDebouncedValue(phone.trim(), 300);
@@ -67,7 +144,7 @@ function PatientPhoneDuplicateWarning({ orgSlug }: { orgSlug: string }) {
   });
   const matches =
     phone.trim() === debouncedPhone && debouncedPhone.length >= 4
-      ? (duplicates.data?.items ?? [])
+      ? (duplicates.data?.items ?? []).filter((patient) => patient.id !== selfId)
       : [];
 
   return matches.length > 0 ? (
@@ -153,12 +230,24 @@ function PatientFormFrame({
 }
 
 function SponsorFields({
-  payers,
+  orgSlug,
+  current,
 }: {
-  payers: Array<{ id: string; name: string; active: boolean }>;
+  orgSlug: string;
+  /** The sponsor already on the record, kept selectable even once deactivated. */
+  current: string | undefined;
 }) {
   const { control } = useFormContext<PatientFormValues>();
   const payerId = useWatch({ control, name: "sponsorPayerId", exact: true });
+  const payers = useQuery(orpc.payer.list.queryOptions({ input: { orgSlug } }));
+  const list = payers.data ?? [];
+  // A deactivated payer takes no new links, so it is offered only to the record that
+  // already holds it — otherwise its name silently disappears and the save drops it.
+  const options = list.filter((payer) => payer.active || payer.id === current);
+  const inactive =
+    !payers.isPending &&
+    payerId !== "" &&
+    !list.some((payer) => payer.id === payerId && payer.active);
 
   return (
     <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
@@ -171,18 +260,38 @@ function SponsorFields({
             <FormControl>
               <NativeSelect {...field}>
                 <option value="">Self-paying</option>
-                {payers
-                  .filter((payer) => payer.active)
-                  .map((payer) => (
-                    <option key={payer.id} value={payer.id}>
-                      {payer.name}
-                    </option>
-                  ))}
+                {options.map((payer) => (
+                  <option key={payer.id} value={payer.id}>
+                    {payer.name}
+                    {payer.active ? "" : " (inactive)"}
+                  </option>
+                ))}
               </NativeSelect>
             </FormControl>
             <FormDescription>
-              The bill is still addressed to the patient; an uncovered balance stays outstanding.
+              {payers.isPending ? (
+                "Loading payers…"
+              ) : options.length === 0 ? (
+                <>
+                  No payers are set up yet.{" "}
+                  <Link
+                    to="/$orgSlug/settings/payers"
+                    params={{ orgSlug }}
+                    className="underline underline-offset-4"
+                  >
+                    Add one in settings
+                  </Link>
+                  .
+                </>
+              ) : (
+                "The bill is still addressed to the patient; an uncovered balance stays outstanding."
+              )}
             </FormDescription>
+            {inactive ? (
+              <p className="text-xs text-destructive">
+                This payer is no longer active. Choose another before saving.
+              </p>
+            ) : null}
             <FormMessage />
           </FormItem>
         )}
@@ -221,12 +330,15 @@ function SponsorFields({
 
 export function PatientForm({
   orgSlug,
+  patient,
   seed,
   onCancel,
   onSaved,
   onRegistered,
 }: {
   orgSlug: string;
+  /** Set to edit an existing record; absent registers a new one. */
+  patient?: EditablePatient;
   /** What the operator already typed elsewhere, so it is never keyed twice. */
   seed?: { name?: string; phone?: string };
   onCancel: () => void;
@@ -237,25 +349,12 @@ export function PatientForm({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { today } = useOrgDateTime();
-  const payers = useQuery(orpc.payer.list.queryOptions({ input: { orgSlug } }));
+  // Frozen at mount. The page behind this sheet refetches on focus, so a live prop
+  // would hand the save a compare-and-swap token newer than the values on screen and
+  // quietly overwrite whoever changed the record meanwhile.
+  const [record] = useState(patient);
   const form = useZodForm(patientFormSchema, {
-    // Controls are uncontrolled, so every default is the string the DOM holds.
-    defaultValues: {
-      name: seed?.name ?? "",
-      phone: seed?.phone ?? "",
-      sex: "",
-      dateOfBirth: "",
-      age: "",
-      address: "",
-      email: "",
-      bloodGroup: "",
-      allergies: "",
-      medicalHistory: "",
-      uid: "",
-      sponsorPayerId: "",
-      sponsorPolicyNumber: "",
-      sponsorEmployeeNumber: "",
-    },
+    defaultValues: defaultValues(record, seed, today),
   });
 
   const register = useMutation(
@@ -278,13 +377,30 @@ export function PatientForm({
         });
       },
       onError: (error) => {
-        const mapped = applyOrpcFieldError(form, error, {
-          uid_taken: { field: "uid", message: "A patient with this UID already exists." },
-        });
+        const mapped = applyOrpcFieldError(form, error, UID_CONFLICT);
         toast.error(mapped ?? errorMessage(error, "Could not register the patient"));
       },
     }),
   );
+
+  const update = useMutation(
+    orpc.patient.update.mutationOptions({
+      onSuccess: async (saved) => {
+        await invalidatePatientState(queryClient, orgSlug, saved.id);
+        toast.success("Changes saved");
+        onSaved();
+      },
+      onError: (error) => {
+        // A stale token means the record moved under the open sheet, so this save would
+        // overwrite whoever got there first. Closing and reopening is the only honest
+        // recovery: it is what rebuilds the form from the record as it now stands.
+        const mapped = applyOrpcFieldError(form, error, UID_CONFLICT);
+        toast.error(mapped ?? errorMessage(error, "Could not save the changes"));
+      },
+    }),
+  );
+
+  const pending = register.isPending || update.isPending;
 
   const onSubmit = form.handleSubmit(
     ({ age, sponsorPayerId, sponsorPolicyNumber, sponsorEmployeeNumber, ...fields }) => {
@@ -294,7 +410,9 @@ export function PatientForm({
         form.setError("dateOfBirth", { message: "Enter a date of birth or age" });
         return;
       }
-      register.mutate({
+      // The procedure takes the whole record, not a patch, so both paths send the
+      // same body — the update adds only the id and the token it must match.
+      const values = {
         orgSlug,
         ...fields,
         dateOfBirth,
@@ -306,7 +424,13 @@ export function PatientForm({
               employeeNumber: sponsorEmployeeNumber || undefined,
             }
           : null,
-      });
+      };
+
+      if (record) {
+        update.mutate({ ...values, patientId: record.id, updatedAt: record.updatedAt });
+        return;
+      }
+      register.mutate(values);
     },
   );
   return (
@@ -316,7 +440,7 @@ export function PatientForm({
           half-typed email blocks submit silently and the form looks dead. */}
       {/* The dirty flag the sheet needs to guard a close, published on the element
           instead of lifted into its state — see `PatientSheet`. */}
-      <PatientFormFrame pending={register.isPending} onCancel={onCancel} onSubmit={onSubmit}>
+      <PatientFormFrame pending={pending} onCancel={onCancel} onSubmit={onSubmit}>
         <div className="flex flex-col gap-4">
           <RegisteredFormField
             name="name"
@@ -353,7 +477,7 @@ export function PatientForm({
             )}
           />
 
-          <PatientPhoneDuplicateWarning orgSlug={orgSlug} />
+          <PatientPhoneDuplicateWarning orgSlug={orgSlug} selfId={record?.id} />
 
           <RegisteredFormField
             name="sex"
@@ -489,7 +613,7 @@ export function PatientForm({
             )}
           />
 
-          <SponsorFields payers={payers.data ?? []} />
+          <SponsorFields orgSlug={orgSlug} current={record?.sponsor?.payerId} />
 
           <RegisteredFormField
             name="allergies"

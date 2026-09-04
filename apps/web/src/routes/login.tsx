@@ -39,9 +39,11 @@ const loginSchema = z.object({
 // A box outline around an underline field looks wrong, so these opt out of the
 // global focus floor (`data-focus-floor="off"`) and the bottom border carries
 // the indicator instead: same 2px rule throughout, foreground colour on focus so
-// nothing shifts. `text-base` below `md` keeps iOS from zooming on focus.
+// nothing shifts. `rounded-none` beats the base `:focus-visible` radius, which
+// would otherwise curl the ends of the rule up while the field is focused.
+// `text-base` below `md` keeps iOS from zooming on focus.
 const underline =
-  "h-10 w-full border-0 border-b-2 border-input bg-transparent px-0 text-base transition-colors duration-150 ease-out outline-none placeholder:text-muted-foreground/70 focus:border-foreground disabled:opacity-60 aria-invalid:border-destructive md:text-sm";
+  "h-10 w-full rounded-none border-0 border-b-2 border-input bg-transparent px-0 text-base transition-colors duration-150 ease-out outline-none placeholder:text-muted-foreground/70 focus:border-foreground disabled:opacity-60 aria-invalid:border-destructive md:text-sm";
 
 function LoginRoute() {
   const { redirect } = Route.useSearch();
