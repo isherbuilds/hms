@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 
 import {
   needsReference,
+  nextPaymentLine,
   settlementProblems,
   type PaymentLine,
 } from "../../apps/web/src/lib/settlement";
@@ -50,10 +51,23 @@ test("an amount with three decimal places is rejected against its own line", () 
   expect(found[0]?.message).toContain("two decimal places");
 });
 
-test("cash needs no reference; UPI and card do", () => {
-  expect(needsReference("cash")).toBe(false);
-  expect(needsReference("upi")).toBe(true);
-  expect(needsReference("card")).toBe(true);
+test("only cash skips a transaction reference", () => {
+  expect(
+    ["cash", "upi", "card", "bank"].map((method) =>
+      needsReference(method as PaymentLine["method"]),
+    ),
+  ).toEqual([false, true, true, true]);
+});
+
+test("the next payment line walks all four methods before falling back to cash", () => {
+  const payments: Array<{ id: number; method: PaymentLine["method"] }> = [];
+  const methods = Array.from({ length: 5 }, (_, index) => {
+    const next = nextPaymentLine(payments, index === 0 ? DUE : 0);
+    payments.push(next);
+    return next.method;
+  });
+
+  expect(methods).toEqual(["cash", "upi", "card", "bank", "cash"]);
 });
 
 test("a non-zero UPI payment requires a transaction reference", () => {

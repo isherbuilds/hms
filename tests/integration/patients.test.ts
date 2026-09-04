@@ -237,6 +237,59 @@ test("update changes demographics without changing identity or consuming an MRN"
   );
 });
 
+test("patient sponsor round-trips, can be removed, and rejects a foreign payer", async () => {
+  const owner = await createTestUser("patient-sponsor");
+  const organization = await createOrganization(owner, "patient-sponsor");
+  const otherOrganization = await createOrganization(owner, "patient-sponsor-foreign");
+  const api = clientFor(owner);
+  const sponsor = await api.payer.create({
+    orgSlug: organization.slug,
+    name: "Acme Health",
+    type: "insurer",
+  });
+  const foreignSponsor = await api.payer.create({
+    orgSlug: otherOrganization.slug,
+    name: "Foreign Employer",
+    type: "corporate",
+  });
+
+  const registered = await api.patient.register({
+    ...registration(organization.slug, "Sponsored Patient", "5550450"),
+    sponsor: {
+      payerId: sponsor.id,
+      policyNumber: "POL-42",
+      employeeNumber: "EMP-7",
+    },
+  });
+  const loaded = await api.patient.get({
+    orgSlug: organization.slug,
+    patientId: registered.id,
+  });
+  expect(loaded.sponsor).toEqual({
+    payerId: sponsor.id,
+    payerName: "Acme Health",
+    payerType: "insurer",
+    policyNumber: "POL-42",
+    employeeNumber: "EMP-7",
+  });
+
+  const updated = await api.patient.update({
+    ...updateInput(organization.slug, registered.id, loaded.updatedAt, "Sponsored Patient"),
+    sponsor: null,
+  });
+  expect(
+    await api.patient.get({ orgSlug: organization.slug, patientId: registered.id }),
+  ).toMatchObject({ sponsor: null });
+
+  await expectORPCCode(
+    api.patient.update({
+      ...updateInput(organization.slug, registered.id, updated.updatedAt, "Sponsored Patient"),
+      sponsor: { payerId: foreignSponsor.id },
+    }),
+    "NOT_FOUND",
+  );
+});
+
 test("registration requires a date of birth", async () => {
   const owner = await createTestUser("patient-validation");
   const organization = await createOrganization(owner, "patient-validation");

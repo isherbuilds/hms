@@ -423,6 +423,17 @@ const GUARDED_CALLS = {
       taxRatePercent: "0",
       active: true,
     }),
+  "payer.list": (api, claim) => api.payer.list({ ...claim }),
+  "payer.create": (api, claim) =>
+    api.payer.create({ ...claim, name: `Intrusion ${uniqueSuffix()}`, type: "insurer" }),
+  "payer.update": (api, claim) =>
+    api.payer.update({
+      ...claim,
+      payerId: Bun.randomUUIDv7(),
+      name: "Intrusion",
+      type: "insurer",
+      active: true,
+    }),
   "staff.listDepartments": (api, claim) => api.staff.listDepartments({ ...claim }),
   "staff.createDepartment": (api, claim) =>
     api.staff.createDepartment({ ...claim, name: "Intrusion" }),
@@ -809,6 +820,53 @@ test("one client concurrently scopes catalog calls to two organizations", async 
 
   expect(seenInOne.items.map((item) => item.id)).toEqual([inOne.id]);
   expect(seenInTwo.items.map((item) => item.id)).toEqual([inTwo.id]);
+});
+test("payer access stays tenant-scoped across concurrency, foreign claims, and revocation", async () => {
+  const owner = await createTestUser("payer-scope-owner");
+  const one = await createOrganization(owner, "payer-scope-one");
+  const two = await createOrganization(owner, "payer-scope-two");
+  const api = clientFor(owner);
+
+  const [inOne, inTwo] = await Promise.all([
+    api.payer.create({ orgSlug: one.slug, name: "Alpha Health", type: "insurer" }),
+    api.payer.create({ orgSlug: two.slug, name: "Beta Corporate", type: "corporate" }),
+  ]);
+  const [seenInOne, seenInTwo] = await Promise.all([
+    api.payer.list({ orgSlug: one.slug }),
+    api.payer.list({ orgSlug: two.slug }),
+  ]);
+  expect(seenInOne.map((payer) => payer.id)).toEqual([inOne.id]);
+  expect(seenInTwo.map((payer) => payer.id)).toEqual([inTwo.id]);
+
+  await expectORPCCode(
+    api.payer.update({
+      orgSlug: two.slug,
+      payerId: inOne.id,
+      name: "Foreign Rename",
+      type: "insurer",
+      active: true,
+    }),
+    "NOT_FOUND",
+  );
+  await expectORPCCode(
+    api.payer.create({ orgSlug: one.slug, name: "Alpha Health", type: "scheme" }),
+    "CONFLICT",
+  );
+
+  const receptionist = await createTestUser("payer-scope-reception");
+  await joinOrganization(receptionist, one.id);
+  const receptionApi = clientFor(receptionist);
+  expect((await receptionApi.payer.list({ orgSlug: one.slug })).map((payer) => payer.id)).toEqual([
+    inOne.id,
+  ]);
+  await expectORPCCode(
+    receptionApi.payer.create({ orgSlug: one.slug, name: "Desk Payer", type: "tpa" }),
+    "FORBIDDEN",
+  );
+  await expectORPCCode(receptionApi.payer.list({ orgSlug: two.slug }), "FORBIDDEN");
+
+  await removeFromOrganization(owner, receptionist.user.email, one.id);
+  await expectORPCCode(receptionApi.payer.list({ orgSlug: one.slug }), "FORBIDDEN");
 });
 
 test("staff rows are invisible from another org and cannot be updated by foreign id", async () => {

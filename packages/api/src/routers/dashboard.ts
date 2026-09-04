@@ -7,6 +7,7 @@ import { sql } from "drizzle-orm";
 
 import { businessDate } from "../lib/business-date";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
+import type { PaymentMethod } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
 
 export const dashboardRouter = {
@@ -57,14 +58,9 @@ export const dashboardRouter = {
     const currentDay = businessDate(new Date(), timeZone);
     const unbilledBefore = new Date(Date.now() - unbilledAlertHours * 3_600_000);
 
-    // `filter` clauses split the day's takings by method in one scan of `payments`
-    // rather than a subselect per method.
-    const [result, trend] = await Promise.all([
+    const [result, byMethod, trend] = await Promise.all([
       db.execute<{
         collected: string;
-        cash: string;
-        upi: string;
-        card: string;
         unbilled: string;
       }>(sql`
         with unbilled_appointments as (
@@ -81,14 +77,20 @@ export const dashboardRouter = {
         )
         select
           coalesce(sum(${payments.amount}), 0)::text as "collected",
-          coalesce(sum(${payments.amount}) filter (where ${payments.method} = 'cash'), 0)::text as "cash",
-          coalesce(sum(${payments.amount}) filter (where ${payments.method} = 'upi'), 0)::text as "upi",
-          coalesce(sum(${payments.amount}) filter (where ${payments.method} = 'card'), 0)::text as "card",
           (select coalesce(sum(pending_value), 0)::text
             from unbilled_appointments) as "unbilled"
         from ${payments}
         where ${payments.orgId} = ${orgId}
           and ${payments.businessDate} = ${currentDay}
+      `),
+      db.execute<{ method: PaymentMethod; amount: string }>(sql`
+        select ${payments.method} as "method",
+               sum(${payments.amount})::text as "amount"
+        from ${payments}
+        where ${payments.orgId} = ${orgId}
+          and ${payments.businessDate} = ${currentDay}
+        group by ${payments.method}
+        order by sum(${payments.amount}) desc
       `),
       // Gap-filled: a day with no payments must plot as zero, not compress the axis.
       db.execute<{ day: string; amount: string }>(sql`
@@ -112,6 +114,6 @@ export const dashboardRouter = {
       throw new Error("Dashboard collections query returned no row");
     }
 
-    return { ...totals, trend: trend.rows };
+    return { ...totals, byMethod: byMethod.rows, trend: trend.rows };
   }),
 };

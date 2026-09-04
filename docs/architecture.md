@@ -137,6 +137,7 @@ WebSocket/SSE layer.
   documents may have only `createdAt`, and a file id is its validated object
   key. Do not infer a field contract from convention. Cross-row invariants are
   database constraints when PostgreSQL can express them.
+- Sponsor data lives in the organization-scoped `payers` master and `patient_payers` links; it is measurement data, not billing state.
 - Tenant-leading indexes follow the actual filter/order/keyset shape. Descending
   nullable cursor columns specify matching null ordering explicitly.
 - Use scoped `UPDATE/DELETE ... RETURNING` instead of select-then-write.
@@ -217,11 +218,12 @@ missing object. No anonymous bucket policy or unsigned read path is allowed.
 
 ## Billing ledger
 
-Invoices, Payments, Credit Notes, and refunds post balanced journals in the
+Invoices, Payments, Credit Notes, and Refunds post balanced journals in the
 same transaction. Stable `systemKey` accounts include Cash, Bank, Patient
 Receivables, GST Output, and category revenue accounts. A unique
 `(orgId, sourceType, sourceId)` prevents duplicate posting; all math uses integer
 paise while API/storage amounts remain decimal strings.
+Payments use four methods: Cash, UPI, Card, and Bank transfer.
 
 Split collection is one tenant-scoped transaction containing up to four
 Payments. Every line gets its own Receipt and journal source; UPI and card lines

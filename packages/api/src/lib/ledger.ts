@@ -76,6 +76,7 @@ export function settlementAccountFor(method: string): SystemAccountKey {
       return "cash";
     case "upi":
     case "card":
+    case "bank":
       return "bank";
     default:
       throw new Error(`Unsupported settlement method: ${method}`);

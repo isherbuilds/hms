@@ -7,6 +7,7 @@ import { dashboardRouter } from "./dashboard";
 import { fileRouter } from "./file";
 import { memberRouter } from "./member";
 import { patientRouter } from "./patient";
+import { payerRouter } from "./payer";
 import { reportRouter } from "./report";
 import { settingsRouter } from "./settings";
 import { staffRouter } from "./staff";
@@ -20,6 +21,7 @@ export const appRouter = {
   file: fileRouter,
   member: memberRouter,
   patient: patientRouter,
+  payer: payerRouter,
   report: reportRouter,
   settings: settingsRouter,
   staff: staffRouter,

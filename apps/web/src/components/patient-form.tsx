@@ -1,6 +1,7 @@
 import {
   Form,
   FormControl,
+  FormDescription,
   FormItem,
   FormLabel,
   FormMessage,
@@ -33,6 +34,9 @@ const patientFormSchema = patientFieldSchema
   .extend({
     dateOfBirth: optionalText(patientFieldSchema.shape.dateOfBirth),
     age: optionalNumberText(z.number().int().min(0).max(150)),
+    sponsorPayerId: z.string(),
+    sponsorPolicyNumber: z.string().trim().max(100),
+    sponsorEmployeeNumber: z.string().trim().max(100),
   })
   .refine((values) => values.dateOfBirth !== null || values.age !== null, {
     message: "Enter a date of birth or age",
@@ -148,6 +152,73 @@ function PatientFormFrame({
   );
 }
 
+function SponsorFields({
+  payers,
+}: {
+  payers: Array<{ id: string; name: string; active: boolean }>;
+}) {
+  const { control } = useFormContext<PatientFormValues>();
+  const payerId = useWatch({ control, name: "sponsorPayerId", exact: true });
+
+  return (
+    <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
+      <legend className="pr-2 text-sm font-medium">Sponsor</legend>
+      <RegisteredFormField
+        name="sponsorPayerId"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Covered by</FormLabel>
+            <FormControl>
+              <NativeSelect {...field}>
+                <option value="">Self-paying</option>
+                {payers
+                  .filter((payer) => payer.active)
+                  .map((payer) => (
+                    <option key={payer.id} value={payer.id}>
+                      {payer.name}
+                    </option>
+                  ))}
+              </NativeSelect>
+            </FormControl>
+            <FormDescription>
+              The bill is still addressed to the patient; an uncovered balance stays outstanding.
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+      {payerId ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <RegisteredFormField
+            name="sponsorPolicyNumber"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Policy number</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <RegisteredFormField
+            name="sponsorEmployeeNumber"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Employee number</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+      ) : null}
+    </fieldset>
+  );
+}
+
 export function PatientForm({
   orgSlug,
   seed,
@@ -166,6 +237,7 @@ export function PatientForm({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { today } = useOrgDateTime();
+  const payers = useQuery(orpc.payer.list.queryOptions({ input: { orgSlug } }));
   const form = useZodForm(patientFormSchema, {
     // Controls are uncontrolled, so every default is the string the DOM holds.
     defaultValues: {
@@ -180,6 +252,9 @@ export function PatientForm({
       allergies: "",
       medicalHistory: "",
       uid: "",
+      sponsorPayerId: "",
+      sponsorPolicyNumber: "",
+      sponsorEmployeeNumber: "",
     },
   });
 
@@ -211,15 +286,29 @@ export function PatientForm({
     }),
   );
 
-  const onSubmit = form.handleSubmit(({ age, ...fields }) => {
-    const dateOfBirth =
-      fields.dateOfBirth ?? (age === null ? null : ageYearsToEstimatedDateOfBirth(age, today));
-    if (dateOfBirth === null) {
-      form.setError("dateOfBirth", { message: "Enter a date of birth or age" });
-      return;
-    }
-    register.mutate({ orgSlug, ...fields, dateOfBirth, dobEstimated: age !== null });
-  });
+  const onSubmit = form.handleSubmit(
+    ({ age, sponsorPayerId, sponsorPolicyNumber, sponsorEmployeeNumber, ...fields }) => {
+      const dateOfBirth =
+        fields.dateOfBirth ?? (age === null ? null : ageYearsToEstimatedDateOfBirth(age, today));
+      if (dateOfBirth === null) {
+        form.setError("dateOfBirth", { message: "Enter a date of birth or age" });
+        return;
+      }
+      register.mutate({
+        orgSlug,
+        ...fields,
+        dateOfBirth,
+        dobEstimated: age !== null,
+        sponsor: sponsorPayerId
+          ? {
+              payerId: sponsorPayerId,
+              policyNumber: sponsorPolicyNumber || undefined,
+              employeeNumber: sponsorEmployeeNumber || undefined,
+            }
+          : null,
+      });
+    },
+  );
   return (
     <Form {...form}>
       {/* `noValidate`: Zod owns every message, so the browser must not pre-empt
@@ -399,6 +488,8 @@ export function PatientForm({
               </FormItem>
             )}
           />
+
+          <SponsorFields payers={payers.data ?? []} />
 
           <RegisteredFormField
             name="allergies"

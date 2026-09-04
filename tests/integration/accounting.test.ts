@@ -424,17 +424,25 @@ test("zero-rated invoices omit GST and zero-total invoices do not post", async (
 test("payments, credits, and refunds post exactly and reconcile in the OPD register", async () => {
   const fixture = await createAccountingFixture("accounting-settlement");
   const issued = await issueConsultationInvoice(fixture, "Settlement");
+  await expectORPCCode(
+    fixture.api.billing.recordPayments({
+      orgSlug: fixture.organization.slug,
+      invoiceId: issued.invoice.id,
+      payments: [{ method: "bank", amount: "18.00" }],
+    }),
+    "BAD_REQUEST",
+  );
   const [cash] = await fixture.api.billing.recordPayments({
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     payments: [{ method: "cash", amount: "100.00" }],
   });
-  const [upi] = await fixture.api.billing.recordPayments({
+  const [bank] = await fixture.api.billing.recordPayments({
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
-    payments: [{ method: "upi", amount: "18.00", reference: "UPI-LEDGER" }],
+    payments: [{ method: "bank", amount: "18.00", reference: "BANK-LEDGER" }],
   });
-  if (!cash || !upi) throw new Error("expected both payments");
+  if (!cash || !bank) throw new Error("expected both payments");
 
   const cashJournal = await journalFor(fixture, "payment", cash.id);
   expect(cashJournal.entries).toHaveLength(1);
@@ -442,11 +450,19 @@ test("payments, credits, and refunds post exactly and reconcile in the OPD regis
   expect(lineByCode(cashJournal.lines, "1200")).toMatchObject({ debit: "0.00", credit: "100.00" });
   expectBalanced(cashJournal.lines);
 
-  const upiJournal = await journalFor(fixture, "payment", upi.id);
-  expect(upiJournal.entries).toHaveLength(1);
-  expect(lineByCode(upiJournal.lines, "1100")).toMatchObject({ debit: "18.00", credit: "0.00" });
-  expect(lineByCode(upiJournal.lines, "1200")).toMatchObject({ debit: "0.00", credit: "18.00" });
-  expectBalanced(upiJournal.lines);
+  const bankJournal = await journalFor(fixture, "payment", bank.id);
+  expect(bankJournal.entries).toHaveLength(1);
+  expect(lineByCode(bankJournal.lines, "1100")).toMatchObject({ debit: "18.00", credit: "0.00" });
+  expect(lineByCode(bankJournal.lines, "1200")).toMatchObject({ debit: "0.00", credit: "18.00" });
+  expectBalanced(bankJournal.lines);
+  const collections = await fixture.api.dashboard.collections({
+    orgSlug: fixture.organization.slug,
+  });
+  expect(collections.collected).toBe("118.00");
+  expect(collections.byMethod).toEqual([
+    { method: "cash", amount: "100.00" },
+    { method: "bank", amount: "18.00" },
+  ]);
 
   const [invoiceLine] = issued.lines;
   if (!invoiceLine) {
@@ -555,7 +571,12 @@ test("daily collections nets payments and refunds by Business Date and method", 
   expect(report.rows).toEqual([
     {
       businessDate: collectionDay,
-      byMethod: { cash: "50.00", upi: "48.00", card: "0.00" },
+      byMethod: {
+        cash: "50.00",
+        upi: "48.00",
+        card: "0.00",
+        bank: "0.00",
+      },
       payments: "118.00",
       refunds: "20.00",
       net: "98.00",

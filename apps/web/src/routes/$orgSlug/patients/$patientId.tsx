@@ -21,6 +21,7 @@ import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { formatBusinessDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
+import { PAYER_TYPE_LABELS } from "@/lib/payer";
 import { loadRouteQuery } from "@/lib/orpc-error";
 import { patientAgeLabel } from "@/lib/patient-age";
 
@@ -80,6 +81,23 @@ function PinnedFacts({
             {` · ${ageLabel} years`}
             {record.bloodGroup ? ` · ${record.bloodGroup}` : ""}
           </p>
+          {record.sponsor ? (
+            <p className="text-xs text-muted-foreground">
+              Sponsor: {record.sponsor.payerName} ({PAYER_TYPE_LABELS[record.sponsor.payerType]})
+              {record.sponsor.policyNumber ? (
+                <>
+                  {" · Policy "}
+                  <span className="font-mono">{record.sponsor.policyNumber}</span>
+                </>
+              ) : null}
+              {record.sponsor.employeeNumber ? (
+                <>
+                  {" · Emp "}
+                  <span className="font-mono">{record.sponsor.employeeNumber}</span>
+                </>
+              ) : null}
+            </p>
+          ) : null}
         </div>
 
         <p

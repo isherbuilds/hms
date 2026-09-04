@@ -91,6 +91,7 @@ type SettingsTab = NavEntry<
   | "/$orgSlug/settings/members"
   | "/$orgSlug/settings/staff"
   | "/$orgSlug/settings/catalog"
+  | "/$orgSlug/settings/payers"
   | "/$orgSlug/settings/audit"
 >;
 
@@ -105,6 +106,7 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   { to: "/$orgSlug/settings/members", label: "Members", permission: { member: ["read"] } },
   { to: "/$orgSlug/settings/staff", label: "Staff", permission: { staff: ["update"] } },
   { to: "/$orgSlug/settings/catalog", label: "Catalog", permission: { catalog: ["update"] } },
+  { to: "/$orgSlug/settings/payers", label: "Payers", permission: { payer: ["update"] } },
   { to: "/$orgSlug/settings/audit", label: "Audit", permission: { audit: ["read"] } },
 ];
 

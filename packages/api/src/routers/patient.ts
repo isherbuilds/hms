@@ -5,6 +5,8 @@ import { departments } from "@hms/db/schema/departments";
 import { invoices } from "@hms/db/schema/invoices";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { patients } from "@hms/db/schema/patients";
+import { patientPayers } from "@hms/db/schema/patient-payers";
+import { payers } from "@hms/db/schema/payers";
 import { practitioners } from "@hms/db/schema/practitioners";
 import { ORPCError } from "@orpc/server";
 import { and, count, desc, eq, ilike, inArray, lt, or, sql } from "drizzle-orm";
@@ -20,6 +22,15 @@ import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { dateOnly, likePattern, phone, searchQuery, shortName } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
 
+const sponsorInput = z
+  .object({
+    payerId: z.string(),
+    policyNumber: z.string().trim().max(100).optional(),
+    employeeNumber: z.string().trim().max(100).optional(),
+  })
+  .nullable()
+  .optional();
+
 const patientFields = z.object({
   name: shortName,
   phone,
@@ -32,6 +43,7 @@ const patientFields = z.object({
   allergies: z.string().nullish(),
   medicalHistory: z.string().nullish(),
   uid: z.string().trim().min(1).max(100).nullish(),
+  sponsor: sponsorInput,
 });
 
 const registerInput = orgInput.extend(patientFields.shape);
@@ -56,14 +68,30 @@ async function assertPatientInScope(orgId: string, patientId: string): Promise<v
   }
 }
 
+// A deactivated payer keeps its history but takes no new links; foreign ids are
+// indistinguishable from inactive ones on purpose.
+async function assertActivePayer(orgId: string, payerId: string): Promise<void> {
+  const [payer] = await db
+    .select({ id: payers.id })
+    .from(payers)
+    .where(and(eq(payers.orgId, orgId), eq(payers.id, payerId), eq(payers.active, true)))
+    .limit(1);
+  if (!payer) {
+    throw new ORPCError("NOT_FOUND", { message: "That sponsor is not available." });
+  }
+}
+
 export const patientRouter = {
   register: orgProcedure({ patient: ["create"] }, registerInput).handler(
     async ({ context, input }) => {
       const { scope } = context;
-      const { orgSlug: _claim, ...fields } = input;
+      const { orgSlug: _claim, sponsor, ...fields } = input;
       const id = Bun.randomUUIDv7();
-      // Bounded staleness is acceptable for numbering and keeps the counter lock window minimal.
-      const settings = await readOrgSettings(scope.orgId);
+      const [settings] = await Promise.all([
+        // Bounded staleness is acceptable for numbering and keeps the counter lock window minimal.
+        readOrgSettings(scope.orgId),
+        sponsor ? assertActivePayer(scope.orgId, sponsor.payerId) : undefined,
+      ]);
 
       let patient: typeof patients.$inferSelect;
       try {
@@ -90,6 +118,16 @@ export const patientRouter = {
           if (!row) {
             throw new ORPCError("INTERNAL_SERVER_ERROR", {
               message: "Failed to register patient",
+            });
+          }
+          if (sponsor) {
+            await tx.insert(patientPayers).values({
+              id: Bun.randomUUIDv7(),
+              orgId: scope.orgId,
+              patientId: id,
+              payerId: sponsor.payerId,
+              policyNumber: sponsor.policyNumber ?? null,
+              employeeNumber: sponsor.employeeNumber ?? null,
             });
           }
           return row;
@@ -330,43 +368,111 @@ export const patientRouter = {
 
   get: orgProcedure({ patient: ["read"] }, orgInput.extend({ patientId: z.string() })).handler(
     async ({ context, input }) => {
-      const [patient] = await db
-        .select()
+      // Two joined tables, so Drizzle cannot nullify `sponsor` as one object; the
+      // payer columns are only null when the link row is absent.
+      const [row] = await db
+        .select({
+          patient: patients,
+          payerId: payers.id,
+          payerName: payers.name,
+          payerType: payers.type,
+          policyNumber: patientPayers.policyNumber,
+          employeeNumber: patientPayers.employeeNumber,
+        })
         .from(patients)
+        .leftJoin(
+          patientPayers,
+          and(
+            eq(patientPayers.orgId, context.scope.orgId),
+            eq(patientPayers.patientId, patients.id),
+          ),
+        )
+        .leftJoin(
+          payers,
+          and(eq(payers.orgId, context.scope.orgId), eq(payers.id, patientPayers.payerId)),
+        )
         .where(and(eq(patients.orgId, context.scope.orgId), eq(patients.id, input.patientId)))
         .limit(1);
 
-      if (!patient) {
+      if (!row) {
         throw new ORPCError("NOT_FOUND", { message: "That patient no longer exists." });
       }
-      return { ...patient, updatedAt: patient.updatedAt.toISOString() };
+      return {
+        ...row.patient,
+        updatedAt: row.patient.updatedAt.toISOString(),
+        sponsor:
+          row.payerId !== null && row.payerName !== null && row.payerType !== null
+            ? {
+                payerId: row.payerId,
+                payerName: row.payerName,
+                payerType: row.payerType,
+                policyNumber: row.policyNumber,
+                employeeNumber: row.employeeNumber,
+              }
+            : null,
+      };
     },
   ),
 
   update: orgProcedure({ patient: ["update"] }, updateInput).handler(async ({ context, input }) => {
     const { scope } = context;
-    const { orgSlug: _claim, patientId, updatedAt, ...fields } = input;
-    let patient: typeof patients.$inferSelect | undefined;
+    const { orgSlug: _claim, patientId, updatedAt, sponsor, ...fields } = input;
+    if (sponsor) await assertActivePayer(scope.orgId, sponsor.payerId);
+
+    let patient: typeof patients.$inferSelect;
     try {
-      [patient] = await db
-        .update(patients)
-        .set({
-          ...fields,
-          email: fields.email ?? null,
-          bloodGroup: fields.bloodGroup ?? null,
-          allergies: fields.allergies ?? null,
-          medicalHistory: fields.medicalHistory ?? null,
-          uid: fields.uid ?? null,
-          updatedAt: sql`greatest(statement_timestamp(), ${patients.updatedAt} + interval '1 millisecond')::timestamptz(3)`,
-        })
-        .where(
-          and(
-            eq(patients.orgId, scope.orgId),
-            eq(patients.id, patientId),
-            eq(patients.updatedAt, new Date(updatedAt)),
-          ),
-        )
-        .returning();
+      patient = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .update(patients)
+          .set({
+            ...fields,
+            email: fields.email ?? null,
+            bloodGroup: fields.bloodGroup ?? null,
+            allergies: fields.allergies ?? null,
+            medicalHistory: fields.medicalHistory ?? null,
+            uid: fields.uid ?? null,
+            updatedAt: sql`greatest(statement_timestamp(), ${patients.updatedAt} + interval '1 millisecond')::timestamptz(3)`,
+          })
+          .where(
+            and(
+              eq(patients.orgId, scope.orgId),
+              eq(patients.id, patientId),
+              eq(patients.updatedAt, new Date(updatedAt)),
+            ),
+          )
+          .returning();
+
+        if (!row) {
+          throw conflict("stale_record", "This patient changed after you opened it.");
+        }
+        if (sponsor === null) {
+          await tx
+            .delete(patientPayers)
+            .where(
+              and(eq(patientPayers.orgId, scope.orgId), eq(patientPayers.patientId, patientId)),
+            );
+        } else if (sponsor) {
+          await tx
+            .insert(patientPayers)
+            .values({
+              id: Bun.randomUUIDv7(),
+              orgId: scope.orgId,
+              patientId,
+              payerId: sponsor.payerId,
+              policyNumber: sponsor.policyNumber ?? null,
+              employeeNumber: sponsor.employeeNumber ?? null,
+            })
+            .onConflictDoUpdate({
+              target: [patientPayers.orgId, patientPayers.patientId],
+              set: {
+                payerId: sponsor.payerId,
+                policyNumber: sponsor.policyNumber ?? null,
+                employeeNumber: sponsor.employeeNumber ?? null,
+              },
+            });
+        }
+        return row;
+      });
     } catch (error) {
       const constraint = uniqueViolationConstraint(error);
       if (constraint === "patients_org_uid_idx") {
@@ -378,10 +484,6 @@ export const patientRouter = {
         });
       }
       throw error;
-    }
-
-    if (!patient) {
-      throw conflict("stale_record", "This patient changed after you opened it.");
     }
 
     audit({

@@ -257,6 +257,27 @@ CREATE TABLE "patients" (
 	CONSTRAINT "patients_blood_group_check" CHECK ("patients"."blood_group" is null or "patients"."blood_group" in ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'))
 );
 --> statement-breakpoint
+CREATE TABLE "payers" (
+	"id" text PRIMARY KEY NOT NULL,
+	"org_id" text NOT NULL,
+	"name" text NOT NULL,
+	"type" text NOT NULL,
+	"active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "payers_org_id_id_unique" UNIQUE("org_id","id"),
+	CONSTRAINT "payers_type_check" CHECK ("payers"."type" in ('insurer', 'tpa', 'corporate', 'scheme'))
+);
+--> statement-breakpoint
+CREATE TABLE "patient_payers" (
+	"id" text PRIMARY KEY NOT NULL,
+	"org_id" text NOT NULL,
+	"patient_id" text NOT NULL,
+	"payer_id" text NOT NULL,
+	"policy_number" text,
+	"employee_number" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "practitioners" (
 	"id" text PRIMARY KEY NOT NULL,
 	"org_id" text NOT NULL,
@@ -369,7 +390,7 @@ CREATE TABLE "payments" (
 	"business_date" date NOT NULL,
 	"received_by" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "payments_method_check" CHECK ("payments"."method" in ('cash', 'upi', 'card')),
+	CONSTRAINT "payments_method_check" CHECK ("payments"."method" in ('cash', 'upi', 'card', 'bank')),
 	CONSTRAINT "payments_amount_check" CHECK ("payments"."amount" > 0)
 );
 --> statement-breakpoint
@@ -386,7 +407,7 @@ CREATE TABLE "refunds" (
 	"business_date" date NOT NULL,
 	"refunded_by" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "refunds_method_check" CHECK ("refunds"."method" in ('cash', 'upi', 'card')),
+	CONSTRAINT "refunds_method_check" CHECK ("refunds"."method" in ('cash', 'upi', 'card', 'bank')),
 	CONSTRAINT "refunds_amount_check" CHECK ("refunds"."amount" > 0)
 );
 --> statement-breakpoint
@@ -444,6 +465,10 @@ ALTER TABLE "file" ADD CONSTRAINT "file_org_id_organization_id_fk" FOREIGN KEY (
 ALTER TABLE "organization_settings" ADD CONSTRAINT "organization_settings_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "patients" ADD CONSTRAINT "patients_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "patients" ADD CONSTRAINT "patients_created_by_user_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payers" ADD CONSTRAINT "payers_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "patient_payers" ADD CONSTRAINT "patient_payers_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "patient_payers" ADD CONSTRAINT "patient_payers_org_id_patient_id_patients_org_id_id_fk" FOREIGN KEY ("org_id","patient_id") REFERENCES "public"."patients"("org_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "patient_payers" ADD CONSTRAINT "patient_payers_org_id_payer_id_payers_org_id_id_fk" FOREIGN KEY ("org_id","payer_id") REFERENCES "public"."payers"("org_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "practitioners" ADD CONSTRAINT "practitioners_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "practitioners" ADD CONSTRAINT "practitioners_member_user_id_user_id_fk" FOREIGN KEY ("member_user_id") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "practitioners" ADD CONSTRAINT "practitioners_org_id_department_id_departments_org_id_id_fk" FOREIGN KEY ("org_id","department_id") REFERENCES "public"."departments"("org_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -502,6 +527,8 @@ CREATE UNIQUE INDEX "departments_org_name_idx" ON "departments" USING btree ("or
 CREATE INDEX "file_org_created_idx" ON "file" USING btree ("org_id","created_at" DESC NULLS FIRST,"id" DESC NULLS FIRST);--> statement-breakpoint
 CREATE UNIQUE INDEX "patients_org_mrn_idx" ON "patients" USING btree ("org_id","mrn");--> statement-breakpoint
 CREATE UNIQUE INDEX "patients_org_uid_idx" ON "patients" USING btree ("org_id","uid") WHERE "patients"."uid" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "payers_org_name_idx" ON "payers" USING btree ("org_id","name");--> statement-breakpoint
+CREATE UNIQUE INDEX "patient_payers_org_patient_idx" ON "patient_payers" USING btree ("org_id","patient_id");--> statement-breakpoint
 CREATE INDEX "practitioners_org_name_idx" ON "practitioners" USING btree ("org_id","name");--> statement-breakpoint
 CREATE UNIQUE INDEX "opd_appointments_org_practitioner_date_token_uq" ON "opd_appointments" USING btree ("org_id","practitioner_id","business_date","token_number") WHERE "opd_appointments"."token_number" is not null;--> statement-breakpoint
 CREATE INDEX "opd_appointments_org_date_day_order_idx" ON "opd_appointments" USING btree ("org_id","business_date","day_order_at","id");--> statement-breakpoint

@@ -29,7 +29,7 @@ Active temporary memos:
   model post the payer's share to a separate receivable at invoice time and split
   it per line by percentage, and that no reference ships a cheque clearing
   account. Records why HMS keeps a fixed method enum and a bounded, sum-checked
-  split.
+  split. It produces D029 only.
 
 ## Adopted findings
 

@@ -4,6 +4,7 @@ import type { RouterClient } from "@orpc/server";
 import type { CSSProperties, ReactNode } from "react";
 import { formatBusinessDate } from "@/lib/business-date";
 import { formatMoney } from "@/lib/money";
+import { methodLabel } from "@/lib/settlement";
 
 export type InvoiceBundle = Awaited<ReturnType<RouterClient<AppRouter>["billing"]["getInvoice"]>>;
 type Invoice = InvoiceBundle["invoice"];
@@ -355,7 +356,7 @@ export function ReceiptDocument({ invoice, payment }: { invoice: Invoice; paymen
           { label: "Issued", value: formatBusinessDate(payment.businessDate) },
           { label: "Received from", value: `${invoice.patientName} · MRN ${invoice.patientMrn}` },
           { label: "Against invoice", value: invoice.invoiceNumber },
-          { label: "Method", value: payment.method.toUpperCase() },
+          { label: "Method", value: methodLabel(payment.method) },
           ...(payment.reference ? [{ label: "Reference", value: payment.reference }] : []),
           { label: "Amount received", value: formatMoney(payment.amount, invoice.currency) },
         ]}
@@ -456,7 +457,7 @@ export function RefundDocument({
           { label: "Refunded to", value: `${invoice.patientName} · MRN ${invoice.patientMrn}` },
           { label: "Against invoice", value: invoice.invoiceNumber },
           { label: "Credit note", value: creditNote.creditNoteNumber },
-          { label: "Method", value: refund.method.toUpperCase() },
+          { label: "Method", value: methodLabel(refund.method) },
           ...(refund.reference ? [{ label: "Reference", value: refund.reference }] : []),
           { label: "Amount refunded", value: formatMoney(refund.amount, invoice.currency) },
         ]}

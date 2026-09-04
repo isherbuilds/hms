@@ -10,10 +10,12 @@ export type { PaymentMethod };
 
 // `satisfies Record<PaymentMethod, …>` pins the labels to the API enum in both
 // directions: a method added on one side without the other fails to compile.
-const PAYMENT_METHOD_LABELS = { cash: "Cash", upi: "UPI", card: "Card" } satisfies Record<
-  PaymentMethod,
-  string
->;
+const PAYMENT_METHOD_LABELS = {
+  cash: "Cash",
+  upi: "UPI",
+  card: "Card",
+  bank: "Bank transfer",
+} satisfies Record<PaymentMethod, string>;
 
 export const PAYMENT_METHODS = paymentMethod.options;
 

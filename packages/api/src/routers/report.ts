@@ -28,7 +28,7 @@ import {
   type AccountAggregate,
   type GstBucket,
 } from "../lib/report-math";
-import type { PaymentMethod } from "../lib/schemas";
+import { paymentMethod, type PaymentMethod } from "../lib/schemas";
 
 const reportDate = z.iso.date();
 const periodInput = orgInput.extend({ from: reportDate, to: reportDate });
@@ -42,7 +42,7 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 const GST_BOUND = { report: "GST register", maxDays: 366 };
 const COLLECTIONS_BOUND = { report: "Daily collections", maxDays: 92 };
 const REGISTER_BOUND = { report: "OPD register", maxDays: 31 };
-const PAYMENT_METHODS: readonly PaymentMethod[] = ["cash", "upi", "card"];
+const PAYMENT_METHODS = paymentMethod.options;
 
 function assertValidPeriod(
   from: string,
@@ -191,11 +191,9 @@ export const reportRouter = {
           left.businessDate.localeCompare(right.businessDate) ||
           left.method.localeCompare(right.method),
       );
-      const methodTotals: Record<PaymentMethod, { payments: number; refunds: number }> = {
-        cash: { payments: 0, refunds: 0 },
-        upi: { payments: 0, refunds: 0 },
-        card: { payments: 0, refunds: 0 },
-      };
+      const methodTotals = Object.fromEntries(
+        PAYMENT_METHODS.map((method) => [method, { payments: 0, refunds: 0 }]),
+      ) as Record<PaymentMethod, { payments: number; refunds: number }>;
       const days = new Map<
         string,
         {
@@ -215,7 +213,10 @@ export const reportRouter = {
 
         const day = days.get(row.businessDate) ?? {
           businessDate: row.businessDate,
-          byMethod: { cash: 0, upi: 0, card: 0 },
+          byMethod: Object.fromEntries(PAYMENT_METHODS.map((method) => [method, 0])) as Record<
+            PaymentMethod,
+            number
+          >,
           payments: 0,
           refunds: 0,
         };
@@ -226,11 +227,9 @@ export const reportRouter = {
       }
       const rows = [...days.values()].map((day) => ({
         businessDate: day.businessDate,
-        byMethod: {
-          cash: fromPaise(day.byMethod.cash),
-          upi: fromPaise(day.byMethod.upi),
-          card: fromPaise(day.byMethod.card),
-        },
+        byMethod: Object.fromEntries(
+          PAYMENT_METHODS.map((method) => [method, fromPaise(day.byMethod[method])]),
+        ) as Record<PaymentMethod, string>,
         payments: fromPaise(day.payments),
         refunds: fromPaise(day.refunds),
         net: fromPaise(day.payments - day.refunds),

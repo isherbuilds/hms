@@ -327,6 +327,11 @@ before that save. Supporting configurable or multiple currencies requires an
 explicit creation-time choice or money model, conversion policy, and ledger
 design; a mutable display setting is not that feature.
 
+### D029 — Insurance, TPA, and corporate credit are never Payment-method values
+
+**Accepted 2026-09-04; evidence: [research memo](./research/reference-payment-methods-and-payers.md).** Insurance, TPA, and corporate credit are Payer-domain facts, never `paymentMethod` values. The payer-domain shape the evidence settles posts the Payer share to a separate receivable at Invoice time. That domain remains out of scope until pilot data supports a go/no-go decision.
+Cheques are not accepted at the OPD desk and are revisited with the Payer domain, where remittances actually arrive; the spec's [unproven-volume admission](./specs/payment-methods-cheques-and-sponsors.md#validation--evidence) records why.
+
 ## Superseded history
 
 Each entry above names the numbered ADRs it consolidates or supersedes. The

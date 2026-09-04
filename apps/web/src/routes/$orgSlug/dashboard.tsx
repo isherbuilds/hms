@@ -20,6 +20,7 @@ import { formatMoney } from "@/lib/money";
 import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { formatDay } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
+import { methodLabel } from "@/lib/settlement";
 
 export const Route = createFileRoute("/$orgSlug/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard · HMS" }] }),
@@ -196,7 +197,13 @@ function DashboardRoute() {
                 label="Collected today"
                 icon={WalletIcon}
                 value={money(collections.data?.collected)}
-                note={`Cash ${money(collections.data?.cash)} · UPI ${money(collections.data?.upi)}`}
+                note={
+                  collections.data?.byMethod.length
+                    ? collections.data.byMethod
+                        .map(({ method, amount }) => `${methodLabel(method)} ${money(amount)}`)
+                        .join(" · ")
+                    : "Nothing yet"
+                }
                 pending={collections.isPending}
                 to="/$orgSlug/opd"
                 orgSlug={orgSlug}

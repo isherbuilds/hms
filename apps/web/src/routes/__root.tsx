@@ -47,6 +47,28 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
   component: RootDocument,
 });
 
+/*
+ * The router owns hash changes, so `href="#main"` alone only rewrites the URL —
+ * the browser never moves focus. Move it here and the link actually skips.
+ */
+function SkipLink() {
+  return (
+    <a
+      href="#main"
+      onClick={(event) => {
+        const main = document.getElementById("main");
+        if (!main) return;
+        event.preventDefault();
+        main.focus();
+        main.scrollIntoView();
+      }}
+      className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-md focus:border focus:border-border focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:shadow-sm"
+    >
+      Skip to main content
+    </a>
+  );
+}
+
 function RootDocument() {
   return (
     // The theme class is written onto <html> by next-themes before React hydrates, so
@@ -65,12 +87,7 @@ function RootDocument() {
         <HeadContent />
       </head>
       <body>
-        <a
-          href="#main"
-          className="sr-only fixed top-0 left-0 z-50 bg-background px-2 py-1 text-xs focus-visible:not-sr-only focus-visible:fixed"
-        >
-          Skip to main content
-        </a>
+        <SkipLink />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

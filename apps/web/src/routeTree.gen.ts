@@ -36,6 +36,7 @@ import { Route as OrgSlugSettingsAuditRouteImport } from './routes/$orgSlug/sett
 import { Route as OrgSlugSettingsCatalogRouteImport } from './routes/$orgSlug/settings/catalog'
 import { Route as OrgSlugSettingsMembersRouteImport } from './routes/$orgSlug/settings/members'
 import { Route as OrgSlugSettingsOrganizationRouteImport } from './routes/$orgSlug/settings/organization'
+import { Route as OrgSlugSettingsPayersRouteImport } from './routes/$orgSlug/settings/payers'
 import { Route as OrgSlugSettingsStaffRouteImport } from './routes/$orgSlug/settings/staff'
 import { Route as OrgSlugBillingInvoicesInvoiceIdRouteImport } from './routes/$orgSlug/billing/invoices.$invoiceId'
 import { Route as OrgSlugOpdAppointmentIdIndexRouteImport } from './routes/$orgSlug/opd/$appointmentId/index'
@@ -187,6 +188,11 @@ const OrgSlugSettingsOrganizationRoute =
     path: '/organization',
     getParentRoute: () => OrgSlugSettingsRouteRoute,
   } as any)
+const OrgSlugSettingsPayersRoute = OrgSlugSettingsPayersRouteImport.update({
+  id: '/payers',
+  path: '/payers',
+  getParentRoute: () => OrgSlugSettingsRouteRoute,
+} as any)
 const OrgSlugSettingsStaffRoute = OrgSlugSettingsStaffRouteImport.update({
   id: '/staff',
   path: '/staff',
@@ -258,6 +264,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/settings/catalog': typeof OrgSlugSettingsCatalogRoute
   '/$orgSlug/settings/members': typeof OrgSlugSettingsMembersRoute
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
+  '/$orgSlug/settings/payers': typeof OrgSlugSettingsPayersRoute
   '/$orgSlug/settings/staff': typeof OrgSlugSettingsStaffRoute
   '/$orgSlug/billing/': typeof OrgSlugBillingIndexRoute
   '/$orgSlug/opd/': typeof OrgSlugOpdIndexRoute
@@ -292,6 +299,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/settings/catalog': typeof OrgSlugSettingsCatalogRoute
   '/$orgSlug/settings/members': typeof OrgSlugSettingsMembersRoute
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
+  '/$orgSlug/settings/payers': typeof OrgSlugSettingsPayersRoute
   '/$orgSlug/settings/staff': typeof OrgSlugSettingsStaffRoute
   '/$orgSlug/billing': typeof OrgSlugBillingIndexRoute
   '/$orgSlug/opd': typeof OrgSlugOpdIndexRoute
@@ -330,6 +338,7 @@ export interface FileRoutesById {
   '/$orgSlug/settings/catalog': typeof OrgSlugSettingsCatalogRoute
   '/$orgSlug/settings/members': typeof OrgSlugSettingsMembersRoute
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
+  '/$orgSlug/settings/payers': typeof OrgSlugSettingsPayersRoute
   '/$orgSlug/settings/staff': typeof OrgSlugSettingsStaffRoute
   '/$orgSlug/billing/': typeof OrgSlugBillingIndexRoute
   '/$orgSlug/opd/': typeof OrgSlugOpdIndexRoute
@@ -369,6 +378,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/catalog'
     | '/$orgSlug/settings/members'
     | '/$orgSlug/settings/organization'
+    | '/$orgSlug/settings/payers'
     | '/$orgSlug/settings/staff'
     | '/$orgSlug/billing/'
     | '/$orgSlug/opd/'
@@ -403,6 +413,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/catalog'
     | '/$orgSlug/settings/members'
     | '/$orgSlug/settings/organization'
+    | '/$orgSlug/settings/payers'
     | '/$orgSlug/settings/staff'
     | '/$orgSlug/billing'
     | '/$orgSlug/opd'
@@ -440,6 +451,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/catalog'
     | '/$orgSlug/settings/members'
     | '/$orgSlug/settings/organization'
+    | '/$orgSlug/settings/payers'
     | '/$orgSlug/settings/staff'
     | '/$orgSlug/billing/'
     | '/$orgSlug/opd/'
@@ -655,6 +667,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugSettingsOrganizationRouteImport
       parentRoute: typeof OrgSlugSettingsRouteRoute
     }
+    '/$orgSlug/settings/payers': {
+      id: '/$orgSlug/settings/payers'
+      path: '/payers'
+      fullPath: '/$orgSlug/settings/payers'
+      preLoaderRoute: typeof OrgSlugSettingsPayersRouteImport
+      parentRoute: typeof OrgSlugSettingsRouteRoute
+    }
     '/$orgSlug/settings/staff': {
       id: '/$orgSlug/settings/staff'
       path: '/staff'
@@ -719,6 +738,7 @@ interface OrgSlugSettingsRouteRouteChildren {
   OrgSlugSettingsCatalogRoute: typeof OrgSlugSettingsCatalogRoute
   OrgSlugSettingsMembersRoute: typeof OrgSlugSettingsMembersRoute
   OrgSlugSettingsOrganizationRoute: typeof OrgSlugSettingsOrganizationRoute
+  OrgSlugSettingsPayersRoute: typeof OrgSlugSettingsPayersRoute
   OrgSlugSettingsStaffRoute: typeof OrgSlugSettingsStaffRoute
   OrgSlugSettingsIndexRoute: typeof OrgSlugSettingsIndexRoute
 }
@@ -728,6 +748,7 @@ const OrgSlugSettingsRouteRouteChildren: OrgSlugSettingsRouteRouteChildren = {
   OrgSlugSettingsCatalogRoute: OrgSlugSettingsCatalogRoute,
   OrgSlugSettingsMembersRoute: OrgSlugSettingsMembersRoute,
   OrgSlugSettingsOrganizationRoute: OrgSlugSettingsOrganizationRoute,
+  OrgSlugSettingsPayersRoute: OrgSlugSettingsPayersRoute,
   OrgSlugSettingsStaffRoute: OrgSlugSettingsStaffRoute,
   OrgSlugSettingsIndexRoute: OrgSlugSettingsIndexRoute,
 }

@@ -189,6 +189,17 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  /*
+   * The focus outline traces the element's own corners, so a bare link or a
+   * square control gets a hard-cornered box. This softens that default. It sits
+   * in `base` on purpose: any `rounded-*` utility still wins, so a pill button
+   * keeps its pill outline — this only reaches elements that set no radius, and
+   * only while they are focused.
+   */
+  :focus-visible {
+    border-radius: var(--radius-sm);
+  }
   body {
     @apply font-sans bg-background text-foreground;
   }
@@ -246,10 +257,19 @@
  * outranks the `utilities` layer that `outline-none` lives in, and therefore
  * guarantees an indicator on every focusable element. Components that draw a
  * nicer ring still do — this only ever adds a floor beneath them.
+ *
+ * A control that draws its *own* complete indicator (an underline field, for
+ * example, where a rectangle around the box looks wrong) opts out with
+ * `data-focus-floor="off"`. Only do that where the replacement indicator is at
+ * least as visible as this one.
  */
 :focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
+}
+
+[data-focus-floor="off"]:focus-visible {
+  outline: none;
 }
 
 /*

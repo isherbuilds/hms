@@ -69,18 +69,20 @@ function DailyCollectionsRoute() {
         name: "Daily collections",
         columns: [
           { header: "Business date", key: "businessDate", width: 16 },
-          { header: "Cash", key: "cash", width: 16 },
-          { header: "UPI", key: "upi", width: 16 },
-          { header: "Card", key: "card", width: 16 },
+          ...byMethod.map(({ method }) => ({
+            header: methodLabel(method),
+            key: method,
+            width: 16,
+          })),
           { header: "Payments", key: "payments", width: 16 },
           { header: "Refunds", key: "refunds", width: 16 },
           { header: "Net", key: "net", width: 16 },
         ],
         rows: rows.map((row) => ({
           businessDate: row.businessDate,
-          cash: Number(row.byMethod.cash),
-          upi: Number(row.byMethod.upi),
-          card: Number(row.byMethod.card),
+          ...Object.fromEntries(
+            byMethod.map(({ method }) => [method, Number(row.byMethod[method])]),
+          ),
           payments: Number(row.payments),
           refunds: Number(row.refunds),
           net: Number(row.net),
@@ -223,7 +225,7 @@ function DailyCollectionsRoute() {
                   <TableBody>
                     {report.data.byMethod.map((row) => (
                       <TableRow key={row.method}>
-                        <TableCell className="uppercase">{row.method}</TableCell>
+                        <TableCell>{methodLabel(row.method)}</TableCell>
                         <TableCell className="text-right">
                           {formatMoney(row.payments, currency)}
                         </TableCell>

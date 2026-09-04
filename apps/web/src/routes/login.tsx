@@ -36,10 +36,12 @@ const loginSchema = z.object({
   password: z.string().min(MIN_PASSWORD, `Password must be at least ${MIN_PASSWORD} characters.`),
 });
 
-// The `:focus-visible` outline in globals.css is unlayered, so no utility can beat
-// it: it is turned off inline and the bottom border is the focus indicator.
+// A box outline around an underline field looks wrong, so these opt out of the
+// global focus floor (`data-focus-floor="off"`) and the bottom border carries
+// the indicator instead: same 2px rule throughout, foreground colour on focus so
+// nothing shifts. `text-base` below `md` keeps iOS from zooming on focus.
 const underline =
-  "h-10 w-full border-0 border-b-2 border-border bg-transparent px-0 text-sm transition-colors duration-150 ease-out outline-none placeholder:text-muted-foreground/70 focus:border-foreground disabled:opacity-60";
+  "h-10 w-full border-0 border-b-2 border-input bg-transparent px-0 text-base transition-colors duration-150 ease-out outline-none placeholder:text-muted-foreground/70 focus:border-foreground disabled:opacity-60 aria-invalid:border-destructive md:text-sm";
 
 function LoginRoute() {
   const { redirect } = Route.useSearch();
@@ -152,6 +154,7 @@ function EmailField() {
               required
               autoComplete="email"
               placeholder="you@hospital.in"
+              data-focus-floor="off"
               className={underline}
             />
           </FormControl>
@@ -180,14 +183,16 @@ function PasswordField() {
                 type={reveal ? "text" : "password"}
                 required
                 autoComplete="current-password"
-                className={cn(underline, "pr-8")}
+                placeholder="••••••••"
+                data-focus-floor="off"
+                className={cn(underline, "pr-9")}
               />
             </FormControl>
             <button
               type="button"
               onClick={() => setReveal((value) => !value)}
               aria-label={reveal ? "Hide password" : "Show password"}
-              className="absolute inset-y-0 right-0 flex w-8 items-center justify-center text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground"
+              className="absolute top-1/2 right-0 flex size-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground"
             >
               {reveal ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
             </button>

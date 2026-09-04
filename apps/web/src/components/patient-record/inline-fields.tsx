@@ -18,6 +18,7 @@ import { invalidatePatientState } from "@/lib/domain-invalidation";
 import { patientFieldSchema, type PatientFields } from "@/lib/form-schema";
 import { orpc } from "@/lib/orpc";
 import { errorMessage, errorReason } from "@/lib/orpc-error";
+import type { PayerType } from "@/lib/payer";
 
 // The procedure takes the whole record, not a patch: every commit sends the current
 // row with one value replaced and its latest compare-and-swap token.
@@ -25,6 +26,13 @@ export type EditablePatientRecord = PatientFields & {
   id: string;
   mrn: string;
   updatedAt: string;
+  sponsor: {
+    payerId: string;
+    payerName: string;
+    payerType: PayerType;
+    policyNumber: string | null;
+    employeeNumber: string | null;
+  } | null;
 };
 
 type FieldKey = Exclude<keyof PatientFields, "dobEstimated">;
@@ -84,7 +92,7 @@ export function usePatientFieldSave(orgSlug: string, record: EditablePatientReco
         [field]: parsed.data,
         ...(field === "dateOfBirth" ? { dobEstimated: false } : {}),
       };
-      const { id: _id, mrn: _mrn, updatedAt, ...fields } = next;
+      const { id: _id, mrn: _mrn, updatedAt, sponsor: _sponsor, ...fields } = next;
       mutate(
         { orgSlug, patientId: record.id, updatedAt, ...fields },
         { onSuccess: () => setSavedToken({ field }) },

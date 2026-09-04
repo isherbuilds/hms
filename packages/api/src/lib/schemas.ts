@@ -1,3 +1,5 @@
+import { PAYER_TYPES, type PayerType } from "@hms/db/schema/payer-types";
+import { PAYMENT_METHODS, type PaymentMethod } from "@hms/db/schema/payment-methods";
 import { z } from "zod";
 
 import { toPaise } from "./invoice-math";
@@ -23,8 +25,9 @@ export function likePattern(query: string): string {
 
 export const pageLimit = z.number().int().min(1).max(100).default(50);
 
-export const paymentMethod = z.enum(["cash", "upi", "card"]);
-export type PaymentMethod = z.infer<typeof paymentMethod>;
+export const paymentMethod = z.enum(PAYMENT_METHODS);
+export const payerType = z.enum(PAYER_TYPES);
+export type { PaymentMethod, PayerType };
 
 /** Everything but cash lands somewhere traceable, so the desk records the trace. */
 export function requirePaymentReference(
