@@ -8,6 +8,7 @@ CREATE TABLE "accounts" (
 	"active" boolean DEFAULT true NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "accounts_org_id_id_unique" UNIQUE("org_id","id"),
 	CONSTRAINT "accounts_type_check" CHECK ("accounts"."type" in ('asset', 'liability', 'equity', 'income', 'expense'))
 );
 --> statement-breakpoint
@@ -208,7 +209,8 @@ CREATE TABLE "file" (
 	"mime_type" text,
 	"size" bigint NOT NULL,
 	"status" text DEFAULT 'pending' NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "file_org_id_id_unique" UNIQUE("org_id","id")
 );
 --> statement-breakpoint
 CREATE TABLE "organization_settings" (
@@ -224,10 +226,12 @@ CREATE TABLE "organization_settings" (
 	"fiscal_year_start_month" integer NOT NULL,
 	"time_zone" text DEFAULT 'Asia/Kolkata' NOT NULL,
 	"follow_up_validity_days" integer DEFAULT 14 NOT NULL,
+	"unbilled_alert_hours" integer DEFAULT 24 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "organization_settings_fiscal_month_check" CHECK ("organization_settings"."fiscal_year_start_month" between 1 and 12),
-	CONSTRAINT "organization_settings_follow_up_days_check" CHECK ("organization_settings"."follow_up_validity_days" between 1 and 365)
+	CONSTRAINT "organization_settings_follow_up_days_check" CHECK ("organization_settings"."follow_up_validity_days" between 1 and 365),
+	CONSTRAINT "organization_settings_unbilled_alert_hours_check" CHECK ("organization_settings"."unbilled_alert_hours" between 1 and 168)
 );
 --> statement-breakpoint
 CREATE TABLE "patients" (
@@ -394,7 +398,8 @@ CREATE TABLE "journal_entries" (
 	"source_id" text NOT NULL,
 	"narration" text NOT NULL,
 	"created_by" text NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "journal_entries_org_id_id_unique" UNIQUE("org_id","id")
 );
 --> statement-breakpoint
 CREATE TABLE "journal_lines" (
@@ -411,8 +416,8 @@ CREATE TABLE "journal_lines" (
 --> statement-breakpoint
 ALTER TABLE "accounts" ADD CONSTRAINT "accounts_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "attachments" ADD CONSTRAINT "attachments_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "attachments" ADD CONSTRAINT "attachments_file_id_file_id_fk" FOREIGN KEY ("file_id") REFERENCES "public"."file"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "attachments" ADD CONSTRAINT "attachments_created_by_user_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "attachments" ADD CONSTRAINT "attachments_org_id_file_id_file_org_id_id_fk" FOREIGN KEY ("org_id","file_id") REFERENCES "public"."file"("org_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invitation" ADD CONSTRAINT "invitation_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invitation" ADD CONSTRAINT "invitation_inviter_id_user_id_fk" FOREIGN KEY ("inviter_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -466,8 +471,8 @@ ALTER TABLE "refunds" ADD CONSTRAINT "refunds_org_id_credit_note_id_credit_notes
 ALTER TABLE "journal_entries" ADD CONSTRAINT "journal_entries_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "journal_entries" ADD CONSTRAINT "journal_entries_created_by_user_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "journal_lines" ADD CONSTRAINT "journal_lines_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "journal_lines" ADD CONSTRAINT "journal_lines_entry_id_journal_entries_id_fk" FOREIGN KEY ("entry_id") REFERENCES "public"."journal_entries"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "journal_lines" ADD CONSTRAINT "journal_lines_account_id_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."accounts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "journal_lines" ADD CONSTRAINT "journal_lines_org_id_entry_id_journal_entries_org_id_id_fk" FOREIGN KEY ("org_id","entry_id") REFERENCES "public"."journal_entries"("org_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "journal_lines" ADD CONSTRAINT "journal_lines_org_id_account_id_accounts_org_id_id_fk" FOREIGN KEY ("org_id","account_id") REFERENCES "public"."accounts"("org_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "accounts_org_code_idx" ON "accounts" USING btree ("org_id","code");--> statement-breakpoint
 CREATE UNIQUE INDEX "accounts_org_system_key_idx" ON "accounts" USING btree ("org_id","system_key") WHERE "accounts"."system_key" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "attachments_org_target_file_uq" ON "attachments" USING btree ("org_id","target_type","target_id","file_id");--> statement-breakpoint
@@ -492,26 +497,27 @@ CREATE INDEX "credit_note_lines_org_credit_note_idx" ON "credit_note_lines" USIN
 CREATE INDEX "credit_note_lines_org_invoice_line_idx" ON "credit_note_lines" USING btree ("org_id","invoice_line_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "credit_notes_org_number_idx" ON "credit_notes" USING btree ("org_id","credit_note_number");--> statement-breakpoint
 CREATE INDEX "credit_notes_org_invoice_idx" ON "credit_notes" USING btree ("org_id","invoice_id");--> statement-breakpoint
+CREATE INDEX "credit_notes_org_business_date_idx" ON "credit_notes" USING btree ("org_id","business_date");--> statement-breakpoint
 CREATE UNIQUE INDEX "departments_org_name_idx" ON "departments" USING btree ("org_id","name");--> statement-breakpoint
 CREATE INDEX "file_org_created_idx" ON "file" USING btree ("org_id","created_at" DESC NULLS FIRST,"id" DESC NULLS FIRST);--> statement-breakpoint
 CREATE UNIQUE INDEX "patients_org_mrn_idx" ON "patients" USING btree ("org_id","mrn");--> statement-breakpoint
 CREATE UNIQUE INDEX "patients_org_uid_idx" ON "patients" USING btree ("org_id","uid") WHERE "patients"."uid" is not null;--> statement-breakpoint
-CREATE INDEX "patients_org_created_idx" ON "patients" USING btree ("org_id","created_at" DESC NULLS FIRST,"id" DESC NULLS FIRST);--> statement-breakpoint
 CREATE INDEX "practitioners_org_name_idx" ON "practitioners" USING btree ("org_id","name");--> statement-breakpoint
-CREATE INDEX "practitioners_org_department_idx" ON "practitioners" USING btree ("org_id","department_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "opd_appointments_org_practitioner_date_token_uq" ON "opd_appointments" USING btree ("org_id","practitioner_id","business_date","token_number") WHERE "opd_appointments"."token_number" is not null;--> statement-breakpoint
 CREATE INDEX "opd_appointments_org_date_day_order_idx" ON "opd_appointments" USING btree ("org_id","business_date","day_order_at","id");--> statement-breakpoint
 CREATE INDEX "opd_appointments_org_patient_date_idx" ON "opd_appointments" USING btree ("org_id","patient_id","business_date" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "opd_appointments_org_patient_arrived_idx" ON "opd_appointments" USING btree ("org_id","patient_id","practitioner_id","arrived_at") WHERE "opd_appointments"."status" = 'checked_in';--> statement-breakpoint
 CREATE UNIQUE INDEX "invoices_org_number_idx" ON "invoices" USING btree ("org_id","invoice_number");--> statement-breakpoint
 CREATE INDEX "invoices_org_opd_appointment_idx" ON "invoices" USING btree ("org_id","opd_appointment_id","created_at");--> statement-breakpoint
+CREATE INDEX "invoices_org_business_date_idx" ON "invoices" USING btree ("org_id","business_date");--> statement-breakpoint
 CREATE INDEX "invoices_org_created_idx" ON "invoices" USING btree ("org_id","created_at","id");--> statement-breakpoint
 CREATE UNIQUE INDEX "invoice_lines_charge_idx" ON "invoice_lines" USING btree ("charge_id");--> statement-breakpoint
 CREATE INDEX "invoice_lines_org_invoice_idx" ON "invoice_lines" USING btree ("org_id","invoice_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "payments_org_receipt_number_idx" ON "payments" USING btree ("org_id","receipt_number");--> statement-breakpoint
-CREATE INDEX "payments_org_created_idx" ON "payments" USING btree ("org_id","created_at");--> statement-breakpoint
+CREATE INDEX "payments_org_business_date_idx" ON "payments" USING btree ("org_id","business_date");--> statement-breakpoint
 CREATE INDEX "payments_org_invoice_idx" ON "payments" USING btree ("org_id","invoice_id","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "refunds_org_number_idx" ON "refunds" USING btree ("org_id","refund_number");--> statement-breakpoint
+CREATE INDEX "refunds_org_business_date_idx" ON "refunds" USING btree ("org_id","business_date");--> statement-breakpoint
 CREATE INDEX "refunds_org_invoice_idx" ON "refunds" USING btree ("org_id","invoice_id","created_at");--> statement-breakpoint
 CREATE INDEX "refunds_org_credit_note_idx" ON "refunds" USING btree ("org_id","credit_note_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "journal_entries_org_source_idx" ON "journal_entries" USING btree ("org_id","source_type","source_id");--> statement-breakpoint

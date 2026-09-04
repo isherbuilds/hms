@@ -339,15 +339,17 @@ function PatientDetailRoute() {
         title="Patient"
         description={`${record.mrn} · ${record.name}`}
         action={
-          <Link
-            className={buttonVariants()}
-            to="/$orgSlug/opd/new"
-            params={{ orgSlug }}
-            search={{ patientId }}
-          >
-            <CalendarIcon />
-            Book appointment
-          </Link>
+          authorize(roles, { opd: ["create"] }) ? (
+            <Link
+              className={buttonVariants()}
+              to="/$orgSlug/opd/new"
+              params={{ orgSlug }}
+              search={{ patientId }}
+            >
+              <CalendarIcon />
+              Book appointment
+            </Link>
+          ) : undefined
         }
       />
 

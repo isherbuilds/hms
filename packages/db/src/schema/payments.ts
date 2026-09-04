@@ -41,9 +41,9 @@ export const payments = pgTable(
       foreignColumns: [invoices.orgId, invoices.id],
     }),
     uniqueIndex("payments_org_receipt_number_idx").on(table.orgId, table.receiptNumber),
-    // Dashboard collection totals read one org's payments over a day range, with no
-    // invoice involved.
-    index("payments_org_created_idx").on(table.orgId, table.createdAt),
+    // Dashboard and daily-collections totals read one org's payments over a
+    // business-date range, with no invoice involved.
+    index("payments_org_business_date_idx").on(table.orgId, table.businessDate),
     // Every other read is scoped to one invoice and sorted by time.
     index("payments_org_invoice_idx").on(table.orgId, table.invoiceId, table.createdAt),
   ],

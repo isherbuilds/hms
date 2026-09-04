@@ -16,7 +16,7 @@ import { SubmitButton } from "@hms/ui/components/submit-button";
 import { cn } from "@hms/ui/lib/utils";
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClientOnly, useBlocker, useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useFormContext, useFormState, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -27,9 +27,13 @@ import { FinancialSummary } from "@/components/opd-financial-summary";
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
 import { ServiceLines } from "@/components/opd-intake-services";
 import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
+import { Panel } from "@/components/page";
 import { ServicePicker, type ServiceLine } from "@/components/opd-service-picker";
 import { useZodForm } from "@/hooks/use-zod-form";
-import { invalidateOpdAppointmentState } from "@/lib/domain-invalidation";
+import {
+  invalidateAccountingReports,
+  invalidateOpdAppointmentState,
+} from "@/lib/domain-invalidation";
 import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { type WalkInQuote } from "@/lib/opd-service-preview";
@@ -391,7 +395,9 @@ function ServicesFields({
       {when === "now" && !quoteState.ready && quoteState.error ? (
         <div role="alert" className="border-l-2 border-destructive pl-3">
           <p className="font-medium">Could not calculate the bill</p>
-          <p className="text-muted-foreground">{quoteState.error.message}</p>
+          <p className="text-muted-foreground">
+            {errorMessage(quoteState.error, "Could not reach the server")}
+          </p>
         </div>
       ) : null}
       <ServiceLines lines={lines} currency={currency} onQuantityChange={setQty} onRemove={remove} />
@@ -439,32 +445,24 @@ function IntakeSubmit({
     exact: true,
     compute: (patient: SelectedPatient | null) => patient !== null,
   });
-  let reason: string | undefined;
-  if (!hasPatient) {
-    reason = "Choose or register a patient.";
-  } else if (when === "now" && !canSettleWalkIn) {
-    reason = "Your role cannot settle an immediate appointment.";
-  } else if (when === "now" && !quoteState.ready) {
-    reason =
-      quoteState.error?.message ??
-      (quoteState.fetching
-        ? "Quote is updating. Wait to confirm."
-        : "Waiting for the current quote.");
-  }
-  const zeroWalkIn = quoteState.ready && toPaise(quoteState.data.grandTotal) === 0;
+  // Only a reason the operator cannot see on the form itself is worth words; an
+  // unchosen patient is already obvious from the empty field above.
+  const reason =
+    when === "now" && !canSettleWalkIn
+      ? "Your role cannot settle an immediate appointment."
+      : when === "now" && quoteState.error
+        ? errorMessage(quoteState.error, "Could not calculate the bill")
+        : undefined;
+  const blocked = !hasPatient || Boolean(reason) || (when === "now" && !quoteState.ready);
 
   return (
     <>
       <SubmitButton
         isSubmitting={pending}
-        aria-disabled={reason ? true : undefined}
+        disabled={blocked}
         aria-describedby={reason ? id : undefined}
       >
-        {when === "now"
-          ? zeroWalkIn
-            ? "Create walk-in"
-            : "Review and collect"
-          : "Book appointment"}
+        Confirm
       </SubmitButton>
       {reason ? (
         <p id={id} className={cn("text-muted-foreground", messageClassName)}>
@@ -532,9 +530,10 @@ function FinancialAside({
     practitioners.find((practitioner) => practitioner.id === practitionerId)?.name ?? "—";
 
   return (
-    <div className="sticky top-4 flex flex-col gap-4 rounded-lg border border-border bg-card p-4">
-      <div className="flex flex-col gap-3">
-        <h2 className="font-medium">{when === "now" ? "Payment" : "Booking"}</h2>
+    // `top-0` keeps the tray level with the form card: sticky offsets are measured
+    // from PageBody's padding edge, so any offset here drops it below the card.
+    <div className="sticky top-0">
+      <Panel label={when === "now" ? "Payment" : "Booking"} minHeight="min-h-0" padded>
         {when === "now" ? <FinancialSummary quote={quoteState.data} /> : null}
         {when === "later" ? (
           // Nothing is billed at booking, so the panel confirms the appointment
@@ -550,14 +549,14 @@ function FinancialAside({
             </SummaryRow>
           </dl>
         ) : null}
-      </div>
-      <IntakeSubmit
-        id="intake-desktop-issue"
-        canSettleWalkIn={canSettleWalkIn}
-        pending={pending}
-        actionError={actionError}
-        quoteState={quoteState}
-      />
+        <IntakeSubmit
+          id="intake-desktop-issue"
+          canSettleWalkIn={canSettleWalkIn}
+          pending={pending}
+          actionError={actionError}
+          quoteState={quoteState}
+        />
+      </Panel>
     </div>
   );
 }
@@ -681,16 +680,28 @@ export function OpdIntakeForm({
         await goToAppointment(appointment.id);
       },
       onError: (error) =>
-        intake.setError("scheduledLocal", { message: error.message }, { shouldFocus: true }),
+        intake.setError(
+          "scheduledLocal",
+          { message: errorMessage(error, "Could not book the appointment") },
+          { shouldFocus: true },
+        ),
     }),
   );
 
   const createWalkIn = useMutation(
     orpc.opd.createWalkIn.mutationOptions({
-      onSuccess: async ({ appointment }) => {
+      onSuccess: async ({ appointment, invoice }) => {
         setSettlementOpen(false);
         toast.success(`Token ${appointment.tokenNumber} created`);
         await goToAppointment(appointment.id);
+        if (invoice) {
+          void Promise.all([
+            queryClient.invalidateQueries({
+              queryKey: orpc.patient.account.key({ input: { orgSlug } }),
+            }),
+            invalidateAccountingReports(queryClient, orgSlug),
+          ]);
+        }
       },
       onError: async (error) => {
         if (!hasErrorCode(error, "CONFLICT")) return;
@@ -744,23 +755,18 @@ export function OpdIntakeForm({
     setSettlementOpen(true);
   });
 
-  // The patient has no control of its own, so it is checked before the schema runs.
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    if (intake.getValues("patient")) return void submitValidated(event);
-    event.preventDefault();
-    document.getElementById("patient-search")?.focus();
-  };
-
-  const walkInError = hasErrorCode(createWalkIn.error, "CONFLICT")
-    ? undefined
-    : createWalkIn.error?.message;
+  const walkInError =
+    createWalkIn.error && !hasErrorCode(createWalkIn.error, "CONFLICT")
+      ? errorMessage(createWalkIn.error, "Could not create the appointment")
+      : undefined;
   const actionError = settlementOpen ? undefined : walkInError;
   const settlementBlockedReason = quoteState.ready
     ? undefined
-    : (quoteState.error?.message ??
-      (quoteState.fetching
+    : quoteState.error
+      ? errorMessage(quoteState.error, "Could not calculate the bill")
+      : quoteState.fetching
         ? "Quote is updating. Wait to confirm."
-        : "Waiting for the current quote."));
+        : "Waiting for the current quote.";
 
   // The overlay opens from a submit that already proved a patient is chosen, and the
   // form behind a modal cannot change it.
@@ -768,7 +774,7 @@ export function OpdIntakeForm({
   return (
     <>
       <Form {...intake}>
-        <form noValidate onSubmit={onSubmit}>
+        <form noValidate onSubmit={submitValidated}>
           <fieldset disabled={pending} className="contents">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
               <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">

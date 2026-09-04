@@ -56,8 +56,9 @@ function assertValidPeriod(
   }
   if (!bound) return;
 
-  const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS;
-  if (days > bound.maxDays) {
+  const inclusiveDays =
+    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS + 1;
+  if (inclusiveDays > bound.maxDays) {
     throw new ORPCError("BAD_REQUEST", {
       message: `${bound.report} covers at most ${bound.maxDays} days`,
     });
@@ -91,7 +92,7 @@ async function accountAggregates(
 }
 
 export const reportRouter = {
-  trialBalance: orgProcedure({ report: ["read"] }, periodInput).handler(
+  trialBalance: orgProcedure({ report: ["readFinancial"] }, periodInput).handler(
     async ({ context, input }) => {
       assertValidPeriod(input.from, input.to);
 
@@ -113,7 +114,7 @@ export const reportRouter = {
     },
   ),
 
-  balanceSheet: orgProcedure({ report: ["read"] }, asOfInput).handler(
+  balanceSheet: orgProcedure({ report: ["readFinancial"] }, asOfInput).handler(
     async ({ context, input }) => {
       const aggregates = await accountAggregates(
         context.scope.orgId,
@@ -124,12 +125,11 @@ export const reportRouter = {
     },
   ),
 
-  dailyCollections: orgProcedure({ report: ["read"] }, periodInput).handler(
+  dailyCollections: orgProcedure({ report: ["readDailyCollections"] }, periodInput).handler(
     async ({ context, input }) => {
       assertValidPeriod(input.from, input.to, COLLECTIONS_BOUND);
       const orgId = context.scope.orgId;
-      const [settings, paymentRows, refundRows] = await Promise.all([
-        readOrgSettings(orgId),
+      const [paymentRows, refundRows] = await Promise.all([
         db
           .select({
             businessDate: payments.businessDate,
@@ -191,35 +191,60 @@ export const reportRouter = {
           left.businessDate.localeCompare(right.businessDate) ||
           left.method.localeCompare(right.method),
       );
-      const rows = amounts.map((row) => ({
-        businessDate: row.businessDate,
-        method: row.method,
-        payments: fromPaise(row.payments),
-        refunds: fromPaise(row.refunds),
-        net: fromPaise(row.payments - row.refunds),
-      }));
       const methodTotals: Record<PaymentMethod, { payments: number; refunds: number }> = {
         cash: { payments: 0, refunds: 0 },
         upi: { payments: 0, refunds: 0 },
         card: { payments: 0, refunds: 0 },
       };
+      const days = new Map<
+        string,
+        {
+          businessDate: string;
+          byMethod: Record<PaymentMethod, number>;
+          payments: number;
+          refunds: number;
+        }
+      >();
+      let paymentsTotal = 0;
+      let refundsTotal = 0;
       for (const row of amounts) {
         methodTotals[row.method].payments += row.payments;
         methodTotals[row.method].refunds += row.refunds;
+        paymentsTotal += row.payments;
+        refundsTotal += row.refunds;
+
+        const day = days.get(row.businessDate) ?? {
+          businessDate: row.businessDate,
+          byMethod: { cash: 0, upi: 0, card: 0 },
+          payments: 0,
+          refunds: 0,
+        };
+        day.byMethod[row.method] += row.payments - row.refunds;
+        day.payments += row.payments;
+        day.refunds += row.refunds;
+        days.set(row.businessDate, day);
       }
+      const rows = [...days.values()].map((day) => ({
+        businessDate: day.businessDate,
+        byMethod: {
+          cash: fromPaise(day.byMethod.cash),
+          upi: fromPaise(day.byMethod.upi),
+          card: fromPaise(day.byMethod.card),
+        },
+        payments: fromPaise(day.payments),
+        refunds: fromPaise(day.refunds),
+        net: fromPaise(day.payments - day.refunds),
+      }));
       const byMethod = PAYMENT_METHODS.map((method) => ({
         method,
         payments: fromPaise(methodTotals[method].payments),
         refunds: fromPaise(methodTotals[method].refunds),
         net: fromPaise(methodTotals[method].payments - methodTotals[method].refunds),
       }));
-      const paymentsTotal = amounts.reduce((total, row) => total + row.payments, 0);
-      const refundsTotal = amounts.reduce((total, row) => total + row.refunds, 0);
 
       return {
         from: input.from,
         to: input.to,
-        currency: settings.currency,
         rows,
         byMethod,
         totals: {
@@ -231,7 +256,7 @@ export const reportRouter = {
     },
   ),
 
-  opdRegister: orgProcedure({ report: ["read"] }, periodInput).handler(
+  opdRegister: orgProcedure({ report: ["readOpdRegister"] }, periodInput).handler(
     async ({ context, input }) => {
       assertValidPeriod(input.from, input.to, REGISTER_BOUND);
       const { scope } = context;
@@ -344,7 +369,6 @@ export const reportRouter = {
       return {
         from: input.from,
         to: input.to,
-        currency: settings.currency,
         rows,
         totals: {
           appointments: rows.length,
@@ -359,97 +383,102 @@ export const reportRouter = {
     },
   ),
 
-  gst: orgProcedure({ report: ["read"] }, periodInput).handler(async ({ context, input }) => {
-    assertValidPeriod(input.from, input.to, GST_BOUND);
-    const orgId = context.scope.orgId;
-    const { timeZone } = await readOrgSettings(orgId);
+  gst: orgProcedure({ report: ["readFinancial"] }, periodInput).handler(
+    async ({ context, input }) => {
+      assertValidPeriod(input.from, input.to, GST_BOUND);
+      const orgId = context.scope.orgId;
 
-    const invoiceDate = sql<string>`(${invoices.createdAt} AT TIME ZONE ${timeZone})::date`;
-    const creditNoteDate = sql<string>`(${creditNotes.createdAt} AT TIME ZONE ${timeZone})::date`;
-
-    const [invoiceBuckets, creditNoteBuckets] = await Promise.all([
-      db
-        .select({
-          documentId: invoices.id,
-          number: invoices.invoiceNumber,
-          date: invoiceDate,
-          patientName: invoices.patientName,
-          patientMrn: invoices.patientMrn,
-          taxRatePercent: invoiceLines.taxRatePercent,
-          taxCode: invoiceLines.taxCode,
-          taxableValue: sql<string>`sum(${invoiceLines.taxableValue})::text`,
-          taxAmount: sql<string>`sum(${invoiceLines.taxAmount})::text`,
-          gross: sql<string>`sum(${invoiceLines.gross})::text`,
-        })
-        .from(invoices)
-        .innerJoin(
-          invoiceLines,
-          and(eq(invoiceLines.invoiceId, invoices.id), eq(invoiceLines.orgId, orgId)),
-        )
-        .where(
-          and(
-            eq(invoices.orgId, orgId),
-            sql`(${invoices.createdAt} AT TIME ZONE ${timeZone})::date between ${input.from}::date and ${input.to}::date`,
+      // The stored Business Date, never `createdAt` reinterpreted through the current
+      // timezone: an issued document's date does not move when settings change.
+      const [invoiceBuckets, creditNoteBuckets] = await Promise.all([
+        db
+          .select({
+            documentId: invoices.id,
+            number: invoices.invoiceNumber,
+            date: invoices.businessDate,
+            patientName: invoices.patientName,
+            patientMrn: invoices.patientMrn,
+            taxRatePercent: invoiceLines.taxRatePercent,
+            taxCode: invoiceLines.taxCode,
+            taxableValue: sql<string>`sum(${invoiceLines.taxableValue})::text`,
+            taxAmount: sql<string>`sum(${invoiceLines.taxAmount})::text`,
+            gross: sql<string>`sum(${invoiceLines.gross})::text`,
+          })
+          .from(invoices)
+          .innerJoin(
+            invoiceLines,
+            and(eq(invoiceLines.invoiceId, invoices.id), eq(invoiceLines.orgId, orgId)),
+          )
+          .where(
+            and(
+              eq(invoices.orgId, orgId),
+              gte(invoices.businessDate, input.from),
+              lte(invoices.businessDate, input.to),
+            ),
+          )
+          .groupBy(
+            invoices.id,
+            invoices.invoiceNumber,
+            invoices.businessDate,
+            invoices.patientName,
+            invoices.patientMrn,
+            invoiceLines.taxRatePercent,
+            invoiceLines.taxCode,
           ),
-        )
-        .groupBy(
-          invoices.id,
-          invoices.invoiceNumber,
-          invoiceDate,
-          invoices.patientName,
-          invoices.patientMrn,
-          invoiceLines.taxRatePercent,
-          invoiceLines.taxCode,
-        ),
-      db
-        .select({
-          documentId: creditNotes.id,
-          number: creditNotes.creditNoteNumber,
-          date: creditNoteDate,
-          patientName: invoices.patientName,
-          patientMrn: invoices.patientMrn,
-          taxRatePercent: invoiceLines.taxRatePercent,
-          taxCode: invoiceLines.taxCode,
-          taxableValue: sql<string>`sum(${creditNoteLines.taxableValue})::text`,
-          taxAmount: sql<string>`sum(${creditNoteLines.taxAmount})::text`,
-          gross: sql<string>`sum(${creditNoteLines.gross})::text`,
-        })
-        .from(creditNotes)
-        .innerJoin(invoices, and(eq(invoices.id, creditNotes.invoiceId), eq(invoices.orgId, orgId)))
-        .innerJoin(
-          creditNoteLines,
-          and(eq(creditNoteLines.creditNoteId, creditNotes.id), eq(creditNoteLines.orgId, orgId)),
-        )
-        .innerJoin(
-          invoiceLines,
-          and(eq(invoiceLines.id, creditNoteLines.invoiceLineId), eq(invoiceLines.orgId, orgId)),
-        )
-        .where(
-          and(
-            eq(creditNotes.orgId, orgId),
-            sql`(${creditNotes.createdAt} AT TIME ZONE ${timeZone})::date between ${input.from}::date and ${input.to}::date`,
+        db
+          .select({
+            documentId: creditNotes.id,
+            number: creditNotes.creditNoteNumber,
+            date: creditNotes.businessDate,
+            patientName: invoices.patientName,
+            patientMrn: invoices.patientMrn,
+            taxRatePercent: invoiceLines.taxRatePercent,
+            taxCode: invoiceLines.taxCode,
+            taxableValue: sql<string>`sum(${creditNoteLines.taxableValue})::text`,
+            taxAmount: sql<string>`sum(${creditNoteLines.taxAmount})::text`,
+            gross: sql<string>`sum(${creditNoteLines.gross})::text`,
+          })
+          .from(creditNotes)
+          .innerJoin(
+            invoices,
+            and(eq(invoices.id, creditNotes.invoiceId), eq(invoices.orgId, orgId)),
+          )
+          .innerJoin(
+            creditNoteLines,
+            and(eq(creditNoteLines.creditNoteId, creditNotes.id), eq(creditNoteLines.orgId, orgId)),
+          )
+          .innerJoin(
+            invoiceLines,
+            and(eq(invoiceLines.id, creditNoteLines.invoiceLineId), eq(invoiceLines.orgId, orgId)),
+          )
+          .where(
+            and(
+              eq(creditNotes.orgId, orgId),
+              gte(creditNotes.businessDate, input.from),
+              lte(creditNotes.businessDate, input.to),
+            ),
+          )
+          .groupBy(
+            creditNotes.id,
+            creditNotes.creditNoteNumber,
+            creditNotes.businessDate,
+            invoices.patientName,
+            invoices.patientMrn,
+            invoiceLines.taxRatePercent,
+            invoiceLines.taxCode,
           ),
-        )
-        .groupBy(
-          creditNotes.id,
-          creditNotes.creditNoteNumber,
-          creditNoteDate,
-          invoices.patientName,
-          invoices.patientMrn,
-          invoiceLines.taxRatePercent,
-          invoiceLines.taxCode,
-        ),
-    ]);
+      ]);
 
-    const buckets: GstBucket[] = [
-      ...invoiceBuckets.map((row) => ({ ...row, docType: "invoice" as const })),
-      ...creditNoteBuckets.map((row) => ({ ...row, docType: "credit_note" as const })),
-    ];
+      const buckets: GstBucket[] = [
+        ...invoiceBuckets.map((row) => ({ ...row, docType: "invoice" as const })),
+        ...creditNoteBuckets.map((row) => ({ ...row, docType: "credit_note" as const })),
+      ];
 
-    return buildGstReport({
-      from: input.from,
-      to: input.to,
-      buckets,
-    });
-  }),
+      return buildGstReport({
+        from: input.from,
+        to: input.to,
+        buckets,
+      });
+    },
+  ),
 };

@@ -29,7 +29,7 @@ import { hasErrorCode } from "@/lib/orpc-error";
 import { orpc } from "@/lib/orpc";
 
 // Staff copy, not the stored value.
-const OPD_STATUS_LABELS = {
+export const OPD_STATUS_LABELS = {
   booked: "Booked",
   checked_in: "Checked In",
   cancelled: "Cancelled",

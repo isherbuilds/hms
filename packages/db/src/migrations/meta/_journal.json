@@ -5,29 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1788108749111,
-      "tag": "0000_overrated_pandemic",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1788451189803,
-      "tag": "0001_wakeful_banshee",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1788451192486,
-      "tag": "0002_ambitious_nitro",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1788456051710,
-      "tag": "0003_wooden_tana_nile",
+      "when": 1788491814221,
+      "tag": "0000_youthful_meltdown",
       "breakpoints": true
     }
   ]

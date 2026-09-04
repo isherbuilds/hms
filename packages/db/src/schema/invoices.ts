@@ -78,6 +78,7 @@ export const invoices = pgTable(
       table.opdAppointmentId,
       table.createdAt,
     ),
+    index("invoices_org_business_date_idx").on(table.orgId, table.businessDate),
     // Ascending: the worklist reads oldest-first, and a DESC index cannot serve an ASC
     // scan without the same NULLS trap as file.ts.
     index("invoices_org_created_idx").on(table.orgId, table.createdAt, table.id),

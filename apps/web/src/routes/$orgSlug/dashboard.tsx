@@ -115,10 +115,8 @@ function StatCard({
 
 function DashboardRoute() {
   const { orgSlug } = Route.useParams();
-  const { roles, currency } = useMembership(orgSlug, ({ roles, currency }) => ({
-    roles,
-    currency,
-  }));
+  const roles = useMembership(orgSlug, (membership) => membership.roles);
+  const currency = useMembership(orgSlug, (membership) => membership.currency);
   const money = (value: string | undefined) =>
     value === undefined ? "—" : formatMoney(value, currency);
 

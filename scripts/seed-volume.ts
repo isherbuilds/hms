@@ -287,7 +287,6 @@ async function seedOrganization(org: OrganizationSeed): Promise<SeedSummary> {
           phone: patientPhone(index, org.orgIndex),
           sex: SEXES[index % SEXES.length]!,
           dateOfBirth: dateOfBirth(index),
-          ageYears: null,
           address: `${(index % 240) + 1}, ${LOCALITIES[index % LOCALITIES.length]}, ${CITIES[index % CITIES.length]}`,
           email: null,
           bloodGroup: BLOOD_GROUPS[index % BLOOD_GROUPS.length]!,

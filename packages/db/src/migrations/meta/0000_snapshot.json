@@ -1,5 +1,5 @@
 {
-  "id": "45b9686a-192b-46e0-960f-3527c64105ea",
+  "id": "6f2bd998-8a93-4693-a986-4c15e1090624",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -127,7 +127,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "accounts_org_id_id_unique": {
+          "name": "accounts_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "accounts_type_check": {
@@ -288,19 +297,6 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "attachments_file_id_file_id_fk": {
-          "name": "attachments_file_id_file_id_fk",
-          "tableFrom": "attachments",
-          "tableTo": "file",
-          "columnsFrom": [
-            "file_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "attachments_created_by_user_id_fk": {
           "name": "attachments_created_by_user_id_fk",
           "tableFrom": "attachments",
@@ -309,6 +305,21 @@
             "created_by"
           ],
           "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "attachments_org_id_file_id_file_org_id_id_fk": {
+          "name": "attachments_org_id_file_id_file_org_id_id_fk",
+          "tableFrom": "attachments",
+          "tableTo": "file",
+          "columnsFrom": [
+            "org_id",
+            "file_id"
+          ],
+          "columnsTo": [
+            "org_id",
             "id"
           ],
           "onDelete": "no action",
@@ -1901,6 +1912,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "credit_notes_org_business_date_idx": {
+          "name": "credit_notes_org_business_date_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -2185,7 +2217,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "file_org_id_id_unique": {
+          "name": "file_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -2268,6 +2309,13 @@
           "notNull": true,
           "default": 14
         },
+        "unbilled_alert_hours": {
+          "name": "unbilled_alert_hours",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 24
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -2310,6 +2358,10 @@
         "organization_settings_follow_up_days_check": {
           "name": "organization_settings_follow_up_days_check",
           "value": "\"organization_settings\".\"follow_up_validity_days\" between 1 and 365"
+        },
+        "organization_settings_unbilled_alert_hours_check": {
+          "name": "organization_settings_unbilled_alert_hours_check",
+          "value": "\"organization_settings\".\"unbilled_alert_hours\" between 1 and 168"
         }
       },
       "isRLSEnabled": false
@@ -2467,33 +2519,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "patients_org_created_idx": {
-          "name": "patients_org_created_idx",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "first"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "first"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -2633,27 +2658,6 @@
             },
             {
               "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "practitioners_org_department_idx": {
-          "name": "practitioners_org_department_idx",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "department_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3337,6 +3341,27 @@
           "method": "btree",
           "with": {}
         },
+        "invoices_org_business_date_idx": {
+          "name": "invoices_org_business_date_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "invoices_org_created_idx": {
           "name": "invoices_org_created_idx",
           "columns": [
@@ -3755,8 +3780,8 @@
           "method": "btree",
           "with": {}
         },
-        "payments_org_created_idx": {
-          "name": "payments_org_created_idx",
+        "payments_org_business_date_idx": {
+          "name": "payments_org_business_date_idx",
           "columns": [
             {
               "expression": "org_id",
@@ -3765,7 +3790,7 @@
               "nulls": "last"
             },
             {
-              "expression": "created_at",
+              "expression": "business_date",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3958,6 +3983,27 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "refunds_org_business_date_idx": {
+          "name": "refunds_org_business_date_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4217,7 +4263,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "journal_entries_org_id_id_unique": {
+          "name": "journal_entries_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -4323,27 +4378,31 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "journal_lines_entry_id_journal_entries_id_fk": {
-          "name": "journal_lines_entry_id_journal_entries_id_fk",
+        "journal_lines_org_id_entry_id_journal_entries_org_id_id_fk": {
+          "name": "journal_lines_org_id_entry_id_journal_entries_org_id_id_fk",
           "tableFrom": "journal_lines",
           "tableTo": "journal_entries",
           "columnsFrom": [
+            "org_id",
             "entry_id"
           ],
           "columnsTo": [
+            "org_id",
             "id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "journal_lines_account_id_accounts_id_fk": {
-          "name": "journal_lines_account_id_accounts_id_fk",
+        "journal_lines_org_id_account_id_accounts_org_id_id_fk": {
+          "name": "journal_lines_org_id_account_id_accounts_org_id_id_fk",
           "tableFrom": "journal_lines",
           "tableTo": "accounts",
           "columnsFrom": [
+            "org_id",
             "account_id"
           ],
           "columnsTo": [
+            "org_id",
             "id"
           ],
           "onDelete": "no action",

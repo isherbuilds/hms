@@ -1,16 +1,21 @@
 import { fromPaise, toPaise } from "@hms/api/lib/invoice-math";
+import { paymentMethod, type PaymentMethod } from "@hms/api/lib/schemas";
+import { z } from "zod";
 
 // Relative: the `@/` alias is an apps/web path, and the unit-test project that
 // imports this module does not carry it.
 import { formatMoney, MONEY_INPUT_PATTERN, parseMoneyInput } from "./money";
 
-export const PAYMENT_METHODS = [
-  { value: "cash", label: "Cash" },
-  { value: "upi", label: "UPI" },
-  { value: "card", label: "Card" },
-] as const;
+export type { PaymentMethod };
 
-export type PaymentMethod = (typeof PAYMENT_METHODS)[number]["value"];
+// `satisfies Record<PaymentMethod, …>` pins the labels to the API enum in both
+// directions: a method added on one side without the other fails to compile.
+const PAYMENT_METHOD_LABELS = { cash: "Cash", upi: "UPI", card: "Card" } satisfies Record<
+  PaymentMethod,
+  string
+>;
+
+export const PAYMENT_METHODS = paymentMethod.options;
 
 export type PaymentLine = {
   id: number;
@@ -20,12 +25,65 @@ export type PaymentLine = {
 };
 
 export function methodLabel(method: PaymentMethod): string {
-  return method === "upi" ? "UPI" : `${method.charAt(0).toUpperCase()}${method.slice(1)}`;
+  return PAYMENT_METHOD_LABELS[method];
 }
 
 /** Everything but cash lands somewhere traceable, so the desk records the trace. */
 export function needsReference(method: PaymentMethod): boolean {
   return method !== "cash";
+}
+
+// The zod shape behind every "record a payment" form. Split lines are the norm,
+// so the single-payment case is just an array of one.
+export const paymentLineFields = z.object({
+  id: z.number(),
+  method: paymentMethod,
+  amount: z
+    .string()
+    .regex(MONEY_INPUT_PATTERN, "Amount like 150.00")
+    .refine((value) => (parseMoneyInput(value) ?? 0) > 0, "Enter an amount above zero"),
+  reference: z.string().trim().max(100).optional(),
+});
+
+export function requireTransactionReference(
+  value: { method: PaymentMethod; reference?: string },
+  context: z.RefinementCtx,
+) {
+  if (needsReference(value.method) && !value.reference) {
+    context.addIssue({
+      code: "custom",
+      path: ["reference"],
+      message: "Enter the transaction reference",
+    });
+  }
+}
+
+const paymentLineSchema = paymentLineFields.superRefine(requireTransactionReference);
+
+export const MAX_PAYMENT_LINES = 4;
+
+/** What the lines add up to. Every collect form weighs this against what is owed. */
+export function collectedPaise(payments: { amount: string }[]): number {
+  return payments.reduce((sum, payment) => sum + (parseMoneyInput(payment.amount) ?? 0), 0);
+}
+
+export const paymentFormSchema = z.object({
+  payments: z.array(paymentLineSchema).min(1).max(MAX_PAYMENT_LINES),
+});
+
+/** The next split line: an unused method, pre-filled with whatever is still owed. */
+export function nextPaymentLine(
+  payments: Array<{ id: number; method: PaymentMethod }>,
+  remainingPaise: number,
+) {
+  const used = new Set(payments.map((payment) => payment.method));
+  const method = PAYMENT_METHODS.find((candidate) => !used.has(candidate)) ?? "cash";
+  return {
+    id: Math.max(0, ...payments.map((payment) => payment.id)) + 1,
+    method,
+    amount: remainingPaise > 0 ? fromPaise(remainingPaise) : "",
+    reference: "",
+  };
 }
 
 export type SettlementProblem = {
@@ -116,7 +174,7 @@ export function settlementProblems({
     });
   }
 
-  const collecting = payments.reduce((sum, payment) => sum + (amountOf(payment) ?? 0), 0);
+  const collecting = collectedPaise(payments);
   if (collecting > due) {
     const last = payments[payments.length - 1];
     problems.push({

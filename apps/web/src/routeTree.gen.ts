@@ -40,9 +40,9 @@ import { Route as OrgSlugSettingsStaffRouteImport } from './routes/$orgSlug/sett
 import { Route as OrgSlugBillingInvoicesInvoiceIdRouteImport } from './routes/$orgSlug/billing/invoices.$invoiceId'
 import { Route as OrgSlugOpdAppointmentIdIndexRouteImport } from './routes/$orgSlug/opd/$appointmentId/index'
 import { Route as OrgSlugOpdAppointmentIdBillingRouteImport } from './routes/$orgSlug/opd/$appointmentId/billing'
-import { Route as OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRouteImport } from './routes/$orgSlug/billing/invoices.$invoiceId.credit-note.$creditNoteId'
-import { Route as OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRouteImport } from './routes/$orgSlug/billing/invoices.$invoiceId.receipt.$paymentId'
-import { Route as OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRouteImport } from './routes/$orgSlug/billing/invoices.$invoiceId.refund.$refundId'
+import { Route as OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRouteImport } from './routes/$orgSlug/billing/invoices.$invoiceId_.credit-note.$creditNoteId'
+import { Route as OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRouteImport } from './routes/$orgSlug/billing/invoices.$invoiceId_.receipt.$paymentId'
+import { Route as OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRouteImport } from './routes/$orgSlug/billing/invoices.$invoiceId_.refund.$refundId'
 import { Route as ApiOrgSlugBillingInvoicesInvoiceIdPdfRouteImport } from './routes/api.$orgSlug.billing.invoices.$invoiceId.pdf'
 
 const IndexRoute = IndexRouteImport.update({
@@ -212,21 +212,21 @@ const OrgSlugOpdAppointmentIdBillingRoute =
   } as any)
 const OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute =
   OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRouteImport.update({
-    id: '/credit-note/$creditNoteId',
-    path: '/credit-note/$creditNoteId',
-    getParentRoute: () => OrgSlugBillingInvoicesInvoiceIdRoute,
+    id: '/billing/invoices/$invoiceId_/credit-note/$creditNoteId',
+    path: '/billing/invoices/$invoiceId/credit-note/$creditNoteId',
+    getParentRoute: () => OrgSlugRouteRoute,
   } as any)
 const OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute =
   OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRouteImport.update({
-    id: '/receipt/$paymentId',
-    path: '/receipt/$paymentId',
-    getParentRoute: () => OrgSlugBillingInvoicesInvoiceIdRoute,
+    id: '/billing/invoices/$invoiceId_/receipt/$paymentId',
+    path: '/billing/invoices/$invoiceId/receipt/$paymentId',
+    getParentRoute: () => OrgSlugRouteRoute,
   } as any)
 const OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute =
   OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRouteImport.update({
-    id: '/refund/$refundId',
-    path: '/refund/$refundId',
-    getParentRoute: () => OrgSlugBillingInvoicesInvoiceIdRoute,
+    id: '/billing/invoices/$invoiceId_/refund/$refundId',
+    path: '/billing/invoices/$invoiceId/refund/$refundId',
+    getParentRoute: () => OrgSlugRouteRoute,
   } as any)
 const ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute =
   ApiOrgSlugBillingInvoicesInvoiceIdPdfRouteImport.update({
@@ -264,7 +264,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/patients/': typeof OrgSlugPatientsIndexRoute
   '/$orgSlug/reports/': typeof OrgSlugReportsIndexRoute
   '/$orgSlug/settings/': typeof OrgSlugSettingsIndexRoute
-  '/$orgSlug/billing/invoices/$invoiceId': typeof OrgSlugBillingInvoicesInvoiceIdRouteWithChildren
+  '/$orgSlug/billing/invoices/$invoiceId': typeof OrgSlugBillingInvoicesInvoiceIdRoute
   '/$orgSlug/opd/$appointmentId/billing': typeof OrgSlugOpdAppointmentIdBillingRoute
   '/$orgSlug/opd/$appointmentId/': typeof OrgSlugOpdAppointmentIdIndexRoute
   '/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId': typeof OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute
@@ -298,7 +298,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/patients': typeof OrgSlugPatientsIndexRoute
   '/$orgSlug/reports': typeof OrgSlugReportsIndexRoute
   '/$orgSlug/settings': typeof OrgSlugSettingsIndexRoute
-  '/$orgSlug/billing/invoices/$invoiceId': typeof OrgSlugBillingInvoicesInvoiceIdRouteWithChildren
+  '/$orgSlug/billing/invoices/$invoiceId': typeof OrgSlugBillingInvoicesInvoiceIdRoute
   '/$orgSlug/opd/$appointmentId/billing': typeof OrgSlugOpdAppointmentIdBillingRoute
   '/$orgSlug/opd/$appointmentId': typeof OrgSlugOpdAppointmentIdIndexRoute
   '/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId': typeof OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute
@@ -336,12 +336,12 @@ export interface FileRoutesById {
   '/$orgSlug/patients/': typeof OrgSlugPatientsIndexRoute
   '/$orgSlug/reports/': typeof OrgSlugReportsIndexRoute
   '/$orgSlug/settings/': typeof OrgSlugSettingsIndexRoute
-  '/$orgSlug/billing/invoices/$invoiceId': typeof OrgSlugBillingInvoicesInvoiceIdRouteWithChildren
+  '/$orgSlug/billing/invoices/$invoiceId': typeof OrgSlugBillingInvoicesInvoiceIdRoute
   '/$orgSlug/opd/$appointmentId/billing': typeof OrgSlugOpdAppointmentIdBillingRoute
   '/$orgSlug/opd/$appointmentId/': typeof OrgSlugOpdAppointmentIdIndexRoute
-  '/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId': typeof OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute
-  '/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId': typeof OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute
-  '/$orgSlug/billing/invoices/$invoiceId/refund/$refundId': typeof OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
+  '/$orgSlug/billing/invoices/$invoiceId_/credit-note/$creditNoteId': typeof OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute
+  '/$orgSlug/billing/invoices/$invoiceId_/receipt/$paymentId': typeof OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute
+  '/$orgSlug/billing/invoices/$invoiceId_/refund/$refundId': typeof OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
   '/api/$orgSlug/billing/invoices/$invoiceId/pdf': typeof ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute
 }
 export interface FileRouteTypes {
@@ -449,9 +449,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/billing/invoices/$invoiceId'
     | '/$orgSlug/opd/$appointmentId/billing'
     | '/$orgSlug/opd/$appointmentId/'
-    | '/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId'
-    | '/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId'
-    | '/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
+    | '/$orgSlug/billing/invoices/$invoiceId_/credit-note/$creditNoteId'
+    | '/$orgSlug/billing/invoices/$invoiceId_/receipt/$paymentId'
+    | '/$orgSlug/billing/invoices/$invoiceId_/refund/$refundId'
     | '/api/$orgSlug/billing/invoices/$invoiceId/pdf'
   fileRoutesById: FileRoutesById
 }
@@ -683,26 +683,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugOpdAppointmentIdBillingRouteImport
       parentRoute: typeof OrgSlugOpdAppointmentIdRouteRoute
     }
-    '/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId': {
-      id: '/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId'
-      path: '/credit-note/$creditNoteId'
+    '/$orgSlug/billing/invoices/$invoiceId_/credit-note/$creditNoteId': {
+      id: '/$orgSlug/billing/invoices/$invoiceId_/credit-note/$creditNoteId'
+      path: '/billing/invoices/$invoiceId/credit-note/$creditNoteId'
       fullPath: '/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId'
       preLoaderRoute: typeof OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRouteImport
-      parentRoute: typeof OrgSlugBillingInvoicesInvoiceIdRoute
+      parentRoute: typeof OrgSlugRouteRoute
     }
-    '/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId': {
-      id: '/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId'
-      path: '/receipt/$paymentId'
+    '/$orgSlug/billing/invoices/$invoiceId_/receipt/$paymentId': {
+      id: '/$orgSlug/billing/invoices/$invoiceId_/receipt/$paymentId'
+      path: '/billing/invoices/$invoiceId/receipt/$paymentId'
       fullPath: '/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId'
       preLoaderRoute: typeof OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRouteImport
-      parentRoute: typeof OrgSlugBillingInvoicesInvoiceIdRoute
+      parentRoute: typeof OrgSlugRouteRoute
     }
-    '/$orgSlug/billing/invoices/$invoiceId/refund/$refundId': {
-      id: '/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
-      path: '/refund/$refundId'
+    '/$orgSlug/billing/invoices/$invoiceId_/refund/$refundId': {
+      id: '/$orgSlug/billing/invoices/$invoiceId_/refund/$refundId'
+      path: '/billing/invoices/$invoiceId/refund/$refundId'
       fullPath: '/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
       preLoaderRoute: typeof OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRouteImport
-      parentRoute: typeof OrgSlugBillingInvoicesInvoiceIdRoute
+      parentRoute: typeof OrgSlugRouteRoute
     }
     '/api/$orgSlug/billing/invoices/$invoiceId/pdf': {
       id: '/api/$orgSlug/billing/invoices/$invoiceId/pdf'
@@ -751,27 +751,6 @@ const OrgSlugOpdAppointmentIdRouteRouteWithChildren =
     OrgSlugOpdAppointmentIdRouteRouteChildren,
   )
 
-interface OrgSlugBillingInvoicesInvoiceIdRouteChildren {
-  OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute: typeof OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute
-  OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute: typeof OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute
-  OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute: typeof OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
-}
-
-const OrgSlugBillingInvoicesInvoiceIdRouteChildren: OrgSlugBillingInvoicesInvoiceIdRouteChildren =
-  {
-    OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute:
-      OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute,
-    OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute:
-      OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute,
-    OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute:
-      OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute,
-  }
-
-const OrgSlugBillingInvoicesInvoiceIdRouteWithChildren =
-  OrgSlugBillingInvoicesInvoiceIdRoute._addFileChildren(
-    OrgSlugBillingInvoicesInvoiceIdRouteChildren,
-  )
-
 interface OrgSlugRouteRouteChildren {
   OrgSlugSettingsRouteRoute: typeof OrgSlugSettingsRouteRouteWithChildren
   OrgSlugDashboardRoute: typeof OrgSlugDashboardRoute
@@ -790,7 +769,10 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugOpdIndexRoute: typeof OrgSlugOpdIndexRoute
   OrgSlugPatientsIndexRoute: typeof OrgSlugPatientsIndexRoute
   OrgSlugReportsIndexRoute: typeof OrgSlugReportsIndexRoute
-  OrgSlugBillingInvoicesInvoiceIdRoute: typeof OrgSlugBillingInvoicesInvoiceIdRouteWithChildren
+  OrgSlugBillingInvoicesInvoiceIdRoute: typeof OrgSlugBillingInvoicesInvoiceIdRoute
+  OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute: typeof OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute
+  OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute: typeof OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute
+  OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute: typeof OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
 }
 
 const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
@@ -812,8 +794,13 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugOpdIndexRoute: OrgSlugOpdIndexRoute,
   OrgSlugPatientsIndexRoute: OrgSlugPatientsIndexRoute,
   OrgSlugReportsIndexRoute: OrgSlugReportsIndexRoute,
-  OrgSlugBillingInvoicesInvoiceIdRoute:
-    OrgSlugBillingInvoicesInvoiceIdRouteWithChildren,
+  OrgSlugBillingInvoicesInvoiceIdRoute: OrgSlugBillingInvoicesInvoiceIdRoute,
+  OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute:
+    OrgSlugBillingInvoicesInvoiceIdCreditNoteCreditNoteIdRoute,
+  OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute:
+    OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRoute,
+  OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute:
+    OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute,
 }
 
 const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(

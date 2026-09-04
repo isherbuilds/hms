@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, bigint, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, bigint, index, unique } from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
 
@@ -18,6 +18,7 @@ export const file = pgTable(
   },
   // Covers `file.list`: tenant predicate, then the exact keyset order.
   (table) => [
+    unique("file_org_id_id_unique").on(table.orgId, table.id),
     // `.desc()` emits `DESC NULLS LAST` but `ORDER BY x DESC` means NULLS FIRST — a
     // mismatch the planner will not bridge, so it discards the index and sorts.
     index("file_org_created_idx").on(

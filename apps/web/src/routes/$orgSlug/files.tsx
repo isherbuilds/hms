@@ -59,19 +59,12 @@ function FilesRoute() {
   const [confirm, confirmDialog] = useConfirm();
 
   const canDelete = useCan(orgSlug, { file: ["delete"] });
+  const canUpload = useCan(orgSlug, { file: ["upload"] });
 
   const files = useInfiniteQuery(filesQuery(orgSlug, query));
 
-  // `file.delete` writes an audit row, so the trail is stale after one.
   const refresh = () =>
-    Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: orpc.file.list.key({ input: { orgSlug } }),
-      }),
-      queryClient.invalidateQueries({
-        queryKey: orpc.audit.list.key({ input: { orgSlug } }),
-      }),
-    ]);
+    queryClient.invalidateQueries({ queryKey: orpc.file.list.key({ input: { orgSlug } }) });
 
   const upload = async (file: File) => {
     setUploading(file.name);
@@ -113,24 +106,26 @@ function FilesRoute() {
         title="Files"
         description="Stored privately · links are signed and expire after 15 minutes"
         action={
-          <>
-            <input
-              ref={inputRef}
-              type="file"
-              className="sr-only"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  upload(file);
-                }
-                event.target.value = "";
-              }}
-            />
-            <Button disabled={uploading !== null} onClick={() => inputRef.current?.click()}>
-              <UploadIcon data-icon="inline-start" />
-              {uploading ? "Uploading…" : "Upload"}
-            </Button>
-          </>
+          canUpload ? (
+            <>
+              <input
+                ref={inputRef}
+                type="file"
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    upload(file);
+                  }
+                  event.target.value = "";
+                }}
+              />
+              <Button disabled={uploading !== null} onClick={() => inputRef.current?.click()}>
+                <UploadIcon data-icon="inline-start" />
+                {uploading ? "Uploading…" : "Upload"}
+              </Button>
+            </>
+          ) : undefined
         }
       />
 

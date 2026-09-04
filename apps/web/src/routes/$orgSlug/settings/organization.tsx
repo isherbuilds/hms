@@ -161,6 +161,15 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
           queryClient.invalidateQueries({
             queryKey: orpc.member.me.key({ input: { orgSlug } }),
           }),
+          queryClient.invalidateQueries({
+            queryKey: orpc.billing.worklist.key({ input: { orgSlug } }),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: orpc.dashboard.today.key({ input: { orgSlug } }),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: orpc.dashboard.collections.key({ input: { orgSlug } }),
+          }),
         ]);
         await router.invalidate();
       },
@@ -173,189 +182,196 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
   return (
     <Form {...form}>
       <form noValidate onSubmit={onSubmit} className="flex flex-col gap-6">
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xs font-medium text-muted-foreground">Organization</h2>
-          <RegisteredFormField
-            name="legalName"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Legal name</FormLabel>
-                <FormControl>
-                  <Input {...field} placeholder="As it should appear on invoices" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <RegisteredFormField
-            name="address"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Address</FormLabel>
-                <FormControl>
-                  <Textarea {...field} rows={3} placeholder="Printed under the legal name" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <div className="grid gap-3 sm:grid-cols-2">
+        {/* Frozen while saving: `onSuccess` resets to the saved row, which would
+            otherwise discard anything typed during the request. */}
+        <fieldset disabled={update.isPending} className="contents">
+          <section className="flex flex-col gap-3">
+            <h2 className="text-xs font-medium text-muted-foreground">Organization</h2>
             <RegisteredFormField
-              name="taxId"
+              name="legalName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Tax id (GSTIN/PAN)</FormLabel>
+                  <FormLabel>Legal name</FormLabel>
                   <FormControl>
-                    <Input {...field} />
+                    <Input {...field} placeholder="As it should appear on invoices" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
             <RegisteredFormField
-              name="currency"
+              name="address"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Currency</FormLabel>
+                  <FormLabel>Address</FormLabel>
                   <FormControl>
-                    <Input {...field} maxLength={3} className="uppercase" />
+                    <Textarea {...field} rows={3} placeholder="Printed under the legal name" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-          </div>
-          <RegisteredFormField
-            name="timeZone"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Time zone</FormLabel>
-                <FormControl>
-                  <NativeSelect {...field}>
-                    {/* Keep a stored zone selectable even when this browser's canonical list omits it. */}
-                    {defaults.timeZone && !supportedTimeZones.includes(defaults.timeZone) ? (
-                      <option value={defaults.timeZone}>{defaults.timeZone}</option>
-                    ) : null}
-                    {supportedTimeZones.map((timeZone) => (
-                      <option key={timeZone} value={timeZone}>
-                        {timeZone}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </FormControl>
-                <FormDescription>
-                  Sets the local date used for queues, numbering, and reports. Changing it applies
-                  to new records; existing ones keep their date.
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </section>
-
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xs font-medium text-muted-foreground">Document numbering</h2>
-          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <RegisteredFormField
+                name="taxId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tax id (GSTIN/PAN)</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <RegisteredFormField
+                name="currency"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Currency</FormLabel>
+                    <FormControl>
+                      <Input {...field} maxLength={3} readOnly className="uppercase" />
+                    </FormControl>
+                    <FormDescription>
+                      Fixed for this organization so historical amounts keep one meaning.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <RegisteredFormField
-              name="mrnPrefix"
+              name="timeZone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>MRN prefix</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <RegisteredFormField
-              name="invoicePrefix"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Invoice prefix</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <RegisteredFormField
-              name="receiptPrefix"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Receipt prefix</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <RegisteredFormField
-              name="creditNotePrefix"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Credit note prefix</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <RegisteredFormField
-              name="fiscalYearStartMonth"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Fiscal year starts in</FormLabel>
+                  <FormLabel>Time zone</FormLabel>
                   <FormControl>
                     <NativeSelect {...field}>
-                      {MONTHS.map((month, index) => (
-                        <option key={month} value={index + 1}>
-                          {month}
+                      {/* Keep a stored zone selectable even when this browser's canonical list omits it. */}
+                      {defaults.timeZone && !supportedTimeZones.includes(defaults.timeZone) ? (
+                        <option value={defaults.timeZone}>{defaults.timeZone}</option>
+                      ) : null}
+                      {supportedTimeZones.map((timeZone) => (
+                        <option key={timeZone} value={timeZone}>
+                          {timeZone}
                         </option>
                       ))}
                     </NativeSelect>
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <RegisteredFormField
-              name="followUpValidityDays"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Follow-up validity (days)</FormLabel>
-                  <FormControl>
-                    <Input type="number" min={1} max={365} step={1} {...field} />
-                  </FormControl>
                   <FormDescription>
-                    Consult within this many days of the last appointment bills the follow-up fee.
+                    Sets the local date used for queues, numbering, and reports. Changing it applies
+                    to new records; existing ones keep their date.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <RegisteredFormField
-              name="unbilledAlertHours"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Unbilled alert (hours)</FormLabel>
-                  <FormControl>
-                    <Input type="number" min={1} max={168} step={1} {...field} />
-                  </FormControl>
-                  <FormDescription>
-                    Checked-in visits with charges older than this appear as unbilled
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        </section>
+          </section>
+
+          <section className="flex flex-col gap-3">
+            <h2 className="text-xs font-medium text-muted-foreground">Document numbering</h2>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <RegisteredFormField
+                name="mrnPrefix"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>MRN prefix</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <RegisteredFormField
+                name="invoicePrefix"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Invoice prefix</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <RegisteredFormField
+                name="receiptPrefix"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Receipt prefix</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <RegisteredFormField
+                name="creditNotePrefix"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Credit note prefix</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <RegisteredFormField
+                name="fiscalYearStartMonth"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Fiscal year starts in</FormLabel>
+                    <FormControl>
+                      <NativeSelect {...field}>
+                        {MONTHS.map((month, index) => (
+                          <option key={month} value={index + 1}>
+                            {month}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <RegisteredFormField
+                name="followUpValidityDays"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Follow-up validity (days)</FormLabel>
+                    <FormControl>
+                      <Input type="number" min={1} max={365} step={1} {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      Consult within this many days of the last appointment bills the follow-up fee.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <RegisteredFormField
+                name="unbilledAlertHours"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Unbilled alert (hours)</FormLabel>
+                    <FormControl>
+                      <Input type="number" min={1} max={168} step={1} {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      Checked-in visits with charges older than this appear as unbilled
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </section>
+        </fieldset>
 
         <div>
           <SettingsSubmitButton pending={update.isPending} />

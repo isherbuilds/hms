@@ -1,4 +1,3 @@
-import { fromPaise, toSignedPaise } from "@hms/api/lib/invoice-math";
 import { Button } from "@hms/ui/components/button";
 import {
   Table,
@@ -21,12 +20,11 @@ import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
 import { downloadXlsx } from "@/lib/report-export";
 import { REPORT_PRINT_LANDSCAPE_CSS } from "@/lib/report-presentation";
+import { methodLabel } from "@/lib/settlement";
 import { orgMonthToDate as defaultRange } from "@/lib/org-datetime";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 const MAX_DAYS = 92;
-const METHODS = ["cash", "upi", "card"] as const;
-type Method = (typeof METHODS)[number];
 
 export const Route = createFileRoute("/$orgSlug/reports/daily-collections")({
   head: () => ({ meta: [{ title: "Daily collections · HMS" }] }),
@@ -39,7 +37,7 @@ export const Route = createFileRoute("/$orgSlug/reports/daily-collections")({
     const { timeZone } = await requireOrgPermission(
       queryClient,
       orgSlug,
-      { report: ["read"] },
+      { report: ["readDailyCollections"] },
       "/$orgSlug/dashboard",
     );
     const fallback = defaultRange(timeZone);
@@ -71,14 +69,18 @@ function DailyCollectionsRoute() {
         name: "Daily collections",
         columns: [
           { header: "Business date", key: "businessDate", width: 16 },
-          { header: "Method", key: "method", width: 12 },
+          { header: "Cash", key: "cash", width: 16 },
+          { header: "UPI", key: "upi", width: 16 },
+          { header: "Card", key: "card", width: 16 },
           { header: "Payments", key: "payments", width: 16 },
           { header: "Refunds", key: "refunds", width: 16 },
           { header: "Net", key: "net", width: 16 },
         ],
         rows: rows.map((row) => ({
           businessDate: row.businessDate,
-          method: row.method,
+          cash: Number(row.byMethod.cash),
+          upi: Number(row.byMethod.upi),
+          card: Number(row.byMethod.card),
           payments: Number(row.payments),
           refunds: Number(row.refunds),
           net: Number(row.net),
@@ -94,7 +96,7 @@ function DailyCollectionsRoute() {
         ],
         rows: [
           ...byMethod.map((row) => ({
-            method: row.method,
+            method: methodLabel(row.method),
             payments: Number(row.payments),
             refunds: Number(row.refunds),
             net: Number(row.net),
@@ -109,35 +111,6 @@ function DailyCollectionsRoute() {
       },
     ]);
   };
-
-  const methodTotals: Record<Method, string> = { cash: "0.00", upi: "0.00", card: "0.00" };
-  for (const row of report.data?.byMethod ?? []) methodTotals[row.method] = row.net;
-
-  const daily = new Map<
-    string,
-    {
-      byMethod: Record<Method, string>;
-      payments: number;
-      refunds: number;
-      net: number;
-    }
-  >();
-  for (const row of report.data?.rows ?? []) {
-    let day = daily.get(row.businessDate);
-    if (!day) {
-      day = {
-        byMethod: { cash: "0.00", upi: "0.00", card: "0.00" },
-        payments: 0,
-        refunds: 0,
-        net: 0,
-      };
-      daily.set(row.businessDate, day);
-    }
-    day.byMethod[row.method] = row.net;
-    day.payments += toSignedPaise(row.payments);
-    day.refunds += toSignedPaise(row.refunds);
-    day.net += toSignedPaise(row.net);
-  }
 
   return (
     <>
@@ -179,73 +152,55 @@ function DailyCollectionsRoute() {
               </p>
             </header>
 
-            <div className="overflow-hidden ring-1 ring-border">
-              <Table className="table-fixed text-xs">
+            <div className="ring-1 ring-border">
+              <Table className="min-w-3xl">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[4.25rem] px-1">Date</TableHead>
-                    <TableHead className="px-1 text-right text-[0.625rem] leading-tight tracking-normal whitespace-normal [overflow-wrap:anywhere]">
-                      Cash
-                    </TableHead>
-                    <TableHead className="px-1 text-right text-[0.625rem] leading-tight tracking-normal whitespace-normal [overflow-wrap:anywhere]">
-                      UPI
-                    </TableHead>
-                    <TableHead className="px-1 text-right text-[0.625rem] leading-tight tracking-normal whitespace-normal [overflow-wrap:anywhere]">
-                      Card
-                    </TableHead>
-                    <TableHead className="px-1 text-right text-[0.625rem] leading-tight tracking-normal whitespace-normal [overflow-wrap:anywhere]">
-                      Payments
-                    </TableHead>
-                    <TableHead className="px-1 text-right text-[0.625rem] leading-tight tracking-normal whitespace-normal [overflow-wrap:anywhere]">
-                      Refunds
-                    </TableHead>
-                    <TableHead className="px-1 text-right text-[0.625rem] leading-tight tracking-normal whitespace-normal [overflow-wrap:anywhere]">
-                      Net
-                    </TableHead>
+                    <TableHead>Date</TableHead>
+                    {report.data.byMethod.map(({ method }) => (
+                      <TableHead key={method} className="text-right">
+                        {methodLabel(method)}
+                      </TableHead>
+                    ))}
+                    <TableHead className="text-right">Payments</TableHead>
+                    <TableHead className="text-right">Refunds</TableHead>
+                    <TableHead className="text-right">Net</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[...daily].map(([businessDate, day]) => (
-                    <TableRow key={businessDate}>
-                      <TableCell className="px-1 text-[0.6875rem] whitespace-nowrap">
-                        {businessDate}
-                      </TableCell>
-                      {METHODS.map((method) => (
-                        <TableCell
-                          key={method}
-                          className="px-1 text-right leading-tight [overflow-wrap:anywhere]"
-                        >
+                  {report.data.rows.map((day) => (
+                    <TableRow key={day.businessDate}>
+                      <TableCell className="whitespace-nowrap">{day.businessDate}</TableCell>
+                      {report.data.byMethod.map(({ method }) => (
+                        <TableCell key={method} className="text-right whitespace-nowrap">
                           {formatMoney(day.byMethod[method], currency)}
                         </TableCell>
                       ))}
-                      <TableCell className="px-1 text-right leading-tight [overflow-wrap:anywhere]">
-                        {formatMoney(fromPaise(day.payments), currency)}
+                      <TableCell className="text-right whitespace-nowrap">
+                        {formatMoney(day.payments, currency)}
                       </TableCell>
-                      <TableCell className="px-1 text-right leading-tight [overflow-wrap:anywhere]">
-                        {formatMoney(fromPaise(day.refunds), currency)}
+                      <TableCell className="text-right whitespace-nowrap">
+                        {formatMoney(day.refunds, currency)}
                       </TableCell>
-                      <TableCell className="px-1 text-right leading-tight font-medium [overflow-wrap:anywhere]">
-                        {formatMoney(fromPaise(day.net), currency)}
+                      <TableCell className="text-right font-medium whitespace-nowrap">
+                        {formatMoney(day.net, currency)}
                       </TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="border-t-2 font-semibold">
-                    <TableCell className="px-1">Total</TableCell>
-                    {METHODS.map((method) => (
-                      <TableCell
-                        key={method}
-                        className="px-1 text-right leading-tight [overflow-wrap:anywhere]"
-                      >
-                        {formatMoney(methodTotals[method], currency)}
+                    <TableCell>Total</TableCell>
+                    {report.data.byMethod.map(({ method, net }) => (
+                      <TableCell key={method} className="text-right whitespace-nowrap">
+                        {formatMoney(net, currency)}
                       </TableCell>
                     ))}
-                    <TableCell className="px-1 text-right leading-tight [overflow-wrap:anywhere]">
+                    <TableCell className="text-right whitespace-nowrap">
                       {formatMoney(report.data.totals.payments, currency)}
                     </TableCell>
-                    <TableCell className="px-1 text-right leading-tight [overflow-wrap:anywhere]">
+                    <TableCell className="text-right whitespace-nowrap">
                       {formatMoney(report.data.totals.refunds, currency)}
                     </TableCell>
-                    <TableCell className="px-1 text-right leading-tight [overflow-wrap:anywhere]">
+                    <TableCell className="text-right whitespace-nowrap">
                       {formatMoney(report.data.totals.net, currency)}
                     </TableCell>
                   </TableRow>

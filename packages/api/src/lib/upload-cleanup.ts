@@ -45,6 +45,9 @@ export async function cleanupUploads(opts: {
         and(eq(file.orgId, orgId), eq(file.status, "pending"), lt(file.createdAt, opts.olderThan)),
       );
 
+    // A stale row's object is deleted right here; the orphan pass below must not see
+    // it again and count the same object twice.
+    const handled = new Set<string>();
     for (const { id: key } of staleRows) {
       result.staleRows++;
       if (!isKeyInOrg(key, orgId)) {
@@ -66,7 +69,7 @@ export async function cleanupUploads(opts: {
         console.info(`[skipped finalized] ${key}`);
         continue;
       }
-
+      handled.add(key);
       try {
         await deleteObject(key);
         result.deleted++;
@@ -90,7 +93,7 @@ export async function cleanupUploads(opts: {
         console.info(`[skipped invalid key] ${object.key}`);
         continue;
       }
-      if (existingKeys.has(object.key)) {
+      if (existingKeys.has(object.key) || handled.has(object.key)) {
         continue;
       }
 

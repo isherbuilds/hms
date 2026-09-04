@@ -176,8 +176,6 @@ export const memberRouter = {
       orgId: context.scope.orgId,
       target: `email:${row.email}`,
     });
-
-    return { success: true as const };
   }),
 
   updateRole: orgProcedure(
@@ -202,8 +200,6 @@ export const memberRouter = {
       target: `member:${input.memberId}`,
       meta: { role: input.role },
     });
-
-    return { success: true as const };
   }),
 
   remove: orgProcedure(
@@ -226,7 +222,5 @@ export const memberRouter = {
       orgId: context.scope.orgId,
       target: `member:${input.memberId}`,
     });
-
-    return { success: true as const };
   }),
 };

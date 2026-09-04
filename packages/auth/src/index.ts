@@ -103,5 +103,3 @@ function createAuth() {
 
 export const auth = createAuth();
 export type AuthSession = typeof auth.$Infer.Session;
-export { ac, roles } from "./access";
-export type { AppPermission, RoleKey } from "./access";

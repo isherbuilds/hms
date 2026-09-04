@@ -1,4 +1,4 @@
-import { Button } from "@hms/ui/components/button";
+import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
   Form,
   FormControl,
@@ -11,7 +11,7 @@ import {
 import { cn } from "@hms/ui/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { EyeIcon, EyeOffIcon, LoaderIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon } from "lucide-react";
 import { useState } from "react";
 import { useFormContext, useFormState } from "react-hook-form";
 import { z } from "zod";
@@ -212,9 +212,8 @@ function SignInButton({ invited }: { invited: boolean }) {
   const { isSubmitting } = useFormState({ control });
 
   return (
-    <Button type="submit" shape="pill" className="h-11 w-full text-sm">
-      {isSubmitting && <LoaderIcon className="animate-spin" />}
-      {isSubmitting ? "Signing in…" : invited ? "Sign in and accept" : "Sign in"}
-    </Button>
+    <SubmitButton isSubmitting={isSubmitting} shape="pill" className="h-11 w-full text-sm">
+      {invited ? "Sign in and accept" : "Sign in"}
+    </SubmitButton>
   );
 }

@@ -10,7 +10,8 @@ function Sheet({ ...props }: SheetPrimitive.Root.Props) {
 }
 
 const sheetVariants = cva(
-  "fixed z-50 flex flex-col overflow-hidden overscroll-contain rounded-md border-8 border-muted bg-popover text-xs/relaxed text-popover-foreground shadow-lg transition duration-150 ease-out data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none",
+  // The outer radius carries the 8px border, so the inner panel corner lands on --radius-md.
+  "fixed z-50 flex flex-col overflow-hidden overscroll-contain rounded-[calc(var(--radius-md)+8px)] border-8 border-muted bg-popover text-xs/relaxed text-popover-foreground shadow-lg transition duration-150 ease-out data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none",
   {
     variants: {
       side: {

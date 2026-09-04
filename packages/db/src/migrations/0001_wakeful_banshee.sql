@@ -1,2 +1,0 @@
-ALTER TABLE "accounts" ADD CONSTRAINT "accounts_org_id_id_unique" UNIQUE("org_id","id");--> statement-breakpoint
-ALTER TABLE "journal_entries" ADD CONSTRAINT "journal_entries_org_id_id_unique" UNIQUE("org_id","id");

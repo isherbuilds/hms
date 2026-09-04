@@ -35,7 +35,7 @@ export const Route = createFileRoute("/$orgSlug/reports/balance-sheet")({
     const { timeZone } = await requireOrgPermission(
       queryClient,
       orgSlug,
-      { report: ["read"] },
+      { report: ["readFinancial"] },
       "/$orgSlug/dashboard",
     );
     const asOf = deps.asOf ?? today(timeZone);
@@ -60,10 +60,10 @@ function BalanceSheetRoute() {
     if (!next) return;
     void navigate({ search: (current) => ({ ...current, asOf: next }), replace: true });
   };
-  const mismatched = report.data
-    ? Math.round(Number(report.data.totals.assets) * 100) !==
-      Math.round(Number(report.data.totals.liabilitiesAndEquity) * 100)
-    : false;
+  // Both are canonical two-decimal strings from the server, so compare them as such.
+  const mismatched =
+    report.data !== undefined &&
+    report.data.totals.assets !== report.data.totals.liabilitiesAndEquity;
 
   const exportReport = () => {
     if (!report.data) return;

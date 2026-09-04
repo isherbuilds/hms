@@ -12,6 +12,9 @@ type OrgSettings = Omit<
 export const SETTINGS_CACHE_TTL_MS = 60 * 60 * 1000;
 
 const cache = new Map<string, { value: OrgSettings; expiresAt: number }>();
+// Bumped by every invalidation, so a SELECT that started before a write cannot
+// land its stale snapshot in the cache after the write cleared it.
+const generation = new Map<string, number>();
 
 // `now` is a test seam for the expiry contract; production never passes it.
 export async function readOrgSettings(
@@ -23,6 +26,7 @@ export async function readOrgSettings(
     return hit.value;
   }
 
+  const seen = generation.get(orgId) ?? 0;
   const [row] = await db
     .select()
     .from(organizationSettings)
@@ -37,10 +41,13 @@ export async function readOrgSettings(
     // The defaults are cached too; `settings.update` invalidates on first save.
     value = { ...SETTINGS_DEFAULTS };
   }
-  cache.set(orgId, { value, expiresAt: now + SETTINGS_CACHE_TTL_MS });
+  if ((generation.get(orgId) ?? 0) === seen) {
+    cache.set(orgId, { value, expiresAt: now + SETTINGS_CACHE_TTL_MS });
+  }
   return value;
 }
 
 export function invalidateOrgSettings(orgId: string): void {
   cache.delete(orgId);
+  generation.set(orgId, (generation.get(orgId) ?? 0) + 1);
 }

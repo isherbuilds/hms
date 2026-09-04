@@ -52,13 +52,7 @@ export function usePatientFieldSave(orgSlug: string, record: EditablePatientReco
           toast.error(error.message, {
             action: {
               label: "Refresh",
-              onClick: async () => {
-                await queryClient.invalidateQueries({
-                  queryKey: orpc.patient.get.key({
-                    input: { orgSlug, patientId: record.id },
-                  }),
-                });
-              },
+              onClick: () => void invalidatePatientState(queryClient, orgSlug, record.id),
             },
           });
           return;

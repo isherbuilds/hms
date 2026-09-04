@@ -1,12 +1,10 @@
-export const BILLING_DOCUMENT_KINDS = ["invoice", "receipt", "credit-note", "refund"] as const;
 export const BILLING_DOCUMENT_LAYOUTS = ["a4", "thermal"] as const;
 
-export type BillingDocumentKind = (typeof BILLING_DOCUMENT_KINDS)[number];
 export type BillingDocumentLayout = (typeof BILLING_DOCUMENT_LAYOUTS)[number];
 
 export type BillingDocumentRequest =
   | { kind: "invoice"; documentId: null; layout: BillingDocumentLayout }
-  | { kind: Exclude<BillingDocumentKind, "invoice">; documentId: string; layout: "a4" };
+  | { kind: "receipt" | "credit-note" | "refund"; documentId: string; layout: "a4" };
 
 export function billingPdfUrl({
   orgSlug,

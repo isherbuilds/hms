@@ -22,22 +22,11 @@ import { z } from "zod";
 
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useZodForm } from "@/hooks/use-zod-form";
-import { invalidatePatientState } from "@/lib/domain-invalidation";
-import {
-  optionalNumberText,
-  optionalText,
-  patientFieldSchema,
-  type PatientFields,
-} from "@/lib/form-schema";
+import { optionalNumberText, optionalText, patientFieldSchema } from "@/lib/form-schema";
 import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { applyOrpcFieldError, errorReason } from "@/lib/orpc-error";
-import { ageYearsToEstimatedDateOfBirth, patientAgeYears } from "@/lib/patient-age";
-
-export type EditablePatient = PatientFields & {
-  id: string;
-  updatedAt: string;
-};
+import { applyOrpcFieldError, errorMessage } from "@/lib/orpc-error";
+import { ageYearsToEstimatedDateOfBirth } from "@/lib/patient-age";
 
 const patientFormSchema = patientFieldSchema
   .omit({ dobEstimated: true })
@@ -62,13 +51,7 @@ function WithIcon({ icon: Icon, children }: { icon: typeof PhoneIcon; children: 
   );
 }
 
-function PatientPhoneDuplicateWarning({
-  orgSlug,
-  currentPatientId,
-}: {
-  orgSlug: string;
-  currentPatientId?: string;
-}) {
+function PatientPhoneDuplicateWarning({ orgSlug }: { orgSlug: string }) {
   const { control } = useFormContext<PatientFormValues>();
   const phone = useWatch({ control, name: "phone", exact: true });
   const debouncedPhone = useDebouncedValue(phone.trim(), 300);
@@ -80,8 +63,7 @@ function PatientPhoneDuplicateWarning({
   });
   const matches =
     phone.trim() === debouncedPhone && debouncedPhone.length >= 4
-      ? // A record being edited always matches its own number.
-        (duplicates.data?.items ?? []).filter((match) => match.id !== currentPatientId)
+      ? (duplicates.data?.items ?? [])
       : [];
 
   return matches.length > 0 ? (
@@ -125,13 +107,11 @@ function PatientFormProblems() {
 }
 
 function PatientFormFrame({
-  isEdit,
   pending,
   onCancel,
   onSubmit,
   children,
 }: {
-  isEdit: boolean;
   pending: boolean;
   onCancel: () => void;
   onSubmit: FormEventHandler<HTMLFormElement>;
@@ -146,7 +126,6 @@ function PatientFormFrame({
       noValidate
       onSubmit={onSubmit}
       data-dirty={isDirty}
-      data-pending={pending}
       className="flex min-h-0 flex-1 flex-col"
     >
       <fieldset disabled={pending} className="contents">
@@ -161,9 +140,7 @@ function PatientFormFrame({
             <Button type="button" variant="ghost" onClick={onCancel}>
               Cancel
             </Button>
-            <SubmitButton isSubmitting={pending} disabled={isEdit && !isDirty}>
-              {isEdit ? "Save changes" : "Save"}
-            </SubmitButton>
+            <SubmitButton isSubmitting={pending}>Save</SubmitButton>
           </div>
         </SheetFooter>
       </fieldset>
@@ -173,14 +150,12 @@ function PatientFormFrame({
 
 export function PatientForm({
   orgSlug,
-  patient,
   seed,
   onCancel,
   onSaved,
   onRegistered,
 }: {
   orgSlug: string;
-  patient?: EditablePatient;
   /** What the operator already typed elsewhere, so it is never keyed twice. */
   seed?: { name?: string; phone?: string };
   onCancel: () => void;
@@ -188,64 +163,25 @@ export function PatientForm({
   /** Set when the caller needs the record back rather than a trip to its page. */
   onRegistered?: (patient: { id: string; name: string; mrn: string }) => void;
 }) {
-  const isEdit = patient !== undefined;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { today } = useOrgDateTime();
   const form = useZodForm(patientFormSchema, {
     // Controls are uncontrolled, so every default is the string the DOM holds.
-    defaultValues: patient
-      ? {
-          name: patient.name,
-          phone: patient.phone,
-          sex: patient.sex,
-          dateOfBirth: patient.dobEstimated ? "" : patient.dateOfBirth,
-          age: patient.dobEstimated ? String(patientAgeYears(patient.dateOfBirth, today)) : "",
-          address: patient.address,
-          email: patient.email ?? "",
-          bloodGroup: patient.bloodGroup ?? "",
-          allergies: patient.allergies ?? "",
-          medicalHistory: patient.medicalHistory ?? "",
-          uid: patient.uid ?? "",
-        }
-      : {
-          name: seed?.name ?? "",
-          phone: seed?.phone ?? "",
-          sex: "",
-          dateOfBirth: "",
-          age: "",
-          address: "",
-          email: "",
-          bloodGroup: "",
-          allergies: "",
-          medicalHistory: "",
-          uid: "",
-        },
+    defaultValues: {
+      name: seed?.name ?? "",
+      phone: seed?.phone ?? "",
+      sex: "",
+      dateOfBirth: "",
+      age: "",
+      address: "",
+      email: "",
+      bloodGroup: "",
+      allergies: "",
+      medicalHistory: "",
+      uid: "",
+    },
   });
-
-  const onConflict = (error: Error) => {
-    if (patient && errorReason(error) === "stale_record") {
-      toast.error(error.message, {
-        action: {
-          label: "Refresh",
-          onClick: async () => {
-            await queryClient.invalidateQueries({
-              queryKey: orpc.patient.get.key({
-                input: { orgSlug, patientId: patient.id },
-              }),
-            });
-            onSaved();
-          },
-        },
-      });
-      return;
-    }
-
-    const mapped = applyOrpcFieldError(form, error, {
-      uid_taken: { field: "uid", message: "A patient with this UID already exists." },
-    });
-    toast.error(mapped ?? error.message);
-  };
 
   const register = useMutation(
     orpc.patient.register.mutationOptions({
@@ -266,59 +202,32 @@ export function PatientForm({
           ignoreBlocker: true,
         });
       },
-      onError: onConflict,
-    }),
-  );
-
-  const update = useMutation(
-    orpc.patient.update.mutationOptions({
-      onSuccess: async (saved) => {
-        // Held so the button stays pending until the record and the search list are both
-        // fresh, otherwise the sheet closes over stale rows.
-        await invalidatePatientState(queryClient, orgSlug, patient!.id);
-        toast.success(`${saved.name} updated`);
-        onSaved();
+      onError: (error) => {
+        const mapped = applyOrpcFieldError(form, error, {
+          uid_taken: { field: "uid", message: "A patient with this UID already exists." },
+        });
+        toast.error(mapped ?? errorMessage(error, "Could not register the patient"));
       },
-      onError: onConflict,
     }),
   );
 
-  const pending = isEdit ? update.isPending : register.isPending;
-  const onSubmit = form.handleSubmit((values) => {
-    const { age, ...fields } = values;
+  const onSubmit = form.handleSubmit(({ age, ...fields }) => {
     const dateOfBirth =
-      fields.dateOfBirth ??
-      (age === null
-        ? null
-        : patient?.dobEstimated && !form.getFieldState("age").isDirty
-          ? patient.dateOfBirth
-          : ageYearsToEstimatedDateOfBirth(age, today));
+      fields.dateOfBirth ?? (age === null ? null : ageYearsToEstimatedDateOfBirth(age, today));
     if (dateOfBirth === null) {
       form.setError("dateOfBirth", { message: "Enter a date of birth or age" });
       return;
     }
-
-    const birth = { dateOfBirth, dobEstimated: age !== null };
-    if (isEdit) {
-      update.mutate({
-        orgSlug,
-        patientId: patient.id,
-        updatedAt: patient.updatedAt,
-        ...fields,
-        ...birth,
-      });
-      return;
-    }
-    register.mutate({ orgSlug, ...fields, ...birth });
+    register.mutate({ orgSlug, ...fields, dateOfBirth, dobEstimated: age !== null });
   });
   return (
     <Form {...form}>
       {/* `noValidate`: Zod owns every message, so the browser must not pre-empt
           it with a native bubble that says something different. Without it a
           half-typed email blocks submit silently and the form looks dead. */}
-      {/* The two flags the sheet needs to guard a close, published on the
-          element instead of lifted into its state — see `PatientSheet`. */}
-      <PatientFormFrame isEdit={isEdit} pending={pending} onCancel={onCancel} onSubmit={onSubmit}>
+      {/* The dirty flag the sheet needs to guard a close, published on the element
+          instead of lifted into its state — see `PatientSheet`. */}
+      <PatientFormFrame pending={register.isPending} onCancel={onCancel} onSubmit={onSubmit}>
         <div className="flex flex-col gap-4">
           <RegisteredFormField
             name="name"
@@ -355,7 +264,7 @@ export function PatientForm({
             )}
           />
 
-          <PatientPhoneDuplicateWarning orgSlug={orgSlug} currentPatientId={patient?.id} />
+          <PatientPhoneDuplicateWarning orgSlug={orgSlug} />
 
           <RegisteredFormField
             name="sex"

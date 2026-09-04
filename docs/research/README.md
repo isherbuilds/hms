@@ -22,6 +22,14 @@ Active temporary memos:
   peers with a real design keep one thin billable item and link domain masters
   to it, and what that means for pharmacy/lab/IPD masters, roles, no-show, and
   day-close shapes.
+- [Reference payment methods and payers](./reference-payment-methods-and-payers.md)
+  — Bahmni, Danphe, and Marley pinned 2026-09-03; establishes that modelling an
+  insurer or scheme as a payment-method value makes an unpaid bill read as
+  settled (Bahmni seeds RSBY as a cash journal), that both peers with a payer
+  model post the payer's share to a separate receivable at invoice time and split
+  it per line by percentage, and that no reference ships a cheque clearing
+  account. Records why HMS keeps a fixed method enum and a bounded, sum-checked
+  split.
 
 ## Adopted findings
 

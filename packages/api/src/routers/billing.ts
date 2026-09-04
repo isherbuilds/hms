@@ -35,10 +35,11 @@ import {
 } from "../lib/ledger";
 import {
   money,
+  note,
   paymentLine,
-  paymentMethod,
   positiveMoney,
   reason,
+  requirePaymentReference,
   type PaymentMethod,
 } from "../lib/schemas";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
@@ -305,20 +306,15 @@ async function recordPaymentsTx(
   },
 ) {
   const { scope, settings, now, fiscalYear } = args;
-  for (const payment of args.payments) {
-    if (payment.method !== "cash" && !payment.reference?.trim()) {
-      throw new ORPCError("BAD_REQUEST", {
-        message: "Add a transaction reference for this payment",
-      });
-    }
-  }
   const invoice = await lockInvoice(tx, scope.orgId, args.invoiceId);
 
   const balance = await invoiceBalanceFor(tx, scope.orgId, invoice);
   const outstandingPaise = toSignedPaise(balance.outstanding);
   const collectedPaise = args.payments.reduce((sum, payment) => sum + toPaise(payment.amount), 0);
+  // The form already caps at what it was shown, so reaching here means another
+  // terminal moved the balance: CONFLICT, and the client refreshes (D026).
   if (collectedPaise > Math.max(0, outstandingPaise)) {
-    throw new ORPCError("BAD_REQUEST", {
+    throw new ORPCError("CONFLICT", {
       message: "That payment is more than the invoice still owes.",
     });
   }
@@ -425,10 +421,7 @@ export const billingRouter = {
     const { scope } = context;
     const charge = await db.transaction(async (tx) => {
       const [candidate] = await tx
-        .select({
-          id: charges.id,
-          appointmentId: charges.opdAppointmentId,
-        })
+        .select({ appointmentId: charges.opdAppointmentId })
         .from(charges)
         .innerJoin(
           opdAppointments,
@@ -490,7 +483,7 @@ export const billingRouter = {
       expectedChargeRevision: z.number().int().nonnegative(),
       expectedGrandTotal: money,
       discountAmount: money.default("0"),
-      note: z.string().trim().max(500).optional(),
+      note,
       payments: z.array(paymentLine).max(4).default([]),
     }),
   ).handler(async ({ context, input }) => {
@@ -590,45 +583,55 @@ export const billingRouter = {
     const result = await db.transaction(async (tx) => {
       const invoice = await lockInvoice(tx, scope.orgId, input.invoiceId);
 
-      const sourceLines = await tx
-        .select()
-        .from(invoiceLines)
-        .where(
-          and(
-            eq(invoiceLines.orgId, scope.orgId),
-            eq(invoiceLines.invoiceId, input.invoiceId),
-            inArray(invoiceLines.id, requestedIds),
+      // Independent after the lock, so one round trip.
+      const [sourceLines, [priorCredit], priorLines] = await Promise.all([
+        tx
+          .select({
+            id: invoiceLines.id,
+            revenueCategory: invoiceLines.revenueCategory,
+            taxRatePercent: invoiceLines.taxRatePercent,
+            taxableValue: invoiceLines.taxableValue,
+            taxAmount: invoiceLines.taxAmount,
+            gross: invoiceLines.gross,
+          })
+          .from(invoiceLines)
+          .where(
+            and(
+              eq(invoiceLines.orgId, scope.orgId),
+              eq(invoiceLines.invoiceId, input.invoiceId),
+              inArray(invoiceLines.id, requestedIds),
+            ),
           ),
-        );
+        tx
+          .select({ total: sql<string>`coalesce(sum(${creditNotes.total}), 0)::text` })
+          .from(creditNotes)
+          .where(
+            and(eq(creditNotes.orgId, scope.orgId), eq(creditNotes.invoiceId, input.invoiceId)),
+          ),
+        tx
+          .select({
+            invoiceLineId: creditNoteLines.invoiceLineId,
+            taxableValue: creditNoteLines.taxableValue,
+            taxAmount: creditNoteLines.taxAmount,
+            gross: creditNoteLines.gross,
+          })
+          .from(creditNoteLines)
+          .innerJoin(
+            creditNotes,
+            and(
+              eq(creditNotes.orgId, scope.orgId),
+              eq(creditNotes.id, creditNoteLines.creditNoteId),
+            ),
+          )
+          .where(
+            and(eq(creditNoteLines.orgId, scope.orgId), eq(creditNotes.invoiceId, input.invoiceId)),
+          ),
+      ]);
       if (sourceLines.length !== requestedIds.length) {
         throw new ORPCError("NOT_FOUND", {
           message: "One of those invoice lines no longer exists.",
         });
       }
-
-      const priorNotes = await tx
-        .select({ total: creditNotes.total })
-        .from(creditNotes)
-        .where(and(eq(creditNotes.orgId, scope.orgId), eq(creditNotes.invoiceId, input.invoiceId)));
-      const priorLines = await tx
-        .select({
-          invoiceLineId: creditNoteLines.invoiceLineId,
-          taxableValue: creditNoteLines.taxableValue,
-          taxAmount: creditNoteLines.taxAmount,
-          gross: creditNoteLines.gross,
-        })
-        .from(creditNoteLines)
-        .innerJoin(
-          creditNotes,
-          and(eq(creditNotes.orgId, scope.orgId), eq(creditNotes.id, creditNoteLines.creditNoteId)),
-        )
-        .where(
-          and(
-            eq(creditNoteLines.orgId, scope.orgId),
-            eq(creditNotes.orgId, scope.orgId),
-            eq(creditNotes.invoiceId, input.invoiceId),
-          ),
-        );
 
       const creditedByLine = new Map<
         string,
@@ -696,7 +699,7 @@ export const billingRouter = {
       );
       const taxTotalPaise = computedLines.reduce((sum, line) => sum + toPaise(line.taxAmount), 0);
       const totalPaise = computedLines.reduce((sum, line) => sum + toPaise(line.gross), 0);
-      const priorCreditPaise = priorNotes.reduce((sum, note) => sum + toPaise(note.total), 0);
+      const priorCreditPaise = toPaise(priorCredit?.total ?? "0");
       if (priorCreditPaise + totalPaise > toPaise(invoice.grandTotal)) {
         throw new ORPCError("BAD_REQUEST", {
           message: "Total credits would exceed the invoice.",
@@ -783,21 +786,8 @@ export const billingRouter = {
   recordRefund: orgProcedure(
     { billing: ["creditNote"] },
     orgInput
-      .extend({
-        creditNoteId: z.string(),
-        method: paymentMethod,
-        amount: positiveMoney,
-        reference: z.string().trim().min(1).max(100).optional(),
-      })
-      .superRefine((value, context) => {
-        if (value.method !== "cash" && !value.reference) {
-          context.addIssue({
-            code: "custom",
-            path: ["reference"],
-            message: "Add a transaction reference for this refund",
-          });
-        }
-      }),
+      .extend({ creditNoteId: z.string(), ...paymentLine.shape })
+      .superRefine(requirePaymentReference),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
@@ -819,21 +809,23 @@ export const billingRouter = {
 
       const invoice = await lockInvoice(tx, scope.orgId, creditNote.invoiceId);
 
-      const balance = await invoiceBalanceFor(tx, scope.orgId, invoice);
-      const outstandingPaise = toSignedPaise(balance.outstanding);
-      const refundDuePaise = Math.max(0, -outstandingPaise);
+      const [balance, [noteRefunded]] = await Promise.all([
+        invoiceBalanceFor(tx, scope.orgId, invoice),
+        tx
+          .select({ amount: sql<string>`coalesce(sum(${refunds.amount}), 0)::text` })
+          .from(refunds)
+          .where(and(eq(refunds.orgId, scope.orgId), eq(refunds.creditNoteId, input.creditNoteId))),
+      ]);
+      const refundDuePaise = Math.max(0, -toSignedPaise(balance.outstanding));
       if (toPaise(input.amount) > refundDuePaise) {
         throw new ORPCError("BAD_REQUEST", {
           message: "That refund is more than the invoice owes back.",
         });
       }
-
-      const noteRefunds = await tx
-        .select({ amount: refunds.amount })
-        .from(refunds)
-        .where(and(eq(refunds.orgId, scope.orgId), eq(refunds.creditNoteId, input.creditNoteId)));
-      const noteRefundedPaise = noteRefunds.reduce((sum, row) => sum + toPaise(row.amount), 0);
-      if (noteRefundedPaise + toPaise(input.amount) > toPaise(creditNote.total)) {
+      if (
+        toPaise(noteRefunded?.amount ?? "0") + toPaise(input.amount) >
+        toPaise(creditNote.total)
+      ) {
         throw new ORPCError("BAD_REQUEST", {
           message: "That refund is more than this credit note is worth.",
         });
@@ -904,19 +896,22 @@ export const billingRouter = {
     }
 
     const rows = await db
-      .select()
+      .select({
+        id: invoices.id,
+        invoiceNumber: invoices.invoiceNumber,
+        currency: invoices.currency,
+        grandTotal: invoices.grandTotal,
+      })
       .from(invoices)
       .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.opdAppointmentId, appointment.id)))
-      .orderBy(asc(invoices.createdAt));
+      .orderBy(asc(invoices.createdAt), asc(invoices.id));
 
     const balances = await invoiceBalancesFor(db, scope.orgId, rows);
 
     return rows.map((invoice) => {
       const balance = balances.get(invoice.id);
-      if (!balance) {
-        throw new Error(`Balance missing for invoice ${invoice.id}`);
-      }
-      return { ...invoice, ...balance };
+      if (!balance) throw impossible(`balance missing for invoice ${invoice.id}`);
+      return { ...invoice, paymentsTotal: balance.paymentsTotal, outstanding: balance.outstanding };
     });
   }),
 
@@ -935,18 +930,21 @@ export const billingRouter = {
       throw new ORPCError("NOT_FOUND", { message: "That invoice no longer exists." });
     }
 
+    // Ids are UUIDv7 minted in issuance order, so they break the ties `createdAt`
+    // leaves when one settlement stamps every row with the same instant.
     const [lines, invoicePayments, noteRows, invoiceRefunds] = await Promise.all([
       db
         .select()
         .from(invoiceLines)
         .where(
           and(eq(invoiceLines.orgId, scope.orgId), eq(invoiceLines.invoiceId, input.invoiceId)),
-        ),
+        )
+        .orderBy(asc(invoiceLines.id)),
       db
         .select()
         .from(payments)
         .where(and(eq(payments.orgId, scope.orgId), eq(payments.invoiceId, input.invoiceId)))
-        .orderBy(asc(payments.createdAt)),
+        .orderBy(asc(payments.createdAt), asc(payments.id)),
       db
         .select({ creditNote: creditNotes, line: creditNoteLines })
         .from(creditNotes)
@@ -958,12 +956,12 @@ export const billingRouter = {
           ),
         )
         .where(and(eq(creditNotes.orgId, scope.orgId), eq(creditNotes.invoiceId, input.invoiceId)))
-        .orderBy(asc(creditNotes.createdAt)),
+        .orderBy(asc(creditNotes.createdAt), asc(creditNotes.id), asc(creditNoteLines.id)),
       db
         .select()
         .from(refunds)
         .where(and(eq(refunds.orgId, scope.orgId), eq(refunds.invoiceId, input.invoiceId)))
-        .orderBy(asc(refunds.createdAt)),
+        .orderBy(asc(refunds.createdAt), asc(refunds.id)),
     ]);
 
     type NoteRow = (typeof noteRows)[number];

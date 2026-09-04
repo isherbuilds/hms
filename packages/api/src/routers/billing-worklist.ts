@@ -11,8 +11,6 @@ import { and, asc, eq, gt, ilike, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { businessDate } from "../lib/business-date";
-import { invoiceBalancesFor } from "../lib/invoice-balance";
-import { fromPaise, toSignedPaise } from "../lib/invoice-math";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { likePattern, searchQuery } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
@@ -23,13 +21,17 @@ import { readOrgSettings } from "../lib/settings-cache";
 const OVERDUE_DAYS = 7;
 const STALE_DAYS = 30;
 
+function paidExpression(orgId: string) {
+  return sql`coalesce((select sum(${payments.amount}) from ${payments}
+        where ${payments.orgId} = ${orgId} and ${payments.invoiceId} = ${invoices.id}), 0)`;
+}
+
 function settledExpression(orgId: string) {
   return sql`
     ${invoices.grandTotal}
     - coalesce((select sum(${creditNotes.total}) from ${creditNotes}
         where ${creditNotes.orgId} = ${orgId} and ${creditNotes.invoiceId} = ${invoices.id}), 0)
-    - coalesce((select sum(${payments.amount}) from ${payments}
-        where ${payments.orgId} = ${orgId} and ${payments.invoiceId} = ${invoices.id}), 0)
+    - ${paidExpression(orgId)}
     + coalesce((select sum(${refunds.amount}) from ${refunds}
         where ${refunds.orgId} = ${orgId} and ${refunds.invoiceId} = ${invoices.id}), 0)`;
 }
@@ -132,7 +134,6 @@ export const billingWorklistRouter = {
       .map(({ matchCount: _count, matchValue: _value, ...row }) => row);
 
     return {
-      currency: settings.currency,
       unbilled,
       hasMore,
       summary: {
@@ -161,6 +162,8 @@ export const billingWorklistRouter = {
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const search = input.query ? likePattern(input.query) : undefined;
+    const settled = settledExpression(scope.orgId);
+    const paid = paidExpression(scope.orgId);
     const rows = await db
       .select({
         id: invoices.id,
@@ -170,13 +173,15 @@ export const billingWorklistRouter = {
         patientMrn: invoices.patientMrn,
         patientPhone: invoices.patientPhone,
         grandTotal: invoices.grandTotal,
+        paid: sql<string>`(${paid})::text`,
+        outstanding: sql<string>`(${settled})::text`,
         createdAt: invoices.createdAt,
       })
       .from(invoices)
       .where(
         and(
           eq(invoices.orgId, scope.orgId),
-          sql`(${settledExpression(scope.orgId)}) > 0`,
+          sql`(${settled}) > 0`,
           input.cursor ? gt(invoices.id, input.cursor) : undefined,
           input.overdueOnly ? lt(invoices.createdAt, daysAgo(OVERDUE_DAYS)) : undefined,
           search
@@ -194,16 +199,10 @@ export const billingWorklistRouter = {
     const hasNextPage = rows.length > input.limit;
     if (hasNextPage) rows.pop();
 
-    // Displayed money still comes from `invoiceBalancesFor`, the single source on screen.
-    const balances = await invoiceBalancesFor(db, scope.orgId, rows);
     const last = rows[rows.length - 1];
 
     return {
-      items: rows.map((invoice) => {
-        const balance = balances.get(invoice.id);
-        if (!balance) throw new Error(`Balance missing for invoice ${invoice.id}`);
-        return { ...invoice, paid: balance.paymentsTotal, outstanding: balance.outstanding };
-      }),
+      items: rows,
       nextCursor: hasNextPage && last ? last.id : null,
     };
   }),
@@ -217,51 +216,38 @@ export const billingWorklistRouter = {
   ).handler(async ({ context, input }) => {
     const { orgId } = context.scope;
     const search = input.query ? likePattern(input.query) : undefined;
-    const [settings, rows] = await Promise.all([
-      readOrgSettings(orgId),
-      db
-        .select({
-          id: invoices.id,
-          invoiceNumber: invoices.invoiceNumber,
-          appointmentId: invoices.opdAppointmentId,
-          patientName: invoices.patientName,
-          patientMrn: invoices.patientMrn,
-          businessDate: invoices.businessDate,
-          grandTotal: invoices.grandTotal,
-        })
-        .from(invoices)
-        .where(
-          and(
-            eq(invoices.orgId, orgId),
-            sql`(${settledExpression(orgId)}) < 0`,
-            search
-              ? or(
-                  ilike(invoices.patientName, search),
-                  ilike(invoices.patientMrn, search),
-                  ilike(invoices.invoiceNumber, search),
-                )
-              : undefined,
-          ),
-        )
-        .orderBy(asc(invoices.createdAt), asc(invoices.id))
-        .limit(input.limit + 1),
-    ]);
+    const settled = settledExpression(orgId);
+    const rows = await db
+      .select({
+        id: invoices.id,
+        invoiceNumber: invoices.invoiceNumber,
+        patientName: invoices.patientName,
+        patientMrn: invoices.patientMrn,
+        businessDate: invoices.businessDate,
+        refundDue: sql<string>`(-(${settled}))::text`,
+      })
+      .from(invoices)
+      .where(
+        and(
+          eq(invoices.orgId, orgId),
+          sql`(${settled}) < 0`,
+          search
+            ? or(
+                ilike(invoices.patientName, search),
+                ilike(invoices.patientMrn, search),
+                ilike(invoices.invoiceNumber, search),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(asc(invoices.createdAt), asc(invoices.id))
+      .limit(input.limit + 1);
 
     const hasMore = rows.length > input.limit;
     if (hasMore) rows.pop();
-    const balances = await invoiceBalancesFor(db, orgId, rows);
 
     return {
-      currency: settings.currency,
-      rows: rows.map(({ id, grandTotal: _grandTotal, ...row }) => {
-        const balance = balances.get(id);
-        if (!balance) throw new Error(`Balance missing for invoice ${id}`);
-        return {
-          ...row,
-          invoiceId: id,
-          refundDue: fromPaise(-toSignedPaise(balance.outstanding)),
-        };
-      }),
+      rows: rows.map(({ id, ...row }) => ({ ...row, invoiceId: id })),
       hasMore,
     };
   }),

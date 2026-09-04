@@ -1,4 +1,4 @@
-import { fromPaise, toSignedPaise } from "@hms/api/lib/invoice-math";
+import { toSignedPaise, fromPaise } from "@hms/api/lib/invoice-math";
 import { Button } from "@hms/ui/components/button";
 import { Checkbox } from "@hms/ui/components/checkbox";
 import {
@@ -32,47 +32,25 @@ import {
 import { Textarea } from "@hms/ui/components/textarea";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ClientOnly, Link } from "@tanstack/react-router";
-import { Trash2Icon } from "lucide-react";
 import { useState } from "react";
-import { useFieldArray, useFormState, Watch } from "react-hook-form";
+import { useFormState, Watch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { RecordPaymentForm } from "@/components/record-payment-form";
 import { useZodForm } from "@/hooks/use-zod-form";
-import { formatMoney, MONEY_INPUT_PATTERN, parseMoneyInput } from "@/lib/money";
+import { formatMoney, parseMoneyInput } from "@/lib/money";
 import { useOpdErrorToast } from "@/lib/opd-error";
-import { hasErrorCode } from "@/lib/orpc-error";
+import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
 import { orpc } from "@/lib/orpc";
-import { needsReference, PAYMENT_METHODS, type PaymentMethod } from "@/lib/settlement";
+import {
+  methodLabel,
+  paymentLineFields,
+  PAYMENT_METHODS,
+  requireTransactionReference,
+} from "@/lib/settlement";
 
 import { useBillingInvalidation } from "./use-billing-invalidation";
-
-const paymentLineFields = z.object({
-  id: z.number(),
-  method: z.enum(PAYMENT_METHODS.map((method) => method.value)),
-  amount: z
-    .string()
-    .regex(MONEY_INPUT_PATTERN, "Amount like 150.00")
-    .refine((value) => (parseMoneyInput(value) ?? 0) > 0, "Enter an amount above zero"),
-  reference: z.string().trim().max(100).optional(),
-});
-
-function requireTransactionReference(
-  value: { method: PaymentMethod; reference?: string },
-  context: z.RefinementCtx,
-) {
-  if (needsReference(value.method) && !value.reference) {
-    context.addIssue({
-      code: "custom",
-      path: ["reference"],
-      message: "Enter the transaction reference",
-    });
-  }
-}
-
-const paymentLineSchema = paymentLineFields.superRefine(requireTransactionReference);
-
-const paymentSchema = z.object({ payments: z.array(paymentLineSchema).min(1).max(4) });
 
 const refundSchema = paymentLineFields
   .omit({ id: true })
@@ -110,9 +88,7 @@ type InvoiceHeader = {
   invoiceNumber: string;
   currency: string;
   grandTotal: string;
-  creditTotal: string;
   paymentsTotal: string;
-  refundsTotal: string;
   outstanding: string;
 };
 
@@ -243,7 +219,7 @@ export function InvoiceAccount({
       ) : needsDetail && detail.isError ? (
         <div role="alert" className="border-l-2 border-destructive pl-3">
           <p className="font-medium">Could not load invoice details</p>
-          <p className="text-muted-foreground">{detail.error.message}</p>
+          <p className="text-muted-foreground">{errorMessage(detail.error)}</p>
           <Button size="xs" variant="ghost" onClick={() => void detail.refetch()}>
             Retry
           </Button>
@@ -258,7 +234,7 @@ export function InvoiceAccount({
             invoiceId={invoice.id}
             outstanding={invoice.outstanding}
             currency={invoice.currency}
-            onApplyCredit={canCredit ? () => setAction("credit") : undefined}
+            onIssueCreditNote={canCredit ? () => setAction("credit") : undefined}
           />
         ) : null}
         {action === "credit" && detail.data ? (
@@ -293,7 +269,7 @@ function PaymentDialog({
   invoiceId,
   outstanding,
   currency,
-  onApplyCredit,
+  onIssueCreditNote,
 }: {
   onClose: () => void;
   orgSlug: string;
@@ -301,37 +277,8 @@ function PaymentDialog({
   invoiceId: string;
   outstanding: string;
   currency: string;
-  onApplyCredit?: () => void;
+  onIssueCreditNote?: () => void;
 }) {
-  const invalidate = useBillingInvalidation(orgSlug, appointmentId);
-  const onOpdError = useOpdErrorToast(orgSlug);
-  const form = useZodForm(paymentSchema, {
-    defaultValues: {
-      payments: [{ id: 1, method: "cash", amount: outstanding, reference: "" }],
-    },
-  });
-  const paymentRootError = useFormState({ control: form.control }).errors.root?.message;
-  const paymentLines = useFieldArray({
-    control: form.control,
-    name: "payments",
-    keyName: "fieldKey",
-  });
-  const mutation = useMutation(
-    orpc.billing.recordPayments.mutationOptions({
-      onSuccess: async (_data, variables) => {
-        await invalidate(invoiceId);
-        onClose();
-        toast.success(
-          variables.payments.length === 1 ? "Payment recorded" : "Split payment recorded",
-        );
-      },
-      onError: (error) => {
-        if (hasErrorCode(error, "CONFLICT")) onClose();
-        void onOpdError(appointmentId, "billing", error);
-      },
-    }),
-  );
-
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent>
@@ -341,140 +288,22 @@ function PaymentDialog({
             Record funds received against this invoice. Split across up to four methods.
           </DialogDescription>
         </DialogHeader>
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit((value) => {
-              const totalPaise = value.payments.reduce(
-                (sum, payment) => sum + (parseMoneyInput(payment.amount) ?? 0),
-                0,
-              );
-              const outstandingPaise = parseMoneyInput(outstanding);
-              if (outstandingPaise !== null && totalPaise > outstandingPaise) {
-                form.setError("root", {
-                  message: `Payments exceed the outstanding ${formatMoney(outstanding, currency)}`,
-                });
-                return;
-              }
-              mutation.mutate({
-                orgSlug,
-                invoiceId,
-                payments: value.payments.map(({ id: _id, ...payment }) => ({
-                  ...payment,
-                  reference: payment.reference || undefined,
-                })),
-              });
-            })}
-            className="flex flex-col gap-3"
-          >
-            {paymentLines.fields.map((payment, index) => (
-              <div key={payment.fieldKey} className="flex flex-wrap items-end gap-2">
-                <RegisteredFormField
-                  name={`payments.${index}.method`}
-                  render={({ field }) => (
-                    <FormItem className="w-28">
-                      <FormLabel>{index === 0 ? "Payment" : "And"}</FormLabel>
-                      <FormControl>
-                        <NativeSelect {...field} disabled={mutation.isPending}>
-                          {PAYMENT_METHODS.map((method) => (
-                            <option key={method.value} value={method.value}>
-                              {method.label}
-                            </option>
-                          ))}
-                        </NativeSelect>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Watch
-                  control={form.control}
-                  name={`payments.${index}.method`}
-                  exact
-                  render={(method) =>
-                    needsReference(method) ? (
-                      <RegisteredFormField
-                        name={`payments.${index}.reference`}
-                        render={({ field }) => (
-                          <FormItem className="min-w-48 flex-1">
-                            <FormLabel>Reference *</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                disabled={mutation.isPending}
-                                placeholder="Transaction reference"
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    ) : null
-                  }
-                />
-                <RegisteredFormField
-                  name={`payments.${index}.amount`}
-                  render={({ field }) => (
-                    <FormItem className="ml-auto w-32">
-                      <FormLabel>Amount</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          inputMode="decimal"
-                          disabled={mutation.isPending}
-                          className="tabular-nums text-right"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                {paymentLines.fields.length > 1 ? (
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="ghost"
-                    disabled={mutation.isPending}
-                    aria-label={`Remove payment ${index + 1}`}
-                    onClick={() => paymentLines.remove(index)}
-                  >
-                    <Trash2Icon />
-                  </Button>
-                ) : null}
-              </div>
-            ))}
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="self-start"
-              disabled={mutation.isPending || paymentLines.fields.length >= 4}
-              onClick={() => {
-                const payments = form.getValues("payments");
-                paymentLines.append({
-                  id: Math.max(...payments.map((payment) => payment.id)) + 1,
-                  method: "upi",
-                  amount: "",
-                  reference: "",
-                });
-              }}
-            >
-              Split payment
-            </Button>
-            {paymentRootError ? (
-              <p role="alert" className="text-destructive">
-                {paymentRootError}
-              </p>
-            ) : null}
-            <DialogFooter>
-              {onApplyCredit ? (
-                <Button type="button" variant="outline" onClick={onApplyCredit}>
-                  Apply discount
-                </Button>
-              ) : null}
-              <SubmitButton isSubmitting={mutation.isPending}>Record payment</SubmitButton>
-            </DialogFooter>
-          </form>
-        </Form>
+        <RecordPaymentForm
+          orgSlug={orgSlug}
+          appointmentId={appointmentId}
+          invoiceId={invoiceId}
+          outstanding={outstanding}
+          currency={currency}
+          onClose={onClose}
+          submitLabel="Record payment"
+          actions={
+            onIssueCreditNote ? (
+              <Button type="button" variant="outline" onClick={onIssueCreditNote}>
+                Issue credit note
+              </Button>
+            ) : null
+          }
+        />
       </DialogContent>
     </Dialog>
   );
@@ -712,8 +541,8 @@ function RefundDialog({
                   <FormControl>
                     <NativeSelect {...field} disabled={mutation.isPending}>
                       {PAYMENT_METHODS.map((method) => (
-                        <option key={method.value} value={method.value}>
-                          {method.label}
+                        <option key={method} value={method}>
+                          {methodLabel(method)}
                         </option>
                       ))}
                     </NativeSelect>

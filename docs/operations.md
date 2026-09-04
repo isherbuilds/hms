@@ -149,7 +149,8 @@ all of these as complete:
    privileged role needed for reception, billing, correction, reporting, or
    administration; the role map has been walked with the shift lead.
 3. Organization, staff, catalog, tax, timezone, currency, and document-prefix
-   configuration has been reviewed against representative real records.
+   configuration has been reviewed against representative real records. Confirm
+   the displayed Organization currency before billing begins; it cannot be changed.
 4. The pilot accountant has approved representative classifications and
    statutory fields, and a real A4 and 80 mm printer has produced representative
    Invoice, Receipt, Credit Note, and refund documents with the scripts used at

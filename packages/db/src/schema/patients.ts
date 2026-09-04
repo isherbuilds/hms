@@ -2,7 +2,6 @@ import {
   check,
   boolean,
   date,
-  index,
   pgTable,
   text,
   timestamp,
@@ -50,12 +49,5 @@ export const patients = pgTable(
     uniqueIndex("patients_org_uid_idx")
       .on(table.orgId, table.uid)
       .where(sql`${table.uid} is not null`),
-    // `patient.search` keysets on the UUIDv7 id instead, so keep this only while a
-    // createdAt-ordered query exists. Same DESC NULLS trap as file.ts.
-    index("patients_org_created_idx").on(
-      table.orgId,
-      table.createdAt.desc().nullsFirst(),
-      table.id.desc().nullsFirst(),
-    ),
   ],
 );

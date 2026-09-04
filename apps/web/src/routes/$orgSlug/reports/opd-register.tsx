@@ -12,7 +12,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { DownloadIcon, PrinterIcon } from "lucide-react";
 import { z } from "zod";
 
-import { OpdAppointmentStatusBadge } from "@/components/opd-appointment";
+import { OPD_STATUS_LABELS, OpdAppointmentStatusBadge } from "@/components/opd-appointment";
 import { ReportPeriodControls } from "@/components/report-period-controls";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useMembership } from "@/lib/membership";
@@ -26,6 +26,10 @@ import { requireOrgPermission } from "@/lib/route-permission";
 
 const MAX_DAYS = 31;
 
+function arrivalModeLabel(mode: "scheduled" | "walk_in"): string {
+  return mode === "walk_in" ? "Walk-in" : "Scheduled";
+}
+
 export const Route = createFileRoute("/$orgSlug/reports/opd-register")({
   head: () => ({ meta: [{ title: "OPD register · HMS" }] }),
   validateSearch: z.object({
@@ -37,7 +41,7 @@ export const Route = createFileRoute("/$orgSlug/reports/opd-register")({
     const { timeZone } = await requireOrgPermission(
       queryClient,
       orgSlug,
-      { report: ["read"] },
+      { report: ["readOpdRegister"] },
       "/$orgSlug/dashboard",
     );
     const fallback = defaultRange(timeZone);
@@ -90,8 +94,8 @@ function OpdRegisterRoute() {
           callerName: row.callerName ?? "",
           practitionerName: row.practitionerName,
           departmentName: row.departmentName,
-          arrivalMode: row.arrivalMode,
-          status: row.status,
+          arrivalMode: arrivalModeLabel(row.arrivalMode),
+          status: OPD_STATUS_LABELS[row.status],
           arrivedAt: row.arrivedAt ? formatDateTime(row.arrivedAt, timeZone) : "",
           billed: Number(row.billed),
           paid: Number(row.paid),
@@ -99,6 +103,26 @@ function OpdRegisterRoute() {
           refunds: Number(row.refunds),
           outstanding: Number(row.outstanding),
         })),
+      },
+      {
+        name: "Summary",
+        columns: [
+          { header: "Metric", key: "metric", width: 20 },
+          { header: "Value", key: "value", width: 16 },
+        ],
+        rows: [
+          { metric: "Currency", value: currency },
+          { metric: "Appointments", value: report.data.totals.appointments },
+          { metric: "Booked", value: report.data.totals.byStatus.booked },
+          { metric: "Checked in", value: report.data.totals.byStatus.checked_in },
+          { metric: "Cancelled", value: report.data.totals.byStatus.cancelled },
+          { metric: "No show", value: report.data.totals.byStatus.no_show },
+          { metric: "Billed", value: Number(report.data.totals.billed) },
+          { metric: "Paid", value: Number(report.data.totals.paid) },
+          { metric: "Credits", value: Number(report.data.totals.credits) },
+          { metric: "Refunds", value: Number(report.data.totals.refunds) },
+          { metric: "Outstanding", value: Number(report.data.totals.outstanding) },
+        ],
       },
     ]);
   };
@@ -143,8 +167,8 @@ function OpdRegisterRoute() {
               </p>
             </header>
 
-            <div className="hidden overflow-x-auto ring-1 ring-border md:block print:block">
-              <Table>
+            <div className="ring-1 ring-border">
+              <Table className="min-w-6xl print:min-w-0">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>
@@ -156,6 +180,8 @@ function OpdRegisterRoute() {
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Billed</TableHead>
                     <TableHead className="text-right">Paid</TableHead>
+                    <TableHead className="text-right">Credits</TableHead>
+                    <TableHead className="text-right">Refunds</TableHead>
                     <TableHead className="text-right">Outstanding</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -179,7 +205,7 @@ function OpdRegisterRoute() {
                       <TableCell>{row.practitionerName}</TableCell>
                       <TableCell>{row.departmentName}</TableCell>
                       <TableCell className="whitespace-nowrap">
-                        {row.arrivalMode === "walk_in" ? "Walk-in" : "Scheduled"}
+                        {arrivalModeLabel(row.arrivalMode)}
                       </TableCell>
                       <TableCell>
                         <OpdAppointmentStatusBadge status={row.status} />
@@ -190,6 +216,12 @@ function OpdRegisterRoute() {
                       <TableCell className="text-right">
                         {formatMoney(row.paid, currency)}
                       </TableCell>
+                      <TableCell className="text-right">
+                        {formatMoney(row.credits, currency)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatMoney(row.refunds, currency)}
+                      </TableCell>
                       <TableCell className="text-right font-medium">
                         {formatMoney(row.outstanding, currency)}
                       </TableCell>
@@ -197,50 +229,6 @@ function OpdRegisterRoute() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
-
-            <div className="divide-y border-y md:hidden print:hidden">
-              {report.data.rows.map((row) => (
-                <article key={row.appointmentId} className="min-w-0 space-y-2 py-3 text-xs">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="shrink-0 font-mono font-medium">
-                      {row.tokenNumber ?? "No token"}
-                    </span>
-                    <span aria-hidden className="text-muted-foreground">
-                      ·
-                    </span>
-                    <span
-                      className={`min-w-0 flex-1 truncate ${row.patientName ? "" : "text-muted-foreground"}`}
-                    >
-                      {row.patientName ?? row.callerName ?? "—"}
-                    </span>
-                    <OpdAppointmentStatusBadge status={row.status} />
-                  </div>
-                  <p className="truncate text-muted-foreground">
-                    {row.businessDate} · {row.practitionerName} · {row.departmentName}
-                  </p>
-                  <dl className="grid grid-cols-3 gap-2">
-                    <div>
-                      <dt className="text-muted-foreground">Billed</dt>
-                      <dd className="truncate font-medium tabular-nums">
-                        {formatMoney(row.billed, currency)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">Paid</dt>
-                      <dd className="truncate font-medium tabular-nums">
-                        {formatMoney(row.paid, currency)}
-                      </dd>
-                    </div>
-                    <div className="text-right">
-                      <dt className="text-muted-foreground">Outstanding</dt>
-                      <dd className="truncate font-medium tabular-nums">
-                        {formatMoney(row.outstanding, currency)}
-                      </dd>
-                    </div>
-                  </dl>
-                </article>
-              ))}
             </div>
 
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-y py-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -278,6 +266,18 @@ function OpdRegisterRoute() {
                 <dt className="text-muted-foreground">Paid</dt>
                 <dd className="font-medium tabular-nums">
                   {formatMoney(report.data.totals.paid, currency)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Credits</dt>
+                <dd className="font-medium tabular-nums">
+                  {formatMoney(report.data.totals.credits, currency)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Refunds</dt>
+                <dd className="font-medium tabular-nums">
+                  {formatMoney(report.data.totals.refunds, currency)}
                 </dd>
               </div>
               <div>

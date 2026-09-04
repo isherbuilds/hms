@@ -19,7 +19,7 @@ export const ac = createAccessControl({
   staff: ["create", "read", "update"],
   settings: ["read", "update"],
   audit: ["read"],
-  report: ["read"],
+  report: ["readDailyCollections", "readOpdRegister", "readFinancial"],
   file: ["upload", "read", "delete"],
 } as const);
 
@@ -35,7 +35,8 @@ export const reception = ac.newRole({
   file: ["upload", "read"],
 });
 
-// Cashiers close their own shift from Daily collections, so they read reports.
+// Cashiers close their shift from Daily Collections; patient-level and accounting
+// reports stay separate.
 export const cashier = ac.newRole({
   ...memberAc.statements,
   member: ["read"],
@@ -45,7 +46,7 @@ export const cashier = ac.newRole({
   catalog: ["read"],
   staff: ["read"],
   settings: ["read"],
-  report: ["read"],
+  report: ["readDailyCollections"],
   file: ["read"],
 });
 
@@ -58,7 +59,7 @@ export const accountant = ac.newRole({
   catalog: ["read"],
   staff: ["read"],
   settings: ["read"],
-  report: ["read"],
+  report: ["readDailyCollections", "readOpdRegister", "readFinancial"],
   audit: ["read"],
   file: ["read"],
 });
@@ -76,7 +77,7 @@ export const admin = ac.newRole({
   staff: ["create", "read", "update"],
   settings: ["read", "update"],
   audit: ["read"],
-  report: ["read"],
+  report: ["readDailyCollections", "readOpdRegister", "readFinancial"],
   file: ["upload", "read", "delete"],
 });
 
@@ -90,7 +91,7 @@ export const owner = ac.newRole({
   staff: ["create", "read", "update"],
   settings: ["read", "update"],
   audit: ["read"],
-  report: ["read"],
+  report: ["readDailyCollections", "readOpdRegister", "readFinancial"],
   file: ["upload", "read", "delete"],
 });
 

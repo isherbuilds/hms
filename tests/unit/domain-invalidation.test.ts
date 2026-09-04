@@ -4,8 +4,12 @@ type QueryKey = readonly unknown[];
 
 const previousSkip = process.env.SKIP_ENV_VALIDATION;
 process.env.SKIP_ENV_VALIDATION = "true";
-const { invalidateBillingState, invalidateOpdAppointmentState, invalidatePatientState } =
-  await import("../../apps/web/src/lib/domain-invalidation");
+const {
+  invalidateAccountingReports,
+  invalidateBillingState,
+  invalidateOpdAppointmentState,
+  invalidatePatientState,
+} = await import("../../apps/web/src/lib/domain-invalidation");
 if (previousSkip === undefined) {
   delete process.env.SKIP_ENV_VALIDATION;
 } else {
@@ -37,6 +41,17 @@ test("appointment invalidation scopes every key to the given org", async () => {
   for (const key of emitted) expect(key).toContain('"orgSlug":"org-a"');
   expect(emitted.some((key) => key.includes('"opd","get"'))).toBe(false);
   expect(emitted.some((key) => key.includes('"collections"'))).toBe(true);
+  expect(emitted.some((key) => key.includes('"report","opdRegister"'))).toBe(true);
+});
+
+test("accounting-report invalidation refreshes every financial read model", async () => {
+  const { client, keys } = recordingInvalidator();
+  await invalidateAccountingReports(client, "org-a");
+
+  const emitted = serialize(keys);
+  for (const report of ["dailyCollections", "gst", "trialBalance", "balanceSheet"]) {
+    expect(emitted.some((key) => key.includes(`"report","${report}"`))).toBe(true);
+  }
 });
 
 test("an existing appointment transition invalidates its detail", async () => {
@@ -89,6 +104,9 @@ test("billing invalidation scopes every key to the given org", async () => {
   expect(emitted.some((key) => key.includes('"appointmentId":"appointment-1"'))).toBe(true);
   expect(emitted.some((key) => key.includes('"invoiceId":"invoice-1"'))).toBe(true);
   expect(emitted.some((key) => key.includes('"billing","refundDue"'))).toBe(true);
+  for (const report of ["dailyCollections", "opdRegister", "gst", "trialBalance", "balanceSheet"]) {
+    expect(emitted.some((key) => key.includes(`"report","${report}"`))).toBe(true);
+  }
 });
 
 test("patient invalidation refreshes its detail and the org search", async () => {

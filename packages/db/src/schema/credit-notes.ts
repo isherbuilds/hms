@@ -43,5 +43,6 @@ export const creditNotes = pgTable(
     }),
     uniqueIndex("credit_notes_org_number_idx").on(table.orgId, table.creditNoteNumber),
     index("credit_notes_org_invoice_idx").on(table.orgId, table.invoiceId),
+    index("credit_notes_org_business_date_idx").on(table.orgId, table.businessDate),
   ],
 );

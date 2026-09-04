@@ -18,11 +18,14 @@ import { requireOrgPermission } from "@/lib/route-permission";
 
 import { SettingsTabs } from "./route";
 
+// `staleTime: 0`: every sensitive mutation writes here, so the trail refetches on
+// every entry rather than relying on each mutation to invalidate it.
 const auditQuery = (orgSlug: string) =>
   orpc.audit.list.infiniteOptions({
     input: (cursor: number | undefined) => ({ orgSlug, cursor, limit: 50 }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
+    staleTime: 0,
   });
 
 function describeMeta(meta: Record<string, unknown> | null | undefined): string {

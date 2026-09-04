@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useState } from "react";
 
 // Dependency-free SVG: one series, one ink, no axes library. Mark spec in docs/design.md.
 export type BarDatum = { label: string; value: number; caption: string };
@@ -13,7 +13,6 @@ export function BarChart({
   height?: number;
 }) {
   const [active, setActive] = useState<number | null>(null);
-  const headingId = useId();
 
   const max = Math.max(...data.map((d) => d.value), 0);
   const peak = data.reduce((best, d, i) => (d.value > (data[best]?.value ?? -1) ? i : best), 0);
@@ -21,7 +20,7 @@ export function BarChart({
   // An empty period still draws its axis and slots, so the panel keeps its shape.
   if (data.length === 0 || max === 0) {
     return (
-      <div className="flex flex-1 flex-col justify-end gap-2" id={headingId}>
+      <div className="flex flex-1 flex-col justify-end gap-2">
         <p className="m-auto text-muted-foreground">Nothing collected in this period yet.</p>
         <div className="flex items-end gap-0.5 border-b border-border" style={{ height: 24 }}>
           {(data.length > 0 ? data : Array.from({ length: 14 })).map((_, index) => (
@@ -46,7 +45,8 @@ export function BarChart({
       <div
         className="flex items-end gap-0.5 border-b border-border"
         style={{ height }}
-        role="img"
+        // `group`, not `img`: an img role hides the focusable day buttons from AT.
+        role="group"
         aria-label={`Daily collections. Highest ${formatValue(data[peak]?.value ?? 0)} on ${data[peak]?.caption}.`}
         onMouseLeave={() => setActive(null)}
       >

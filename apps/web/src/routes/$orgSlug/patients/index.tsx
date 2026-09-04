@@ -22,6 +22,7 @@ import {
   SearchInput,
 } from "@/components/page";
 import { PatientSheet } from "@/components/patient-sheet";
+import { useCan } from "@/lib/membership";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { patientAgeLabel } from "@/lib/patient-age";
@@ -156,6 +157,8 @@ function PatientsRoute() {
   const { create } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const registerTrigger = useRef<HTMLButtonElement>(null);
+  // Cashiers and accountants read the registry but cannot register.
+  const canRegister = useCan(orgSlug, { patient: ["create"] });
 
   return (
     <>
@@ -163,30 +166,34 @@ function PatientsRoute() {
         title="Patients"
         description="Every patient registered in this organization"
         action={
-          <Button
-            ref={registerTrigger}
-            onClick={() => navigate({ search: (previous) => ({ ...previous, create: true }) })}
-          >
-            Register patient
-          </Button>
+          canRegister ? (
+            <Button
+              ref={registerTrigger}
+              onClick={() => navigate({ search: (previous) => ({ ...previous, create: true }) })}
+            >
+              Register patient
+            </Button>
+          ) : undefined
         }
       />
 
       <PatientRegistry key={orgSlug} orgSlug={orgSlug} />
 
-      <PatientSheet
-        orgSlug={orgSlug}
-        open={create === true}
-        // The sheet opens from the URL, not a trigger inside it, so nothing hands focus
-        // back to the button that opened it.
-        onOpenChange={(open) => {
-          void navigate({
-            search: (previous) => ({ ...previous, create: open ? true : undefined }),
-          }).then(() => {
-            if (!open) registerTrigger.current?.focus();
-          });
-        }}
-      />
+      {canRegister ? (
+        <PatientSheet
+          orgSlug={orgSlug}
+          open={create === true}
+          // The sheet opens from the URL, not a trigger inside it, so nothing hands focus
+          // back to the button that opened it.
+          onOpenChange={(open) => {
+            void navigate({
+              search: (previous) => ({ ...previous, create: open ? true : undefined }),
+            }).then(() => {
+              if (!open) registerTrigger.current?.focus();
+            });
+          }}
+        />
+      ) : null}
     </>
   );
 }

@@ -2,6 +2,7 @@
   "extends": ["//"],
   "tasks": {
     "build": {
+      "inputs": ["$TURBO_DEFAULT$", "../../packages/env/.env*"],
       "outputs": [".output/**"]
     }
   }

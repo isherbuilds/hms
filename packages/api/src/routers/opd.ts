@@ -9,7 +9,7 @@ import { OPD_APPOINTMENT_STATUSES, opdAppointments } from "@hms/db/schema/opd-ap
 import { patients } from "@hms/db/schema/patients";
 import { practitioners } from "@hms/db/schema/practitioners";
 import { ORPCError } from "@orpc/server";
-import { and, asc, desc, eq, getTableColumns, ilike, inArray, like, lt, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, like, lt, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
@@ -19,11 +19,13 @@ import { invoiceBalancesFor } from "../lib/invoice-balance";
 import { computeInvoiceLines, fromPaise, toPaise, toSignedPaise } from "../lib/invoice-math";
 import { closeExpiredBookings, voidPendingCharges } from "../lib/opd-close";
 import { chargeRow, resolveOpdPricing } from "../lib/opd-charges";
+import { normalizePhone } from "../lib/phone";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
 import {
   dateOnly,
   money,
+  note,
   paymentLine,
   phone,
   reason,
@@ -53,16 +55,15 @@ function futureLocalDateTime(scheduledLocal: string, timeZone: string, now: Date
       message: "Choose a future date and time",
     });
   }
-  return localDateTime(scheduledLocal, timeZone);
+  try {
+    return localDateTime(scheduledLocal, timeZone);
+  } catch {
+    // Zod proved the shape; only a DST gap is left, and that is the operator's input.
+    throw new ORPCError("BAD_REQUEST", {
+      message: "That time does not exist on that day in this timezone",
+    });
+  }
 }
-const settlementPayment = paymentLine.superRefine((payment, context) => {
-  if (payment.method === "cash" || payment.reference) return;
-  context.addIssue({
-    code: "custom",
-    path: ["reference"],
-    message: "Add the transaction reference for a non-cash payment",
-  });
-});
 
 // The status predicate keeps the UPDATE a no-op when a concurrent command already
 // moved the row — load-bearing even after a FOR UPDATE read.
@@ -245,9 +246,9 @@ export const opdRouter = {
         discountAmount: money.default("0"),
         // Rejects catalog or fee changes between quote and commit.
         expectedGrandTotal: money,
-        payments: z.array(settlementPayment).max(4).default([]),
+        payments: z.array(paymentLine).max(4).default([]),
         // Required whenever there is a discount, or the bill is not cleared.
-        note: z.string().trim().max(500).optional(),
+        note,
       }),
     }),
   ).handler(async ({ context, input }) => {
@@ -639,12 +640,22 @@ export const opdRouter = {
         ? Number(input.q)
         : undefined;
     const search = input.q ? likePattern(input.q) : undefined;
+    // Phones match on digits only, the way `patient.search` does, so a stored
+    // `555-1234` is found by `5551234`.
+    const digits = input.q ? normalizePhone(input.q) : "";
+    const phoneSearch = digits.length >= 4 ? likePattern(digits) : undefined;
     const rows = await db
       .select({
-        ...getTableColumns(opdAppointments),
+        id: opdAppointments.id,
+        patientId: opdAppointments.patientId,
+        callerName: opdAppointments.callerName,
+        callerPhone: opdAppointments.callerPhone,
+        status: opdAppointments.status,
+        tokenNumber: opdAppointments.tokenNumber,
+        dayOrderAt: opdAppointments.dayOrderAt,
+        createdAt: opdAppointments.createdAt,
         patientName: patients.name,
         patientMrn: patients.mrn,
-        patientPhone: patients.phone,
         practitionerName: practitioners.name,
         departmentName: departments.name,
       })
@@ -671,9 +682,16 @@ export const opdRouter = {
             ? or(
                 ilike(patients.name, search),
                 ilike(patients.mrn, search),
-                ilike(patients.phone, search),
                 ilike(opdAppointments.callerName, search),
-                ilike(opdAppointments.callerPhone, search),
+                phoneSearch === undefined
+                  ? undefined
+                  : or(
+                      ilike(sql`regexp_replace(${patients.phone}, '\\D', '', 'g')`, phoneSearch),
+                      ilike(
+                        sql`regexp_replace(${opdAppointments.callerPhone}, '\\D', '', 'g')`,
+                        phoneSearch,
+                      ),
+                    ),
                 tokenNumber === undefined
                   ? undefined
                   : eq(opdAppointments.tokenNumber, tokenNumber),

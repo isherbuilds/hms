@@ -20,14 +20,9 @@ const childSearch = z
   })
   .strict();
 
-export type ParsedBillingDocumentRequest = {
-  document: BillingDocumentRequest;
-  download: boolean;
-};
-
 export function parseBillingDocumentRequest(
   searchParams: URLSearchParams,
-): ParsedBillingDocumentRequest | null {
+): { document: BillingDocumentRequest; download: boolean } | null {
   const raw = Object.fromEntries(searchParams);
   const parsed = z.union([invoiceSearch, childSearch]).safeParse(raw);
   if (!parsed.success) return null;

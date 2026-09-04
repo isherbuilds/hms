@@ -14,7 +14,7 @@ import { audit } from "../audit";
 import { conflict } from "../lib/conflict";
 import { uniqueViolationConstraint } from "../lib/db-errors";
 import { invoiceBalancesFor } from "../lib/invoice-balance";
-import { fromPaise, toPaise } from "../lib/invoice-math";
+import { fromPaise, toSignedPaise } from "../lib/invoice-math";
 import { normalizePhone } from "../lib/phone";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { dateOnly, likePattern, phone, searchQuery, shortName } from "../lib/schemas";
@@ -271,7 +271,7 @@ export const patientRouter = {
       const outstanding = balances.get(invoice.id)?.outstanding ?? "0.00";
       outstandingByVisit.set(
         invoice.opdAppointmentId,
-        (outstandingByVisit.get(invoice.opdAppointmentId) ?? 0) + toPaise(outstanding),
+        (outstandingByVisit.get(invoice.opdAppointmentId) ?? 0) + toSignedPaise(outstanding),
       );
     }
 
@@ -316,13 +316,13 @@ export const patientRouter = {
         };
       });
 
-      const openInvoices = items.filter((invoice) => toPaise(invoice.outstanding) !== 0);
+      const openInvoices = items.filter((invoice) => toSignedPaise(invoice.outstanding) !== 0);
 
       return {
         invoices: items,
         openCount: openInvoices.length,
         outstanding: fromPaise(
-          openInvoices.reduce((sum, invoice) => sum + toPaise(invoice.outstanding), 0),
+          openInvoices.reduce((sum, invoice) => sum + toSignedPaise(invoice.outstanding), 0),
         ),
       };
     },

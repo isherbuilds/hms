@@ -311,6 +311,22 @@ fallback account. D025 still owns invoice granularity.
 separate pharmacy item master is the counter-example, forking its invoice,
 worklists, and ledger mapping. No domain table is created before its gate opens.
 
+### D028 — Organization currency is immutable
+
+**Accepted 2026-09-04.** An Organization without saved settings uses and may
+persist only the application-default currency; an existing Organization keeps
+its stored currency. Settings saves may change other fields but never currency.
+HMS is a single-currency ledger: Charges, Invoices, payments, corrections,
+journal entries, dashboards, and reports store or aggregate amounts without a
+per-row currency dimension.
+
+**Context:** Relabeling the Organization after financial rows exist would mix
+historical amounts under a new unit in every aggregate and document. “Choose on
+first save” is also unsafe because operational work can use the unsaved default
+before that save. Supporting configurable or multiple currencies requires an
+explicit creation-time choice or money model, conversion policy, and ledger
+design; a mutable display setting is not that feature.
+
 ## Superseded history
 
 Each entry above names the numbered ADRs it consolidates or supersedes. The

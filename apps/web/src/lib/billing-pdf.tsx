@@ -12,7 +12,7 @@ import {
   ReceiptDocument,
   RefundDocument,
 } from "@/components/pdf/billing-documents";
-import type { BillingDocumentLayout, BillingDocumentRequest } from "@/lib/billing-document";
+import type { BillingDocumentRequest } from "@/lib/billing-document";
 
 const PAGE_MARGIN = { bottom: 46, left: 44, right: 44, top: 40 };
 const THERMAL_WIDTH = 302;
@@ -154,5 +154,3 @@ export async function renderBillingPdf(
 
   return { bytes, fileName: `${number}.pdf` };
 }
-
-export type { BillingDocumentLayout };

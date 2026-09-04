@@ -3,7 +3,7 @@ import { ClientOnly, useBlocker } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { PatientForm, type EditablePatient } from "@/components/patient-form";
+import { PatientForm } from "@/components/patient-form";
 
 const DISCARD = {
   title: "Discard unsaved changes?",
@@ -13,14 +13,12 @@ const DISCARD = {
 
 export function PatientSheet({
   orgSlug,
-  patient,
   seed,
   open,
   onOpenChange,
   onRegistered,
 }: {
   orgSlug: string;
-  patient?: EditablePatient;
   seed?: { name?: string; phone?: string };
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -39,11 +37,10 @@ export function PatientSheet({
     if (open) setOpens(opens + 1);
   }
 
-  // Read at the moment of closing. Mirroring dirty and busy up here as state cost a
-  // render every time the operator typed, to answer a question nothing asks until
-  // they try to leave.
-  const flags = () => panel.current?.querySelector("form")?.dataset ?? {};
-  const isDirty = () => flags().dirty === "true";
+  // Read at the moment of closing. Mirroring dirty up here as state cost a render
+  // every time the operator typed, to answer a question nothing asks until they
+  // try to leave. The form publishes this one attribute and nothing else.
+  const isDirty = () => panel.current?.querySelector("form")?.dataset.dirty === "true";
 
   // `data-dirty` is still set while the panel animates out, so this tells an
   // in-flight close from a real attempt to leave with unsaved work.
@@ -65,7 +62,6 @@ export function PatientSheet({
   }, [open]);
 
   const close = () => {
-    if (flags().pending === "true") return;
     if (!isDirty()) return closeWithoutBlocking();
     setDiscarding(true);
   };
@@ -79,14 +75,13 @@ export function PatientSheet({
         <Sheet open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
           <SheetContent ref={panel}>
             <SheetHeader>
-              <SheetTitle>{patient ? "Edit patient" : "Register patient"}</SheetTitle>
+              <SheetTitle>Register patient</SheetTitle>
             </SheetHeader>
             <PatientForm
               // Every open builds its form from the props it had then, so reopening after a
               // different search cannot keep the previous defaults.
               key={opens}
               orgSlug={orgSlug}
-              patient={patient}
               seed={seed}
               onCancel={close}
               onSaved={closeWithoutBlocking}

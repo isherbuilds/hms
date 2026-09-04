@@ -3,7 +3,7 @@ import { boolean, check, pgTable, text, timestamp, unique, uniqueIndex } from "d
 
 import { organization } from "./auth";
 
-export const ACCOUNT_TYPES = ["asset", "liability", "equity", "income", "expense"] as const;
+const ACCOUNT_TYPES = ["asset", "liability", "equity", "income", "expense"] as const;
 
 export type AccountType = (typeof ACCOUNT_TYPES)[number];
 

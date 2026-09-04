@@ -17,10 +17,18 @@ beforeAll(async () => {
   await resetTestDatabase();
 });
 
+// The fixture's organization runs on Asia/Kolkata, so the expected fiscal year comes
+// from that calendar, not the UTC one the test process happens to be in.
 function fiscalYearNow(): string {
-  const now = new Date();
-  const year = now.getUTCFullYear();
-  const startYear = now.getUTCMonth() + 1 >= 4 ? year : year - 1;
+  const [year, month] = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+  })
+    .format(new Date())
+    .split("-")
+    .map(Number) as [number, number];
+  const startYear = month >= 4 ? year : year - 1;
   return `${startYear}-${String(startYear + 1).slice(-2)}`;
 }
 
@@ -764,7 +772,7 @@ test("partial payments follow outstanding and credit-adjusted caps", async () =>
       invoiceId: first.invoice.id,
       payments: [{ method: "cash", amount: "1.00" }],
     }),
-    "BAD_REQUEST",
+    "CONFLICT",
   );
 
   const second = await createInvoice(fixture);
@@ -774,7 +782,7 @@ test("partial payments follow outstanding and credit-adjusted caps", async () =>
       invoiceId: second.invoice.id,
       payments: [{ method: "cash", amount: "101.00" }],
     }),
-    "BAD_REQUEST",
+    "CONFLICT",
   );
   await fixture.api.billing.issueCreditNote({
     orgSlug: fixture.organization.slug,
@@ -788,7 +796,7 @@ test("partial payments follow outstanding and credit-adjusted caps", async () =>
       invoiceId: second.invoice.id,
       payments: [{ method: "cash", amount: "30.00" }],
     }),
-    "BAD_REQUEST",
+    "CONFLICT",
   );
   await fixture.api.billing.recordPayments({
     orgSlug: fixture.organization.slug,
@@ -1099,13 +1107,11 @@ test("refund due lists overpaid invoices until the refund is recorded", async ()
 
   const due = await fixture.api.billing.refundDue({ orgSlug: fixture.organization.slug });
   expect(due).toMatchObject({
-    currency: "INR",
     hasMore: false,
     rows: [
       {
         invoiceId: issued.invoice.id,
         invoiceNumber: issued.invoice.invoiceNumber,
-        appointmentId: issued.appointment.id,
         patientName: fixture.patient.name,
         patientMrn: fixture.patient.mrn,
         businessDate: issued.invoice.businessDate,
@@ -1329,7 +1335,6 @@ test("the billing worklist reports what is unbilled and sums what is open", asyn
 
   const worklist = await api.billing.worklist({ orgSlug: organization.slug });
 
-  expect(worklist.currency).toBe("INR");
   expect(worklist.unbilled.map((row) => row.appointmentId)).toEqual([unbilled.id]);
   expect(worklist.unbilled[0]).toMatchObject({
     tokenNumber: unbilled.tokenNumber,

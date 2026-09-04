@@ -14,12 +14,21 @@ export function invalidateOpdAppointmentState(
   appointmentId: string,
   transition: OpdAppointmentTransition,
 ): Promise<unknown[]> {
+  // The visit list on the patient record shows status, token, and balance, so
+  // every transition ages it; the key is org-wide because the patient is not
+  // always known here.
   const invalidations = [
     queryClient.invalidateQueries({
       queryKey: orpc.opd.day.key({ input: { orgSlug } }),
     }),
     queryClient.invalidateQueries({
       queryKey: orpc.dashboard.today.key({ input: { orgSlug } }),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: orpc.patient.visits.key({ input: { orgSlug } }),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: orpc.report.opdRegister.key({ input: { orgSlug } }),
     }),
   ];
 
@@ -50,6 +59,26 @@ export function invalidateOpdAppointmentState(
     );
   }
   return Promise.all(invalidations);
+}
+
+export function invalidateAccountingReports(
+  queryClient: QueryInvalidator,
+  orgSlug: string,
+): Promise<unknown[]> {
+  return Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: orpc.report.dailyCollections.key({ input: { orgSlug } }),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: orpc.report.gst.key({ input: { orgSlug } }),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: orpc.report.trialBalance.key({ input: { orgSlug } }),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: orpc.report.balanceSheet.key({ input: { orgSlug } }),
+    }),
+  ]);
 }
 
 export function invalidatePatientState(
@@ -103,6 +132,10 @@ export function invalidateBillingState(
           queryClient.invalidateQueries({
             queryKey: orpc.billing.getInvoice.key({ input: { orgSlug, invoiceId } }),
           }),
+          queryClient.invalidateQueries({
+            queryKey: orpc.report.opdRegister.key({ input: { orgSlug } }),
+          }),
+          invalidateAccountingReports(queryClient, orgSlug),
         ]
       : []),
   ]);

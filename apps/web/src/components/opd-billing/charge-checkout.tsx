@@ -20,7 +20,7 @@ import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settle
 import { formatMoney } from "@/lib/money";
 import { servicePreview } from "@/lib/opd-service-preview";
 import { useOpdErrorToast } from "@/lib/opd-error";
-import { hasErrorCode } from "@/lib/orpc-error";
+import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
 import { orpc } from "@/lib/orpc";
 
 import { useBillingInvalidation } from "./use-billing-invalidation";
@@ -220,7 +220,11 @@ export function ChargeCheckout({
             description={`${quote.lines.length} charge${quote.lines.length === 1 ? "" : "s"} on this appointment`}
             label="Issue invoice"
             pending={mutation.isPending}
-            error={mutation.error?.message}
+            error={
+              mutation.error
+                ? errorMessage(mutation.error, "Could not settle the charges")
+                : undefined
+            }
             blockedReason={chargesChanged ? CHARGES_MOVED.message : undefined}
             onOpenChange={(open) => {
               if (open) return;

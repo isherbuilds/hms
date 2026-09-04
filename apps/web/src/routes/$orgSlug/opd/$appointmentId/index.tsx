@@ -14,6 +14,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ErrorNote } from "@/components/page";
+import { useCan } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { formatFileSize, openOrgFile, uploadOrgFile } from "@/lib/org-files";
@@ -65,6 +66,8 @@ function OpdAppointmentDetailRoute() {
   const { orgSlug, appointmentId } = Route.useParams();
   const { timeZone, today } = useOrgDateTime();
   const { record } = useOpdRecord();
+  // Cashiers and accountants read the record; attaching a scan needs `opd:update`.
+  const canEdit = useCan(orgSlug, { opd: ["update"] });
   const settings = useQuery({
     ...orpc.settings.get.queryOptions({ input: { orgSlug } }),
     // The slip is all this tab reads out of settings, so any other setting edit must
@@ -98,7 +101,7 @@ function OpdAppointmentDetailRoute() {
         orgSlug={orgSlug}
         appointmentId={appointmentId}
         prescriptions={prescriptions}
-        disabled={appointment.status === "cancelled"}
+        canEdit={canEdit && appointment.status !== "cancelled"}
       />
 
       {hasToken && patient ? (
@@ -153,7 +156,7 @@ function PrescriptionDocuments({
   orgSlug,
   appointmentId,
   prescriptions,
-  disabled,
+  canEdit,
 }: {
   orgSlug: string;
   appointmentId: string;
@@ -165,7 +168,7 @@ function PrescriptionDocuments({
     size: number;
     createdAt: Date | string;
   }>;
-  disabled: boolean;
+  canEdit: boolean;
 }) {
   const { timeZone } = useOrgDateTime();
   const queryClient = useQueryClient();
@@ -177,13 +180,9 @@ function PrescriptionDocuments({
       queryClient.invalidateQueries({
         queryKey: orpc.opd.get.key({ input: { orgSlug, appointmentId } }),
       }),
-      // Uploads and attach/detach write audit rows, so the file-domain views must not
-      // keep serving their 60s-stale caches.
+      // Uploads write file rows, so the files page must not keep its 60s-stale cache.
       queryClient.invalidateQueries({
         queryKey: orpc.file.list.key({ input: { orgSlug } }),
-      }),
-      queryClient.invalidateQueries({
-        queryKey: orpc.audit.list.key({ input: { orgSlug } }),
       }),
     ]);
 
@@ -230,27 +229,31 @@ function PrescriptionDocuments({
     <section className="flex flex-col gap-2 print:hidden">
       <div className="flex min-h-6 items-center justify-between gap-2">
         <h2 className="min-w-0 truncate text-muted-foreground">Paper prescription</h2>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*,application/pdf"
-          className="sr-only"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void upload(file);
-            event.target.value = "";
-          }}
-        />
-        <Button
-          type="button"
-          size="xs"
-          variant="outline"
-          disabled={disabled || uploading}
-          onClick={() => inputRef.current?.click()}
-        >
-          <UploadIcon data-icon="inline-start" />
-          {uploading ? "Uploading…" : "Attach scan"}
-        </Button>
+        {canEdit ? (
+          <>
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void upload(file);
+                event.target.value = "";
+              }}
+            />
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              disabled={uploading}
+              onClick={() => inputRef.current?.click()}
+            >
+              <UploadIcon data-icon="inline-start" />
+              {uploading ? "Uploading…" : "Attach scan"}
+            </Button>
+          </>
+        ) : null}
       </div>
 
       {prescriptions.length === 0 ? (
@@ -290,16 +293,18 @@ function PrescriptionDocuments({
                     >
                       Open
                     </Button>
-                    <Button
-                      type="button"
-                      size="icon-xs"
-                      variant="ghost"
-                      aria-label={`Remove ${prescription.name}`}
-                      disabled={removingId !== null}
-                      onClick={() => void remove(prescription.id)}
-                    >
-                      <Trash2Icon />
-                    </Button>
+                    {canEdit ? (
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="ghost"
+                        aria-label={`Remove ${prescription.name}`}
+                        disabled={removingId !== null}
+                        onClick={() => void remove(prescription.id)}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    ) : null}
                   </div>
                 </TableCell>
               </TableRow>

@@ -9,10 +9,10 @@ import { useDebouncedCallback } from "@/hooks/use-debounced-value";
 import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
+import { errorMessage } from "@/lib/orpc-error";
 
 export type ServiceLine = {
   catalogItemId: string;
-  code: string;
   name: string;
   category: string;
   unitPrice: string;
@@ -92,7 +92,6 @@ export function ServicePicker({
             onSelect={(item) => {
               onAdd({
                 catalogItemId: item.id,
-                code: item.code,
                 name: item.name,
                 category: item.category,
                 unitPrice: item.unitPrice,
@@ -128,7 +127,7 @@ export function ServicePicker({
               searching ? (
                 <p className="px-3 py-2 text-muted-foreground">
                   {catalogSearch.isError
-                    ? catalogSearch.error.message
+                    ? errorMessage(catalogSearch.error, "Could not search the catalog")
                     : catalogSearch.isPending
                       ? "Searching…"
                       : "No unused service matches"}

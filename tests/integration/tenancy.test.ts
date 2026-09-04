@@ -25,22 +25,6 @@ beforeAll(async () => {
   await resetTestDatabase();
 });
 
-test("public email sign-up is disabled", async () => {
-  await createTestUser("seed");
-
-  await expectAuthStatus(
-    auth.api.signUpEmail({
-      body: {
-        email: `uninvited-${Bun.randomUUIDv7()}@example.com`,
-        name: "uninvited",
-        password: "integration-test-password",
-      },
-    }),
-    "BAD_REQUEST",
-    "EMAIL_PASSWORD_SIGN_UP_DISABLED",
-  );
-});
-
 test("settings are scoped by explicit input: defaults until saved, then the saved row", async () => {
   const owner = await createTestUser("settings-pages");
   const organization = await createOrganization(owner, "settings-pages");
@@ -50,6 +34,11 @@ test("settings are scoped by explicit input: defaults until saved, then the save
   expect(fresh.currency).toBe("INR");
   expect(fresh.legalName).toBe("");
 
+  await expectORPCCode(
+    api.settings.update({ orgSlug: organization.slug, ...fresh, currency: "USD" }),
+    "CONFLICT",
+  );
+
   const saved = await api.settings.update({
     orgSlug: organization.slug,
     ...fresh,
@@ -57,8 +46,13 @@ test("settings are scoped by explicit input: defaults until saved, then the save
     invoicePrefix: "SPH",
   });
   expect(saved.legalName).toBe("Settings Pages Hospital Pvt. Ltd.");
+  expect(saved.currency).toBe("INR");
 
   expect(await api.settings.get({ orgSlug: organization.slug })).toEqual(saved);
+  await expectORPCCode(
+    api.settings.update({ orgSlug: organization.slug, ...saved, currency: "EUR" }),
+    "CONFLICT",
+  );
 
   const entry = await eventually(async () => {
     const audit = await api.audit.list({ orgSlug: organization.slug });
@@ -201,9 +195,7 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
   expect(todayTwo.mix).toEqual([]);
 
   expect(Number(moneyOne.unbilled)).toBe(500);
-  expect(moneyOne.unbilledOpdAppointments).toBe(1);
   expect(Number(moneyTwo.unbilled)).toBe(0);
-  expect(moneyTwo.unbilledOpdAppointments).toBe(0);
 
   const outsiderApi = clientFor(outsider);
   await expectORPCCode(outsiderApi.dashboard.today({ orgSlug: one.slug }), "FORBIDDEN");
@@ -1191,6 +1183,28 @@ test("reports reject a foreign org claim and expose none of that org's figures i
     taxAmount: "0.00",
     gross: "0.00",
   });
+});
+
+test("cashiers can close a shift without gaining financial reports", async () => {
+  const owner = await createTestUser("report-cashier-owner");
+  const organization = await createOrganization(owner, "report-cashier");
+  const cashier = await createTestUser("report-cashier");
+  await joinOrganization(cashier, organization.id, "cashier");
+  const api = clientFor(cashier);
+  const today = new Date().toISOString().slice(0, 10);
+
+  expect(
+    (await api.report.dailyCollections({ orgSlug: organization.slug, from: today, to: today }))
+      .rows,
+  ).toEqual([]);
+  await expectORPCCode(
+    api.report.opdRegister({ orgSlug: organization.slug, from: today, to: today }),
+    "FORBIDDEN",
+  );
+  await expectORPCCode(
+    api.report.trialBalance({ orgSlug: organization.slug, ...reportRange() }),
+    "FORBIDDEN",
+  );
 });
 
 test("one client concurrently scopes report calls to two organizations", async () => {

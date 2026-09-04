@@ -47,7 +47,9 @@ export const refunds = pgTable(
       foreignColumns: [creditNotes.orgId, creditNotes.id],
     }),
     uniqueIndex("refunds_org_number_idx").on(table.orgId, table.refundNumber),
-    // Every read is scoped to one invoice and sorted by time.
+    // Daily collections nets refunds by business date; every other read is scoped
+    // to one invoice or credit note.
+    index("refunds_org_business_date_idx").on(table.orgId, table.businessDate),
     index("refunds_org_invoice_idx").on(table.orgId, table.invoiceId, table.createdAt),
     index("refunds_org_credit_note_idx").on(table.orgId, table.creditNoteId),
   ],

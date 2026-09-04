@@ -12,6 +12,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronDownIcon, FileTextIcon, ImageIcon, PaperclipIcon } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { OpdAppointmentStatusBadge } from "@/components/opd-appointment";
 import { ErrorNote, ListState, LoadMore, Panel } from "@/components/page";
@@ -19,6 +20,7 @@ import { formatMoney } from "@/lib/money";
 import { formatBusinessDate, formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { formatFileSize, openOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
+import { errorMessage } from "@/lib/orpc-error";
 
 // A row carries only what tells visits apart; opening one fetches that appointment
 // on its own. Every action on a visit belongs to the outpatient record.
@@ -68,7 +70,11 @@ function VisitPanel({
               <li key={file.id}>
                 <button
                   type="button"
-                  onClick={() => openOrgFile(orgSlug, file.fileId)}
+                  onClick={() =>
+                    openOrgFile(orgSlug, file.fileId).catch((error: unknown) =>
+                      toast.error(errorMessage(error, "Could not open that file")),
+                    )
+                  }
                   className={cn(
                     "-mx-2 flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors",
                     "[@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted",

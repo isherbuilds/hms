@@ -39,7 +39,10 @@ from correlated per-appointment sums. `booked`, `checked_in`, `cancelled`, and
 
 Both reports accept an inclusive Organization-local date range, link from
 `/$orgSlug/reports`, export XLSX and print from the same server result, and
-render as cards below `md`.
+keep their source-of-record tables horizontally scrollable on narrow screens.
+Cashiers can read Daily Collections to close a shift. The patient-level OPD
+Register and the statutory and ledger reports remain restricted to accountants,
+administrators, and owners.
 
 ## No-show reconciliation
 

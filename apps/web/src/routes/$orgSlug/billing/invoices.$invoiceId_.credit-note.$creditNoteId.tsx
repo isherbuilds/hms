@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { BillingDocumentRoute } from "@/components/billing-document-view";
 
 export const Route = createFileRoute(
-  "/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId",
+  "/$orgSlug/billing/invoices/$invoiceId_/credit-note/$creditNoteId",
 )({
   head: () => ({ meta: [{ title: "Credit note · HMS" }] }),
   component: CreditNoteDocumentRoute,

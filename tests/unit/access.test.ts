@@ -35,11 +35,27 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     accountant: true,
   },
   {
-    permission: { report: ["read"] },
+    permission: { report: ["readDailyCollections"] },
     owner: true,
     admin: true,
     reception: false,
     cashier: true,
+    accountant: true,
+  },
+  {
+    permission: { report: ["readOpdRegister"] },
+    owner: true,
+    admin: true,
+    reception: false,
+    cashier: false,
+    accountant: true,
+  },
+  {
+    permission: { report: ["readFinancial"] },
+    owner: true,
+    admin: true,
+    reception: false,
+    cashier: false,
     accountant: true,
   },
   {

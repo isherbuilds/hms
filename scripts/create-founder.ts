@@ -1,4 +1,4 @@
-import { createDb } from "@hms/db";
+import { db } from "@hms/db";
 import * as schema from "@hms/db/schema/auth";
 import { env } from "@hms/env/server";
 import { createUserWithPassword } from "@hms/auth/manual-user";
@@ -21,11 +21,12 @@ if (password.length < 8) {
 
 await runMigrations();
 
-const db = createDb();
+// Better Auth stores emails lowercased; match the way it will on sign-in.
+const email = env.FOUNDING_EMAIL.toLowerCase();
 const existing = await db
   .select({ id: schema.user.id })
   .from(schema.user)
-  .where(eq(schema.user.email, env.FOUNDING_EMAIL));
+  .where(eq(schema.user.email, email));
 if (existing[0]) {
   console.info(
     `Founding account ${env.FOUNDING_EMAIL} (${existing[0].id}) already exists; nothing to do.`,
@@ -33,10 +34,6 @@ if (existing[0]) {
   process.exit(0);
 }
 
-const { id } = await createUserWithPassword({
-  email: env.FOUNDING_EMAIL,
-  name,
-  password,
-});
-console.info(`Created founding account ${env.FOUNDING_EMAIL} (${id}). Sign-in is enabled.`);
+const { id } = await createUserWithPassword({ email, name, password });
+console.info(`Created founding account ${email} (${id}). Sign-in is enabled.`);
 process.exit(0);

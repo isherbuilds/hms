@@ -51,7 +51,6 @@ export const practitioners = pgTable(
       foreignColumns: [catalogItems.orgId, catalogItems.id],
     }),
     index("practitioners_org_name_idx").on(table.orgId, table.name),
-    index("practitioners_org_department_idx").on(table.orgId, table.departmentId),
     check(
       "practitioners_follow_up_days_check",
       sql`${table.followUpValidityDays} is null or ${table.followUpValidityDays} between 1 and 365`,

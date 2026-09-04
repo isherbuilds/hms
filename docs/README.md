@@ -25,6 +25,7 @@ until their trigger is met and they enter this registry.
 
 | Work                                                                                     | Lifecycle    | Exit condition                                                                                                   |
 | ---------------------------------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------- |
+| [Payment methods, cheques, sponsors](./specs/payment-methods-cheques-and-sponsors.md)    | Active       | Six methods, the cheque clear/bounce lifecycle, and sponsor capture are shipped                                  |
 | [Production hardening](./operations.md#production-hardening)                             | Verification | Release-time evidence on the deployed host records digests, sizes, header checks, and a reviewed cleanup dry run |
 | [Pilot readiness](./operations.md#pilot-readiness)                                       | Active       | A named owner records every operational, accounting, print, restore, and compliance gate complete                |
 | [Invoice granularity (D025)](./decisions.md)                                             | Blocked      | Decided before the first non-OPD invoice exists; blocked on a second billing domain being gated open             |

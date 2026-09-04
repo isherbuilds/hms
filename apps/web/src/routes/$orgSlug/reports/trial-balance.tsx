@@ -34,7 +34,7 @@ export const Route = createFileRoute("/$orgSlug/reports/trial-balance")({
     const { timeZone } = await requireOrgPermission(
       queryClient,
       orgSlug,
-      { report: ["read"] },
+      { report: ["readFinancial"] },
       "/$orgSlug/dashboard",
     );
     const fallback = defaultRange(timeZone);

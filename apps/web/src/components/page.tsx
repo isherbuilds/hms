@@ -21,7 +21,10 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="z-10 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-card px-3 lg:pr-4 lg:pl-6 print:h-auto print:px-4 print:py-3">
+    <div
+      data-slot="page-header"
+      className="z-10 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-card px-3 lg:pr-4 lg:pl-6 print:h-auto print:px-4 print:py-3"
+    >
       <SidebarTrigger className="print:hidden lg:hidden" />
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <div className="flex min-w-0 items-baseline gap-2">
@@ -51,6 +54,7 @@ export function PageBody({
 }) {
   return (
     <div
+      data-slot="page-body"
       className={cn(
         "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto text-xs print:overflow-visible",
         bleed ? "py-4" : "p-4",
@@ -147,18 +151,16 @@ export function SearchInput({
   label,
   placeholder,
   onQueryChange,
-  className,
 }: {
   label: string;
   placeholder: string;
   onQueryChange: (query: string) => void;
-  className?: string;
 }) {
   // The list re-renders after each pause, not after each keystroke.
   const handleChange = useDebouncedCallback(onQueryChange, 300);
 
   return (
-    <div className={cn("relative w-full max-w-md", className)}>
+    <div className="relative w-full max-w-md">
       <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
       <Input
         type="search"

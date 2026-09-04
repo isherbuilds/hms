@@ -66,7 +66,6 @@ export const dashboardRouter = {
         upi: string;
         card: string;
         unbilled: string;
-        unbilledOpdAppointments: number;
       }>(sql`
         with unbilled_appointments as (
           select sum(${charges.unitPrice} * ${charges.qty}) as pending_value
@@ -86,9 +85,7 @@ export const dashboardRouter = {
           coalesce(sum(${payments.amount}) filter (where ${payments.method} = 'upi'), 0)::text as "upi",
           coalesce(sum(${payments.amount}) filter (where ${payments.method} = 'card'), 0)::text as "card",
           (select coalesce(sum(pending_value), 0)::text
-            from unbilled_appointments) as "unbilled",
-          (select count(*)::integer
-            from unbilled_appointments) as "unbilledOpdAppointments"
+            from unbilled_appointments) as "unbilled"
         from ${payments}
         where ${payments.orgId} = ${orgId}
           and ${payments.businessDate} = ${currentDay}

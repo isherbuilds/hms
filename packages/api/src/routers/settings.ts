@@ -64,15 +64,29 @@ export const settingsRouter = {
     async ({ context, input }): Promise<SettingsFields> => {
       const { scope } = context;
       const { orgSlug: _claim, ...fields } = input;
+      const { currency, ...mutableFields } = fields;
+      const [current] = await db
+        .select({ currency: organizationSettings.currency })
+        .from(organizationSettings)
+        .where(eq(organizationSettings.orgId, scope.orgId))
+        .limit(1);
+
+      // Fail loud (D028): a differing currency is a config error, never a silent drop.
+      if (currency !== (current?.currency ?? SETTINGS_DEFAULTS.currency)) {
+        throw new ORPCError("CONFLICT", {
+          message: "Currency cannot be changed for this organization",
+        });
+      }
 
       // A later time-zone change re-derives future dates only; written rows keep the
-      // business date they were numbered under.
+      // business date they were numbered under. The check above is sufficient: no
+      // write path ever changes a stored currency, so the upsert needs no guard.
       const [row] = await db
         .insert(organizationSettings)
         .values({ ...fields, orgId: scope.orgId })
         .onConflictDoUpdate({
           target: organizationSettings.orgId,
-          set: { ...fields, updatedAt: new Date() },
+          set: { ...mutableFields, updatedAt: new Date() },
         })
         .returning();
 

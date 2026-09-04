@@ -8,7 +8,7 @@ import { createMiddleware } from "@tanstack/react-start";
 import { evlogErrorHandler } from "evlog/nitro/v3";
 
 import appCss from "../index.css?url";
-export interface RouterAppContext {
+interface RouterAppContext {
   queryClient: QueryClient;
 }
 

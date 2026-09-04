@@ -11,6 +11,8 @@ import { charges } from "@hms/db/schema/charges";
 import { invoices } from "@hms/db/schema/invoices";
 import { journalEntries } from "@hms/db/schema/journal-entries";
 import { journalLines } from "@hms/db/schema/journal-lines";
+import { payments } from "@hms/db/schema/payments";
+import { refunds } from "@hms/db/schema/refunds";
 import { and, eq } from "drizzle-orm";
 
 import { createOrganization, createTestUser } from "../support/auth";
@@ -419,7 +421,7 @@ test("zero-rated invoices omit GST and zero-total invoices do not post", async (
   expect((await journalFor(fixture, "invoice", zeroTotal.invoice.id)).entries).toHaveLength(0);
 });
 
-test("payments, credit notes, and refunds post to their exact settlement accounts", async () => {
+test("payments, credits, and refunds post exactly and reconcile in the OPD register", async () => {
   const fixture = await createAccountingFixture("accounting-settlement");
   const issued = await issueConsultationInvoice(fixture, "Settlement");
   const [cash] = await fixture.api.billing.recordPayments({
@@ -475,6 +477,32 @@ test("payments, credit notes, and refunds post to their exact settlement account
   expect(lineByCode(refundJournal.lines, "1200")).toMatchObject({ debit: "59.00", credit: "0.00" });
   expect(lineByCode(refundJournal.lines, "1100")).toMatchObject({ debit: "0.00", credit: "59.00" });
   expectBalanced(refundJournal.lines);
+
+  const { appointment } = await fixture.api.opd.get({
+    orgSlug: fixture.organization.slug,
+    appointmentId: issued.appointment.id,
+  });
+  const register = await fixture.api.report.opdRegister({
+    orgSlug: fixture.organization.slug,
+    from: appointment.businessDate,
+    to: appointment.businessDate,
+  });
+  expect(register.rows).toHaveLength(1);
+  expect(register.rows[0]).toMatchObject({
+    appointmentId: appointment.id,
+    billed: "118.00",
+    paid: "118.00",
+    credits: "59.00",
+    refunds: "59.00",
+    outstanding: "0.00",
+  });
+  expect(register.totals).toMatchObject({
+    billed: "118.00",
+    paid: "118.00",
+    credits: "59.00",
+    refunds: "59.00",
+    outstanding: "0.00",
+  });
 });
 
 test("daily collections nets payments and refunds by Business Date and method", async () => {
@@ -504,34 +532,47 @@ test("daily collections nets payments and refunds by Business Date and method", 
   });
 
   const today = reportDate();
+  const collectionDay = addDays(today, -1);
+  await Promise.all([
+    db
+      .update(payments)
+      .set({ businessDate: collectionDay })
+      .where(
+        and(eq(payments.orgId, fixture.organization.id), eq(payments.invoiceId, issued.invoice.id)),
+      ),
+    db
+      .update(refunds)
+      .set({ businessDate: collectionDay })
+      .where(
+        and(eq(refunds.orgId, fixture.organization.id), eq(refunds.invoiceId, issued.invoice.id)),
+      ),
+  ]);
   const report = await fixture.api.report.dailyCollections({
     orgSlug: fixture.organization.slug,
-    from: today,
-    to: today,
+    from: collectionDay,
+    to: collectionDay,
   });
   expect(report.rows).toEqual([
     {
-      businessDate: today,
-      method: "cash",
-      payments: "70.00",
+      businessDate: collectionDay,
+      byMethod: { cash: "50.00", upi: "48.00", card: "0.00" },
+      payments: "118.00",
       refunds: "20.00",
-      net: "50.00",
-    },
-    {
-      businessDate: today,
-      method: "upi",
-      payments: "48.00",
-      refunds: "0.00",
-      net: "48.00",
+      net: "98.00",
     },
   ]);
   expect(report.byMethod.find((row) => row.method === "cash")?.net).toBe("50.00");
   expect(report.totals.net).toBe("98.00");
+  const dashboard = await fixture.api.dashboard.collections({
+    orgSlug: fixture.organization.slug,
+  });
+  expect(dashboard.collected).toBe("0");
+  expect(dashboard.trend.find((row) => row.day === collectionDay)?.amount).toBe("118.00");
   await expectORPCCode(
     fixture.api.report.dailyCollections({
       orgSlug: fixture.organization.slug,
-      from: today,
-      to: addDays(today, 93),
+      from: collectionDay,
+      to: addDays(collectionDay, 92),
     }),
     "BAD_REQUEST",
   );
@@ -648,7 +689,7 @@ test("GST register reconciles invoice and credit-note documents, rates, HSN, and
   const yesterday = addDays(today, -1);
   await db
     .update(invoices)
-    .set({ createdAt: new Date(`${yesterday}T12:00:00+05:30`) })
+    .set({ businessDate: yesterday })
     .where(and(eq(invoices.orgId, fixture.organization.id), eq(invoices.id, outside.invoice.id)));
 
   const report = await fixture.api.report.gst({

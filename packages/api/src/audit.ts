@@ -19,6 +19,9 @@ export function audit(entry: AuditEntry): void {
   void write.finally(() => pendingWrites.delete(write));
 }
 
+// Loops because a write can be added while an earlier batch is still settling.
 export async function drainAuditWrites(): Promise<void> {
-  await Promise.all(pendingWrites);
+  while (pendingWrites.size > 0) {
+    await Promise.all(pendingWrites);
+  }
 }

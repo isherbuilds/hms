@@ -27,7 +27,7 @@ import { type WorklistRow, toWorklistRows, waitedLabel } from "@/lib/billing-wor
 import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { OPERATIONAL_INFINITE_REFETCH, OPERATIONAL_REFETCH } from "@/lib/operational-query";
-import { formatBusinessDate, formatDate, useOrgDateTime } from "@/lib/org-datetime";
+import { formatBusinessDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
 
@@ -114,9 +114,11 @@ function BillingIndexRoute() {
   });
   const refundData = refunds.data;
 
+  const invoiceRows =
+    facet === "to-bill" ? [] : (invoices.data?.pages.flatMap((page) => page.items) ?? []);
   const rows = toWorklistRows(
     facet === "all" || facet === "to-bill" ? (worklist.data?.unbilled ?? []) : [],
-    facet === "to-bill" ? [] : (invoices.data?.pages.flatMap((page) => page.items) ?? []),
+    invoiceRows,
     currency,
   );
   // The sheet holds a key, not a row, so it always shows what the list shows.
@@ -201,7 +203,9 @@ function BillingIndexRoute() {
             )
           }
           footer={
-            facet === "to-bill" ? undefined : <LoadMore query={invoices} shown={rows.length} />
+            facet === "to-bill" ? undefined : (
+              <LoadMore query={invoices} shown={invoiceRows.length} />
+            )
           }
         >
           <ListState
@@ -225,24 +229,12 @@ function BillingIndexRoute() {
                   </TableHeader>
                   <TableBody>
                     {rows.map((row) => (
-                      <TableRow
-                        key={row.key}
-                        tabIndex={0}
-                        onClick={() => setOpenRowKey(row.key)}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter") return;
-                          event.preventDefault();
-                          setOpenRowKey(row.key);
-                        }}
-                        className="cursor-pointer"
-                      >
+                      <TableRow key={row.key}>
                         <TableCell className="max-w-0">
                           <Link
                             to="/$orgSlug/opd/$appointmentId/billing"
                             params={{ orgSlug, appointmentId: row.appointmentId }}
                             title={row.patientName}
-                            onClick={(event) => event.stopPropagation()}
-                            onKeyDown={(event) => event.stopPropagation()}
                             className="block truncate text-left font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                           >
                             {row.patientName}
@@ -255,12 +247,22 @@ function BillingIndexRoute() {
                           </p>
                         </TableCell>
                         <TableCell className="max-w-0">
-                          <div className="truncate font-mono" title={row.reference}>
-                            {row.reference}
-                          </div>
-                          <div className="truncate text-muted-foreground" title={row.detail}>
-                            {row.detail}
-                          </div>
+                          <button
+                            type="button"
+                            aria-haspopup="dialog"
+                            onClick={() => setOpenRowKey(row.key)}
+                            className="block max-w-full text-left underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                          >
+                            <span className="block truncate font-mono" title={row.reference}>
+                              {row.reference}
+                            </span>
+                            <span
+                              className="block truncate text-muted-foreground"
+                              title={row.detail}
+                            >
+                              {row.detail}
+                            </span>
+                          </button>
                         </TableCell>
                         <TableCell>
                           <StateBadge state={row.state} />
@@ -292,43 +294,33 @@ function BillingIndexRoute() {
 
               <ul className="md:hidden">
                 {rows.map((row) => (
-                  <li
-                    key={row.key}
-                    role="link"
-                    tabIndex={0}
-                    onClick={() => setOpenRowKey(row.key)}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      event.preventDefault();
-                      setOpenRowKey(row.key);
-                    }}
-                    className="min-h-10 cursor-pointer border-b px-3 py-2 text-xs"
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="shrink-0 font-mono font-semibold" title={row.reference}>
-                        {row.reference}
+                  <li key={row.key} className="border-b">
+                    <button
+                      type="button"
+                      aria-haspopup="dialog"
+                      onClick={() => setOpenRowKey(row.key)}
+                      className="block min-h-10 w-full px-3 py-2 text-left text-xs"
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="shrink-0 font-mono font-semibold" title={row.reference}>
+                          {row.reference}
+                        </span>
+                        <span
+                          className="min-w-0 flex-1 truncate font-medium"
+                          title={row.patientName}
+                        >
+                          {row.patientName}
+                        </span>
+                        <span className="shrink-0 font-medium tabular-nums">
+                          {formatMoney(row.owed, row.currency)}
+                        </span>
                       </span>
-                      <Link
-                        to="/$orgSlug/opd/$appointmentId/billing"
-                        params={{ orgSlug, appointmentId: row.appointmentId }}
-                        title={row.patientName}
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => event.stopPropagation()}
-                        className="min-w-0 flex-1 truncate font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-                      >
-                        {row.patientName}
-                      </Link>
-                      <span className="shrink-0 font-medium tabular-nums">
-                        {formatMoney(row.owed, row.currency)}
+                      <span className="mt-1 block truncate text-muted-foreground">
+                        <span className="font-mono">{row.patientMrn}</span>
+                        {" · "}
+                        {row.detail}
                       </span>
-                    </div>
-                    <p className="mt-1 truncate text-muted-foreground">
-                      <span className="font-mono">{row.patientMrn}</span>
-                      {" · "}
-                      {row.invoiceId === null
-                        ? row.detail.slice(row.detail.indexOf(" · ") + 3)
-                        : formatDate(row.at, timeZone)}
-                    </p>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -386,7 +378,7 @@ function BillingIndexRoute() {
                           {formatBusinessDate(row.businessDate)}
                         </TableCell>
                         <TableCell className="text-right font-medium tabular-nums">
-                          {formatMoney(row.refundDue, refundData.currency)}
+                          {formatMoney(row.refundDue, currency)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -407,7 +399,7 @@ function BillingIndexRoute() {
                           {row.invoiceNumber}
                         </span>
                         <span className="shrink-0 font-medium tabular-nums">
-                          {formatMoney(row.refundDue, refundData.currency)}
+                          {formatMoney(row.refundDue, currency)}
                         </span>
                       </div>
                       <p className="mt-1 truncate text-muted-foreground">
@@ -421,17 +413,17 @@ function BillingIndexRoute() {
                   </li>
                 ))}
               </ul>
+              {refundData?.hasMore ? (
+                <p className="px-3 py-2 text-muted-foreground">
+                  Showing the oldest {refundData.rows.length}. Settle these to see the rest.
+                </p>
+              ) : null}
             </>
           </ListState>
         </Panel>
       </PageBody>
 
-      <BillingWorklistSheet
-        orgSlug={orgSlug}
-        row={openRow}
-        currency={currency}
-        onClose={() => setOpenRowKey(null)}
-      />
+      <BillingWorklistSheet orgSlug={orgSlug} row={openRow} onClose={() => setOpenRowKey(null)} />
     </>
   );
 }

@@ -1,15 +1,11 @@
 import { useEffect, useState } from "react";
 
-// Renders nothing until data is older than three poll intervals, then names its
-// age. Mounted-only ticking keeps it out of SSR HTML, so it cannot cause a
+// Renders nothing until data is older than three 10 s poll intervals, then names
+// its age. Mounted-only ticking keeps it out of SSR HTML, so it cannot cause a
 // hydration mismatch.
-export function StaleDataNotice({
-  dataUpdatedAt,
-  intervalMs = 10_000,
-}: {
-  dataUpdatedAt: number;
-  intervalMs?: number;
-}) {
+const STALE_AFTER_MS = 30_000;
+
+export function StaleDataNotice({ dataUpdatedAt }: { dataUpdatedAt: number }) {
   const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
@@ -20,7 +16,7 @@ export function StaleDataNotice({
 
   if (now === null || dataUpdatedAt === 0) return null;
   const ageMs = now - dataUpdatedAt;
-  if (ageMs < intervalMs * 3) return null;
+  if (ageMs < STALE_AFTER_MS) return null;
 
   const minutes = Math.floor(ageMs / 60_000);
   const age = minutes >= 1 ? `${minutes} min` : `${Math.floor(ageMs / 1000)} s`;

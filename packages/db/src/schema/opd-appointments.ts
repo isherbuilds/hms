@@ -17,7 +17,7 @@ import { departments } from "./departments";
 import { patients } from "./patients";
 import { practitioners } from "./practitioners";
 
-export const OPD_ARRIVAL_MODES = ["scheduled", "walk_in"] as const;
+const OPD_ARRIVAL_MODES = ["scheduled", "walk_in"] as const;
 export const OPD_APPOINTMENT_STATUSES = ["booked", "checked_in", "cancelled", "no_show"] as const;
 
 // The row owns operational state only; money and files stay typed child records.

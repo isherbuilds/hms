@@ -1,4 +1,4 @@
-import { Button } from "@hms/ui/components/button";
+import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
   Form,
   FormControl,
@@ -11,7 +11,7 @@ import {
 import { Input } from "@hms/ui/components/input";
 import { ORGANIZATION_SLUG_MIN_LENGTH, organizationSlugIssue } from "@hms/auth/organization-slug";
 import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { ArrowRightIcon, LoaderIcon } from "lucide-react";
+import { ArrowRightIcon } from "lucide-react";
 import { useRef } from "react";
 import { Watch, useFormContext, useFormState } from "react-hook-form";
 import { z } from "zod";
@@ -211,9 +211,9 @@ function CreateButton() {
   const { isSubmitting } = useFormState({ control });
 
   return (
-    <Button type="submit" className="w-full">
-      {isSubmitting ? <LoaderIcon className="animate-spin" /> : <ArrowRightIcon />}
-      {isSubmitting ? "Creating…" : "Create organization"}
-    </Button>
+    <SubmitButton isSubmitting={isSubmitting} className="w-full">
+      <ArrowRightIcon />
+      Create organization
+    </SubmitButton>
   );
 }

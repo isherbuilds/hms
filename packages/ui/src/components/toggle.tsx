@@ -1,7 +1,4 @@
-import { Toggle as TogglePrimitive } from "@base-ui/react/toggle";
-import { cva, type VariantProps } from "class-variance-authority";
-
-import { cn } from "@hms/ui/lib/utils";
+import { cva } from "class-variance-authority";
 
 const toggleVariants = cva(
   "group/toggle inline-flex items-center justify-center gap-1 rounded-md border border-transparent bg-clip-padding text-xs font-medium whitespace-nowrap transition-[background-color,border-color,color,box-shadow] duration-100 ease-out outline-none [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted [@media(hover:hover)_and_(pointer:fine)]:hover:text-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 data-pressed:bg-primary data-pressed:text-primary-foreground data-pressed:[@media(hover:hover)_and_(pointer:fine)]:hover:bg-primary/80 data-pressed:[@media(hover:hover)_and_(pointer:fine)]:hover:text-primary-foreground dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
@@ -25,19 +22,4 @@ const toggleVariants = cva(
   },
 );
 
-function Toggle({
-  className,
-  variant = "default",
-  size = "default",
-  ...props
-}: TogglePrimitive.Props & VariantProps<typeof toggleVariants>) {
-  return (
-    <TogglePrimitive
-      data-slot="toggle"
-      className={cn(toggleVariants({ variant, size, className }))}
-      {...props}
-    />
-  );
-}
-
-export { Toggle, toggleVariants };
+export { toggleVariants };

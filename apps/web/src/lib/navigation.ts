@@ -26,9 +26,9 @@ type NavEntry<Route extends string> = {
 };
 
 export const NAV_GROUPS = ["Care", "Finance", "Workspace"] as const;
-export type NavGroup = (typeof NAV_GROUPS)[number];
+type NavGroup = (typeof NAV_GROUPS)[number];
 
-export type PrimaryNavItem = NavEntry<
+type PrimaryNavItem = NavEntry<
   | "/$orgSlug/dashboard"
   | "/$orgSlug/patients"
   | "/$orgSlug/opd"
@@ -75,7 +75,7 @@ export const PRIMARY_NAV: readonly PrimaryNavItem[] = [
     label: "Reports",
     icon: ChartColumnIcon,
     group: "Finance",
-    permission: { report: ["read"] },
+    permission: { report: ["readDailyCollections"] },
   },
   {
     to: "/$orgSlug/files",
@@ -86,7 +86,7 @@ export const PRIMARY_NAV: readonly PrimaryNavItem[] = [
   },
 ];
 
-export type SettingsTab = NavEntry<
+type SettingsTab = NavEntry<
   | "/$orgSlug/settings/organization"
   | "/$orgSlug/settings/members"
   | "/$orgSlug/settings/staff"
@@ -108,7 +108,7 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   { to: "/$orgSlug/settings/audit", label: "Audit", permission: { audit: ["read"] } },
 ];
 
-export type ReportLink = NavEntry<
+type ReportLink = NavEntry<
   | "/$orgSlug/reports/gst"
   | "/$orgSlug/reports/trial-balance"
   | "/$orgSlug/reports/balance-sheet"
@@ -122,39 +122,39 @@ export const REPORT_LINKS: readonly ReportLink[] = [
     label: "GST outward register",
     description: "Invoices, credit notes, rate totals, and HSN/SAC totals for the selected period.",
     icon: ReceiptTextIcon,
-    permission: { report: ["read"] },
+    permission: { report: ["readFinancial"] },
   },
   {
     to: "/$orgSlug/reports/daily-collections",
     label: "Daily collections",
     description: "Payments minus refunds by method and business date.",
     icon: WalletIcon,
-    permission: { report: ["read"] },
+    permission: { report: ["readDailyCollections"] },
   },
   {
     to: "/$orgSlug/reports/opd-register",
     label: "OPD register",
     description: "One row per appointment with attendance and money.",
     icon: ClipboardListIcon,
-    permission: { report: ["read"] },
+    permission: { report: ["readOpdRegister"] },
   },
   {
     to: "/$orgSlug/reports/trial-balance",
     label: "Trial balance",
     description: "Opening balances, period debits and credits, and closing balances by account.",
     icon: ChartNoAxesColumnIncreasingIcon,
-    permission: { report: ["read"] },
+    permission: { report: ["readFinancial"] },
   },
   {
     to: "/$orgSlug/reports/balance-sheet",
     label: "Billing ledger balance sheet",
     description: "Assets, liabilities, and surplus created by HMS billing activity.",
     icon: LandmarkIcon,
-    permission: { report: ["read"] },
+    permission: { report: ["readFinancial"] },
   },
 ];
 
-export type SetupStep = NavEntry<
+type SetupStep = NavEntry<
   | "/$orgSlug/settings/organization"
   | "/$orgSlug/settings/members"
   | "/$orgSlug/settings/staff"

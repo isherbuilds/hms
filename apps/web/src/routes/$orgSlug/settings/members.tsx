@@ -121,10 +121,13 @@ function InviteDialog({
     }),
   );
 
-  const submit = form.handleSubmit((values) => invite.mutate({ orgSlug, ...values }));
-
   // `lastLink` is a single-use credential for one address — it must never survive
-  // into the next invitation.
+  // into the next invitation, so it clears the moment a new one is submitted.
+  const submit = form.handleSubmit((values) => {
+    setLastLink(null);
+    invite.mutate({ orgSlug, ...values });
+  });
+
   const change = (next: boolean) => {
     if (!next) {
       form.reset();
@@ -200,10 +203,12 @@ function InviteDialog({
                     type="button"
                     variant="outline"
                     size="xs"
-                    onClick={() => {
-                      navigator.clipboard.writeText(lastLink);
-                      toast.success("Invitation link copied");
-                    }}
+                    onClick={() =>
+                      navigator.clipboard.writeText(lastLink).then(
+                        () => toast.success("Invitation link copied"),
+                        () => toast.error("Could not copy the link; select it and copy by hand"),
+                      )
+                    }
                   >
                     <CopyIcon />
                     Copy link
@@ -253,17 +258,8 @@ function MemberResults({ orgSlug, q }: { orgSlug: string; q: string }) {
     }),
   );
 
-  // These are audited server-side, so the neighbouring audit screen is stale the
-  // moment one succeeds.
   const refresh = () =>
-    Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: orpc.member.list.key({ input: { orgSlug } }),
-      }),
-      queryClient.invalidateQueries({
-        queryKey: orpc.audit.list.key({ input: { orgSlug } }),
-      }),
-    ]);
+    queryClient.invalidateQueries({ queryKey: orpc.member.list.key({ input: { orgSlug } }) });
   const onError = (error: Error) => toast.error(errorMessage(error, "Could not update the roster"));
   // The roster is readable org-wide; only its actions need the grant.
   const canManage = useCan(orgSlug, { member: ["update", "delete"] });

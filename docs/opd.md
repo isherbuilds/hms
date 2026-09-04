@@ -49,15 +49,15 @@ name, caller phone, or an exact numeric token. The selected date and
 seconds, refetches on focus, and includes cancelled and no-show rows only when
 requested.
 
-Below `md` the register renders one compact card per row (token, Patient,
+Below `md` the register renders one compact list row (token, Patient,
 status; time and Practitioner; balance when non-zero) instead of the table;
 Patients and Billing lists follow the same split.
 
 The page has one **New appointment** entry. A booked row offers **Check in**;
-clicking or pressing Enter on a row opens the full OPD record. Cancel and no-show
-actions live on that record. The Clinical tab owns Patient, care-team,
-prescription, and printable-slip facts; Billing is an adjacent tab and does not
-appear as a duplicate Clinical action.
+the Patient or caller name opens the full OPD record. Cancel and no-show actions
+live on that record. The Clinical tab owns Patient, care-team, prescription, and
+printable-slip facts; Billing is an adjacent tab and does not appear as a
+duplicate Clinical action.
 
 ## Intake
 

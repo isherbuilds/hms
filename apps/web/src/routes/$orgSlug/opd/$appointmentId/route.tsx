@@ -21,7 +21,7 @@ import {
 import { ErrorNote, PageBody, PageHeader, PageTab, PageTabs } from "@/components/page";
 import { StaleDataNotice } from "@/components/stale-data-notice";
 import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
-import { useMembership } from "@/lib/membership";
+import { useCan, useMembership } from "@/lib/membership";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { OpdRecordContext, useOpdRecord } from "@/lib/opd-record";
 import { orpc } from "@/lib/orpc";
@@ -88,6 +88,8 @@ function OpdRecordLayout() {
   const isClinical = useChildMatches({
     select: (matches) => matches[0]?.routeId === CLINICAL_ROUTE_ID,
   });
+  // Cashiers and accountants read the record; the status controls need `opd:update`.
+  const canUpdate = useCan(orgSlug, { opd: ["update"] });
 
   // Authorization failures are terminal: keeping the cached record here would leave
   // patient and charge data visible after access was revoked.
@@ -150,7 +152,7 @@ function OpdRecordLayout() {
           <OpdRecordSummary
             record={record}
             action={
-              isClinical ? (
+              isClinical && canUpdate ? (
                 <ClinicalStatusActions orgSlug={orgSlug} appointmentId={appointmentId} />
               ) : undefined
             }

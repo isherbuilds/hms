@@ -1,5 +1,13 @@
 import { sql } from "drizzle-orm";
-import { check, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  check,
+  foreignKey,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
 import { file } from "./file";
@@ -16,15 +24,19 @@ export const attachments = pgTable(
       .references(() => organization.id, { onDelete: "cascade" }),
     targetType: text("target_type").notNull(),
     targetId: text("target_id").notNull(),
-    fileId: text("file_id")
-      .notNull()
-      .references(() => file.id),
+    fileId: text("file_id").notNull(),
     createdBy: text("created_by")
       .notNull()
       .references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    // Tenant-scoped, like every other child row: a direct writer cannot attach a
+    // file that belongs to another organization.
+    foreignKey({
+      columns: [table.orgId, table.fileId],
+      foreignColumns: [file.orgId, file.id],
+    }),
     check("attachments_target_type_check", sql`${table.targetType} in ('prescription')`),
     uniqueIndex("attachments_org_target_file_uq").on(
       table.orgId,

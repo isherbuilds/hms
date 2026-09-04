@@ -1,4 +1,4 @@
-import { toSignedPaise } from "@hms/api/lib/invoice-math";
+import { fromPaise, toSignedPaise } from "@hms/api/lib/invoice-math";
 import {
   Table,
   TableBody,
@@ -44,19 +44,26 @@ export function PatientBilling({
 
   const invoices = account?.invoices ?? [];
   const [firstInvoice] = invoices;
+  const outstandingPaise = account ? toSignedPaise(account.outstanding) : 0;
 
   return (
     <div className="flex flex-col gap-4">
       {account && firstInvoice ? (
         <section className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <p className="text-muted-foreground">Outstanding</p>
+          <p className="text-muted-foreground">
+            {outstandingPaise < 0 ? "Refund due" : "Outstanding"}
+          </p>
           <p
             className={cn(
               "text-sm font-medium tabular-nums",
-              account.openCount > 0 ? "text-clinical-alert" : undefined,
+              outstandingPaise < 0
+                ? "text-destructive"
+                : account.openCount > 0
+                  ? "text-clinical-alert"
+                  : undefined,
             )}
           >
-            {formatMoney(account.outstanding, firstInvoice.currency)}
+            {formatMoney(fromPaise(Math.abs(outstandingPaise)), firstInvoice.currency)}
           </p>
           <p className="text-muted-foreground">
             {account.openCount === 0

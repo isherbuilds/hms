@@ -29,9 +29,10 @@ export const auditRouter = {
       .leftJoin(user, eq(auditLog.actorId, user.id))
       .where(input.cursor ? and(orgFilter, lt(auditLog.id, input.cursor)) : orgFilter)
       .orderBy(desc(auditLog.id))
-      .limit(input.limit);
+      .limit(input.limit + 1);
 
-    const items = rows.map(({ entry, actorName, actorEmail }) => ({
+    const hasNextPage = rows.length > input.limit;
+    const items = rows.slice(0, input.limit).map(({ entry, actorName, actorEmail }) => ({
       ...entry,
       actorName,
       actorEmail,
@@ -39,7 +40,7 @@ export const auditRouter = {
 
     return {
       items,
-      nextCursor: items.length === input.limit ? items[items.length - 1]!.id : null,
+      nextCursor: hasNextPage ? items[items.length - 1]!.id : null,
     };
   }),
 };
