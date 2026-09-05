@@ -18,6 +18,7 @@ import { z } from "zod";
 
 import { ErrorNote } from "@/components/page";
 import { authClient } from "@/lib/auth-client";
+import { redirectSignedInHome } from "@/lib/home";
 import { safeRedirect } from "@/lib/safe-redirect";
 import { useZodForm } from "@/hooks/use-zod-form";
 
@@ -27,6 +28,9 @@ export const Route = createFileRoute("/login")({
     // Unsafe values become undefined, not "/", so sign-in falls through to /join.
     redirect: safeRedirect(search.redirect, "") || undefined,
   }),
+  // An already signed-in visitor skips the form. A deep link that bounced through
+  // here keeps its destination; otherwise they go where sign-in would have sent them.
+  beforeLoad: ({ search }) => redirectSignedInHome(search.redirect),
   component: LoginRoute,
 });
 
@@ -106,7 +110,8 @@ function LoginForm({ invited, redirect }: { invited: boolean; redirect?: string 
     if (redirect) {
       void navigate({ href: redirect });
     } else {
-      void navigate({ to: "/join" });
+      // "/" resolves the first organization on the server, so the rule lives once.
+      void navigate({ to: "/" });
     }
   });
 

@@ -49,7 +49,7 @@ export function LandingOnTheFloor() {
                 aria-label={phone.alt}
                 /* 390×844 is the capture's own ratio. The second phone sits
                    slightly lower so the pair reads as a stack, not a diagram. */
-                className={`aspect-[195/422] w-40 shrink-0 rounded-[1.75rem] border border-border bg-cover bg-top bg-no-repeat shadow-2xl sm:w-48 lg:w-56 ${
+                className={`aspect-[195/422] w-40 shrink-0 rounded-xl border border-border bg-cover bg-clip-padding bg-top bg-no-repeat shadow-2xl sm:w-48 lg:w-56 ${
                   i === 1 ? "mt-8 hidden sm:block" : ""
                 } ${phone.className}`}
               />

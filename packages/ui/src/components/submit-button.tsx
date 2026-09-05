@@ -17,7 +17,10 @@ export function SubmitButton({
       className={cn("relative", className)}
       {...props}
     >
-      <span className={cn(isSubmitting && "invisible")}>{children}</span>
+      {/* Wrapper keeps the button's own row layout; without it an icon child breaks onto its own line. */}
+      <span className={cn("inline-flex items-center [gap:inherit]", isSubmitting && "invisible")}>
+        {children}
+      </span>
       {isSubmitting && (
         <span className="absolute inset-0 flex items-center justify-center">
           <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden />

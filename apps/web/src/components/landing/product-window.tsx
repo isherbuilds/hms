@@ -88,7 +88,7 @@ export function ProductWindow({
       <div
         {...(alt ? { role: "img", "aria-label": alt } : {})}
         style={cropStyle(region, shot.viewH)}
-        className={`w-full bg-no-repeat ${shot.className}`}
+        className={`w-full bg-clip-padding bg-no-repeat ${shot.className}`}
       />
     </div>
   );

@@ -151,7 +151,7 @@ function OrganizationSlugField({ onSlugEdit }: { onSlugEdit: () => void }) {
   const { control, setValue } = useFormContext();
 
   return (
-    <div className="flex flex-col gap-2 border-l-2 border-foreground bg-muted/35 px-3 py-2">
+    <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
       <RegisteredFormField
         name="organizationSlug"
         rules={{

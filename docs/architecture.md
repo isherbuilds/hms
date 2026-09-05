@@ -111,6 +111,13 @@ suggests: a page that renders and then 403s on save is the same denial arriving
 later. Actions that a role cannot perform on an otherwise readable page are
 hidden with `useCan` instead.
 
+The landing page and `/login` are for signed-out visitors. Their `beforeLoad`
+calls `redirectSignedInHome` in `apps/web/src/lib/home.ts`, a server function
+that reads the session and sends a member to their first organization by name
+(the switcher's order) or, with no membership, to `/join`. A validated `redirect`
+search value on `/login` wins over that default. Sign-in itself navigates to `/`
+so this is the one place that decides where a signed-in user belongs.
+
 Shared chrome for a tabbed record lives in its layout route, so switching tabs
 re-renders the body alone. A React context shared between sibling routes must be
 declared **outside** the route tree: TanStack Start splits a route file into

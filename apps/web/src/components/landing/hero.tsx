@@ -90,7 +90,7 @@ export function LandingHero() {
         <div
           role="img"
           aria-label="The HMS dashboard: today's counts, collections over 14 days, and the waiting queue"
-          className="relative aspect-144/83 w-full rounded-lg border border-border bg-size-[100%_auto] bg-top bg-no-repeat shadow-2xl bg-[url('/hero/dashboard-830-light.webp')] dark:bg-[url('/hero/dashboard-830-dark.webp')]"
+          className="relative aspect-144/83 w-full rounded-lg border border-border bg-size-[100%_auto] bg-clip-padding bg-top bg-no-repeat shadow-2xl bg-[url('/hero/dashboard-830-light.webp')] dark:bg-[url('/hero/dashboard-830-dark.webp')]"
         />
       </div>
     </section>

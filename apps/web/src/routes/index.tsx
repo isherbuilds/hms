@@ -7,9 +7,13 @@ import { LandingHero } from "@/components/landing/hero";
 import { LandingNav } from "@/components/landing/nav";
 import { LandingOnTheFloor } from "@/components/landing/on-the-floor";
 import { LandingTestimonials } from "@/components/landing/testimonials";
+import { redirectSignedInHome } from "@/lib/home";
 import { pageHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/")({
+  // A signed-in visitor never sees the marketing page; the redirect happens on the
+  // server so there is no flash. Crawlers carry no cookie and still get the page.
+  beforeLoad: () => redirectSignedInHome(),
   head: () => pageHead({ path: "/" }),
   component: HomeRoute,
 });
