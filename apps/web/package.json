@@ -39,7 +39,7 @@
     "react-hook-form": "catalog:",
     "sonner": "catalog:",
     "tailwindcss": "catalog:",
-    "takumi-pdf": "^0.14.1",
+    "takumi-pdf": "^0.14.2",
     "zod": "catalog:"
   },
   "devDependencies": {
