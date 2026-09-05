@@ -1,11 +1,8 @@
 ---
 name: lean-code
 description: >-
-  Review or write code in this repo for the smallest correct implementation — no redundant
-  checks, no thin wrappers, no sequential awaits that can run together, no code built for a
-  caller that does not exist, no UI state juggling nobody measured. Use before implementing a
-  feature, when reviewing a diff or a router, and whenever the user asks to simplify, deslop,
-  reduce tech debt, or make something faster and smaller.
+  Simplify HMS routers and React data flow. Use for abstraction, query, or state
+  changes and lean-code reviews; skip copy, styling-only, and documentation edits.
 ---
 
 # Lean code
@@ -14,8 +11,9 @@ The app is pre-production. Backward compatibility, deprecated aliases, and shims
 not exist here. The bar is: the smallest code that is correct, fast, and readable by
 someone who did not write it. This skill is the lens for both writing and reviewing.
 
-Read the code that owns the behaviour before you conclude anything. Never argue from
-grep hits.
+Use the sections relevant to the changed behavior; backend-only work does not need
+the frontend checklist, or vice versa. Verify findings against the owning code and
+real callers, not grep hits alone.
 
 ## 1. What `orgProcedure` already gives you
 
@@ -139,4 +137,4 @@ For a router, a component, or a diff:
 - [ ] Tenancy assertions in `tests/integration/tenancy.test.ts` are unchanged or stronger.
 - [ ] Every deleted test is justified in the change description.
 - [ ] No mutation `onError` toasts without closing a stale overlay on CONFLICT.
-- [ ] `bun run check-types && bun run check && bun run test` green.
+- [ ] Checks per [Development: Commands](../../../docs/development.md#commands): the smallest existing checks that cover the change; the full gates only when the task or the command policy requires them. A read-only review runs only read-only checks.

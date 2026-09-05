@@ -11,14 +11,24 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
+import { Route as AboutRouteImport } from './routes/about'
+import { Route as BillingRouteImport } from './routes/billing'
+import { Route as ContactRouteImport } from './routes/contact'
 import { Route as CreateRouteImport } from './routes/create'
 import { Route as JoinRouteImport } from './routes/join'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as OpdRouteImport } from './routes/opd'
+import { Route as PatientsRouteImport } from './routes/patients'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as OrgSlugIndexRouteImport } from './routes/$orgSlug/index'
 import { Route as OrgSlugDashboardRouteImport } from './routes/$orgSlug/dashboard'
 import { Route as OrgSlugFilesRouteImport } from './routes/$orgSlug/files'
 import { Route as OrgSlugOnboardingRouteImport } from './routes/$orgSlug/onboarding'
 import { Route as OrgSlugSettingsRouteRouteImport } from './routes/$orgSlug/settings/route'
+import { Route as ChangelogIndexRouteImport } from './routes/changelog.index'
+import { Route as ChangelogSlugRouteImport } from './routes/changelog.$slug'
 import { Route as OrgSlugBillingIndexRouteImport } from './routes/$orgSlug/billing/index'
 import { Route as OrgSlugOpdIndexRouteImport } from './routes/$orgSlug/opd/index'
 import { Route as OrgSlugOpdAppointmentIdRouteRouteImport } from './routes/$orgSlug/opd/$appointmentId/route'
@@ -56,6 +66,21 @@ const OrgSlugRouteRoute = OrgSlugRouteRouteImport.update({
   path: '/$orgSlug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillingRoute = BillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CreateRoute = CreateRouteImport.update({
   id: '/create',
   path: '/create',
@@ -69,6 +94,31 @@ const JoinRoute = JoinRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OpdRoute = OpdRouteImport.update({
+  id: '/opd',
+  path: '/opd',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PatientsRoute = PatientsRouteImport.update({
+  id: '/patients',
+  path: '/patients',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
+  id: '/robots.txt',
+  path: '/robots.txt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrgSlugIndexRoute = OrgSlugIndexRouteImport.update({
@@ -95,6 +145,16 @@ const OrgSlugSettingsRouteRoute = OrgSlugSettingsRouteRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => OrgSlugRouteRoute,
+} as any)
+const ChangelogIndexRoute = ChangelogIndexRouteImport.update({
+  id: '/changelog/',
+  path: '/changelog/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChangelogSlugRoute = ChangelogSlugRouteImport.update({
+  id: '/changelog/$slug',
+  path: '/changelog/$slug',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const OrgSlugBillingIndexRoute = OrgSlugBillingIndexRouteImport.update({
   id: '/billing/',
@@ -244,14 +304,24 @@ const ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
+  '/about': typeof AboutRoute
+  '/billing': typeof BillingRoute
+  '/contact': typeof ContactRoute
   '/create': typeof CreateRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
+  '/opd': typeof OpdRoute
+  '/patients': typeof PatientsRoute
+  '/privacy': typeof PrivacyRoute
+  '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/$orgSlug/settings': typeof OrgSlugSettingsRouteRouteWithChildren
   '/$orgSlug/dashboard': typeof OrgSlugDashboardRoute
   '/$orgSlug/files': typeof OrgSlugFilesRoute
   '/$orgSlug/onboarding': typeof OrgSlugOnboardingRoute
+  '/changelog/$slug': typeof ChangelogSlugRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
+  '/changelog/': typeof ChangelogIndexRoute
   '/$orgSlug/opd/$appointmentId': typeof OrgSlugOpdAppointmentIdRouteRouteWithChildren
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
   '/$orgSlug/patients/$patientId': typeof OrgSlugPatientsPatientIdRoute
@@ -281,13 +351,23 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/billing': typeof BillingRoute
+  '/contact': typeof ContactRoute
   '/create': typeof CreateRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
+  '/opd': typeof OpdRoute
+  '/patients': typeof PatientsRoute
+  '/privacy': typeof PrivacyRoute
+  '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/$orgSlug/dashboard': typeof OrgSlugDashboardRoute
   '/$orgSlug/files': typeof OrgSlugFilesRoute
   '/$orgSlug/onboarding': typeof OrgSlugOnboardingRoute
+  '/changelog/$slug': typeof ChangelogSlugRoute
   '/$orgSlug': typeof OrgSlugIndexRoute
+  '/changelog': typeof ChangelogIndexRoute
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
   '/$orgSlug/patients/$patientId': typeof OrgSlugPatientsPatientIdRoute
   '/$orgSlug/reports/balance-sheet': typeof OrgSlugReportsBalanceSheetRoute
@@ -318,14 +398,24 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
+  '/about': typeof AboutRoute
+  '/billing': typeof BillingRoute
+  '/contact': typeof ContactRoute
   '/create': typeof CreateRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
+  '/opd': typeof OpdRoute
+  '/patients': typeof PatientsRoute
+  '/privacy': typeof PrivacyRoute
+  '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/$orgSlug/settings': typeof OrgSlugSettingsRouteRouteWithChildren
   '/$orgSlug/dashboard': typeof OrgSlugDashboardRoute
   '/$orgSlug/files': typeof OrgSlugFilesRoute
   '/$orgSlug/onboarding': typeof OrgSlugOnboardingRoute
+  '/changelog/$slug': typeof ChangelogSlugRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
+  '/changelog/': typeof ChangelogIndexRoute
   '/$orgSlug/opd/$appointmentId': typeof OrgSlugOpdAppointmentIdRouteRouteWithChildren
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
   '/$orgSlug/patients/$patientId': typeof OrgSlugPatientsPatientIdRoute
@@ -358,14 +448,24 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$orgSlug'
+    | '/about'
+    | '/billing'
+    | '/contact'
     | '/create'
     | '/join'
     | '/login'
+    | '/opd'
+    | '/patients'
+    | '/privacy'
+    | '/robots.txt'
+    | '/sitemap.xml'
     | '/$orgSlug/settings'
     | '/$orgSlug/dashboard'
     | '/$orgSlug/files'
     | '/$orgSlug/onboarding'
+    | '/changelog/$slug'
     | '/$orgSlug/'
+    | '/changelog/'
     | '/$orgSlug/opd/$appointmentId'
     | '/$orgSlug/opd/new'
     | '/$orgSlug/patients/$patientId'
@@ -395,13 +495,23 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/about'
+    | '/billing'
+    | '/contact'
     | '/create'
     | '/join'
     | '/login'
+    | '/opd'
+    | '/patients'
+    | '/privacy'
+    | '/robots.txt'
+    | '/sitemap.xml'
     | '/$orgSlug/dashboard'
     | '/$orgSlug/files'
     | '/$orgSlug/onboarding'
+    | '/changelog/$slug'
     | '/$orgSlug'
+    | '/changelog'
     | '/$orgSlug/opd/new'
     | '/$orgSlug/patients/$patientId'
     | '/$orgSlug/reports/balance-sheet'
@@ -431,14 +541,24 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/$orgSlug'
+    | '/about'
+    | '/billing'
+    | '/contact'
     | '/create'
     | '/join'
     | '/login'
+    | '/opd'
+    | '/patients'
+    | '/privacy'
+    | '/robots.txt'
+    | '/sitemap.xml'
     | '/$orgSlug/settings'
     | '/$orgSlug/dashboard'
     | '/$orgSlug/files'
     | '/$orgSlug/onboarding'
+    | '/changelog/$slug'
     | '/$orgSlug/'
+    | '/changelog/'
     | '/$orgSlug/opd/$appointmentId'
     | '/$orgSlug/opd/new'
     | '/$orgSlug/patients/$patientId'
@@ -470,9 +590,19 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OrgSlugRouteRoute: typeof OrgSlugRouteRouteWithChildren
+  AboutRoute: typeof AboutRoute
+  BillingRoute: typeof BillingRoute
+  ContactRoute: typeof ContactRoute
   CreateRoute: typeof CreateRoute
   JoinRoute: typeof JoinRoute
   LoginRoute: typeof LoginRoute
+  OpdRoute: typeof OpdRoute
+  PatientsRoute: typeof PatientsRoute
+  PrivacyRoute: typeof PrivacyRoute
+  RobotsDottxtRoute: typeof RobotsDottxtRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  ChangelogSlugRoute: typeof ChangelogSlugRoute
+  ChangelogIndexRoute: typeof ChangelogIndexRoute
   ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute: typeof ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute
 }
 
@@ -490,6 +620,27 @@ declare module '@tanstack/react-router' {
       path: '/$orgSlug'
       fullPath: '/$orgSlug'
       preLoaderRoute: typeof OrgSlugRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing': {
+      id: '/billing'
+      path: '/billing'
+      fullPath: '/billing'
+      preLoaderRoute: typeof BillingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/create': {
@@ -511,6 +662,41 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/opd': {
+      id: '/opd'
+      path: '/opd'
+      fullPath: '/opd'
+      preLoaderRoute: typeof OpdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/patients': {
+      id: '/patients'
+      path: '/patients'
+      fullPath: '/patients'
+      preLoaderRoute: typeof PatientsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/robots.txt': {
+      id: '/robots.txt'
+      path: '/robots.txt'
+      fullPath: '/robots.txt'
+      preLoaderRoute: typeof RobotsDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$orgSlug/': {
@@ -547,6 +733,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/$orgSlug/settings'
       preLoaderRoute: typeof OrgSlugSettingsRouteRouteImport
       parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/changelog/': {
+      id: '/changelog/'
+      path: '/changelog'
+      fullPath: '/changelog/'
+      preLoaderRoute: typeof ChangelogIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/changelog/$slug': {
+      id: '/changelog/$slug'
+      path: '/changelog/$slug'
+      fullPath: '/changelog/$slug'
+      preLoaderRoute: typeof ChangelogSlugRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/$orgSlug/billing/': {
       id: '/$orgSlug/billing/'
@@ -831,9 +1031,19 @@ const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
+  AboutRoute: AboutRoute,
+  BillingRoute: BillingRoute,
+  ContactRoute: ContactRoute,
   CreateRoute: CreateRoute,
   JoinRoute: JoinRoute,
   LoginRoute: LoginRoute,
+  OpdRoute: OpdRoute,
+  PatientsRoute: PatientsRoute,
+  PrivacyRoute: PrivacyRoute,
+  RobotsDottxtRoute: RobotsDottxtRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
+  ChangelogSlugRoute: ChangelogSlugRoute,
+  ChangelogIndexRoute: ChangelogIndexRoute,
   ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute:
     ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute,
 }

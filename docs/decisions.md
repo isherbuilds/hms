@@ -332,6 +332,44 @@ design; a mutable display setting is not that feature.
 **Accepted 2026-09-04; evidence: [research memo](./research/reference-payment-methods-and-payers.md).** Insurance, TPA, and corporate credit are Payer-domain facts, never `paymentMethod` values. The payer-domain shape the evidence settles posts the Payer share to a separate receivable at Invoice time. That domain remains out of scope until pilot data supports a go/no-go decision.
 Cheques are not accepted at the OPD desk and are revisited with the Payer domain, where remittances actually arrive; the spec's [unproven-volume admission](./specs/payment-methods-cheques-and-sponsors.md#validation--evidence) records why.
 
+### D030 — Indexing is denied by response header; the sitemap is the allowlist
+
+**Accepted 2026-09-04; amended the same day before implementation.** One
+`PUBLIC_ROUTES` constant lists every publicly indexable page. Three mechanisms
+follow from it, each with one job:
+
+- **`X-Robots-Tag: noindex, nofollow`** is applied by server middleware to every
+  response whose path is not in `PUBLIC_ROUTES`. This is the indexing guarantee.
+  A header covers redirects and non-HTML responses, which a `<meta>` tag cannot,
+  and it is applied centrally so a new private route inherits it.
+- **`sitemap.xml`** emits exactly `PUBLIC_ROUTES` and nothing else.
+- **`robots.txt`** manages crawl budget only. It does not deny by default: it
+  disallows the known non-public application prefixes and allows everything
+  else, including the static asset directories.
+
+**Context:** The first form of this decision made `robots.txt` deny-all with a
+per-path allowlist. That was wrong twice over. Mechanically, `Allow: /` and
+`Disallow: /` are the same length, and RFC 9309 §2.2.2 resolves an equal-length
+conflict in favour of the allow, so the rule set permitted everything it was
+written to forbid. Conceptually, a `Disallow` stops a crawler fetching the page
+at all, so it never reads the `noindex` that was supposed to be the second
+layer — a disallowed URL can still be listed in results from links alone. The
+two mechanisms were not independent; one disabled the other. A deny-all rule
+would also have blocked `/og/`, `/hero/` and `/landing/`, so the Open Graph
+images that exist to make shared links render would have been unfetchable by
+the social crawlers that need them.
+
+The scope of this decision is **URL discoverability, not data security**.
+Authentication is the security boundary and is unchanged; every tenant route
+already requires a session. What this prevents is an organization's slug and
+page titles appearing in public search results.
+
+**Rejected:** generating the sitemap from the route tree minus a blacklist, as
+the reference template does. That is correct for a mostly-public site; here
+nearly every route is a private tenant page under a customer-chosen
+`/$orgSlug`, so a blacklist makes "indexed" the default and a forgotten entry is
+a silent regression.
+
 ## Superseded history
 
 Each entry above names the numbered ADRs it consolidates or supersedes. The

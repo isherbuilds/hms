@@ -21,6 +21,12 @@ test("public and system root routes are reserved case-insensitively", () => {
     "support",
     "org",
     "workspace",
+    "patients",
+    "records",
+    "reports",
+    "files",
+    "emergency",
+    "faq",
   ]) {
     expect(organizationSlugIssue(slug)).not.toBeNull();
   }

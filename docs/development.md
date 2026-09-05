@@ -2,8 +2,8 @@
 
 ## Start locally
 
-Prerequisites: Bun 1.4.0 (pinned in `package.json`), Node 24 (used by Portless
-and the production web runtime), and Docker.
+Prerequisites: Bun 1.4.0 (pinned in `package.json`), Node 24 (used by Portless),
+and Docker.
 
 ```sh
 bun install
@@ -85,6 +85,12 @@ bun run create-user <email> <name> <password>
 bun run db:seed
 ```
 
+`bun scripts/seed-demo.ts` adds screenshot data to the seeded Mercy General
+organization. It uses the app counters for MRNs, OPD tokens, invoices, and
+receipts. Cleanup and inserts commit in one transaction, scoped to that
+organization. A rerun advances counters; a reference from manually created
+data causes the transaction to fail without partial cleanup.
+
 Only `FOUNDING_EMAIL` may create Organizations. Other accounts receive
 membership through invitation or an operator-managed membership.
 
@@ -108,6 +114,7 @@ membership through invitation or an operator-managed membership.
 | Command                      | Purpose                                                            |
 | ---------------------------- | ------------------------------------------------------------------ |
 | `bun run dev`                | Start database/storage, migrate, and run all apps                  |
+| `bun run dev:status`         | Check local services, app URLs, database, and migration status     |
 | `bun run check-types`        | Typecheck TypeScript packages and `tests/`                         |
 | `bun run check`              | Run oxlint and oxfmt (writes formatting)                           |
 | `bun run test`               | Run real-Postgres integration and isolated tests; wipes `hms_test` |
@@ -117,6 +124,17 @@ membership through invitation or an operator-managed membership.
 | `bun run db:migrate`         | Apply migrations                                                   |
 | `bun run db:seed -- --reset` | Reset and seed development data                                    |
 | `bun run db:studio`          | Open Drizzle Studio                                                |
+
+`dev:status` is read-only and uses three-second timeouts. It checks the Compose
+service health and published ports, the configured web and API origins, the
+primary checkout's fixed `https://docs.hms.localhost` URL, a database query, and
+an exact match between local Drizzle migrations and the database migration
+records. It does not start or stop services, apply migrations, seed data, or reset
+data. A missing service, an unreachable URL or database, or migration history that
+cannot be verified returns a nonzero exit code. The HTTP probes do not exercise
+interactive UI, and migration record agreement does not detect manual schema
+drift. Linked worktrees with prefixed Portless hosts must interpret the fixed docs
+URL result separately.
 
 Use `bun run check-types`, `bun run check`, and `bun run test` as the
 repository-wide integration gates. A focused change runs the smallest existing

@@ -7,7 +7,7 @@ import { Input } from "@hms/ui/components/input";
 import { cn } from "@hms/ui/lib/utils";
 
 type ComboboxProps<T> = {
-  items: T[];
+  items: readonly T[];
   getItemKey: (item: T) => React.Key;
   getItemLabel: (item: T) => string;
   renderItem: (item: T) => React.ReactNode;
@@ -33,7 +33,8 @@ const ITEM_CLASS =
   "relative flex cursor-default items-center rounded-md px-2 py-2 text-xs outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:shadow-[inset_2px_0_0_var(--foreground)] data-disabled:pointer-events-none data-disabled:opacity-50";
 
 // Consumers own filtering and selection; this supplies the accessible input, popup
-// and keyboard behaviour only.
+// and keyboard behaviour only. Object values are intentional: both current callers
+// need the selected record, so a createItems collection would require another lookup.
 function Combobox<T>({
   items,
   getItemKey,

@@ -6,21 +6,23 @@
 Local development uses the single `packages/env/.env`, copied from the example.
 Real process variables win over the file; no `.env` is copied into an image.
 
-| Variable                                                  | Used by              | Requirement                                                  |
-| --------------------------------------------------------- | -------------------- | ------------------------------------------------------------ |
-| `DATABASE_URL`                                            | server + web SSR     | PostgreSQL URL; test harness accepts only a `_test` database |
-| `BETTER_AUTH_SECRET`                                      | server + web SSR     | At least 32 characters; identical on both runtimes           |
-| `BETTER_AUTH_URL`                                         | server + web SSR     | Public API/auth origin                                       |
-| `BETTER_AUTH_COOKIE_DOMAIN`                               | split-host web + API | Shared parent domain so web SSR receives the API cookie      |
-| `CORS_ORIGIN`                                             | server + web SSR     | Exact web origin; also invitation-link base                  |
-| `FOUNDING_EMAIL`                                          | server + web SSR     | Sole Organization-creation account                           |
-| `NODE_ENV`                                                | both                 | `development`, `production`, or `test`                       |
-| `VITE_SERVER_URL`                                         | web build            | Public API origin used by browser RPC                        |
-| `SEAWEEDFS_ENDPOINT`                                      | server + web SSR     | Publicly reachable S3 gateway for direct browser transfer    |
-| `SEAWEEDFS_BUCKET`                                        | server + web SSR     | Private bucket name                                          |
-| `SEAWEEDFS_ACCESS_KEY_ID` / `SEAWEEDFS_SECRET_ACCESS_KEY` | server + web SSR     | S3 credentials                                               |
-| `SEAWEEDFS_MAX_UPLOAD_BYTES`                              | server + web SSR     | Optional positive integer; default 100 MiB                   |
-| `SKIP_ENV_VALIDATION`                                     | build only           | Never set on a running application                           |
+| Variable                                                  | Used by              | Requirement                                                             |
+| --------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------- |
+| `DATABASE_URL`                                            | server + web SSR     | PostgreSQL URL; test harness accepts only a `_test` database            |
+| `BETTER_AUTH_SECRET`                                      | server + web SSR     | At least 32 characters; identical on both runtimes                      |
+| `BETTER_AUTH_URL`                                         | server + web SSR     | Public API/auth origin                                                  |
+| `BETTER_AUTH_COOKIE_DOMAIN`                               | split-host web + API | Shared parent domain so web SSR receives the API cookie                 |
+| `CORS_ORIGIN`                                             | server + web SSR     | Exact web origin; also invitation-link base                             |
+| `FOUNDING_EMAIL`                                          | server + web SSR     | Sole Organization-creation account                                      |
+| `NODE_ENV`                                                | both                 | `development`, `production`, or `test`                                  |
+| `VITE_SERVER_URL`                                         | web build            | Public API origin used by browser RPC                                   |
+| `VITE_WEB_URL`                                            | web build            | Public web origin, bare (no path); canonical, sitemap and OG URLs       |
+| `VITE_WHATSAPP_NUMBER` / `VITE_CONTACT_EMAIL`             | web build            | Public contact channels on `/contact` and the footer; digits-only E.164 |
+| `SEAWEEDFS_ENDPOINT`                                      | server + web SSR     | Publicly reachable S3 gateway for direct browser transfer               |
+| `SEAWEEDFS_BUCKET`                                        | server + web SSR     | Private bucket name                                                     |
+| `SEAWEEDFS_ACCESS_KEY_ID` / `SEAWEEDFS_SECRET_ACCESS_KEY` | server + web SSR     | S3 credentials                                                          |
+| `SEAWEEDFS_MAX_UPLOAD_BYTES`                              | server + web SSR     | Optional positive integer; default 100 MiB                              |
+| `SKIP_ENV_VALIDATION`                                     | build only           | Never set on a running application                                      |
 
 Add a variable to the narrowest Zod schema in `packages/env`, the example file,
 and deployment configuration. Optional is valid only when the feature fails with
@@ -53,8 +55,8 @@ plus PostgreSQL and SeaweedFS resources:
 | SeaweedFS S3 gateway      | provider-defined | public for signed browser PUT/GET; bucket remains private |
 
 These are the container defaults, not the development ports. The web
-Dockerfile sets `PORT=3001` for Nitro; a platform-provided `PORT` may override
-it. The API exports its Hono app and lets Bun use `PORT` when supplied,
+Dockerfile sets `PORT=3001` for Nitro's Bun preset; a platform-provided `PORT`
+may override it. The API exports its Hono app and lets Bun use `PORT` when supplied,
 otherwise Bun listens on 3000. Its Dockerfile's `EXPOSE 3000` documents that
 default but does not configure the listener.
 
@@ -66,7 +68,8 @@ no production counterpart.
 There is no production Compose file. The local
 `packages/db/docker-compose.dev.yaml` is development-only. Both app containers
 receive the server environment because web SSR imports auth/database code. The
-web build also receives `VITE_SERVER_URL`.
+web build also receives `VITE_SERVER_URL`, `VITE_WEB_URL`, `VITE_WHATSAPP_NUMBER`
+and `VITE_CONTACT_EMAIL`.
 
 The server container applies migrations before accepting traffic. A migration
 failure exits startup; concurrent starters serialize through the advisory lock.
@@ -97,15 +100,11 @@ Current behaviour, with the release evidence still to be recorded:
    same-origin).
 3. The two-stage application images build in dedicated builder stages. Their
    runtime stages install production-only dependencies, run as the non-root
-   `node` user, and contain only dependency manifests, installed dependencies,
-   and application build output; the server image additionally contains Bun and
-   the database and environment sources required to migrate before serving.
+   `bun` user, and contain only Bun, dependency manifests, installed dependencies,
+   and application build output; the server image additionally contains the
+   database and environment sources required to migrate before serving.
    Image digests, sizes, startup health, and migration behavior are recorded at
-   release time. First verification, 2026-09-03 on arm64 from commit `5f46954`
-   plus the report fixes: server image 900 MB, web image 1.09 GB; the server
-   migrated an empty database through `0000`–`0003` and answered `/` with the
-   production headers as `node`; the web image answered `/login` and `/` with
-   200, the full header set, and the skip link.
+   release time.
 4. The tenant-safe cleanup reports abandoned `pending` uploads and unreachable
    storage objects older than the requested age. Run
    `bun run cleanup-uploads --older-than-hours 24 [--delete]`; it defaults to a
@@ -124,6 +123,10 @@ run, and the production verification below passes against those images.
    web host.
 4. Inspect representative server-rendered HTML for render-failure markers and
    ensure client assets contain no secret values or database/storage code.
+   For public-site changes, confirm the main client bundle contains no changelog
+   article bodies. With a saved theme opposite to the OS theme, confirm only
+   the displayed hero image downloads. Exercise changelog navigation and the
+   Product menu by keyboard.
 5. Exercise an org switch, Patient/OPD/Billing reads, one guarded mutation, and
    cross-tenant denial.
 6. Upload and read a private file through presigned URLs.

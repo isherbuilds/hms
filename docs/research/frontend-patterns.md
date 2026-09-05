@@ -41,6 +41,13 @@ debounced search term, and a `key` bump clears the box after selection
 (`opd-service-picker.tsx`). The keystroke profile is still owed; the retained
 scan only measures `OpdSearchInput`.
 
+Base UI 1.8's `createItems` collection was reviewed on 2026-09-05 and is not a
+fit for the two current pickers. Both selection callbacks consume the full
+patient or service record; Base UI recommends retaining object values in that
+case, while `createItems` would replace the callback value with a primitive ID
+and require an application-owned lookup. The 1.8 runtime, accessibility, focus,
+and dynamic-item fixes still apply through the package upgrade.
+
 **2. oRPC request batching is installed and unused.** Add `BatchLinkPlugin` (with
 its required fallback `groups` entry) to the client link in
 `apps/web/src/lib/orpc.ts` and `BatchHandlerPlugin` to the `RPCHandler` in

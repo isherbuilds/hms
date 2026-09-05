@@ -1,69 +1,36 @@
-import { Button } from "@hms/ui/components/button";
-import { env } from "@hms/env/web";
-import { queryOptions, useQuery } from "@tanstack/react-query";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
-const healthQuery = queryOptions({
-  queryKey: ["server", "health"],
-  queryFn: async () => {
-    const response = await fetch(new URL("/", env.VITE_SERVER_URL));
-    if (!response.ok) {
-      throw new Error(`API health check failed (${response.status})`);
-    }
-    return await response.text();
-  },
-});
+import { LandingCapabilities } from "@/components/landing/capabilities";
+import { LandingClosing } from "@/components/landing/closing";
+import { LandingFaq } from "@/components/landing/faq";
+import { LandingHero } from "@/components/landing/hero";
+import { LandingNav } from "@/components/landing/nav";
+import { LandingOnTheFloor } from "@/components/landing/on-the-floor";
+import { LandingTestimonials } from "@/components/landing/testimonials";
+import { pageHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/")({
+  head: () => pageHead({ path: "/" }),
   component: HomeRoute,
-  loader: ({ context }) =>
-    context.queryClient.fetchQuery(healthQuery).then(
-      () => {},
-      () => {},
-    ),
 });
 
 function HomeRoute() {
-  const health = useQuery(healthQuery);
-  const reachable = health.data === "OK";
-
+  // The hero and the capability stages deliberately render screenshots wider than
+  // their frames and rely on the frame to clip them. `overflow-x-clip` on the page
+  // makes that structural: it cannot produce a horizontal scrollbar even if a
+  // frame's own clipping is defeated, and unlike `overflow-x-hidden` it does not
+  // create a scroll container, so nothing inside loses `position: sticky`.
   return (
-    <main
-      id="main"
-      tabIndex={-1}
-      className="mx-auto flex min-h-svh w-full max-w-sm flex-col justify-center gap-4 p-4 text-xs"
-    >
-      <div className="flex flex-col gap-1">
-        <h1 className="text-sm font-medium">HMS</h1>
-        <p className="text-muted-foreground">
-          A multi-tenant base for data-intensive internal software. Every record belongs to exactly
-          one organization, and every request proves membership.
-        </p>
-      </div>
-
-      {/* One status line groups nothing, so it earns hairlines rather than a
-          box or a tray: flat is the default (docs/design.md §1). */}
-      <div className="flex min-h-9 items-center gap-2 border-y border-border">
-        {/* Colour is reserved for tenant identity, so a healthy state is
-            neutral — only a genuine fault earns the destructive tone. */}
-        <span
-          aria-hidden
-          className={`size-1.5 shrink-0 ${
-            health.isPending
-              ? "bg-muted-foreground"
-              : reachable
-                ? "bg-foreground"
-                : "bg-destructive"
-          }`}
-        />
-        <span className="text-muted-foreground">
-          {health.isPending ? "Checking API…" : reachable ? "API reachable" : "API unreachable"}
-        </span>
-      </div>
-
-      <Button size="lg" nativeButton={false} render={<Link to="/join" />}>
-        Open an organization
-      </Button>
-    </main>
+    <div className="min-h-svh overflow-x-clip bg-background text-foreground">
+      <LandingNav />
+      <main id="main" tabIndex={-1} className="flex flex-col">
+        <LandingHero />
+        <LandingCapabilities />
+        <LandingOnTheFloor />
+        <LandingTestimonials />
+        <LandingFaq />
+        <LandingClosing />
+      </main>
+    </div>
   );
 }

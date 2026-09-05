@@ -22,6 +22,10 @@ tests
 **/.vercel
 *.log
 
+# macOS metadata — Nitro copies public/ verbatim into .output, so keep these
+# out of the image build context entirely.
+**/.DS_Store
+
 Dockerfile
 **/Dockerfile
 **/docker-compose*.yaml

@@ -1,0 +1,30 @@
+export const meta = {
+  title: "Bank transfers at the desk, and who is paying",
+  date: "2026-09-04",
+  summary:
+    "A fourth payment method, a sponsor field on registration that changes nothing about the bill, and a decision not to model insurance as a way of paying.",
+};
+
+Payments now take four methods: **Cash, UPI, Card and Bank transfer**. A bank
+transfer behaves like the other non-cash lines — it carries its own
+reconciliation reference and prints its own receipt — so a collection can still be
+split across up to four lines, each traceable on its own.
+
+## A sponsor is recorded, not billed
+
+Registration can capture an optional **Sponsor**: a corporate, a scheme, an
+employer, with the patient's policy or employee identifiers. This is measurement
+only. The invoice stays addressed to the patient and an uncovered balance stays
+outstanding. We are counting how often a sponsor appears before we build anything
+that acts on it.
+
+## Insurance is not a payment method
+
+We considered adding _Insurance_ and _TPA_ as payment methods and rejected it. A
+bill marked "paid by insurance" reads as settled while the hospital has not
+received a rupee. When a payer domain ships, the payer's share will post to its
+own receivable at invoice time; until then, the desk sees the truth: what has
+actually been collected and what is still owed.
+
+Cheques are not accepted at the OPD desk. They arrive with payer remittances, and
+that is where they will be handled.

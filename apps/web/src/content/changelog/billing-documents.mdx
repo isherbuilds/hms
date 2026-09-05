@@ -1,0 +1,30 @@
+export const meta = {
+  title: "Invoices and receipts, rendered from the record",
+  date: "2026-08-30",
+  summary:
+    "Every printed document is generated on the server from the immutable invoice, so preview, print and download can never disagree.",
+};
+
+Invoices, payment receipts and credit notes now render as PDFs from one
+server-side endpoint. Preview in the browser, print at the desk and the file a
+patient downloads are the same bytes from the same source facts.
+
+## What prints
+
+- The hospital's legal name, address and GSTIN, from organization settings.
+- Every charge as it was priced at the time — catalog and tax facts are snapshotted
+  onto the charge, so a later price change never rewrites an old bill.
+- Patient names in Devanagari where that is how they were registered.
+
+## What does not
+
+A payment receipt is never labelled as the itemized bill; they are different
+documents with different requirements. And until the pilot's chartered accountant
+signs off on classifications, the itemized document carries the neutral label
+**Invoice** and makes no _Tax Invoice_ or _Bill of Supply_ claim. We would rather
+print less than print something we cannot yet stand behind.
+
+## Corrections
+
+An issued invoice is immutable. A discount after issue is a credit note; money
+returned is a refund. The trail shows what happened, not only the final number.

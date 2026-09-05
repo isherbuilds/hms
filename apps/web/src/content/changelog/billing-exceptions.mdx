@@ -1,0 +1,24 @@
+export const meta = {
+  title: "The money that needs chasing",
+  date: "2026-09-03",
+  summary:
+    "Billing opens on what is wrong, not on everything: care that has not been billed past a threshold, invoices still open, and refunds owed.",
+};
+
+The billing screen now leads with exceptions.
+
+- **Waiting to be billed** — appointments where care has happened and no invoice
+  exists. A configurable threshold decides when "not yet" becomes "late", and
+  the count tells the cashier how many people are still in the building.
+- **Outstanding** — issued invoices with money still owed, with **Over 30 days**
+  broken out so the number nobody has chased is visible on its own tile.
+- **Refund due** — credit notes whose money has not gone back to the patient.
+
+The open-money list underneath is bounded and filterable — _To bill_, _Unpaid_,
+_Over 7 days_ — and searchable by patient, MRN or invoice number. An invoice past
+seven days changes colour in the list rather than waiting for a report.
+
+## Also
+
+The same lists work on a phone. A cashier can see what is outstanding from the
+ward without walking back to the desk.

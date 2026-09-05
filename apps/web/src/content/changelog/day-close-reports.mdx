@@ -1,0 +1,28 @@
+export const meta = {
+  title: "Closing the day: collections and the OPD register",
+  date: "2026-09-03",
+  summary:
+    "Two reports for the end of a shift — what was collected, by whom and how, and every appointment on the day with its outcome — exportable to Excel or PDF.",
+};
+
+Reports now include the two documents a hospital actually reconciles against at
+the end of the day.
+
+## Daily collections
+
+Every payment taken on a business date, grouped by cashier and by method, with
+the receipt each one produced. Refunds appear as what they are — money going
+out — rather than as negative sales. The report uses the **stored business
+date**, not the server clock, so a payment recorded at 00:10 belongs to the day
+the desk was actually working.
+
+## OPD register
+
+Every appointment on the day: token, patient, practitioner, arrival mode and its
+final state — Booked, Checked In, Cancelled or No show. The no-show reconciliation
+the queue uses is the same one the register uses, so the two never disagree about
+who did not turn up.
+
+## Both export
+
+Excel for the accountant, PDF for the file. Any date range, not only today.

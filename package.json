@@ -40,6 +40,7 @@
     "test": "bun test --max-concurrency 1 --timeout 15000 tests && bun test --max-concurrency 1 --timeout 15000 ./tests/isolated/files-delete-resilience.isolated.ts",
     "dev:web": "turbo run dev -F web",
     "dev:server": "turbo run dev -F server",
+    "dev:status": "bun scripts/dev-status.ts",
     "db:up": "docker compose -f packages/db/docker-compose.dev.yaml up -d --wait",
     "db:push": "turbo run db:push -F @hms/db",
     "db:studio": "turbo run db:studio -F @hms/db",
@@ -73,6 +74,7 @@
     "oxlint": "^1.81.0",
     "pg": "^8.23.0",
     "portless": "^0.15.6",
+    "takumi-js": "^2.13.5",
     "turbo": "^2.10.12",
     "typescript": "^7.0.2"
   },

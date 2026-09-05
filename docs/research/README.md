@@ -22,6 +22,29 @@ Active temporary memos:
   peers with a real design keep one thin billable item and link domain masters
   to it, and what that means for pharmacy/lab/IPD masters, roles, no-show, and
   day-close shapes.
+- [Landing page composition](./landing-page-composition.md) — Cursor, Slack,
+  Midday, Ramp and six practice/hospital-management sites observed 2026-09-04;
+  establishes that a trust strip sits directly under the hero in 4 of 4
+  design-led references, that the healthcare tier fills that slot with volume
+  numbers and regulatory badges rather than customer logos, that four of six
+  healthcare references barely show the product at all, and that pricing stays
+  off the landing page. Composition only — it proves norms, not conversion.
+- [Landing header anatomy](./landing-header-anatomy.md) — Cursor, Midday, Tebra
+  and Jane read 2026-09-04; establishes that both tiers ship wordmark + one to
+  four doors + two or three right-hand actions, that the design-led tier ends on
+  a self-serve primary while every healthcare reference books a demo from the
+  bar itself, that healthcare product menus segment by who is buying and not
+  only by feature, and that nobody ships a four-item door. Norms only.
+- [Public site: search and AI visibility, performance, pages, contact](./public-site-seo-ai-and-pages.md)
+  — Google, OpenAI, Anthropic, Perplexity, Apple, MeitY, MCA and web.dev read
+  2026-09-05; establishes that Google Search does not read `llms.txt`, that the
+  only AI-specific lever is a per-purpose robots policy, that every product
+  screenshot is an unindexable CSS background, that DPDP notice/contact duties
+  commence 2027-05-13 while SPDI r4 applies now, and that Incorporation Rules
+  r26 already requires name/CIN/registered office/contact on the home page.
+  Recommends WhatsApp-first contact. Lists the five owner decisions it cannot
+  make.
+
 - [Reference payment methods and payers](./reference-payment-methods-and-payers.md)
   — Bahmni, Danphe, and Marley pinned 2026-09-03; establishes that modelling an
   insurer or scheme as a payment-method value makes an unpaid bill read as

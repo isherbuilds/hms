@@ -1,5 +1,4 @@
-FROM node:24-slim AS builder
-COPY --from=oven/bun:1 /usr/local/bin/bun /usr/local/bin/bun
+FROM oven/bun:1.4.0-slim AS builder
 WORKDIR /app
 
 COPY . .
@@ -9,8 +8,7 @@ WORKDIR /app/apps/server
 ENV SKIP_ENV_VALIDATION=1
 RUN bun run build
 
-FROM node:24-slim AS runtime
-COPY --from=oven/bun:1 /usr/local/bin/bun /usr/local/bin/bun
+FROM oven/bun:1.4.0-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -32,8 +30,8 @@ COPY --from=builder /app/apps/server/dist ./apps/server/dist
 COPY --from=builder /app/packages/db/src ./packages/db/src
 COPY --from=builder /app/packages/env/src ./packages/env/src
 
-RUN chown -R node:node /app
-USER node
+RUN chown -R bun:bun /app
+USER bun
 
 EXPOSE 3000
 

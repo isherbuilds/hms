@@ -1,0 +1,32 @@
+export const meta = {
+  title: "The OPD desk, rebuilt around one list",
+  date: "2026-08-24",
+  summary:
+    "One searchable list per business day, four states that are all observable from the desk, and a walk-in that books, tokens, charges and settles in a single step.",
+};
+
+The outpatient screen is now one list for the day. Search by name, MRN, phone or
+token; switch between the open queue and the whole day; everything else is a
+click on a row.
+
+## Four states, all of them true
+
+An appointment is **Booked**, **Checked In**, **Cancelled** or **No show**.
+Nothing else. We removed _in consultation_, _completed_ and _left unseen_
+because nobody at the desk can actually observe them — a receptionist does not
+know the moment a consultation ends, and a state nobody can verify is a state
+that is always wrong.
+
+## A walk-in is one action
+
+A patient who arrives without booking is registered if needed, given a token,
+charged the consultation fee for that practitioner, and paid up — as one atomic
+operation. If any part fails, nothing is half-recorded. Reception can drop the
+consultation fee with one toggle when the visit is a free follow-up; no reason
+form, no approval.
+
+## Filters live in the URL
+
+Which day, which filter, which row is open — all of it is in the address bar.
+Refresh and you are where you were; send the link to a colleague and they see the
+same list.

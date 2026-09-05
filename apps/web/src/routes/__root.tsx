@@ -7,14 +7,29 @@ import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { createMiddleware } from "@tanstack/react-start";
 import { evlogErrorHandler } from "evlog/nitro/v3";
 
+import { PUBLIC_PATHS } from "@/config/public-paths";
+import { siteConfig } from "@/config/site";
+import { shouldDenyIndexing } from "@/lib/public-crawl";
 import appCss from "../index.css?url";
+
 interface RouterAppContext {
   queryClient: QueryClient;
 }
 
+/* Every response outside `PUBLIC_PATHS` is non-indexable (D030). A header, not a
+   `<meta>`, so it also covers the redirect an anonymous visitor gets from
+   `/$orgSlug` and any non-HTML response. */
+const denyIndexing = createMiddleware().server(async ({ pathname, next }) => {
+  const result = await next();
+  if (shouldDenyIndexing(pathname, PUBLIC_PATHS)) {
+    result.response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
+  return result;
+});
+
 export const Route = createRootRouteWithContext<RouterAppContext>()({
   server: {
-    middleware: [createMiddleware().server(evlogErrorHandler)],
+    middleware: [createMiddleware().server(evlogErrorHandler), denyIndexing],
   },
 
   head: () => ({
@@ -27,7 +42,9 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: "HMS",
+        // Every public route overrides this via `pageHead`; this fallback is
+        // what an unlisted or non-public route ships with.
+        title: siteConfig.fallbackTitle,
       },
     ],
     links: [

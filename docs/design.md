@@ -69,16 +69,22 @@ One scale. Five steps carry everything:
 
 A dense data surface. `text-xs` is the body size, not a small size.
 
-| Size                      | Where                                                               |
-| ------------------------- | ------------------------------------------------------------------- |
-| `text-[0.6875rem]` (11px) | `Badge` and `TableHead` primitives only: dense status/column labels |
-| `text-xs` (12px)          | Default: table cells, labels, body copy, buttons, inputs            |
-| `text-sm` (14px)          | Page and section titles                                             |
-| `text-base` (16px)        | Dialog and Sheet task titles                                        |
-| `text-lg` (18px)          | Public pages and a chart's fixed-height interactive readout         |
-| `text-xl` (20px)          | Public pages only                                                   |
-| `text-2xl`/`text-3xl`     | The headline number on a dashboard stat card only                   |
+| Size                      | Where                                                                   |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `text-[0.6875rem]` (11px) | `Badge` and `TableHead` primitives only: dense status/column labels     |
+| `text-xs` (12px)          | Default: table cells, labels, body copy, buttons, inputs                |
+| `text-sm` (14px)          | Page and section titles                                                 |
+| `text-base` (16px)        | Dialog and Sheet task titles                                            |
+| `text-lg` (18px)          | Public pages and a chart's fixed-height interactive readout             |
+| `text-xl` (20px)          | Public pages only                                                       |
+| `text-2xl`/`text-3xl`     | The headline number on a dashboard stat card only                       |
+| `text-4xl`/`text-5xl`     | Display: marketing headlines on public pages only, never inside the app |
 
+- **Display sizes stop at the app's edge.** `text-4xl`/`text-5xl` exist so the
+  public pages — `/` and the per-feature marketing routes — can carry a headline
+  at the size a reader expects from a product site. Nothing behind a login uses
+  them: a dense operational surface
+  that needs 36 px to state something has a hierarchy problem, not a size one.
 - **No route-level `text-[13px]`-style values.** A missing step means the design
   is wrong, not the scale. The reviewed 11 px component labels above and print
   sizes measured against physical paper are the only type exceptions.
@@ -132,10 +138,14 @@ Theme tokens only: `bg-background`, `bg-card`, `bg-muted`, `text-foreground`,
 
 Light `--muted-foreground` is `oklch(0.5 0 0)` so secondary text clears 4.5:1 on the canvas, card, and muted tray.
 
-- **Three documented exceptions.** Print documents use `bg-white text-black
+- **Four documented exceptions.** Print documents use `bg-white text-black
 border-black` because paper is white with black ink in every theme; the login
-  context panel is a fixed dark surface in both themes; and clinical severity
-  uses the named tokens below.
+  context panel is a fixed dark surface in both themes; the landing page's wash
+  (`components/landing/wash.tsx`) is a decorative gradient pinned to its light
+  values in both themes, because a wash that inverts becomes a different object
+  and because a bright stage carrying a dark app window is the effect it exists
+  for — it sits behind product screenshots only, never behind type; and clinical
+  severity uses the named tokens below.
 - **Clinical severity** is the one place hue carries meaning beyond tenancy
   state: `--clinical-alert` for what is dangerous about a patient (allergies, a
   balance still owed), `--clinical-note` for what is chronic (medical history),
