@@ -1,14 +1,14 @@
-import { beforeAll, expect, test } from "bun:test";
+import { beforeAll, expect, spyOn, test } from "bun:test";
 
 import { drainAuditWrites } from "@hms/api/audit";
 import { auth, invitationUrl } from "@hms/auth";
 import { createUserWithPassword } from "@hms/auth/manual-user";
 import { db } from "@hms/db";
 import { auditLog } from "@hms/db/schema/audit";
-import { member, user } from "@hms/db/schema/auth";
+import { invitation, member, user } from "@hms/db/schema/auth";
 import { file } from "@hms/db/schema/file";
 import { env } from "@hms/env/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { app } from "../../apps/server/src/index";
 import { createOrganization, createTestUser, joinOrganization } from "../support/auth";
@@ -18,7 +18,7 @@ beforeAll(async () => {
   await resetTestDatabase();
 });
 
-test("public email sign-up is disabled", async () => {
+test("public email sign-up is refused without an invitation", async () => {
   await expectAuthStatus(
     auth.api.signUpEmail({
       body: {
@@ -27,8 +27,8 @@ test("public email sign-up is disabled", async () => {
         password: "integration-test-password",
       },
     }),
-    "BAD_REQUEST",
-    "EMAIL_PASSWORD_SIGN_UP_DISABLED",
+    "FORBIDDEN",
+    "INVITATION_REQUIRED",
   );
 
   const [probe] = await db.select({ id: user.id }).from(user).limit(1);
@@ -235,4 +235,106 @@ test("the direct Better Auth surface enforces the same permissions and skips the
     .from(auditLog)
     .where(eq(auditLog.orgId, organization.id));
   expect(audited).toBeUndefined();
+});
+
+test("an invitee creates an account from the invitation id, joins, and signs in with the password", async () => {
+  const email = `onboarding-${Bun.randomUUIDv7()}@example.com`;
+  const owner = await createTestUser("onboarding-owner");
+  const organizationName = "onboarding-organization";
+  const organization = await createOrganization(owner, organizationName);
+  const invited = await auth.api.createInvitation({
+    body: { email, role: "reception", organizationId: organization.id },
+    headers: owner.headers,
+  });
+  const queries = spyOn(db.$client, "query");
+  try {
+    const status = await app.request(
+      `/api/auth/invitation/claim-status?invitationId=${invited.id}`,
+    );
+    expect(status.status).toBe(200);
+    expect(await status.json()).toEqual({
+      accountExists: false,
+      email,
+      organizationName,
+      organizationSlug: organization.slug,
+    });
+    expect(queries).toHaveBeenCalledTimes(1);
+  } finally {
+    queries.mockRestore();
+  }
+
+  const password = "integration-test-password";
+  const response = await app.request("/api/auth/sign-up/email", {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: env.CORS_ORIGIN },
+    body: JSON.stringify({ email, name: "Invited User", password, invitationId: invited.id }),
+  });
+  expect(response.status).toBe(200);
+  const cookie = response.headers
+    .getSetCookie()
+    .map((value) => value.split(";")[0])
+    .join("; ");
+  expect(cookie).toContain("session");
+  const created = (await response.json()) as { user: { id: string; emailVerified: boolean } };
+  expect(created.user.emailVerified).toBe(false);
+  expect(await auth.api.invitationClaimStatus({ query: { invitationId: invited.id } })).toEqual({
+    accountExists: true,
+    email,
+    organizationName,
+    organizationSlug: organization.slug,
+  });
+
+  const headers = new Headers({ cookie, origin: env.CORS_ORIGIN });
+  await auth.api.acceptInvitation({ body: { invitationId: invited.id }, headers });
+  const [membership] = await db
+    .select({ role: member.role })
+    .from(member)
+    .where(and(eq(member.organizationId, organization.id), eq(member.userId, created.user.id)));
+  expect(membership?.role).toBe("reception");
+  expect((await auth.api.signInEmail({ body: { email, password } })).user.id).toBe(created.user.id);
+});
+
+test("an invitation id creates only its own invited email while it is live", async () => {
+  const email = `revoked-onboarding-${Bun.randomUUIDv7()}@example.com`;
+  const owner = await createTestUser("revoked-onboarding-owner");
+  const organization = await createOrganization(owner, "revoked-onboarding");
+  const invited = await auth.api.createInvitation({
+    body: { email, role: "reception", organizationId: organization.id },
+    headers: owner.headers,
+  });
+  const signUp = (body: { email: string; invitationId: string }) =>
+    auth.api.signUpEmail({
+      body: { name: "Impersonator", password: "integration-test-password", ...body },
+    });
+
+  await expectAuthStatus(
+    signUp({ email: `other-${Bun.randomUUIDv7()}@example.com`, invitationId: invited.id }),
+    "FORBIDDEN",
+    "INVITATION_REQUIRED",
+  );
+  await auth.api.cancelInvitation({ body: { invitationId: invited.id }, headers: owner.headers });
+  await expectAuthStatus(
+    signUp({ email, invitationId: invited.id }),
+    "FORBIDDEN",
+    "INVITATION_REQUIRED",
+  );
+  expect(await db.select({ id: user.id }).from(user).where(eq(user.email, email))).toHaveLength(0);
+
+  const expired = await auth.api.createInvitation({
+    body: { email, role: "reception", organizationId: organization.id },
+    headers: owner.headers,
+  });
+  await db
+    .update(invitation)
+    .set({ expiresAt: new Date(Date.now() - 60_000) })
+    .where(eq(invitation.id, expired.id));
+  const expiredStatus = await app.request(
+    `/api/auth/invitation/claim-status?invitationId=${expired.id}`,
+  );
+  expect(expiredStatus.status).toBe(404);
+  await expectAuthStatus(
+    signUp({ email, invitationId: expired.id }),
+    "FORBIDDEN",
+    "INVITATION_REQUIRED",
+  );
 });

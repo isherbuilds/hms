@@ -26,10 +26,12 @@ One session at a time owns a database-wiping test run.
 
 ## Hard rules
 
+If my instructions are ambiguous, ask me to clarify before proceeding.
+
 1. **Every domain row belongs to exactly one org (`orgId NOT NULL`), and every query carries the tenant predicate `eq(orgId, scope.orgId)`.** This includes infrastructure tables (`audit_log`, `file`). `userId` columns are attribution, never scope.
 2. **Org context is explicit procedure input, proven by the permission guard.** Org pages pass their `/:orgSlug` route param as `input.orgSlug` through the single `/rpc` client. `orgProcedure(permission, input)` resolves membership in its internal guard and turns the claim into verified `context.scope`; the permission is a required constructor argument and the raw builder is not exported. Handlers use only scope for authorization and SQL. Membership resolves once per request and never across requests; there is no fallback to `session.activeOrganizationId`.
    - Org pages live under `apps/web/src/routes/$orgSlug/` and import the singleton `orpc`. Every org query, mutation, and invalidation includes `orgSlug`, so query keys cannot reuse another tenant's data. Slugs are validated by `@hms/auth/organization-slug`. The layout server-renders; its loader fetches `member.me` through the request-local server client. Base UI popups stay behind `ClientOnly` (D008).
-   - Sign-up is disabled: accounts are operator-created via `scripts/create-user.ts`. Only the `FOUNDING_EMAIL` account creates organizations (D006, `scripts/create-founder.ts`).
+   - Public sign-up is closed. An account is created only by native sign-up carrying a live invitation id for that email, or by an operator via `scripts/create-user.ts`. The invitation id is the recipient's proof until an email provider exists (D006), so it reaches only members with the invite grant. Only the `FOUNDING_EMAIL` account creates organizations (D006, `scripts/create-founder.ts`).
    - Roles are stored comma-joined and authorize as a **union**. Use `parseRoles`/`authorize` from `@hms/auth/access`; never read `role.split(",")[0]`.
 3. **Audit sensitive actions, not everything.** `audit()` is fire-and-forget and can never slow a response or turn one into a 500. Role denials are audited centrally in `orgProcedure`; routers call `audit()` only for sensitive or destructive mutations. Do not move audit writes into domain transactions without an approved decision.
 4. **Never hand-edit generated migrations.** New schema → `bun run db:generate`; hand-authored SQL gets its own migration file. Migrations are append-only once data is retained.

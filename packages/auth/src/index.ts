@@ -7,6 +7,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 
 import { ac, roles } from "./access";
+import { invitationClaim } from "./invitation-claim";
 import { organizationSlugIssue } from "./organization-slug";
 
 export function invitationUrl(invitationId: string): string {
@@ -26,8 +27,8 @@ function createAuth() {
     disabledPaths: ["/organization/check-slug"],
     emailAndPassword: {
       enabled: true,
-      // Sign-up is closed: accounts are created by an operator. Login stays open.
-      disableSignUp: true,
+      // Sign-up is open only to an invitation id plus its invited email; the
+      // `invitationClaim` user hook refuses every other creation (D006).
     },
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
@@ -62,6 +63,10 @@ function createAuth() {
       organization({
         ac,
         roles,
+        // No email provider yet, so invited accounts are unverified and the
+        // invitation id is the proof (D006). Explicit: with a custom generateId
+        // Better Auth would otherwise default this to true.
+        requireEmailVerificationOnInvitation: false,
         allowUserToCreateOrganization: (user) => {
           // Emails are stored lowercased, so normalize the env value before comparing.
           return user.email === env.FOUNDING_EMAIL.toLowerCase();
@@ -89,14 +94,8 @@ function createAuth() {
             }
           },
         },
-        // Until a real provider is wired here the link is logged, and `member.invite`
-        // returns it too, so the flow is never silently broken.
-        sendInvitationEmail: async ({ id, email, organization: org, inviter }) => {
-          console.info(
-            `[invite] ${inviter.user.email} invited ${email} to ${org.name}: ${invitationUrl(id)}`,
-          );
-        },
       }),
+      invitationClaim(),
     ],
   });
 }

@@ -25,6 +25,7 @@ until their trigger is met and they enter this registry.
 
 | Work                                                                                        | Lifecycle    | Exit condition                                                                                                             |
 | ------------------------------------------------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| [Invitation account onboarding](./research/invitation-account-onboarding.md)                | Blocked      | An email provider exists; then add mailbox verification per the memo and retire the id-as-proof rule in D006               |
 | [Payment methods, bank transfer, sponsors](./specs/payment-methods-cheques-and-sponsors.md) | Active       | After one month of pilot use the method-mix and sponsor-share counts are recorded and the payer-domain go/no-go is decided |
 | [Production hardening](./operations.md#production-hardening)                                | Verification | Release-time evidence on the deployed host records digests, sizes, header checks, and a reviewed cleanup dry run           |
 | [Pilot readiness](./operations.md#pilot-readiness)                                          | Active       | A named owner records every operational, accounting, print, restore, and compliance gate complete                          |

@@ -8,6 +8,10 @@ the first documentation consolidation is commit `35550b9`.
 
 Active temporary memos:
 
+- [Invitation account onboarding](./invitation-account-onboarding.md) — proposal
+  from 2026-09-07, checked against Better Auth 1.7.2; recommends invitation-gated
+  email verification before account setup. Deferred on 2026-09-08: no email
+  provider exists, so the shipped MVP uses the invitation id as proof (D006).
 - [Frontend patterns](./frontend-patterns.md) — Midday and OpenStatus pinned;
   establishes that Midday runs _without_ React Compiler while HMS runs with it,
   keeps the one unbuilt item (oRPC batching) and the unmeasured `useSearch`

@@ -49,14 +49,23 @@ objects never pass through the app server and the bucket is never anonymously
 readable. A database visibility flag cannot secure an object-storage policy.
 Revisit only with tenant-isolated buckets or signed CDN enforcement.
 
-### D006 — Operator-created accounts; founder-only Organizations
+### D006 — Invitation-gated accounts; founder-only Organizations
 
 **Accepted; consolidates 0013–0014; supersedes invite-only bootstrap 0007.**
-Public sign-up is disabled. Operators create password accounts with Better
+Public sign-up is disabled. Operators can create password accounts with Better
 Auth's hashing path. Only the account matching `FOUNDING_EMAIL` may create an
 Organization; neither owner nor admin role grants that platform capability.
 This removes the racy “first user” bootstrap while keeping ordinary membership
 invitation inside Organizations.
+**MVP without email (2026-09-08).** No email provider is configured, so the
+invitation id itself is the proof: native password sign-up succeeds only with a
+live invitation id whose email matches the address being registered. Accounts
+created this way are unverified. Accepted risk: a member with the invite grant
+can create the account for an email they do not own, because mailbox ownership
+is never proven. The id is therefore visible only to invite-grant holders.
+Trigger to revisit: when a provider exists, add mailbox verification (native
+email OTP before password setup, see the research memo) and drop the id-as-proof
+rule. The invitation id must be an opaque UUID (`generateId` is UUIDv7).
 
 ### D007 — Migrate before application startup
 

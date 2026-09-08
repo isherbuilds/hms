@@ -78,6 +78,26 @@ Better Auth stores comma-joined roles; `parseRoles` and `authorize` treat them a
 a union and throw on unknown roles. Client checks only hide controls; every
 operation is checked server-side.
 
+No email is sent. The invitation id is an opaque UUIDv7 that the admin hands to
+one person; presenting it with the invited email is the proof of eligibility
+(D006). The `invitation-claim` plugin enforces this in Better Auth's
+`user.create.before` hook: native `/sign-up/email` must carry a live invitation
+id whose email matches, and every other creation path is refused. Operator
+scripts insert rows directly and bypass the hook. New accounts stay
+`emailVerified: false` until a provider exists; organization endpoints do not
+require verification.
+
+Because the id creates the account, `member.list` returns invitation rows and
+their links only to members holding `invitation: ["create"]`. Expired rows are
+hidden; inviting the same email again after expiry creates a fresh id.
+
+The join page's invitation lookup is public and returns the invited email,
+organization name and slug, and whether an account exists. From it the visitor
+either signs in or creates the account (name and password), then accepts the
+selected invitation through Better Auth, which checks the session email against
+the invitation. The organization picker loads only when no invitation is
+selected; its invitation links open the same selected-invitation screen.
+
 To add an organization-scoped domain:
 
 1. Add `orgId NOT NULL` and a tenant-leading index; generate the migration.

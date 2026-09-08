@@ -111,13 +111,13 @@ function InviteDialog({
       onSuccess: (result) => {
         form.reset();
         setLastLink(result.url);
-        toast.success(`Invitation sent to ${result.email}`);
+        toast.success(`Invitation created for ${result.email}`);
         // Returned, so the form stays pending until the list shows the invitation.
         return queryClient.invalidateQueries({
           queryKey: orpc.member.list.key({ input: { orgSlug } }),
         });
       },
-      onError: (error) => toast.error(errorMessage(error, "Could not send the invitation")),
+      onError: (error) => toast.error(errorMessage(error, "Could not create the invitation")),
     }),
   );
 
@@ -143,9 +143,8 @@ function InviteDialog({
           <DialogHeader>
             <DialogTitle>Invite someone to this organization</DialogTitle>
             <DialogDescription>
-              Sign-up is disabled, so the person needs an account first — have your administrator
-              run the create-user script — then invite them here with the role you pick. Roles can
-              be changed later.
+              Nothing is emailed: share the link yourself. It lets the invited email create an
+              account or sign in, then join. Roles can be changed later.
             </DialogDescription>
           </DialogHeader>
 
@@ -221,7 +220,7 @@ function InviteDialog({
                   Done
                 </Button>
                 <Button type="submit" disabled={invite.isPending}>
-                  {invite.isPending ? "Sending…" : "Send invitation"}
+                  {invite.isPending ? "Creating…" : "Create invitation"}
                 </Button>
               </DialogFooter>
             </form>
@@ -297,7 +296,7 @@ function MemberResults({ orgSlug, q }: { orgSlug: string; q: string }) {
     orpc.member.revokeInvitation.mutationOptions({
       onSuccess: async () => {
         await refresh();
-        toast.success("Invitation revoked");
+        toast.success("Invitation canceled");
       },
       onError,
     }),
@@ -332,8 +331,8 @@ function MemberResults({ orgSlug, q }: { orgSlug: string; q: string }) {
               <div className="flex flex-col items-center gap-3">
                 <UsersIcon className="size-5 text-muted-foreground" />
                 <p className="max-w-sm">
-                  You are the only one here. Accounts are created by an administrator, then invited
-                  into this organization.
+                  You are the only one here. Invite someone and share the link; they create their
+                  account from it.
                 </p>
                 <InviteAction orgSlug={orgSlug} compact />
               </div>
@@ -431,23 +430,39 @@ function MemberResults({ orgSlug, q }: { orgSlug: string; q: string }) {
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
-                    {canRevoke ? (
+                    <span className="flex justify-end gap-1">
+                      {/* Rows arrive only for members with the invite grant. */}
                       <Button
                         variant="ghost"
                         size="xs"
-                        disabled={revoke.isPending}
                         onClick={() =>
-                          confirm({
-                            title: "Revoke this invitation?",
-                            description: `The link sent to ${invitation.email} stops working. You can invite them again afterwards.`,
-                            confirmLabel: "Revoke",
-                            run: () => revoke.mutate({ orgSlug, invitationId: invitation.id }),
-                          })
+                          navigator.clipboard.writeText(invitation.url).then(
+                            () => toast.success("Invitation link copied"),
+                            () => toast.error("Could not copy the link"),
+                          )
                         }
                       >
-                        Revoke
+                        <CopyIcon />
+                        Copy link
                       </Button>
-                    ) : null}
+                      {canRevoke ? (
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          disabled={revoke.isPending}
+                          onClick={() =>
+                            confirm({
+                              title: "Cancel this invitation?",
+                              description: `The link for ${invitation.email} stops working. You can invite them again afterwards.`,
+                              confirmLabel: "Cancel invitation",
+                              run: () => revoke.mutate({ orgSlug, invitationId: invitation.id }),
+                            })
+                          }
+                        >
+                          Cancel
+                        </Button>
+                      ) : null}
+                    </span>
                   </TableCell>
                 </TableRow>
               ))}

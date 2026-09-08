@@ -1,5 +1,5 @@
 import { auth, invitationUrl } from "@hms/auth";
-import { ORG_ROLES } from "@hms/auth/access";
+import { ORG_ROLES, authorize } from "@hms/auth/access";
 import { db } from "@hms/db";
 import { invitation, member, organization, user } from "@hms/db/schema/auth";
 import { SETTINGS_DEFAULTS, organizationSettings } from "@hms/db/schema/organization-settings";
@@ -72,9 +72,12 @@ export const memberRouter = {
       limit: z.number().int().min(1).max(200).default(100),
     }),
   ).handler(async ({ context, input }) => {
-    const { orgId } = context.scope;
+    const { orgId, roles } = context.scope;
     const search = input.q ? likePattern(input.q) : undefined;
-    const [members, invitations] = await Promise.all([
+    // An invitation id creates the invited account (D006), so only members who
+    // could have issued it get the rows and their links.
+    const canInvite = authorize(roles, { invitation: ["create"] });
+    const [members, invited] = await Promise.all([
       db
         .select({
           id: member.id,
@@ -93,27 +96,32 @@ export const memberRouter = {
         )
         .orderBy(asc(member.createdAt))
         .limit(input.limit),
-      db
-        .select({
-          id: invitation.id,
-          email: invitation.email,
-          role: invitation.role,
-          expiresAt: invitation.expiresAt,
-        })
-        .from(invitation)
-        .where(
-          and(
-            eq(invitation.organizationId, orgId),
-            eq(invitation.status, "pending"),
-            gt(invitation.expiresAt, new Date()),
-            search ? ilike(invitation.email, search) : undefined,
-          ),
-        )
-        .orderBy(asc(invitation.expiresAt))
-        .limit(input.limit),
+      canInvite
+        ? db
+            .select({
+              id: invitation.id,
+              email: invitation.email,
+              role: invitation.role,
+              expiresAt: invitation.expiresAt,
+            })
+            .from(invitation)
+            .where(
+              and(
+                eq(invitation.organizationId, orgId),
+                eq(invitation.status, "pending"),
+                gt(invitation.expiresAt, new Date()),
+                search ? ilike(invitation.email, search) : undefined,
+              ),
+            )
+            .orderBy(asc(invitation.expiresAt))
+            .limit(input.limit)
+        : [],
     ]);
 
-    return { members, invitations };
+    return {
+      members,
+      invitations: invited.map((row) => ({ ...row, url: invitationUrl(row.id) })),
+    };
   }),
 
   invite: orgProcedure(
@@ -137,7 +145,7 @@ export const memberRouter = {
       meta: { role: input.role },
     });
 
-    // Returned so an admin can hand the link over while no email provider is wired up.
+    // The link is the recipient's proof of eligibility until email delivery exists.
     return {
       id: created.id,
       email: created.email,

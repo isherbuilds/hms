@@ -77,7 +77,9 @@ default port (web 3001, API 3000, docs 4321). Point `BETTER_AUTH_URL`,
 `BETTER_AUTH_COOKIE_DOMAIN` first, because a `.hms.localhost` cookie does not
 belong on `localhost`.
 
-Public sign-up is disabled. Create local accounts with:
+Public sign-up is closed. Invitees create their account from the invitation
+link, which the admin copies from the Members page and shares (nothing is
+emailed). Operator scripts remain for founders and non-invited accounts:
 
 ```sh
 bun run create-founder <name> <password>

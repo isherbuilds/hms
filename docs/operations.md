@@ -172,14 +172,17 @@ change.
 
 ## Accounts and Organizations
 
-Public sign-up stays disabled. Run `create-founder` once for `FOUNDING_EMAIL`,
-then `create-user` for operator-created accounts. The founder creates an
-Organization at `/create`; staff join through an invitation at `/join`.
+Public sign-up is closed. Run `create-founder` once for `FOUNDING_EMAIL`; use
+`create-user` only for accounts that are not invited. The founder creates an
+Organization at `/create`; staff create their account and join from an
+invitation link at `/join`.
 Organization owners cannot create additional Organizations unless they are also
 the configured founder.
 
-Invitation links are logged/returned until a delivery provider is configured;
-production onboarding must not assume email delivery exists.
+No email is sent. The invitation link is the recipient's credential to create
+the account for the invited email (D006), so admins must hand it to that person
+directly and cancel it if it reaches anyone else. Treat the Members page link
+like a temporary password. There is no self-service password reset yet.
 
 ## Backups and restore
 
