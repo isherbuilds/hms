@@ -84,7 +84,7 @@ function PatientSearchInput({
     return (
       <>
         <span className="min-w-0">
-          <span className="block truncate font-medium">{match.name}</span>
+          <span className="block truncate font-medium capitalize">{match.name}</span>
           <span className="block truncate text-muted-foreground">
             {match.mrn} · <span className="font-mono tabular-nums">{match.phone}</span>
           </span>

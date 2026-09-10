@@ -256,7 +256,7 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
                         title={
                           appointment.patientName ?? appointment.callerName ?? "Unnamed caller"
                         }
-                        className="block truncate text-left font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                        className="block truncate text-left font-medium capitalize underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                       >
                         {appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
                       </Link>
@@ -271,7 +271,7 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
                       {formatTime(appointment.dayOrderAt ?? appointment.createdAt, timeZone)}
                     </TableCell>
                     <TableCell className="max-w-0">
-                      <div className="truncate" title={appointment.practitionerName}>
+                      <div className="truncate capitalize" title={appointment.practitionerName}>
                         {appointment.practitionerName}
                       </div>
                     </TableCell>
@@ -316,14 +316,14 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
                           {appointment.tokenNumber}
                         </span>
                       )}
-                      <span className="min-w-0 flex-1 truncate font-medium">
+                      <span className="min-w-0 flex-1 truncate font-medium capitalize">
                         {appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
                       </span>
                     </span>
                     <span className="mt-1 block truncate text-muted-foreground">
                       {formatTime(appointment.dayOrderAt ?? appointment.createdAt, timeZone)}
                       {" · "}
-                      {appointment.practitionerName}
+                      <span className="capitalize">{appointment.practitionerName}</span>
                     </span>
                     {toSignedPaise(appointment.balanceDue) > 0 ? (
                       <span className="mt-1 block font-medium text-destructive">

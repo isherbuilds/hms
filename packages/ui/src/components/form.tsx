@@ -63,6 +63,7 @@ function RegisteredFormField<
   TFieldValues extends FieldValues = FieldValues,
   TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
 >({ name, rules, render }: RegisteredFormFieldProps<TFieldValues, TName>) {
+  "use no memo"; // RHF mutates `errors` in place when setError adds a server error.
   const { control, register } = useFormContext<TFieldValues>();
   // Not `getFieldState`: it reads four slices of `formState` eagerly.
   const { errors } = useFormState({ control, name, exact: true });

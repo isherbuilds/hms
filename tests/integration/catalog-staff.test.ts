@@ -314,7 +314,7 @@ test("departments and practitioners support linked CRUD within an organization",
   });
   expect(practitioner).toMatchObject({
     orgId: organization.id,
-    name: "Dr. Ada",
+    name: "dr. ada",
     departmentId: department.id,
     registrationNumber: "REG-001",
     memberUserId: member.user.id,

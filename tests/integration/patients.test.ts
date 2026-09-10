@@ -200,7 +200,7 @@ test("update changes demographics without changing identity or consuming an MRN"
     id: original.id,
     orgId: original.orgId,
     mrn: original.mrn,
-    name: "After Update",
+    name: "after update",
     phone: "5550401",
     sex: "female",
     dateOfBirth: "1990-04-05",
@@ -332,13 +332,15 @@ test("new patient fields round-trip and unknown sex is accepted", async () => {
   const api = clientFor(owner);
 
   const registered = await api.patient.register({
-    ...registration(organization.slug, "Patient Master Fields", "5550550"),
+    ...registration(organization.slug, "patient MASTER fields", "5550550"),
     sex: "unknown",
     email: "patient@example.com",
     bloodGroup: "AB-",
     allergies: "Penicillin",
     medicalHistory: "Hypertension",
     uid: "  NATIONAL-123  ",
+    guardian: { relation: "W/o", name: "gurmeet SINGH", phone: "5550554" },
+    emergencyContact: { name: "harpreet kaur", phone: "5550551" },
   });
   const patient = await api.patient.get({
     orgSlug: organization.slug,
@@ -346,13 +348,38 @@ test("new patient fields round-trip and unknown sex is accepted", async () => {
   });
 
   expect(patient).toMatchObject({
+    name: "patient master fields",
     sex: "unknown",
     email: "patient@example.com",
     bloodGroup: "AB-",
     allergies: "Penicillin",
     medicalHistory: "Hypertension",
     uid: "NATIONAL-123",
+    guardianRelation: "W/o",
+    guardianName: "gurmeet singh",
+    guardianPhone: "5550554",
+    emergencyContactName: "harpreet kaur",
+    emergencyContactPhone: "5550551",
+    emergencyContactRelation: null,
   });
+
+  // Half a guardian or a contact with no phone is refused by the input shape itself.
+  await expectORPCCode(
+    api.patient.register({
+      ...registration(organization.slug, "Half Guardian", "5550552"),
+      // @ts-expect-error name is required once a guardian is given
+      guardian: { relation: "S/o" },
+    }),
+    "BAD_REQUEST",
+  );
+  await expectORPCCode(
+    api.patient.register({
+      ...registration(organization.slug, "Half Contact", "5550553"),
+      // @ts-expect-error phone is required once a contact is given
+      emergencyContact: { name: "nobody" },
+    }),
+    "BAD_REQUEST",
+  );
 });
 
 test("UID is unique within an organization but reusable in another organization", async () => {
@@ -527,7 +554,7 @@ test("patient search only returns a cursor when another matching row exists", as
     limit,
   });
   expect(exactPage.items).toHaveLength(limit);
-  expect(exactPage.items.every((patient) => patient.name.startsWith("Exact Boundary"))).toBe(true);
+  expect(exactPage.items.every((patient) => patient.name.startsWith("exact boundary"))).toBe(true);
   expect(exactPage.nextCursor).toBeNull();
 
   const firstOverflowPage = await api.patient.search({
@@ -537,7 +564,7 @@ test("patient search only returns a cursor when another matching row exists", as
   });
   expect(firstOverflowPage.items).toHaveLength(limit);
   expect(
-    firstOverflowPage.items.every((patient) => patient.name.startsWith("Overflow Boundary")),
+    firstOverflowPage.items.every((patient) => patient.name.startsWith("overflow boundary")),
   ).toBe(true);
   expect(firstOverflowPage.nextCursor).not.toBeNull();
 
@@ -553,7 +580,7 @@ test("patient search only returns a cursor when another matching row exists", as
     cursor: nextCursor,
   });
   expect(secondOverflowPage.items).toHaveLength(1);
-  expect(secondOverflowPage.items[0]?.name).toMatch(/^Overflow Boundary/);
+  expect(secondOverflowPage.items[0]?.name).toMatch(/^overflow boundary/);
   expect(secondOverflowPage.nextCursor).toBeNull();
 });
 
@@ -683,7 +710,7 @@ test("fresh CAS succeeds while stale and missing updates emit no success audit",
   const updated = await api.patient.update(
     updateInput(organization.slug, registered.id, loaded.updatedAt, "Winning Update"),
   );
-  expect(updated.name).toBe("Winning Update");
+  expect(updated.name).toBe("winning update");
   expect(updated.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   expect(updated.updatedAt).not.toBe(loaded.updatedAt);
 
@@ -713,7 +740,7 @@ test("fresh CAS succeeds while stale and missing updates emit no success audit",
     orgSlug: organization.slug,
     patientId: registered.id,
   });
-  expect(winner.name).toBe("Winning Update");
+  expect(winner.name).toBe("winning update");
 
   await drainAuditWrites();
   const updateAudits = await db
@@ -776,7 +803,7 @@ test("a legacy microsecond timestamp is exposed and compared as a millisecond to
   const updated = await api.patient.update(
     updateInput(organization.slug, registered.id, loaded.updatedAt, "Normalized Token Update"),
   );
-  expect(updated.name).toBe("Normalized Token Update");
+  expect(updated.name).toBe("normalized token update");
   expect(updated.updatedAt).toMatch(/\.\d{3}Z$/);
 });
 

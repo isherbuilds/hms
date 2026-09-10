@@ -45,6 +45,8 @@ export const invoices = pgTable(
     patientMrn: text("patient_mrn").notNull(),
     patientPhone: text("patient_phone").notNull(),
     patientAddress: text("patient_address"),
+    // "W/o Gurmeet Singh" as printed; snapshotted like the name so the document is stable.
+    patientGuardian: text("patient_guardian"),
     issuedBy: text("issued_by")
       .notNull()
       .references(() => user.id),

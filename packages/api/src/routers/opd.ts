@@ -31,7 +31,7 @@ import {
   reason,
   likePattern,
   searchQuery,
-  shortName,
+  personName,
 } from "../lib/schemas";
 import { billingDocumentContext, settleInvoiceTx } from "./billing";
 
@@ -97,7 +97,7 @@ async function transitionAppointment(options: {
 const bookInput = orgInput
   .extend({
     patientId: z.string().nullable().optional(),
-    callerName: shortName.optional(),
+    callerName: personName.optional(),
     callerPhone: phone.optional(),
     practitionerId: z.string(),
     scheduledLocal: localMinuteInput,

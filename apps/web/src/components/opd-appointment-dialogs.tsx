@@ -54,14 +54,18 @@ export function CheckInOpdAppointmentDialog({
         <DialogHeader>
           <DialogTitle>Check in appointment</DialogTitle>
           <DialogDescription>
-            {caller ? `Booked for ${caller}. ` : ""}
+            {caller ? (
+              <>
+                Booked for <span className="capitalize">{caller}</span>.{" "}
+              </>
+            ) : null}
             Find or register the patient, then create today's token.
           </DialogDescription>
         </DialogHeader>
         {selected ? (
           <div className="flex flex-col gap-4">
             <div className="bg-muted/40 px-3 py-2">
-              <p className="font-medium">{selected.name}</p>
+              <p className="font-medium capitalize">{selected.name}</p>
               <p className="text-muted-foreground">{selected.mrn}</p>
             </div>
             <DialogFooter>

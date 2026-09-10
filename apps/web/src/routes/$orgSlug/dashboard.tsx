@@ -315,13 +315,13 @@ function DashboardRoute() {
                           <Link
                             to="/$orgSlug/opd/$appointmentId"
                             params={{ orgSlug, appointmentId: appointment.id }}
-                            className="[@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                            className="capitalize [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                           >
                             {appointment.patientName}
                           </Link>
                         </td>
                         <td className="py-2 text-muted-foreground">{appointment.departmentName}</td>
-                        <td className="py-2 text-muted-foreground">
+                        <td className="py-2 text-muted-foreground capitalize">
                           {appointment.practitionerName}
                         </td>
                         <td className="py-2 text-right">

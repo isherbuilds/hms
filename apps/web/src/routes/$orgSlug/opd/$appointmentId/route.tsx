@@ -1,4 +1,5 @@
 import { authorize, type AppPermission } from "@hms/auth/access";
+import { guardianLabel } from "@hms/api/lib/schemas";
 import { Button } from "@hms/ui/components/button";
 import { Separator } from "@hms/ui/components/separator";
 import { cn } from "@hms/ui/lib/utils";
@@ -35,7 +36,11 @@ const OPD_TABS: readonly {
   label: string;
   permission: AppPermission;
 }[] = [
-  { to: "/$orgSlug/opd/$appointmentId", label: "Clinical", permission: { opd: ["read"] } },
+  {
+    to: "/$orgSlug/opd/$appointmentId",
+    label: "Clinical",
+    permission: { opd: ["read"] },
+  },
   {
     to: "/$orgSlug/opd/$appointmentId/billing",
     label: "Billing",
@@ -317,6 +322,8 @@ type OpdRecordIdentity = {
     sex: string;
     dateOfBirth: string;
     dobEstimated: boolean;
+    guardianRelation: string | null;
+    guardianName: string | null;
   } | null;
   practitioner: { name: string };
   department: { name: string };
@@ -334,10 +341,18 @@ function OpdRecordDescription({ orgSlug, record }: { orgSlug: string; record: Op
           params={{ orgSlug, patientId: patient.id }}
           className="underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
         >
-          {`${patient.mrn} · ${patient.name}`}
+          {`${patient.mrn} · `}
+          <span className="capitalize">{patient.name}</span>
         </Link>
       ) : (
-        `${appointment.callerName ?? "Unnamed caller"} · ${appointment.callerPhone ?? "No phone"}`
+        <span>
+          {appointment.callerName ? (
+            <span className="capitalize">{appointment.callerName}</span>
+          ) : (
+            "Unnamed caller"
+          )}
+          {` · ${appointment.callerPhone ?? "No phone"}`}
+        </span>
       )}
     </>
   );
@@ -347,10 +362,19 @@ function OpdRecordSummary({ record, action }: { record: OpdRecordIdentity; actio
   const { timeZone } = useOrgDateTime();
   const { appointment } = record;
   const event = appointment.arrivedAt
-    ? { label: "Arrived", value: formatDateTime(appointment.arrivedAt, timeZone) }
+    ? {
+        label: "Arrived",
+        value: formatDateTime(appointment.arrivedAt, timeZone),
+      }
     : appointment.scheduledFor
-      ? { label: "Scheduled", value: formatDateTime(appointment.scheduledFor, timeZone) }
-      : { label: "Created", value: formatDateTime(appointment.createdAt, timeZone) };
+      ? {
+          label: "Scheduled",
+          value: formatDateTime(appointment.scheduledFor, timeZone),
+        }
+      : {
+          label: "Created",
+          value: formatDateTime(appointment.createdAt, timeZone),
+        };
 
   return (
     <section className="flex flex-wrap items-start justify-between gap-4">
@@ -380,6 +404,7 @@ function OpdRecordSummary({ record, action }: { record: OpdRecordIdentity; actio
 function OpdRecordFacts({ record }: { record: OpdRecordIdentity }) {
   const { today } = useOrgDateTime();
   const { appointment, patient, practitioner, department } = record;
+  const guardian = patient && guardianLabel(patient);
   const age = patient
     ? `${patientAgeLabel(patient.dateOfBirth, patient.dobEstimated, today)} years`
     : null;
@@ -389,7 +414,15 @@ function OpdRecordFacts({ record }: { record: OpdRecordIdentity }) {
       {patient ? (
         <div className="flex flex-col gap-1">
           <h2 className="text-muted-foreground">Patient</h2>
-          <p className="font-medium">{patient.name}</p>
+          <p className="font-medium">
+            <span className="capitalize">{patient.name}</span>
+            {guardian ? (
+              <span className="font-normal text-muted-foreground">
+                {` ${guardian.relation} `}
+                <span className="capitalize">{guardian.name}</span>
+              </span>
+            ) : null}
+          </p>
           <p className="text-muted-foreground">
             {patient.mrn} · {patient.phone}
           </p>
@@ -400,14 +433,16 @@ function OpdRecordFacts({ record }: { record: OpdRecordIdentity }) {
       ) : (
         <div className="flex flex-col gap-1">
           <h2 className="text-muted-foreground">Caller</h2>
-          <p className="font-medium">{appointment.callerName ?? "Unnamed caller"}</p>
+          <p className={appointment.callerName ? "font-medium capitalize" : "font-medium"}>
+            {appointment.callerName ?? "Unnamed caller"}
+          </p>
           <p className="text-muted-foreground">{appointment.callerPhone ?? "No phone"}</p>
           <p className="text-muted-foreground">The patient record is linked at check-in.</p>
         </div>
       )}
       <div className="flex flex-col gap-1">
         <h2 className="text-muted-foreground">Care team</h2>
-        <p className="font-medium">{practitioner.name}</p>
+        <p className="font-medium capitalize">{practitioner.name}</p>
         <p className="text-muted-foreground">{department.name}</p>
       </div>
     </section>

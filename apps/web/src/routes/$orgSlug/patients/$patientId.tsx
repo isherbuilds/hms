@@ -1,5 +1,6 @@
 import { toSignedPaise } from "@hms/api/lib/invoice-math";
 import { authorize, type AppPermission } from "@hms/auth/access";
+import { guardianLabel } from "@hms/api/lib/schemas";
 import { Button, buttonVariants } from "@hms/ui/components/button";
 import { cn } from "@hms/ui/lib/utils";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
@@ -26,7 +27,11 @@ const TABS = [
   { id: "record", label: "Record", permission: { patient: ["read"] } },
   { id: "visits", label: "Visits", permission: { opd: ["read"] } },
   { id: "billing", label: "Billing", permission: { billing: ["read"] } },
-] as const satisfies readonly { id: string; label: string; permission: AppPermission }[];
+] as const satisfies readonly {
+  id: string;
+  label: string;
+  permission: AppPermission;
+}[];
 
 type TabId = (typeof TABS)[number]["id"];
 
@@ -62,6 +67,7 @@ function PinnedFacts({
   account: PatientAccount | undefined;
   currency: string;
 }) {
+  const guardian = guardianLabel(record);
   const outstanding = account?.outstanding;
   const owes = outstanding !== undefined && toSignedPaise(outstanding) !== 0;
 
@@ -70,7 +76,15 @@ function PinnedFacts({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Monogram label={record.name} />
         <div className="flex min-w-0 flex-col gap-1">
-          <p className="truncate text-sm font-medium">{record.name}</p>
+          <p className="truncate text-sm font-medium">
+            <span className="capitalize">{record.name}</span>
+            {guardian ? (
+              <span className="font-normal text-muted-foreground">
+                {` ${guardian.relation} `}
+                <span className="capitalize">{guardian.name}</span>
+              </span>
+            ) : null}
+          </p>
           <p className="text-xs text-muted-foreground">
             <span className="font-mono">{record.mrn}</span>
             {" · "}
@@ -166,6 +180,7 @@ function RecordTab({
 }) {
   const { roles } = useMembership(orgSlug);
   const [editing, setEditing] = useState(false);
+  const guardian = guardianLabel(record);
 
   return (
     <div className="flex flex-col gap-4">
@@ -195,7 +210,9 @@ function RecordTab({
           <Row label="MRN">
             <span className="font-mono text-muted-foreground">{record.mrn}</span>
           </Row>
-          <Row label="Name">{record.name}</Row>
+          <Row label="Name">
+            <span className="capitalize">{record.name}</span>
+          </Row>
           <Row label="Phone">
             <span className="font-mono tabular-nums">{record.phone}</span>
           </Row>
@@ -217,6 +234,37 @@ function RecordTab({
             )}
           </Row>
           <Row label="Address">{record.address || <Empty>Not recorded</Empty>}</Row>
+          <Row label="Guardian">
+            {guardian ? (
+              <span>
+                {guardian.relation} <span className="capitalize">{guardian.name}</span>
+              </span>
+            ) : (
+              <Empty>Not recorded</Empty>
+            )}
+          </Row>
+          {record.guardianPhone ? (
+            <Row label="Relation mobile">
+              <span className="font-mono tabular-nums">{record.guardianPhone}</span>
+            </Row>
+          ) : null}
+          <Row label="Emergency contact">
+            {record.emergencyContactName ? (
+              <>
+                <span className="capitalize">{record.emergencyContactName}</span>
+                {record.emergencyContactRelation ? (
+                  <span className="capitalize">{` · ${record.emergencyContactRelation}`}</span>
+                ) : null}
+              </>
+            ) : (
+              <Empty>Not recorded</Empty>
+            )}
+          </Row>
+          {record.emergencyContactPhone ? (
+            <Row label="Emergency phone">
+              <span className="font-mono tabular-nums">{record.emergencyContactPhone}</span>
+            </Row>
+          ) : null}
           <Row label="Sponsor">
             {record.sponsor ? (
               <>
@@ -329,7 +377,11 @@ function PatientDetailRoute() {
     <>
       <PageHeader
         title="Patient"
-        description={`${record.mrn} · ${record.name}`}
+        description={
+          <>
+            {record.mrn} · <span className="capitalize">{record.name}</span>
+          </>
+        }
         action={
           authorize(roles, { opd: ["create"] }) ? (
             <Link

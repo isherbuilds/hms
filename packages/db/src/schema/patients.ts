@@ -11,6 +11,7 @@ import {
 import { sql } from "drizzle-orm";
 
 import { organization, user } from "./auth";
+import type { EmergencyContactRelation, GuardianRelation } from "./patient-relations";
 
 export const patients = pgTable(
   "patients",
@@ -34,6 +35,15 @@ export const patients = pgTable(
     allergies: text("allergies"),
     medicalHistory: text("medical_history"),
     uid: text("uid"),
+    // Guardian and emergency contact are all-or-nothing pairs, enforced by the
+    // API input, not here: their relation vocabularies live in `patient-relations.ts`
+    // and change without a migration.
+    guardianRelation: text("guardian_relation").$type<GuardianRelation>(),
+    guardianName: text("guardian_name"),
+    guardianPhone: text("guardian_phone"),
+    emergencyContactName: text("emergency_contact_name"),
+    emergencyContactPhone: text("emergency_contact_phone"),
+    emergencyContactRelation: text("emergency_contact_relation").$type<EmergencyContactRelation>(),
     createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 }).defaultNow().notNull(),

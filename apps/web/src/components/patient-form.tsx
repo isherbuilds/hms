@@ -7,6 +7,8 @@ import {
   FormMessage,
   RegisteredFormField,
 } from "@hms/ui/components/form";
+import { emergencyContactRelation, guardianRelation } from "@hms/api/lib/schemas";
+import type { AppRouter } from "@hms/api/routers/index";
 import { Button } from "@hms/ui/components/button";
 import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
@@ -15,8 +17,9 @@ import { SubmitButton } from "@hms/ui/components/submit-button";
 import { Textarea } from "@hms/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { AlertTriangleIcon, MailIcon, PhoneIcon } from "lucide-react";
-import { useState, type FormEventHandler, type ReactNode } from "react";
+import type { RouterClient } from "@orpc/server";
+import { AlertTriangleIcon, ChevronDownIcon, MailIcon, PhoneIcon } from "lucide-react";
+import { useRef, useState, type FormEventHandler, type ReactNode, type Ref } from "react";
 import { useFormContext, useFormState, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -24,16 +27,10 @@ import { z } from "zod";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { invalidatePatientState } from "@/lib/domain-invalidation";
-import {
-  optionalNumberText,
-  optionalText,
-  patientFieldSchema,
-  type PatientFields,
-} from "@/lib/form-schema";
+import { optionalNumberText, optionalText, patientFieldSchema } from "@/lib/form-schema";
 import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { applyOrpcFieldError, errorMessage } from "@/lib/orpc-error";
-import type { PayerType } from "@/lib/payer";
 import { ageYearsToEstimatedDateOfBirth, patientAgeYears } from "@/lib/patient-age";
 
 const patientFormSchema = patientFieldSchema
@@ -56,19 +53,14 @@ const UID_CONFLICT = {
   uid_taken: { field: "uid", message: "A patient with this UID already exists." },
 } as const;
 
-/** The record the form edits. `updatedAt` is the compare-and-swap token the save needs. */
-export type EditablePatient = PatientFields & {
-  id: string;
-  mrn: string;
-  updatedAt: string;
-  sponsor: {
-    payerId: string;
-    payerName: string;
-    payerType: PayerType;
-    policyNumber: string | null;
-    employeeNumber: string | null;
-  } | null;
-};
+/** The record the form edits: `patient.get`'s row, whose `updatedAt` is the compare-and-swap token. */
+export type EditablePatient = Awaited<ReturnType<RouterClient<AppRouter>["patient"]["get"]>>;
+
+function guardianEmergencyRelation(relation: string | null) {
+  if (relation === "S/o" || relation === "D/o") return "parent";
+  if (relation === "W/o" || relation === "H/o") return "spouse";
+  return "";
+}
 
 /** Controls are uncontrolled, so every default is the string the DOM holds. */
 function defaultValues(
@@ -89,6 +81,8 @@ function defaultValues(
       allergies: "",
       medicalHistory: "",
       uid: "",
+      guardian: { relation: "", name: "", phone: "" },
+      emergencyContact: { name: "", phone: "", relation: "" },
       sponsorPayerId: "",
       sponsorPolicyNumber: "",
       sponsorEmployeeNumber: "",
@@ -109,6 +103,16 @@ function defaultValues(
     allergies: patient.allergies ?? "",
     medicalHistory: patient.medicalHistory ?? "",
     uid: patient.uid ?? "",
+    guardian: {
+      relation: patient.guardianRelation ?? "",
+      name: patient.guardianName ?? "",
+      phone: patient.guardianPhone ?? "",
+    },
+    emergencyContact: {
+      name: patient.emergencyContactName ?? "",
+      phone: patient.emergencyContactPhone ?? "",
+      relation: patient.emergencyContactRelation ?? "",
+    },
     sponsorPayerId: patient.sponsor?.payerId ?? "",
     sponsorPolicyNumber: patient.sponsor?.policyNumber ?? "",
     sponsorEmployeeNumber: patient.sponsor?.employeeNumber ?? "",
@@ -166,7 +170,7 @@ function PatientPhoneDuplicateWarning({
             >
               {patient.mrn}
             </Link>{" "}
-            {patient.name}
+            <span className="capitalize">{patient.name}</span>
           </li>
         ))}
       </ul>
@@ -176,6 +180,7 @@ function PatientPhoneDuplicateWarning({
 
 /** Its own component so the error count does not re-render the whole form. */
 function PatientFormProblems() {
+  "use no memo"; // RHF server errors can change without a new `errors` object.
   const { control } = useFormContext<PatientFormValues>();
   const { errors } = useFormState({ control });
   const problems = Object.keys(errors).length;
@@ -188,11 +193,13 @@ function PatientFormProblems() {
 }
 
 function PatientFormFrame({
+  ref,
   pending,
   onCancel,
   onSubmit,
   children,
 }: {
+  ref: Ref<HTMLFormElement>;
   pending: boolean;
   onCancel: () => void;
   onSubmit: FormEventHandler<HTMLFormElement>;
@@ -204,6 +211,7 @@ function PatientFormFrame({
 
   return (
     <form
+      ref={ref}
       noValidate
       onSubmit={onSubmit}
       data-dirty={isDirty}
@@ -229,6 +237,18 @@ function PatientFormFrame({
   );
 }
 
+function PatientFormSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <details className="group border-t border-border">
+      <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 text-xs marker:content-none">
+        {title}
+        <ChevronDownIcon className="size-3.5 text-muted-foreground group-open:rotate-180" />
+      </summary>
+      <div className="flex flex-col gap-3 pb-3">{children}</div>
+    </details>
+  );
+}
+
 function SponsorFields({
   orgSlug,
   current,
@@ -250,8 +270,7 @@ function SponsorFields({
     !list.some((payer) => payer.id === payerId && payer.active);
 
   return (
-    <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
-      <legend className="pr-2 text-sm font-medium">Sponsor</legend>
+    <div className="flex flex-col gap-3">
       <RegisteredFormField
         name="sponsorPayerId"
         render={({ field }) => (
@@ -324,6 +343,93 @@ function SponsorFields({
           />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function EmergencyContactFields() {
+  const { control, setValue } = useFormContext<PatientFormValues>();
+  const guardian = useWatch({ control, name: "guardian" });
+  return (
+    <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
+      <legend className="pr-2 text-sm font-medium">Emergency contact</legend>
+      {/* Fills the fields rather than mirroring them at save time, so the desk sees
+          and can correct what will be stored. */}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="self-start"
+        disabled={!guardian?.name || !guardian?.phone}
+        onClick={() => {
+          setValue(
+            "emergencyContact",
+            {
+              name: guardian.name,
+              phone: guardian.phone,
+              relation: guardianEmergencyRelation(guardian.relation),
+            },
+            { shouldDirty: true, shouldValidate: true },
+          );
+        }}
+      >
+        Copy from relation
+      </Button>
+      <div className="flex flex-col gap-3">
+        <RegisteredFormField
+          name="emergencyContact.name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Name</FormLabel>
+              <FormControl>
+                <Input {...field} placeholder="Who to call" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <div className="grid grid-cols-[1fr_8rem] gap-2">
+          <RegisteredFormField
+            name="emergencyContact.phone"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Phone</FormLabel>
+                <FormControl>
+                  <WithIcon icon={PhoneIcon}>
+                    <Input
+                      {...field}
+                      type="tel"
+                      inputMode="numeric"
+                      placeholder="Mobile number"
+                      className="pl-8"
+                    />
+                  </WithIcon>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <RegisteredFormField
+            name="emergencyContact.relation"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Relation</FormLabel>
+                <FormControl>
+                  <NativeSelect {...field} className="capitalize">
+                    <option value="">Not recorded</option>
+                    {emergencyContactRelation.options.map((relation) => (
+                      <option key={relation} value={relation}>
+                        {relation}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+      </div>
     </fieldset>
   );
 }
@@ -353,9 +459,20 @@ export function PatientForm({
   // would hand the save a compare-and-swap token newer than the values on screen and
   // quietly overwrite whoever changed the record meanwhile.
   const [record] = useState(patient);
+  const formRef = useRef<HTMLFormElement>(null);
   const form = useZodForm(patientFormSchema, {
     defaultValues: defaultValues(record, seed, today),
   });
+
+  // Both client validation and server field errors must reveal their section.
+  function revealFields(names: string[]) {
+    for (const name of names) {
+      const section = formRef.current
+        ?.querySelector(`[name="${name}"], [name^="${name}."]`)
+        ?.closest("details");
+      if (section) section.open = true;
+    }
+  }
 
   const register = useMutation(
     orpc.patient.register.mutationOptions({
@@ -378,6 +495,7 @@ export function PatientForm({
       },
       onError: (error) => {
         const mapped = applyOrpcFieldError(form, error, UID_CONFLICT);
+        if (mapped) revealFields([UID_CONFLICT.uid_taken.field]);
         toast.error(mapped ?? errorMessage(error, "Could not register the patient"));
       },
     }),
@@ -395,6 +513,7 @@ export function PatientForm({
         // overwrite whoever got there first. Closing and reopening is the only honest
         // recovery: it is what rebuilds the form from the record as it now stands.
         const mapped = applyOrpcFieldError(form, error, UID_CONFLICT);
+        if (mapped) revealFields([UID_CONFLICT.uid_taken.field]);
         toast.error(mapped ?? errorMessage(error, "Could not save the changes"));
       },
     }),
@@ -432,6 +551,7 @@ export function PatientForm({
       }
       register.mutate(values);
     },
+    (errors) => revealFields(Object.keys(errors)),
   );
   return (
     <Form {...form}>
@@ -440,7 +560,7 @@ export function PatientForm({
           half-typed email blocks submit silently and the form looks dead. */}
       {/* The dirty flag the sheet needs to guard a close, published on the element
           instead of lifted into its state — see `PatientSheet`. */}
-      <PatientFormFrame pending={pending} onCancel={onCancel} onSubmit={onSubmit}>
+      <PatientFormFrame ref={formRef} pending={pending} onCancel={onCancel} onSubmit={onSubmit}>
         <div className="flex flex-col gap-4">
           <RegisteredFormField
             name="name"
@@ -543,103 +663,167 @@ export function PatientForm({
             )}
           />
 
-          <RegisteredFormField
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Email</FormLabel>
-                <FormControl>
-                  <WithIcon icon={MailIcon}>
+          <PatientFormSection title="Contacts">
+            {/* One row: the relation reads as a prefix of the name, "W/o Gurmeet Singh". */}
+            <div className="grid grid-cols-[6rem_1fr] gap-2">
+              <RegisteredFormField
+                name="guardian.relation"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Relation</FormLabel>
+                    <FormControl>
+                      <NativeSelect {...field}>
+                        <option value="">None</option>
+                        {guardianRelation.options.map((relation) => (
+                          <option key={relation} value={relation}>
+                            {relation}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <RegisteredFormField
+                name="guardian.name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Guardian</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Father, husband, or guardian" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <RegisteredFormField
+              name="guardian.phone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Relation mobile number (optional)</FormLabel>
+                  <FormControl>
                     <Input
                       {...field}
-                      type="email"
-                      autoComplete="email"
-                      placeholder="Enter email address"
-                      className="pl-8"
+                      type="tel"
+                      autoComplete="section-guardian tel"
+                      placeholder="Mobile number"
                     />
-                  </WithIcon>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <RegisteredFormField
-            name="uid"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>National ID / UID</FormLabel>
-                <FormControl>
-                  <Input {...field} className="font-mono" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            <EmergencyContactFields />
+          </PatientFormSection>
+          <PatientFormSection title="Personal details">
+            <RegisteredFormField
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <WithIcon icon={MailIcon}>
+                      <Input
+                        {...field}
+                        type="email"
+                        autoComplete="email"
+                        placeholder="Enter email address"
+                        className="pl-8"
+                      />
+                    </WithIcon>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <RegisteredFormField
-            name="bloodGroup"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Blood group</FormLabel>
-                <FormControl>
-                  <NativeSelect {...field}>
-                    <option value="">Not recorded</option>
-                    <option value="A+">A+</option>
-                    <option value="A-">A-</option>
-                    <option value="B+">B+</option>
-                    <option value="B-">B-</option>
-                    <option value="AB+">AB+</option>
-                    <option value="AB-">AB-</option>
-                    <option value="O+">O+</option>
-                    <option value="O-">O-</option>
-                  </NativeSelect>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            <RegisteredFormField
+              name="uid"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>National ID / UID</FormLabel>
+                  <FormControl>
+                    <Input {...field} className="font-mono" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <RegisteredFormField
-            name="address"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Address</FormLabel>
-                <FormControl>
-                  <Textarea {...field} rows={2} placeholder="Enter address" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            <RegisteredFormField
+              name="address"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Address</FormLabel>
+                  <FormControl>
+                    <Textarea {...field} rows={2} placeholder="Enter address" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </PatientFormSection>
+          <PatientFormSection title="Sponsor">
+            <SponsorFields orgSlug={orgSlug} current={record?.sponsor?.payerId} />
+          </PatientFormSection>
+          <PatientFormSection title="Medical details">
+            <RegisteredFormField
+              name="bloodGroup"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Blood group</FormLabel>
+                  <FormControl>
+                    <NativeSelect {...field}>
+                      <option value="">Not recorded</option>
+                      <option value="A+">A+</option>
+                      <option value="A-">A-</option>
+                      <option value="B+">B+</option>
+                      <option value="B-">B-</option>
+                      <option value="AB+">AB+</option>
+                      <option value="AB-">AB-</option>
+                      <option value="O+">O+</option>
+                      <option value="O-">O-</option>
+                    </NativeSelect>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <SponsorFields orgSlug={orgSlug} current={record?.sponsor?.payerId} />
+            <RegisteredFormField
+              name="allergies"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Allergies</FormLabel>
+                  <FormControl>
+                    <Textarea {...field} rows={2} placeholder="What reaction, and when" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <RegisteredFormField
-            name="allergies"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Allergies</FormLabel>
-                <FormControl>
-                  <Textarea {...field} rows={2} placeholder="What reaction, and when" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <RegisteredFormField
-            name="medicalHistory"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Medical history</FormLabel>
-                <FormControl>
-                  <Textarea {...field} rows={2} placeholder="Ongoing conditions, past surgeries" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            <RegisteredFormField
+              name="medicalHistory"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Medical history</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      rows={2}
+                      placeholder="Ongoing conditions, past surgeries"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </PatientFormSection>
         </div>
       </PatientFormFrame>
     </Form>

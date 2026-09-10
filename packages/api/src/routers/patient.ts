@@ -19,7 +19,15 @@ import { invoiceBalancesFor } from "../lib/invoice-balance";
 import { fromPaise, toSignedPaise } from "../lib/invoice-math";
 import { normalizePhone } from "../lib/phone";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
-import { dateOnly, likePattern, phone, searchQuery, shortName } from "../lib/schemas";
+import {
+  dateOnly,
+  emergencyContactRelation,
+  guardianRelation,
+  likePattern,
+  personName,
+  phone,
+  searchQuery,
+} from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
 
 const sponsorInput = z
@@ -32,7 +40,7 @@ const sponsorInput = z
   .optional();
 
 const patientFields = z.object({
-  name: shortName,
+  name: personName,
   phone,
   sex: z.enum(["male", "female", "other", "unknown"]),
   dateOfBirth: dateOnly,
@@ -43,8 +51,36 @@ const patientFields = z.object({
   allergies: z.string().nullish(),
   medicalHistory: z.string().nullish(),
   uid: z.string().trim().min(1).max(100).nullish(),
+  // Nested so the shape carries the rule: null, or every required part present.
+  guardian: z
+    .object({ relation: guardianRelation, name: personName, phone: phone.nullish() })
+    .nullable()
+    .default(null),
+  emergencyContact: z
+    .object({
+      name: personName,
+      phone,
+      relation: emergencyContactRelation.nullable().default(null),
+    })
+    .nullable()
+    .default(null),
   sponsor: sponsorInput,
 });
+
+// Stored flat; the input is nested.
+function contactColumns(
+  guardian: z.infer<typeof patientFields>["guardian"],
+  emergencyContact: z.infer<typeof patientFields>["emergencyContact"],
+) {
+  return {
+    guardianRelation: guardian?.relation ?? null,
+    guardianName: guardian?.name ?? null,
+    guardianPhone: guardian?.phone ?? null,
+    emergencyContactName: emergencyContact?.name ?? null,
+    emergencyContactPhone: emergencyContact?.phone ?? null,
+    emergencyContactRelation: emergencyContact?.relation ?? null,
+  };
+}
 
 const registerInput = orgInput.extend(patientFields.shape);
 
@@ -85,7 +121,7 @@ export const patientRouter = {
   register: orgProcedure({ patient: ["create"] }, registerInput).handler(
     async ({ context, input }) => {
       const { scope } = context;
-      const { orgSlug: _claim, sponsor, ...fields } = input;
+      const { orgSlug: _claim, sponsor, guardian, emergencyContact, ...fields } = input;
       const id = Bun.randomUUIDv7();
       const [settings] = await Promise.all([
         // Bounded staleness is acceptable for numbering and keeps the counter lock window minimal.
@@ -103,6 +139,7 @@ export const patientRouter = {
             .insert(patients)
             .values({
               ...fields,
+              ...contactColumns(guardian, emergencyContact),
               id,
               orgId: scope.orgId,
               mrn,
@@ -416,7 +453,15 @@ export const patientRouter = {
 
   update: orgProcedure({ patient: ["update"] }, updateInput).handler(async ({ context, input }) => {
     const { scope } = context;
-    const { orgSlug: _claim, patientId, updatedAt, sponsor, ...fields } = input;
+    const {
+      orgSlug: _claim,
+      patientId,
+      updatedAt,
+      sponsor,
+      guardian,
+      emergencyContact,
+      ...fields
+    } = input;
     if (sponsor) await assertActivePayer(scope.orgId, sponsor.payerId);
 
     let patient: typeof patients.$inferSelect;
@@ -426,6 +471,7 @@ export const patientRouter = {
           .update(patients)
           .set({
             ...fields,
+            ...contactColumns(guardian, emergencyContact),
             email: fields.email ?? null,
             bloodGroup: fields.bloodGroup ?? null,
             allergies: fields.allergies ?? null,

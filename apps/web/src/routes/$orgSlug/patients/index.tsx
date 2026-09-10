@@ -73,7 +73,7 @@ function PatientResults({ orgSlug, query }: { orgSlug: string; query: string }) 
                       <Link
                         to="/$orgSlug/patients/$patientId"
                         params={{ orgSlug, patientId: patient.id }}
-                        className="font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                        className="font-medium capitalize underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                       >
                         {patient.name}
                       </Link>
@@ -102,7 +102,7 @@ function PatientResults({ orgSlug, query }: { orgSlug: string; query: string }) 
                 >
                   <div className="flex min-w-0 items-baseline gap-2">
                     <span className="shrink-0 font-mono">{patient.mrn}</span>
-                    <span className="min-w-0 truncate font-medium">{patient.name}</span>
+                    <span className="min-w-0 truncate font-medium capitalize">{patient.name}</span>
                   </div>
                   <p className="mt-1 truncate font-mono tabular-nums">{patient.phone}</p>
                   <p className="mt-1 truncate text-muted-foreground">

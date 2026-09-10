@@ -188,7 +188,7 @@ function VisitAccordionRow({
         </span>
         <span className="min-w-0 flex-1 truncate">
           {visit.departmentName}
-          <span className="pl-2 text-muted-foreground">{visit.practitionerName}</span>
+          <span className="pl-2 text-muted-foreground capitalize">{visit.practitionerName}</span>
         </span>
         {visit.prescriptionCount > 0 ? (
           <span className="flex shrink-0 items-center gap-1 text-muted-foreground">

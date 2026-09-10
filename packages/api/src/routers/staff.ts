@@ -10,7 +10,7 @@ import { z } from "zod";
 import { audit } from "../audit";
 import { uniqueViolationConstraint } from "../lib/db-errors";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
-import { likePattern, searchQuery, shortName } from "../lib/schemas";
+import { likePattern, personName, searchQuery, shortName } from "../lib/schemas";
 
 const departmentFields = z.object({
   name: shortName,
@@ -18,7 +18,7 @@ const departmentFields = z.object({
 });
 
 const practitionerFields = z.object({
-  name: shortName,
+  name: personName,
   departmentId: z.string(),
   registrationNumber: z.string().trim().max(50).nullish(),
   memberUserId: z.string().nullish(),

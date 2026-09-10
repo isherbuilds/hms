@@ -14,6 +14,17 @@ export default defineConfig({
   },
   resolve: {
     tsconfigPaths: true,
+    // The Bun preset picks takumi's `bun` export, which reads the `.wasm` from disk
+    // beside the module; Nitro's single-file bundle has no such file (ENOENT
+    // `[object WebAssembly.Module]`). The `next` entry embeds it. Top-level, not
+    // `environments.ssr`: the SSR chunk leaves the package external and Nitro's
+    // own environment resolves it again.
+    alias: [{ find: /^takumi-pdf$/, replacement: "takumi-pdf/next" }],
+  },
+  build: {
+    // CSP is `font-src 'self'`; the default 4 KiB threshold inlined a small
+    // JetBrains Mono subset as a data: URL, which the browser then blocked.
+    assetsInlineLimit: 0,
   },
   environments: {
     ssr: {

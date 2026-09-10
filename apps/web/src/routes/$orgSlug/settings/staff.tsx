@@ -281,7 +281,9 @@ function StaffRoute() {
                       : undefined;
                     return (
                       <TableRow key={practitioner.id}>
-                        <TableCell className="font-medium">{practitioner.name}</TableCell>
+                        <TableCell className="font-medium capitalize">
+                          {practitioner.name}
+                        </TableCell>
                         <TableCell>
                           {departmentById.get(practitioner.departmentId)?.name ?? "—"}
                         </TableCell>

@@ -1096,7 +1096,7 @@ test("a caller-only booking becomes the same queued appointment at check-in", as
   expect(bookedDetail.appointment).toMatchObject({
     status: "booked",
     tokenNumber: null,
-    callerName: "Patient's daughter",
+    callerName: "patient's daughter",
     callerPhone: "9876500011",
   });
   await expectORPCCode(

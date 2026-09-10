@@ -6,6 +6,7 @@ import { creditNotes } from "@hms/db/schema/credit-notes";
 import { invoiceLines } from "@hms/db/schema/invoice-lines";
 import { invoices } from "@hms/db/schema/invoices";
 import { patients } from "@hms/db/schema/patients";
+import { guardianLabel } from "@hms/db/schema/patient-relations";
 import { payments } from "@hms/db/schema/payments";
 import { refunds } from "@hms/db/schema/refunds";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
@@ -110,6 +111,8 @@ async function issueInvoiceTx(
       patientMrn: patients.mrn,
       patientPhone: patients.phone,
       patientAddress: patients.address,
+      patientGuardianRelation: patients.guardianRelation,
+      patientGuardianName: patients.guardianName,
     })
     .from(opdAppointments)
     .innerJoin(
@@ -184,6 +187,10 @@ async function issueInvoiceTx(
   });
   const sequence = await nextCounter(tx, scope.orgId, `invoice:${fiscalYear}`);
   const invoiceNumber = documentNumber(settings.invoicePrefix, fiscalYear, sequence);
+  const guardian = guardianLabel({
+    guardianRelation: appointmentAndPatient.patientGuardianRelation,
+    guardianName: appointmentAndPatient.patientGuardianName,
+  });
   const [invoice] = await tx
     .insert(invoices)
     .values({
@@ -207,6 +214,7 @@ async function issueInvoiceTx(
       patientMrn: appointmentAndPatient.patientMrn,
       patientPhone: appointmentAndPatient.patientPhone,
       patientAddress: appointmentAndPatient.patientAddress,
+      patientGuardian: guardian ? `${guardian.relation} ${guardian.name}` : null,
       issuedBy: scope.userId,
       createdAt: now,
     })

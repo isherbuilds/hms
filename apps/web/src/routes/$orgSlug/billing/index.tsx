@@ -235,7 +235,7 @@ function BillingIndexRoute() {
                             to="/$orgSlug/opd/$appointmentId/billing"
                             params={{ orgSlug, appointmentId: row.appointmentId }}
                             title={row.patientName}
-                            className="block truncate text-left font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                            className="block truncate text-left font-medium capitalize underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                           >
                             {row.patientName}
                           </Link>
@@ -306,7 +306,7 @@ function BillingIndexRoute() {
                           {row.reference}
                         </span>
                         <span
-                          className="min-w-0 flex-1 truncate font-medium"
+                          className="min-w-0 flex-1 truncate font-medium capitalize"
                           title={row.patientName}
                         >
                           {row.patientName}
@@ -364,7 +364,7 @@ function BillingIndexRoute() {
                           </Link>
                         </TableCell>
                         <TableCell className="max-w-0">
-                          <p className="truncate font-medium" title={row.patientName}>
+                          <p className="truncate font-medium capitalize" title={row.patientName}>
                             {row.patientName}
                           </p>
                           <p
@@ -403,7 +403,7 @@ function BillingIndexRoute() {
                         </span>
                       </div>
                       <p className="mt-1 truncate text-muted-foreground">
-                        {row.patientName}
+                        <span className="capitalize">{row.patientName}</span>
                         {" · "}
                         <span className="font-mono">{row.patientMrn}</span>
                         {" · "}

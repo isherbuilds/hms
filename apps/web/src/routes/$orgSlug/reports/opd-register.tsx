@@ -193,16 +193,18 @@ function OpdRegisterRoute() {
                       <TableCell>
                         {row.patientName ? (
                           <div>
-                            <p>{row.patientName}</p>
+                            <p className="capitalize">{row.patientName}</p>
                             {row.patientMrn ? (
                               <p className="font-mono text-muted-foreground">{row.patientMrn}</p>
                             ) : null}
                           </div>
                         ) : (
-                          <span className="text-muted-foreground">{row.callerName ?? "—"}</span>
+                          <span className="text-muted-foreground capitalize">
+                            {row.callerName ?? "—"}
+                          </span>
                         )}
                       </TableCell>
-                      <TableCell>{row.practitionerName}</TableCell>
+                      <TableCell className="capitalize">{row.practitionerName}</TableCell>
                       <TableCell>{row.departmentName}</TableCell>
                       <TableCell className="whitespace-nowrap">
                         {arrivalModeLabel(row.arrivalMode)}

@@ -1,3 +1,4 @@
+import { guardianLabel } from "@hms/api/lib/schemas";
 import { Button } from "@hms/ui/components/button";
 import {
   Table,
@@ -86,6 +87,7 @@ function OpdAppointmentDetailRoute() {
   }
 
   const { appointment, patient, practitioner, department, charges, prescriptions } = record;
+  const guardian = patient && guardianLabel(patient);
   const consultCharge = charges.find(
     (charge) => charge.revenueCategory === "consultation" && charge.status !== "voided",
   );
@@ -124,10 +126,17 @@ function OpdAppointmentDetailRoute() {
             <dd>{formatDateTime(appointment.arrivedAt ?? appointment.createdAt, timeZone)}</dd>
             <dt className="font-semibold">Patient</dt>
             <dd>
-              {patient.name} · {patient.mrn} · {age} · {patient.sex}
+              <span className="capitalize">{patient.name}</span>
+              {guardian ? (
+                <span>
+                  {" "}
+                  {guardian.relation} <span className="capitalize">{guardian.name}</span>
+                </span>
+              ) : null}
+              {` · ${patient.mrn} · ${age} · ${patient.sex}`}
             </dd>
             <dt className="font-semibold">Practitioner</dt>
-            <dd>{practitioner.name}</dd>
+            <dd className="capitalize">{practitioner.name}</dd>
             <dt className="font-semibold">Department</dt>
             <dd>{department.name}</dd>
           </dl>

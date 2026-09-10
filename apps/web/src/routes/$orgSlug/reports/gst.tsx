@@ -215,7 +215,7 @@ function GstReportRoute() {
                         </TableCell>
                         <TableCell className="font-mono font-medium">{row.number}</TableCell>
                         <TableCell className="whitespace-nowrap tabular-nums">{row.date}</TableCell>
-                        <TableCell>{row.patientName}</TableCell>
+                        <TableCell className="capitalize">{row.patientName}</TableCell>
                         <TableCell className="font-mono">{row.patientMrn}</TableCell>
                         <TableCell className="text-right tabular-nums">
                           {formatMoney(row.taxableValue, currency)}

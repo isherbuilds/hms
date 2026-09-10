@@ -12,6 +12,9 @@ type Payment = InvoiceBundle["payments"][number];
 type CreditNote = InvoiceBundle["creditNotes"][number];
 type Refund = InvoiceBundle["refunds"][number];
 
+// Person names are stored lowercase (`personName` in @hms/api/lib/schemas); print them cased.
+const personName = { textTransform: "capitalize" } as const;
+
 const colors = {
   ink: "#18181b",
   muted: "#71717a",
@@ -188,6 +191,14 @@ export function InvoiceDocument({
   layout: "a4" | "thermal";
 }) {
   const currency = invoice.currency;
+  // Snapshots store the relation before the first space; only the name is cased.
+  const separator = (invoice.patientGuardian?.indexOf(" ") ?? -1) + 1;
+  const guardian = invoice.patientGuardian ? (
+    <>
+      {invoice.patientGuardian.slice(0, separator)}
+      <span style={personName}>{invoice.patientGuardian.slice(separator)}</span>
+    </>
+  ) : null;
 
   if (layout === "thermal") {
     return (
@@ -195,7 +206,15 @@ export function InvoiceDocument({
         <Details
           rows={[
             { label: "Issued", value: formatBusinessDate(invoice.businessDate) },
-            { label: "Patient", value: invoice.patientName },
+            {
+              label: "Patient",
+              value: (
+                <span>
+                  <span style={personName}>{invoice.patientName}</span>
+                  {guardian ? <> {guardian}</> : null}
+                </span>
+              ),
+            },
             { label: "MRN", value: invoice.patientMrn },
           ]}
         />
@@ -257,7 +276,8 @@ export function InvoiceDocument({
         </div>
         <div style={{ flex: 1 }}>
           <SectionTitle>Billed to</SectionTitle>
-          <div style={{ fontWeight: 700 }}>{invoice.patientName}</div>
+          <div style={{ ...personName, fontWeight: 700 }}>{invoice.patientName}</div>
+          {guardian ? <div style={{ color: colors.muted }}>{guardian}</div> : null}
           <div style={{ color: colors.muted }}>MRN {invoice.patientMrn}</div>
           <div style={{ color: colors.muted }}>{invoice.patientPhone}</div>
           {invoice.patientAddress ? (
@@ -354,7 +374,14 @@ export function ReceiptDocument({ invoice, payment }: { invoice: Invoice; paymen
         roomy
         rows={[
           { label: "Issued", value: formatBusinessDate(payment.businessDate) },
-          { label: "Received from", value: `${invoice.patientName} · MRN ${invoice.patientMrn}` },
+          {
+            label: "Received from",
+            value: (
+              <>
+                <span style={personName}>{invoice.patientName}</span> · MRN {invoice.patientMrn}
+              </>
+            ),
+          },
           { label: "Against invoice", value: invoice.invoiceNumber },
           { label: "Method", value: methodLabel(payment.method) },
           ...(payment.reference ? [{ label: "Reference", value: payment.reference }] : []),
@@ -400,7 +427,7 @@ export function CreditNoteDocument({
         </div>
         <div style={{ flex: 1 }}>
           <SectionTitle>Issued to</SectionTitle>
-          <strong>{invoice.patientName}</strong>
+          <strong style={personName}>{invoice.patientName}</strong>
           <div style={{ color: colors.muted }}>MRN {invoice.patientMrn}</div>
         </div>
       </section>
@@ -454,7 +481,14 @@ export function RefundDocument({
         roomy
         rows={[
           { label: "Issued", value: formatBusinessDate(refund.businessDate) },
-          { label: "Refunded to", value: `${invoice.patientName} · MRN ${invoice.patientMrn}` },
+          {
+            label: "Refunded to",
+            value: (
+              <>
+                <span style={personName}>{invoice.patientName}</span> · MRN {invoice.patientMrn}
+              </>
+            ),
+          },
           { label: "Against invoice", value: invoice.invoiceNumber },
           { label: "Credit note", value: creditNote.creditNoteNumber },
           { label: "Method", value: methodLabel(refund.method) },

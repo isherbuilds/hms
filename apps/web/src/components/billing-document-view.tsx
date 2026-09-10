@@ -98,7 +98,13 @@ function BillingDocumentView({
       <div className="contents lg:hidden">
         <PageHeader
           title={number ? `${kind} ${number}` : kind}
-          description={patient && `${patient.patientName} · MRN ${patient.patientMrn}`}
+          description={
+            patient && (
+              <>
+                <span className="capitalize">{patient.patientName}</span> · MRN {patient.patientMrn}
+              </>
+            )
+          }
         />
       </div>
       <iframe title={kind} src={pdfUrl} className="min-h-0 w-full flex-1 border-0" />

@@ -1299,8 +1299,8 @@ test("one client concurrently scopes report calls to two organizations", async (
   expect(trialTwo.rows.find((row) => row.code === "1200")?.closingDebit).toBe("100.00");
   expect(balanceOne.assets.find((row) => row.code === "1000")?.balance).toBe("40.00");
   expect(balanceTwo.assets.some((row) => row.code === "1000")).toBe(false);
-  expect(gstOne.documents.map((document) => document.patientName)).toEqual(["Report One Patient"]);
-  expect(gstTwo.documents.map((document) => document.patientName)).toEqual(["Report Two Patient"]);
+  expect(gstOne.documents.map((document) => document.patientName)).toEqual(["report one patient"]);
+  expect(gstTwo.documents.map((document) => document.patientName)).toEqual(["report two patient"]);
   expect(gstOne.documents.map((document) => document.number)).toEqual([
     inOne.invoice.invoiceNumber,
   ]);

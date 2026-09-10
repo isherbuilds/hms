@@ -45,7 +45,7 @@ function Body({
   return (
     <>
       <SheetHeader>
-        <SheetTitle>{row.patientName}</SheetTitle>
+        <SheetTitle className="capitalize">{row.patientName}</SheetTitle>
       </SheetHeader>
 
       <div className="flex flex-col gap-4 overflow-y-auto p-4">

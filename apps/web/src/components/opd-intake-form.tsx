@@ -126,7 +126,7 @@ function PatientField({ orgSlug }: { orgSlug: string }) {
       <div className="flex min-h-10 items-center gap-2 rounded-md bg-muted px-3">
         <Monogram label={patient.name} />
         <span className="flex min-w-0 flex-col leading-tight">
-          <span className="truncate font-medium">{patient.name}</span>
+          <span className="truncate font-medium capitalize">{patient.name}</span>
           <span className="truncate font-mono text-muted-foreground">{patient.mrn}</span>
         </span>
         <Button
@@ -226,6 +226,7 @@ function CareTeamFields({
                 <NativeSelect
                   {...field}
                   disabled={!departmentId}
+                  className="capitalize"
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && event.currentTarget.value) {
                       event.preventDefault();
@@ -539,8 +540,12 @@ function FinancialAside({
           // Nothing is billed at booking, so the panel confirms the appointment
           // itself rather than showing a column of zeroes.
           <dl className="grid gap-2">
-            <SummaryRow term="Patient">{patientName}</SummaryRow>
-            <SummaryRow term="Seen by">{practitionerName}</SummaryRow>
+            <SummaryRow term="Patient">
+              <span className="capitalize">{patientName}</span>
+            </SummaryRow>
+            <SummaryRow term="Seen by">
+              <span className="capitalize">{practitionerName}</span>
+            </SummaryRow>
             <SummaryRow term="Time">
               <span className="tabular-nums">{previewTime || "—"}</span>
             </SummaryRow>

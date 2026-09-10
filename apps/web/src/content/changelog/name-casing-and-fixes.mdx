@@ -1,0 +1,37 @@
+export const meta = {
+  title: "A shorter registration form and patient contacts",
+  date: "2026-09-10",
+  summary:
+    "Start with the patient’s basic details, open optional sections when needed, and copy a relation into the emergency contact.",
+};
+
+## Less to fill in at the desk
+
+Registration starts with the patient's name, phone, sex, and date of birth or
+age. **Contacts**, **Personal details**, **Sponsor**, and **Medical details**
+start collapsed. Open only the sections you need. Closing a section keeps what
+you entered; a section opens again if a field needs correction before saving.
+
+## Patient relation and emergency contact
+
+Open **Contacts** to add a relation and name, such as `W/o Gurmeet Singh`.
+This appears after the patient's name on the record, OPD slip, and invoice.
+The relation's mobile number is optional.
+
+Choose **Copy from relation** to fill the emergency contact with their name and
+mobile number, then correct it if needed. The relation needs a mobile number
+before you can copy it. You can also enter a different person directly. The
+emergency contact's relation is optional.
+
+## Consistent names
+
+New or edited patient, practitioner, and phone-booking caller names use
+consistent capitalisation on screen and in printed documents. Existing records
+keep their saved spelling until updated. Service, payer, and department names
+keep their chosen case, including abbreviations such as `ECHS`.
+
+## Fixes
+
+- Billing PDFs open correctly in the production app.
+- Numbers display reliably in the app's monospace font.
+- The audit trail uses readable cards on a phone.

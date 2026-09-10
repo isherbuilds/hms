@@ -15,6 +15,25 @@ test("renders stored Devanagari text from application-owned fonts", async () => 
   expect(new TextDecoder().decode(result.bytes.slice(0, 5))).toBe("%PDF-");
 });
 
+test("invoice layouts preserve relation casing and capitalize only the guardian name", async () => {
+  const data = billingPdfFixture({ unicode: false });
+  for (const layout of ["a4", "thermal"] as const) {
+    const renderGuardian = (patientGuardian: string) =>
+      renderBillingPdf({
+        kind: "invoice",
+        data: { ...data, invoice: { ...data.invoice, patientGuardian } },
+        documentId: null,
+        layout,
+      });
+    const lowerName = await renderGuardian("W/o gurmeet singh");
+    const titleName = await renderGuardian("W/o Gurmeet Singh");
+    const upperRelation = await renderGuardian("W/O Gurmeet Singh");
+
+    expect(lowerName.bytes).toEqual(titleName.bytes);
+    expect(titleName.bytes).not.toEqual(upperRelation.bytes);
+  }
+});
+
 test("an invoice PDF uses its business date and ignores later account activity", async () => {
   const source = billingPdfFixture({ unicode: false });
   const afterPayment: InvoiceBundle = {

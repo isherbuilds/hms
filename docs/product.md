@@ -159,3 +159,26 @@ single-shift cutover ([operations](./operations.md#pilot-readiness)).
 - Derived balances and future stock come from source transactions, not editable
   summary fields.
 - AI never bypasses tenancy, authorization, provenance, consent, or review.
+
+### Patient contacts
+
+Registration keeps name, phone, sex, and birth date or age visible. Native
+disclosure sections hold Contacts, Personal details, Sponsor, and Medical
+details. They start closed, retain draft values when closed, and open when a
+contained field has a validation error.
+
+A patient can have a relation (S/o, D/o, W/o, H/o, or C/o) and name, with an
+optional mobile number. The registration and edit form can copy this person into
+the emergency contact fields; the copy needs their name and mobile number. S/o
+and D/o identify a parent; W/o and H/o identify a spouse; C/o leaves the
+emergency relation unspecified. The copy fills the visible fields, which the
+desk can then correct before saving. An emergency contact requires a name and
+phone; its relation is optional. Invoice issuance snapshots the patient relation
+label with the patient identity.
+
+The relation label carries its own capitalisation, because both the browser and
+the PDF renderer break words at the slash and would print "W/O".
+
+Patient, practitioner, and caller names normalize to lowercase on create or
+update; presentation controls casing. The schema migration does not rewrite
+existing names. Any production data normalization is a separate operator task.

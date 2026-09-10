@@ -85,57 +85,86 @@ function AuditRoute() {
           >
             {/* Fixed columns: file targets run past 100 characters, so an auto
                 layout would hand them the row. Target keeps a UUID on one line
-                and wraps longer ids; Details takes the rest and wraps. */}
-            <Table className="table-fixed">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-36">When</TableHead>
-                  <TableHead className="w-32">Action</TableHead>
-                  <TableHead className="w-40">Actor</TableHead>
-                  <TableHead className="w-96">Target</TableHead>
-                  <TableHead>Details</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {entries.map((entry) => {
-                  const details = describeMeta(entry.meta);
+                and wraps longer ids; Details takes the rest. The 64rem floor
+                keeps Details at 13rem or more, and the table scrolls sideways
+                when the panel is narrower than that. Below md rows become cards. */}
+            <div className="hidden md:block">
+              <Table className="table-fixed min-w-5xl">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-36">When</TableHead>
+                    <TableHead className="w-32">Action</TableHead>
+                    <TableHead className="w-40">Actor</TableHead>
+                    <TableHead className="w-96">Target</TableHead>
+                    <TableHead>Details</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {entries.map((entry) => {
+                    const details = describeMeta(entry.meta);
 
-                  return (
-                    <TableRow key={entry.id}>
-                      <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
-                        {formatDateTime(entry.createdAt, timeZone)}
-                      </TableCell>
-                      <TableCell>
-                        <span className="flex items-center gap-2">
-                          <span className="font-medium">{entry.action}</span>
-                          {entry.denied && <Badge variant="destructive">denied</Badge>}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {entry.actorName ? (
-                          <>
-                            <div className="truncate text-foreground">{entry.actorName}</div>
-                            <div className="truncate">{entry.actorEmail}</div>
-                          </>
-                        ) : (
-                          // The account is gone; the entry deliberately survives it.
-                          <span className="font-mono">{entry.actorId}</span>
-                        )}
-                      </TableCell>
-                      {/* `entity:id`, read character by character when someone
-                          is matching a row against a document. It wraps, never
-                          truncates. */}
-                      <TableCell className="break-all font-mono text-muted-foreground">
-                        {entry.target ?? "—"}
-                      </TableCell>
-                      {/* Prose, not an identifier, so no mono. It wraps: the
-                          amounts and numbers here are why someone opens the log. */}
-                      <TableCell className="break-words text-muted-foreground">{details}</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                    return (
+                      <TableRow key={entry.id}>
+                        <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
+                          {formatDateTime(entry.createdAt, timeZone)}
+                        </TableCell>
+                        <TableCell>
+                          <span className="flex items-center gap-2">
+                            <span className="font-medium">{entry.action}</span>
+                            {entry.denied && <Badge variant="destructive">denied</Badge>}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {entry.actorName ? (
+                            <>
+                              <div className="truncate text-foreground">{entry.actorName}</div>
+                              <div className="truncate">{entry.actorEmail}</div>
+                            </>
+                          ) : (
+                            // The account is gone; the entry deliberately survives it.
+                            <span className="font-mono">{entry.actorId}</span>
+                          )}
+                        </TableCell>
+                        {/* `entity:id`, read character by character when someone
+                            is matching a row against a document. It wraps, never
+                            truncates. */}
+                        <TableCell className="break-all font-mono text-muted-foreground">
+                          {entry.target ?? "—"}
+                        </TableCell>
+                        {/* Prose, not an identifier, so no mono. It wraps: the
+                            amounts and numbers here are why someone opens the log. */}
+                        <TableCell className="break-words text-muted-foreground">
+                          {details}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            <ul className="md:hidden">
+              {entries.map((entry) => (
+                <li key={entry.id} className="border-b px-3 py-2 text-xs">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-medium">{entry.action}</span>
+                    {entry.denied && <Badge variant="destructive">denied</Badge>}
+                    <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
+                      {formatDateTime(entry.createdAt, timeZone)}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-muted-foreground">
+                    {entry.actorName ?? entry.actorId}
+                  </p>
+                  <p className="mt-1 break-all font-mono text-muted-foreground">
+                    {entry.target ?? "—"}
+                  </p>
+                  <p className="mt-1 break-words text-muted-foreground">
+                    {describeMeta(entry.meta)}
+                  </p>
+                </li>
+              ))}
+            </ul>
           </ListState>
         </Panel>
       </PageBody>
