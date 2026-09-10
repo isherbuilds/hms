@@ -52,7 +52,8 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         // Declared explicitly so the browser does not probe `/favicon.ico`, which would
         // otherwise enter the `/$orgSlug` route.
         rel: "icon",
-        href: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E",
+        type: "image/svg+xml",
+        href: "/favicon.svg",
       },
       {
         rel: "stylesheet",
