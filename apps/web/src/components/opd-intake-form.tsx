@@ -86,7 +86,6 @@ function quoteInput(orgSlug: string, values: IntakeValues) {
     practitionerId: values.practitionerId,
     services: serviceClaims(values.services),
     omitConsultFee: omitsConsultFee(values),
-    discountAmount: ZERO,
   };
 }
 

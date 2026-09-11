@@ -24,6 +24,12 @@ export function createQueryClient() {
     mutationCache: new MutationCache({ onError: recoverFromExpiredSession }),
     defaultOptions: {
       queries: {
+        // Query keys carry procedure inputs, and money inputs are bigint, which
+        // JSON.stringify refuses. Tag them so they hash like any other value.
+        queryKeyHashFn: (queryKey) =>
+          JSON.stringify(queryKey, (_, value: unknown) =>
+            typeof value === "bigint" ? `${value}n` : value,
+          ),
         staleTime: 60 * 1000,
         retry: (failureCount, error: unknown) => {
           if (environmentManager.isServer()) {
