@@ -1,10 +1,10 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   check,
   date,
   foreignKey,
   index,
-  numeric,
   pgTable,
   text,
   timestamp,
@@ -30,13 +30,15 @@ export const invoices = pgTable(
     invoiceNumber: text("invoice_number").notNull(),
     fiscalYear: text("fiscal_year").notNull(),
     businessDate: date("business_date").notNull(),
-    discountAmount: numeric("discount_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+    discountAmount: bigint("discount_amount", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
     // Internal, and deliberately not printed, so the desk can write plainly. Required
     // by the app whenever there is a discount or an unpaid departure.
     note: text("note"),
-    subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull(),
-    taxTotal: numeric("tax_total", { precision: 12, scale: 2 }).notNull(),
-    grandTotal: numeric("grand_total", { precision: 12, scale: 2 }).notNull(),
+    subtotal: bigint("subtotal", { mode: "bigint" }).notNull(),
+    taxTotal: bigint("tax_total", { mode: "bigint" }).notNull(),
+    grandTotal: bigint("grand_total", { mode: "bigint" }).notNull(),
     orgLegalName: text("org_legal_name").notNull(),
     orgAddress: text("org_address").notNull(),
     orgTaxId: text("org_tax_id").notNull(),

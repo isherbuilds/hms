@@ -1,10 +1,9 @@
-import { fromPaise } from "@hms/api/lib/invoice-math";
 import { Button } from "@hms/ui/components/button";
 import { cn } from "@hms/ui/lib/utils";
 import { Trash2Icon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { formatMoney } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 
 /**
  * The one layout every "collect money" form uses: column labels once at the top,
@@ -85,22 +84,24 @@ export function PaymentBalance({
   onFill,
 }: {
   /** Paise: positive is short of the bill, negative is over it. */
-  remaining: number;
+  remaining: bigint;
   currency: string;
   disabled?: boolean;
   onFill: () => void;
 }) {
-  if (remaining === 0) return null;
-  if (remaining < 0) {
+  if (remaining === ZERO) return null;
+
+  if (remaining < ZERO) {
     return (
       <span role="status" className="text-destructive tabular-nums">
-        Over by {formatMoney(fromPaise(-remaining), currency)}
+        Over by {formatMoney(-remaining, currency)}
       </span>
     );
   }
+
   return (
     <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={onFill}>
-      <span className="tabular-nums">Fill {formatMoney(fromPaise(remaining), currency)}</span>
+      <span className="tabular-nums">Fill {formatMoney(remaining, currency)}</span>
     </Button>
   );
 }

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   check,
   foreignKey,
   index,
@@ -28,7 +29,7 @@ export const charges = pgTable(
     opdAppointmentId: text("opd_appointment_id").notNull(),
     catalogItemId: text("catalog_item_id").notNull(),
     description: text("description").notNull(),
-    unitPrice: numeric("unit_price", { precision: 12, scale: 2 }).notNull(),
+    unitPrice: bigint("unit_price", { mode: "bigint" }).notNull(),
     taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull(),
     taxCode: text("tax_code"),
     revenueCategory: text("revenue_category", { enum: CATALOG_CATEGORIES }).notNull(),

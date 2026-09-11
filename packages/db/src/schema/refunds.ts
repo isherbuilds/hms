@@ -1,10 +1,10 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   check,
   date,
   foreignKey,
   index,
-  numeric,
   pgTable,
   text,
   timestamp,
@@ -27,7 +27,7 @@ export const refunds = pgTable(
     invoiceId: text("invoice_id").notNull(),
     creditNoteId: text("credit_note_id").notNull(),
     method: text("method").$type<PaymentMethod>().notNull(),
-    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    amount: bigint("amount", { mode: "bigint" }).notNull(),
     reference: text("reference"),
     refundNumber: text("refund_number").notNull(),
     fiscalYear: text("fiscal_year").notNull(),

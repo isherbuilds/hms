@@ -1,4 +1,3 @@
-import { toPaise } from "@hms/api/lib/invoice-math";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +19,8 @@ import { useIsMobile } from "@hms/ui/hooks/use-mobile";
 import { useState, type ReactNode } from "react";
 
 import { SettlementFields } from "@/components/opd-settlement-fields";
-import { MONEY_INPUT_PATTERN, parseMoneyInput } from "@/lib/money";
+import { formatDecimal } from "@hms/api/core/money";
+import { parseMoneyInput, ZERO } from "@/lib/money";
 import { applyDiscount, type WalkInQuote } from "@/lib/opd-service-preview";
 import {
   amountOf,
@@ -30,10 +30,10 @@ import {
 } from "@/lib/settlement";
 
 export type SettlementDraft = {
-  discountAmount: string;
-  expectedGrandTotal: string;
+  discountAmount: bigint;
+  expectedGrandTotal: bigint;
   note?: string;
-  payments: { method: PaymentMethod; amount: string; reference?: string }[];
+  payments: { method: PaymentMethod; amount: bigint; reference?: string }[];
 };
 
 type SettlementOverlayProps = {
@@ -55,11 +55,15 @@ type SettlementOverlayProps = {
 
 function focusProblemField(fieldId: string, selectOnFocus?: boolean) {
   const field = document.getElementById(fieldId);
+
   if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
     field.focus();
+
     if (selectOnFocus) field.select();
+
     return;
   }
+
   field?.focus();
 }
 
@@ -78,26 +82,28 @@ export function SettlementOverlay({
   const mobile = useIsMobile();
   const [discount, setDiscount] = useState("");
   const [note, setNote] = useState("");
+
   const [payments, setPayments] = useState<PaymentLine[]>(() => [
-    { id: 1, method: "cash", amount: quote.grandTotal, reference: "" },
+    { id: 1, method: "cash", amount: formatDecimal(quote.grandTotal), reference: "" },
   ]);
+
   // Quiet problems stay quiet until the operator has tried to confirm.
   const [attempted, setAttempted] = useState(false);
 
-  const normalizedDiscount = discount.trim() || "0";
-  const discountPaise = MONEY_INPUT_PATTERN.test(normalizedDiscount)
-    ? parseMoneyInput(normalizedDiscount)
-    : null;
+  const discountPaise = parseMoneyInput(discount.trim() || "0");
+
   // An invalid discount is reported by `settlementProblems`; the bill stays on the
   // undiscounted figures until it is fixed.
   const discounted =
-    discountPaise !== null && discountPaise <= toPaise(quote.subtotal)
-      ? applyDiscount(quote, normalizedDiscount)
+    discountPaise !== null && discountPaise <= quote.subtotal
+      ? applyDiscount(quote, discountPaise)
       : quote;
-  const due = toPaise(discounted.grandTotal);
+
+  const due = discounted.grandTotal;
+
   const problems = settlementProblems({
     due,
-    subtotal: toPaise(quote.subtotal),
+    subtotal: quote.subtotal,
     discount,
     note,
     payments,
@@ -109,19 +115,22 @@ export function SettlementOverlay({
     if (blockedReason) return;
     setAttempted(true);
     const [blocking] = problems;
+
     if (blocking) return focusProblemField(blocking.fieldId, blocking.selectOnFocus);
 
     onConfirm({
-      discountAmount: normalizedDiscount,
+      discountAmount: discountPaise ?? ZERO,
       expectedGrandTotal: discounted.grandTotal,
       note: note.trim() || undefined,
-      payments: payments
-        .filter((payment) => (amountOf(payment) ?? 0) > 0)
-        .map((payment) => ({
-          method: payment.method,
-          amount: payment.amount.trim(),
-          reference: payment.reference.trim() || undefined,
-        })),
+      payments: payments.flatMap((payment) => {
+        const amount = amountOf(payment);
+
+        if (amount === null || amount === ZERO) return [];
+
+        return [
+          { method: payment.method, amount, reference: payment.reference.trim() || undefined },
+        ];
+      }),
     });
   };
 

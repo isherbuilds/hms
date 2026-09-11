@@ -1,5 +1,5 @@
 {
-  "id": "eed37ef7-c849-470e-9a8b-7e674bb85f0a",
+  "id": "05d6cf2a-0adf-4b51-a6e7-05060c3ff7f9",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1152,7 +1152,7 @@
         },
         "unit_price": {
           "name": "unit_price",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -1341,7 +1341,7 @@
         },
         "unit_price": {
           "name": "unit_price",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -1680,19 +1680,19 @@
         },
         "taxable_value": {
           "name": "taxable_value",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "tax_amount": {
           "name": "tax_amount",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "gross": {
           "name": "gross",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -1840,19 +1840,19 @@
         },
         "subtotal": {
           "name": "subtotal",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "tax_total": {
           "name": "tax_total",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "total": {
           "name": "total",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -2451,6 +2451,42 @@
         },
         "uid": {
           "name": "uid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "guardian_relation": {
+          "name": "guardian_relation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "guardian_name": {
+          "name": "guardian_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "guardian_phone": {
+          "name": "guardian_phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "emergency_contact_name": {
+          "name": "emergency_contact_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "emergency_contact_phone": {
+          "name": "emergency_contact_phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "emergency_contact_relation": {
+          "name": "emergency_contact_relation",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -3424,10 +3460,10 @@
         },
         "discount_amount": {
           "name": "discount_amount",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
-          "default": "'0'"
+          "default": "0"
         },
         "note": {
           "name": "note",
@@ -3437,19 +3473,19 @@
         },
         "subtotal": {
           "name": "subtotal",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "tax_total": {
           "name": "tax_total",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "grand_total": {
           "name": "grand_total",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -3497,6 +3533,12 @@
         },
         "patient_address": {
           "name": "patient_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "patient_guardian": {
+          "name": "patient_guardian",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -3753,37 +3795,37 @@
         },
         "unit_price": {
           "name": "unit_price",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "line_subtotal": {
           "name": "line_subtotal",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "allocated_discount": {
           "name": "allocated_discount",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "taxable_value": {
           "name": "taxable_value",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "tax_amount": {
           "name": "tax_amount",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "gross": {
           "name": "gross",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -3939,7 +3981,7 @@
         },
         "amount": {
           "name": "amount",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -4146,7 +4188,7 @@
         },
         "amount": {
           "name": "amount",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -4530,17 +4572,17 @@
         },
         "debit": {
           "name": "debit",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
-          "default": "'0'"
+          "default": "0"
         },
         "credit": {
           "name": "credit",
-          "type": "numeric(12, 2)",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
-          "default": "'0'"
+          "default": "0"
         }
       },
       "indexes": {

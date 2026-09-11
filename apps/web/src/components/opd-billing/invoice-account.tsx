@@ -1,4 +1,3 @@
-import { toSignedPaise, fromPaise } from "@hms/api/lib/invoice-math";
 import { Button } from "@hms/ui/components/button";
 import { Checkbox } from "@hms/ui/components/checkbox";
 import {
@@ -39,7 +38,7 @@ import { z } from "zod";
 
 import { RecordPaymentForm } from "@/components/record-payment-form";
 import { useZodForm } from "@/hooks/use-zod-form";
-import { formatMoney, parseMoneyInput } from "@/lib/money";
+import { formatMoney, parseMoneyInput, ZERO } from "@/lib/money";
 import { useOpdErrorToast } from "@/lib/opd-error";
 import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
 import { orpc } from "@/lib/orpc";
@@ -57,6 +56,10 @@ const refundSchema = paymentLineFields
   .extend({ creditNoteId: z.string().min(1, "Choose a credit note") })
   .superRefine(requireTransactionReference);
 
+type CreditLineInput =
+  | { invoiceLineId: string; full: true }
+  | { invoiceLineId: string; gross: bigint };
+
 const creditSchema = z
   .object({
     reason: z.string().trim().min(1, "Enter a reason").max(500),
@@ -65,15 +68,18 @@ const creditSchema = z
     ),
   })
   .superRefine((value, context) => {
-    if (!value.lines.some((line) => line.full || (parseMoneyInput(line.gross ?? "") ?? 0) > 0)) {
+    if (
+      !value.lines.some((line) => line.full || (parseMoneyInput(line.gross ?? "") ?? ZERO) > ZERO)
+    ) {
       context.addIssue({
         code: "custom",
         path: ["lines"],
         message: "Credit at least one full line or partial amount",
       });
     }
+
     value.lines.forEach((line, index) => {
-      if (!line.full && line.gross && (parseMoneyInput(line.gross) ?? 0) <= 0) {
+      if (!line.full && line.gross && (parseMoneyInput(line.gross) ?? ZERO) <= ZERO) {
         context.addIssue({
           code: "custom",
           path: ["lines", index, "gross"],
@@ -87,9 +93,9 @@ type InvoiceHeader = {
   id: string;
   invoiceNumber: string;
   currency: string;
-  grandTotal: string;
-  paymentsTotal: string;
-  outstanding: string;
+  grandTotal: bigint;
+  paymentsTotal: bigint;
+  outstanding: bigint;
 };
 
 export function InvoiceAccount({
@@ -108,12 +114,13 @@ export function InvoiceAccount({
   const [action, setAction] = useState<"payment" | "credit" | "refund" | null>(null);
   const [documentsOpen, setDocumentsOpen] = useState(false);
   const needsDetail = documentsOpen || action === "credit" || action === "refund";
+
   const detail = useQuery({
     ...orpc.billing.getInvoice.queryOptions({ input: { orgSlug, invoiceId: invoice.id } }),
     enabled: needsDetail,
   });
-  const outstandingPaise = toSignedPaise(invoice.outstanding);
-  const isRefundDue = outstandingPaise < 0;
+
+  const isRefundDue = invoice.outstanding < ZERO;
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
@@ -132,7 +139,7 @@ export function InvoiceAccount({
           </p>
           <p className={isRefundDue ? "font-medium text-destructive" : "font-medium"}>
             {isRefundDue
-              ? `Refund due ${formatMoney(fromPaise(-outstandingPaise), invoice.currency)}`
+              ? `Refund due ${formatMoney(-invoice.outstanding, invoice.currency)}`
               : `Outstanding ${formatMoney(invoice.outstanding, invoice.currency)}`}
           </p>
         </div>
@@ -141,7 +148,7 @@ export function InvoiceAccount({
             <Button
               size="xs"
               variant="outline"
-              disabled={outstandingPaise <= 0}
+              disabled={invoice.outstanding <= ZERO}
               onClick={() => setAction("payment")}
             >
               Record payment
@@ -275,7 +282,7 @@ function PaymentDialog({
   orgSlug: string;
   appointmentId: string;
   invoiceId: string;
-  outstanding: string;
+  outstanding: bigint;
   currency: string;
   onIssueCreditNote?: () => void;
 }) {
@@ -321,21 +328,24 @@ function CreditDialog({
   orgSlug: string;
   appointmentId: string;
   invoiceId: string;
-  lines: Array<{ id: string; description: string; gross: string }>;
+  lines: Array<{ id: string; description: string; gross: bigint }>;
   currency: string;
 }) {
   const invalidate = useBillingInvalidation(orgSlug, appointmentId);
   const onOpdError = useOpdErrorToast(orgSlug);
+
   const form = useZodForm(creditSchema, {
     defaultValues: {
       reason: "",
       lines: lines.map((line) => ({ invoiceLineId: line.id, full: false, gross: "" })),
     },
   });
+
   const creditLinesError = useFormState({
     control: form.control,
     name: "lines",
   }).errors.lines?.root?.message;
+
   const mutation = useMutation(
     orpc.billing.issueCreditNote.mutationOptions({
       onSuccess: async () => {
@@ -349,18 +359,20 @@ function CreditDialog({
       },
     }),
   );
+
   const submit = form.handleSubmit((value) =>
     mutation.mutate({
       orgSlug,
       invoiceId,
       reason: value.reason,
-      lines: value.lines
-        .filter((line) => line.full || line.gross)
-        .map((line) =>
-          line.full
-            ? { invoiceLineId: line.invoiceLineId, full: true as const }
-            : { invoiceLineId: line.invoiceLineId, gross: line.gross! },
-        ),
+      lines: value.lines.flatMap((line): CreditLineInput[] => {
+        if (line.full) return [{ invoiceLineId: line.invoiceLineId, full: true as const }];
+        const gross = parseMoneyInput(line.gross ?? "");
+
+        return gross === null || gross === ZERO
+          ? []
+          : [{ invoiceLineId: line.invoiceLineId, gross }];
+      }),
     }),
   );
 
@@ -472,14 +484,16 @@ function RefundDialog({
   orgSlug: string;
   appointmentId: string;
   invoiceId: string;
-  creditNotes: Array<{ id: string; creditNoteNumber: string; total: string }>;
+  creditNotes: Array<{ id: string; creditNoteNumber: string; total: bigint }>;
   currency: string;
 }) {
   const invalidate = useBillingInvalidation(orgSlug, appointmentId);
   const onOpdError = useOpdErrorToast(orgSlug);
+
   const form = useZodForm(refundSchema, {
     defaultValues: { creditNoteId: "", method: "cash", amount: "", reference: "" },
   });
+
   const mutation = useMutation(
     orpc.billing.recordRefund.mutationOptions({
       onSuccess: async () => {

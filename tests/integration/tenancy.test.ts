@@ -45,6 +45,7 @@ test("settings are scoped by explicit input: defaults until saved, then the save
     legalName: "Settings Pages Hospital Pvt. Ltd.",
     invoicePrefix: "SPH",
   });
+
   expect(saved.legalName).toBe("Settings Pages Hospital Pvt. Ltd.");
   expect(saved.currency).toBe("INR");
 
@@ -56,8 +57,10 @@ test("settings are scoped by explicit input: defaults until saved, then the save
 
   const entry = await eventually(async () => {
     const audit = await api.audit.list({ orgSlug: organization.slug });
+
     return audit.items.find((item) => item.action === "settings.update");
   });
+
   expect(entry.actorId).toBe(owner.user.id);
   expect(entry.orgId).toBe(organization.id);
 });
@@ -118,6 +121,7 @@ test("one client can work in different orgs concurrently", async () => {
       .get({ orgSlug: two.slug })
       .then((s) => api.settings.update({ orgSlug: two.slug, ...s, legalName: "from tab two" })),
   ]);
+
   expect(inOne.legalName).toBe("from tab one");
   expect(inTwo.legalName).toBe("from tab two");
 
@@ -147,36 +151,43 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
     dobEstimated: true,
     address: "Today Address",
   });
+
   const department = await api.staff.createDepartment({ orgSlug: one.slug, name: "Today Dept" });
+
   const practitioner = await api.staff.createPractitioner({
     orgSlug: one.slug,
     name: "Dr. Today",
     departmentId: department.id,
   });
+
   const booked = await api.opd.book({
     orgSlug: one.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
     scheduledLocal: "2030-03-15T10:30",
   });
+
   const { appointment } = await api.opd.checkIn({
     orgSlug: one.slug,
     appointmentId: booked.id,
   });
+
   const consult = await api.catalog.create({
     orgSlug: one.slug,
     name: "Consultation",
     code: "TODAY-CONSULT",
     category: "other",
-    unitPrice: "500.00",
+    unitPrice: 500_00n,
     taxRatePercent: "0",
   });
+
   const charge = await addPendingCatalogCharge({
     orgId: one.id,
     userId: owner.user.id,
     appointmentId: appointment.id,
     catalogItemId: consult.id,
   });
+
   await db
     .update(charges)
     .set({ createdAt: new Date(Date.now() - 2 * 3_600_000) })
@@ -194,8 +205,8 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
   expect(todayTwo.checkedIn).toBe(0);
   expect(todayTwo.mix).toEqual([]);
 
-  expect(Number(moneyOne.unbilled)).toBe(500);
-  expect(Number(moneyTwo.unbilled)).toBe(0);
+  expect(moneyOne.unbilled).toBe(500_00n);
+  expect(moneyTwo.unbilled).toBe(0n);
 
   const outsiderApi = clientFor(outsider);
   await expectORPCCode(outsiderApi.dashboard.today({ orgSlug: one.slug }), "FORBIDDEN");
@@ -218,15 +229,19 @@ test("plain members are denied audit:read, the denial is recorded, and admins se
   await expectORPCCode(clientFor(member).audit.list({ orgSlug: organization.slug }), "FORBIDDEN");
 
   const ownerClient = clientFor(owner);
+
   const denial = await eventually(async () => {
     const audit = await ownerClient.audit.list({ orgSlug: organization.slug });
+
     for (const entry of audit.items) {
       expect(entry.orgId).toBe(organization.id);
     }
+
     return audit.items.find(
       (entry) => entry.action === "rbac.permission" && entry.actorId === member.user.id,
     );
   });
+
   expect(denial.denied).toBe(true);
 });
 
@@ -255,6 +270,7 @@ test("settings writes are admin-gated while reads are org-wide", async () => {
     ...seen,
     legalName: "now allowed",
   });
+
   expect(saved.legalName).toBe("now allowed");
 });
 
@@ -264,9 +280,11 @@ test("the audit trail pages by a stable tenant-scoped cursor", async () => {
   const api = clientFor(owner);
 
   const base = await api.settings.get({ orgSlug: organization.slug });
+
   for (const legalName of ["one", "two", "three"]) {
     await api.settings.update({ orgSlug: organization.slug, ...base, legalName });
   }
+
   await drainAuditWrites();
 
   const first = await api.audit.list({ orgSlug: organization.slug, limit: 2 });
@@ -278,6 +296,7 @@ test("the audit trail pages by a stable tenant-scoped cursor", async () => {
     limit: 2,
     cursor: first.nextCursor!,
   });
+
   expect(second.items).toHaveLength(1);
   const firstIds = first.items.map((entry) => entry.id);
   expect(firstIds).not.toContain(second.items[0]!.id);
@@ -296,6 +315,7 @@ test("a member,admin holder gets the union of both roles' permissions", async ()
   const membership = await clientFor(owner).member.list({
     orgSlug: organization.slug,
   });
+
   const row = membership.members.find((m) => m.userId === person.user.id);
   expect(row).toBeDefined();
 
@@ -304,10 +324,12 @@ test("a member,admin holder gets the union of both roles' permissions", async ()
   // Reading only the first stored role would leave this denied.
   const ownDenial = await eventually(async () => {
     const audit = await personClient.audit.list({ orgSlug: organization.slug });
+
     return audit.items.find(
       (entry) => entry.action === "rbac.permission" && entry.actorId === person.user.id,
     );
   });
+
   expect(ownDenial.orgId).toBe(organization.id);
   expect(ownDenial.denied).toBe(true);
 });
@@ -409,7 +431,7 @@ const GUARDED_CALLS = {
       name: "Intrusion",
       code: `INTR-${uniqueSuffix()}`,
       category: "other",
-      unitPrice: "1.00",
+      unitPrice: 1_00n,
       taxRatePercent: "0",
     }),
   "catalog.update": (api, claim) =>
@@ -419,7 +441,7 @@ const GUARDED_CALLS = {
       name: "Intrusion",
       code: `INTR-${uniqueSuffix()}`,
       category: "other",
-      unitPrice: "1.00",
+      unitPrice: 1_00n,
       taxRatePercent: "0",
       active: true,
     }),
@@ -477,7 +499,7 @@ const GUARDED_CALLS = {
       patientId: Bun.randomUUIDv7(),
       practitionerId: Bun.randomUUIDv7(),
       settlement: {
-        expectedGrandTotal: "0",
+        expectedGrandTotal: 0n,
         payments: [],
         note: "Guarded-call tenant probe",
       },
@@ -525,14 +547,14 @@ const GUARDED_CALLS = {
       ...claim,
       appointmentId: Bun.randomUUIDv7(),
       expectedChargeRevision: 0,
-      expectedGrandTotal: "0",
+      expectedGrandTotal: 0n,
       note: "Guarded-call tenant probe",
     }),
   "billing.recordPayments": (api, claim) =>
     api.billing.recordPayments({
       ...claim,
       invoiceId: Bun.randomUUIDv7(),
-      payments: [{ method: "cash", amount: "1.00" }],
+      payments: [{ method: "cash", amount: 1_00n }],
     }),
   "billing.issueCreditNote": (api, claim) =>
     api.billing.issueCreditNote({
@@ -546,7 +568,7 @@ const GUARDED_CALLS = {
       ...claim,
       creditNoteId: Bun.randomUUIDv7(),
       method: "cash",
-      amount: "1.00",
+      amount: 1_00n,
     }),
   "billing.listInvoices": (api, claim) =>
     api.billing.listInvoices({ ...claim, appointmentId: Bun.randomUUIDv7() }),
@@ -576,6 +598,7 @@ const NO_CLAIM = {} as { orgSlug: string };
 function reportRange(): { from: string; to: string } {
   const day = 24 * 60 * 60 * 1_000;
   const now = Date.now();
+
   return {
     from: new Date(now - 300 * day).toISOString().slice(0, 10),
     to: new Date(now + day).toISOString().slice(0, 10),
@@ -643,9 +666,11 @@ test("member mutations reject an id belonging to another tenant", async () => {
 
   const stranger = await createTestUser("member-scope-stranger");
   await joinOrganization(stranger, alpha.id);
+
   const [inAlpha] = (await clientFor(alice).member.list({ orgSlug: alpha.slug })).members.filter(
     (row) => row.userId === stranger.user.id,
   );
+
   expect(inAlpha).toBeDefined();
 
   // Bob owns beta, so the guard passes — only the scoped pre-read stops alpha's
@@ -692,6 +717,7 @@ test("patient rows are invisible from another org through search or get", async 
   const bob = await createTestUser("patient-scope-bob");
   const beta = await createOrganization(bob, "patient-scope-beta");
   const phone = "5551000";
+
   const patient = await clientFor(alice).patient.register({
     orgSlug: alpha.slug,
     name: "Alpha Patient",
@@ -717,13 +743,15 @@ test("patient rows are invisible from another org through search or get", async 
   );
 
   const aliceClient = clientFor(alice);
+
   const [visits, account] = await Promise.all([
     aliceClient.patient.visits({ orgSlug: alpha.slug, patientId: patient.id }),
     aliceClient.patient.account({ orgSlug: alpha.slug, patientId: patient.id }),
   ]);
+
   expect(visits.items).toHaveLength(0);
   expect(account.invoices).toHaveLength(0);
-  expect(account.outstanding).toBe("0.00");
+  expect(account.outstanding).toBe(0n);
 });
 
 test("one client concurrently scopes patient calls to two organizations", async () => {
@@ -750,10 +778,12 @@ test("one client concurrently scopes patient calls to two organizations", async 
       dobEstimated: true,
     }),
   ]);
+
   const [seenInOne, seenInTwo] = await Promise.all([
     api.patient.search({ orgSlug: one.slug }),
     api.patient.search({ orgSlug: two.slug }),
   ]);
+
   expect(seenInOne.items.map((patient) => patient.id)).toEqual([inOne.id]);
   expect(seenInTwo.items.map((patient) => patient.id)).toEqual([inTwo.id]);
 });
@@ -763,12 +793,13 @@ test("catalog rows are invisible from another org and cannot be updated by forei
   const alpha = await createOrganization(alice, "catalog-scope-alpha");
   const bob = await createTestUser("catalog-scope-bob");
   const beta = await createOrganization(bob, "catalog-scope-beta");
+
   const item = await clientFor(alice).catalog.create({
     orgSlug: alpha.slug,
     name: "Alpha Item",
     code: `ALPHA-${uniqueSuffix()}`,
     category: "other",
-    unitPrice: "1.00",
+    unitPrice: 1_00n,
     taxRatePercent: "0",
   });
 
@@ -795,13 +826,14 @@ test("one client concurrently scopes catalog calls to two organizations", async 
   const one = await createOrganization(user, "catalog-scope-one");
   const two = await createOrganization(user, "catalog-scope-two");
   const api = clientFor(user);
+
   const [inOne, inTwo] = await Promise.all([
     api.catalog.create({
       orgSlug: one.slug,
       name: "Item In One",
       code: `ONE-${uniqueSuffix()}`,
       category: "other",
-      unitPrice: "1.00",
+      unitPrice: 1_00n,
       taxRatePercent: "0",
     }),
     api.catalog.create({
@@ -809,10 +841,11 @@ test("one client concurrently scopes catalog calls to two organizations", async 
       name: "Item In Two",
       code: `TWO-${uniqueSuffix()}`,
       category: "other",
-      unitPrice: "2.00",
+      unitPrice: 2_00n,
       taxRatePercent: "0",
     }),
   ]);
+
   const [seenInOne, seenInTwo] = await Promise.all([
     api.catalog.list({ orgSlug: one.slug }),
     api.catalog.list({ orgSlug: two.slug }),
@@ -821,6 +854,7 @@ test("one client concurrently scopes catalog calls to two organizations", async 
   expect(seenInOne.items.map((item) => item.id)).toEqual([inOne.id]);
   expect(seenInTwo.items.map((item) => item.id)).toEqual([inTwo.id]);
 });
+
 test("payer access stays tenant-scoped across concurrency, foreign claims, and revocation", async () => {
   const owner = await createTestUser("payer-scope-owner");
   const one = await createOrganization(owner, "payer-scope-one");
@@ -831,10 +865,12 @@ test("payer access stays tenant-scoped across concurrency, foreign claims, and r
     api.payer.create({ orgSlug: one.slug, name: "Alpha Health", type: "insurer" }),
     api.payer.create({ orgSlug: two.slug, name: "Beta Corporate", type: "corporate" }),
   ]);
+
   const [seenInOne, seenInTwo] = await Promise.all([
     api.payer.list({ orgSlug: one.slug }),
     api.payer.list({ orgSlug: two.slug }),
   ]);
+
   expect(seenInOne.map((payer) => payer.id)).toEqual([inOne.id]);
   expect(seenInTwo.map((payer) => payer.id)).toEqual([inTwo.id]);
 
@@ -874,6 +910,7 @@ test("staff rows are invisible from another org and cannot be updated by foreign
   const alpha = await createOrganization(alice, "staff-scope-alpha");
   const bob = await createTestUser("staff-scope-bob");
   const beta = await createOrganization(bob, "staff-scope-beta");
+
   const department = await clientFor(alice).staff.createDepartment({
     orgSlug: alpha.slug,
     name: "Alpha Department",
@@ -896,10 +933,12 @@ test("one client concurrently scopes staff calls to two organizations", async ()
   const one = await createOrganization(user, "staff-scope-one");
   const two = await createOrganization(user, "staff-scope-two");
   const api = clientFor(user);
+
   const [inOne, inTwo] = await Promise.all([
     api.staff.createDepartment({ orgSlug: one.slug, name: "Department In One" }),
     api.staff.createDepartment({ orgSlug: two.slug, name: "Department In Two" }),
   ]);
+
   const [seenInOne, seenInTwo] = await Promise.all([
     api.staff.listDepartments({ orgSlug: one.slug }),
     api.staff.listDepartments({ orgSlug: two.slug }),
@@ -913,6 +952,7 @@ test("OPD appointment rows are invisible from another org through queue or get",
   const alice = await createTestUser("opd-scope-alice");
   const alpha = await createOrganization(alice, "opd-scope-alpha");
   const aliceClient = clientFor(alice);
+
   const patient = await aliceClient.patient.register({
     orgSlug: alpha.slug,
     name: "Alpha OpdAppointment Patient",
@@ -922,38 +962,44 @@ test("OPD appointment rows are invisible from another org through queue or get",
     dobEstimated: true,
     address: "",
   });
+
   const fee = await aliceClient.catalog.create({
     orgSlug: alpha.slug,
     name: "Alpha consultation",
     code: `ALPHA-CONSULT-${uniqueSuffix()}`,
     category: "consultation",
-    unitPrice: "100.00",
+    unitPrice: 100_00n,
     taxRatePercent: "0",
   });
+
   const department = await aliceClient.staff.createDepartment({
     orgSlug: alpha.slug,
     name: "Alpha OpdAppointment Department",
   });
+
   const practitioner = await aliceClient.staff.createPractitioner({
     orgSlug: alpha.slug,
     name: "Dr. Alpha OpdAppointment",
     departmentId: department.id,
     consultFeeItemId: fee.id,
   });
+
   const currentMinute = localMinute(
     new Date(),
     (await aliceClient.settings.get({ orgSlug: alpha.slug })).timeZone,
   );
+
   const created = await aliceClient.opd.createWalkIn({
     orgSlug: alpha.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
     settlement: {
-      expectedGrandTotal: "100.00",
+      expectedGrandTotal: 100_00n,
       payments: [],
       note: "Tenant visibility probe",
     },
   });
+
   const pastBooking = await aliceClient.opd.book({
     orgSlug: alpha.slug,
     patientId: patient.id,
@@ -987,6 +1033,7 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
   const one = await createOrganization(user, "opd-scope-one");
   const two = await createOrganization(user, "opd-scope-two");
   const api = clientFor(user);
+
   const [patientOne, patientTwo] = await Promise.all([
     api.patient.register({
       orgSlug: one.slug,
@@ -1007,13 +1054,14 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
       address: "",
     }),
   ]);
+
   const [feeOne, feeTwo] = await Promise.all([
     api.catalog.create({
       orgSlug: one.slug,
       name: "Organization One Consultation",
       code: `ONE-CONSULT-${uniqueSuffix()}`,
       category: "consultation",
-      unitPrice: "100.00",
+      unitPrice: 100_00n,
       taxRatePercent: "0",
     }),
     api.catalog.create({
@@ -1021,14 +1069,16 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
       name: "Organization Two Consultation",
       code: `TWO-CONSULT-${uniqueSuffix()}`,
       category: "consultation",
-      unitPrice: "100.00",
+      unitPrice: 100_00n,
       taxRatePercent: "0",
     }),
   ]);
+
   const [departmentOne, departmentTwo] = await Promise.all([
     api.staff.createDepartment({ orgSlug: one.slug, name: "OpdAppointment Department One" }),
     api.staff.createDepartment({ orgSlug: two.slug, name: "OpdAppointment Department Two" }),
   ]);
+
   const [practitionerOne, practitionerTwo] = await Promise.all([
     api.staff.createPractitioner({
       orgSlug: one.slug,
@@ -1050,8 +1100,8 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
       patientId: patientOne.id,
       practitionerId: practitionerOne.id,
       settlement: {
-        expectedGrandTotal: "100.00",
-        payments: [{ method: "cash", amount: "100.00" }],
+        expectedGrandTotal: 100_00n,
+        payments: [{ method: "cash", amount: 100_00n }],
       },
     }),
     api.opd.createWalkIn({
@@ -1059,15 +1109,17 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
       patientId: patientTwo.id,
       practitionerId: practitionerTwo.id,
       settlement: {
-        expectedGrandTotal: "100.00",
-        payments: [{ method: "cash", amount: "100.00" }],
+        expectedGrandTotal: 100_00n,
+        payments: [{ method: "cash", amount: 100_00n }],
       },
     }),
   ]);
+
   const [seenInOne, seenInTwo] = await Promise.all([
     api.opd.day({ orgSlug: one.slug }),
     api.opd.day({ orgSlug: two.slug }),
   ]);
+
   if (!inOne.invoice || !inTwo.invoice) throw new Error("Expected walk-ins to issue invoices");
 
   expect(seenInOne.items.map((appointment) => appointment.id)).toEqual([inOne.appointment.id]);
@@ -1085,8 +1137,8 @@ async function createScopedInvoice(
   organization: { slug: string },
   seed: string,
   settlement: Parameters<AppRouterClient["opd"]["createWalkIn"]>[0]["settlement"] = {
-    expectedGrandTotal: "100.00",
-    payments: [{ method: "cash", amount: "100.00" }],
+    expectedGrandTotal: 100_00n,
+    payments: [{ method: "cash", amount: 100_00n }],
   },
 ) {
   await api.settings.update({
@@ -1104,6 +1156,7 @@ async function createScopedInvoice(
     followUpValidityDays: 14,
     unbilledAlertHours: 24,
   });
+
   const patient = await api.patient.register({
     orgSlug: organization.slug,
     name: `${seed} Patient`,
@@ -1113,31 +1166,37 @@ async function createScopedInvoice(
     dobEstimated: true,
     address: "",
   });
+
   const fee = await api.catalog.create({
     orgSlug: organization.slug,
     name: `${seed} Consultation`,
     code: `SCOPE-${uniqueSuffix()}`,
     category: "consultation",
-    unitPrice: "100.00",
+    unitPrice: 100_00n,
     taxRatePercent: "0",
   });
+
   const department = await api.staff.createDepartment({
     orgSlug: organization.slug,
     name: `${seed} Department`,
   });
+
   const practitioner = await api.staff.createPractitioner({
     orgSlug: organization.slug,
     name: `Dr. ${seed}`,
     departmentId: department.id,
     consultFeeItemId: fee.id,
   });
+
   const created = await api.opd.createWalkIn({
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
     settlement,
   });
+
   if (!created.invoice) throw new Error("Expected walk-in to issue an invoice");
+
   return {
     appointment: created.appointment,
     invoice: created.invoice,
@@ -1169,10 +1228,12 @@ test("one client concurrently scopes billing calls to two organizations", async 
   const one = await createOrganization(user, "billing-scope-one");
   const two = await createOrganization(user, "billing-scope-two");
   const api = clientFor(user);
+
   const [inOne, inTwo] = await Promise.all([
     createScopedInvoice(api, one, "Billing One"),
     createScopedInvoice(api, two, "Billing Two"),
   ]);
+
   const [seenInOne, seenInTwo] = await Promise.all([
     api.billing.listInvoices({ orgSlug: one.slug, appointmentId: inOne.appointment.id }),
     api.billing.listInvoices({ orgSlug: two.slug, appointmentId: inTwo.appointment.id }),
@@ -1215,31 +1276,32 @@ test("reports reject a foreign org claim and expose none of that org's figures i
     bobClient.report.balanceSheet({ orgSlug: beta.slug, asOf: range.to }),
     bobClient.report.gst({ orgSlug: beta.slug, ...range }),
   ]);
+
   expect(trialBalance.rows).toEqual([]);
   expect(trialBalance.totals).toEqual({
-    openingDebit: "0.00",
-    openingCredit: "0.00",
-    debit: "0.00",
-    credit: "0.00",
-    closingDebit: "0.00",
-    closingCredit: "0.00",
+    openingDebit: 0n,
+    openingCredit: 0n,
+    debit: 0n,
+    credit: 0n,
+    closingDebit: 0n,
+    closingCredit: 0n,
   });
   expect(balanceSheet.assets).toEqual([]);
   expect(balanceSheet.liabilities).toEqual([]);
   expect(balanceSheet.equity).toEqual([]);
   expect(balanceSheet.totals).toEqual({
-    assets: "0.00",
-    liabilitiesAndEquity: "0.00",
+    assets: 0n,
+    liabilitiesAndEquity: 0n,
   });
   expect(gst.documents).toEqual([]);
   expect(gst.rateSummary).toEqual([]);
   expect(gst.hsnSummary).toEqual([]);
   expect(gst.totals).toEqual({
-    taxableValue: "0.00",
-    cgst: "0.00",
-    sgst: "0.00",
-    taxAmount: "0.00",
-    gross: "0.00",
+    taxableValue: 0n,
+    cgst: 0n,
+    sgst: 0n,
+    taxAmount: 0n,
+    gross: 0n,
   });
 });
 
@@ -1270,22 +1332,26 @@ test("one client concurrently scopes report calls to two organizations", async (
   const one = await createOrganization(user, "report-scope-one");
   const two = await createOrganization(user, "report-scope-two");
   const api = clientFor(user);
+
   const unpaid = {
-    expectedGrandTotal: "100.00",
+    expectedGrandTotal: 100_00n,
     payments: [],
     note: "Settle at the counter",
   };
+
   const [inOne, inTwo] = await Promise.all([
     createScopedInvoice(api, one, "Report One", unpaid),
     createScopedInvoice(api, two, "Report Two", unpaid),
   ]);
+
   await api.billing.recordPayments({
     orgSlug: one.slug,
     invoiceId: inOne.invoice.id,
-    payments: [{ method: "cash", amount: "40.00" }],
+    payments: [{ method: "cash", amount: 40_00n }],
   });
 
   const range = reportRange();
+
   const [trialOne, trialTwo, balanceOne, balanceTwo, gstOne, gstTwo] = await Promise.all([
     api.report.trialBalance({ orgSlug: one.slug, ...range }),
     api.report.trialBalance({ orgSlug: two.slug, ...range }),
@@ -1295,9 +1361,9 @@ test("one client concurrently scopes report calls to two organizations", async (
     api.report.gst({ orgSlug: two.slug, ...range }),
   ]);
 
-  expect(trialOne.rows.find((row) => row.code === "1200")?.closingDebit).toBe("60.00");
-  expect(trialTwo.rows.find((row) => row.code === "1200")?.closingDebit).toBe("100.00");
-  expect(balanceOne.assets.find((row) => row.code === "1000")?.balance).toBe("40.00");
+  expect(trialOne.rows.find((row) => row.code === "1200")?.closingDebit).toBe(60_00n);
+  expect(trialTwo.rows.find((row) => row.code === "1200")?.closingDebit).toBe(100_00n);
+  expect(balanceOne.assets.find((row) => row.code === "1000")?.balance).toBe(40_00n);
   expect(balanceTwo.assets.some((row) => row.code === "1000")).toBe(false);
   expect(gstOne.documents.map((document) => document.patientName)).toEqual(["report one patient"]);
   expect(gstTwo.documents.map((document) => document.patientName)).toEqual(["report two patient"]);

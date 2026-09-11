@@ -1,4 +1,3 @@
-import { fromPaise } from "@hms/api/lib/invoice-math";
 import { Button } from "@hms/ui/components/button";
 import {
   Field,
@@ -14,7 +13,8 @@ import { Textarea } from "@hms/ui/components/textarea";
 
 import { FinancialSummary } from "@/components/opd-financial-summary";
 import { PaymentBalance, PaymentLine, PaymentLines } from "@/components/payment-lines";
-import { parseMoneyInput } from "@/lib/money";
+import { formatDecimal } from "@hms/api/core/money";
+import { parseMoneyInput, ZERO } from "@/lib/money";
 import { type WalkInQuote } from "@/lib/opd-service-preview";
 import {
   amountOf,
@@ -49,7 +49,7 @@ export function SettlementFields({
   note: string;
   payments: PaymentLineValue[];
   pending: boolean;
-  due: number;
+  due: bigint;
   problems: SettlementProblem[];
   onDiscountChange: (value: string) => void;
   onNoteChange: (value: string) => void;
@@ -59,19 +59,23 @@ export function SettlementFields({
     onPaymentsChange(
       payments.map((payment) => (payment.id === id ? { ...payment, ...patch } : payment)),
     );
+
   const remaining = due - collectedPaise(payments);
   const overCollected = loudProblem(problems, "over-collected");
   const discountProblem = loudProblem(problems, "discount");
   const noteProblem = loudProblem(problems, "note");
-  const reasonRequired = remaining > 0 || (parseMoneyInput(discount.trim() || "0") ?? 0) > 0;
+
+  const reasonRequired =
+    remaining > ZERO || (parseMoneyInput(discount.trim() || "0") ?? ZERO) > ZERO;
 
   const allocateRest = () => {
     const last = payments[payments.length - 1];
+
     if (!last) return onPaymentsChange([nextPaymentLine(payments, remaining)]);
     onPaymentsChange(
       payments.map((payment) =>
         payment.id === last.id
-          ? { ...payment, amount: fromPaise((amountOf(payment) ?? 0) + remaining) }
+          ? { ...payment, amount: formatDecimal((amountOf(payment) ?? ZERO) + remaining) }
           : payment,
       ),
     );
@@ -117,7 +121,8 @@ export function SettlementFields({
             {payments.map((payment, index) => {
               const amountProblem = loudProblem(problems, `amount:${payment.id}`);
               const referenceProblem = loudProblem(problems, `reference:${payment.id}`);
-              const referenceRequired = (amountOf(payment) ?? 0) > 0;
+              const referenceRequired = (amountOf(payment) ?? ZERO) > ZERO;
+
               return (
                 <PaymentLine
                   key={payment.id}

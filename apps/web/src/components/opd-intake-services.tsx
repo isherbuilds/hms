@@ -18,9 +18,9 @@ type IntakeServiceLine = {
   description: string;
   category: string;
   qty: number;
-  unitPrice: string;
+  unitPrice: bigint;
   taxRatePercent: string;
-  gross?: string;
+  gross?: bigint;
   editable: boolean;
 };
 

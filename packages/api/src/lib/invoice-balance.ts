@@ -10,7 +10,7 @@ type BillingExecutor = Pick<typeof db, "execute">;
 
 type BalanceInvoice = {
   id: string;
-  grandTotal: string;
+  grandTotal: bigint;
 };
 
 export async function invoiceBalancesFor(
@@ -21,6 +21,7 @@ export async function invoiceBalancesFor(
   if (balanceInvoices.length === 0) return new Map();
 
   const invoiceIds = balanceInvoices.map((invoice) => invoice.id);
+
   const totals = await executor.execute<{
     invoiceId: string;
     creditTotal: string;
@@ -30,41 +31,46 @@ export async function invoiceBalancesFor(
     with movements as (
       select ${creditNotes.invoiceId} as invoice_id,
              ${creditNotes.total} as credit,
-             0::numeric as payment,
-             0::numeric as refund
+             0::bigint as payment,
+             0::bigint as refund
       from ${creditNotes}
       where ${creditNotes.orgId} = ${orgId}
         and ${inArray(creditNotes.invoiceId, invoiceIds)}
       union all
-      select ${payments.invoiceId}, 0::numeric, ${payments.amount}, 0::numeric
+      select ${payments.invoiceId}, 0::bigint, ${payments.amount}, 0::bigint
       from ${payments}
       where ${payments.orgId} = ${orgId}
         and ${inArray(payments.invoiceId, invoiceIds)}
       union all
-      select ${refunds.invoiceId}, 0::numeric, 0::numeric, ${refunds.amount}
+      select ${refunds.invoiceId}, 0::bigint, 0::bigint, ${refunds.amount}
       from ${refunds}
       where ${refunds.orgId} = ${orgId}
         and ${inArray(refunds.invoiceId, invoiceIds)}
     )
     select invoice_id as "invoiceId",
-           coalesce(sum(credit), 0)::text as "creditTotal",
-           coalesce(sum(payment), 0)::text as "paymentsTotal",
-           coalesce(sum(refund), 0)::text as "refundsTotal"
+           coalesce(sum(credit), 0)::bigint as "creditTotal",
+           coalesce(sum(payment), 0)::bigint as "paymentsTotal",
+           coalesce(sum(refund), 0)::bigint as "refundsTotal"
     from movements
     group by invoice_id
   `);
+
   const totalsByInvoice = new Map(totals.rows.map((row) => [row.invoiceId, row]));
 
   return new Map(
-    balanceInvoices.map((invoice) => [
-      invoice.id,
-      calculateInvoiceBalance({
-        grandTotal: invoice.grandTotal,
-        credits: [totalsByInvoice.get(invoice.id)?.creditTotal ?? "0"],
-        payments: [totalsByInvoice.get(invoice.id)?.paymentsTotal ?? "0"],
-        refunds: [totalsByInvoice.get(invoice.id)?.refundsTotal ?? "0"],
-      }),
-    ]),
+    balanceInvoices.map((invoice) => {
+      const movementTotals = totalsByInvoice.get(invoice.id);
+
+      return [
+        invoice.id,
+        calculateInvoiceBalance({
+          grandTotal: invoice.grandTotal,
+          creditTotal: BigInt(movementTotals?.creditTotal ?? "0"),
+          paymentsTotal: BigInt(movementTotals?.paymentsTotal ?? "0"),
+          refundsTotal: BigInt(movementTotals?.refundsTotal ?? "0"),
+        }),
+      ] as const;
+    }),
   );
 }
 
@@ -74,6 +80,8 @@ export async function invoiceBalanceFor(
   invoice: BalanceInvoice,
 ): Promise<InvoiceBalance> {
   const balance = (await invoiceBalancesFor(executor, orgId, [invoice])).get(invoice.id);
+
   if (!balance) throw new Error(`Balance missing for invoice ${invoice.id}`);
+
   return balance;
 }

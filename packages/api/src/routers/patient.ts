@@ -16,7 +16,6 @@ import { audit } from "../audit";
 import { conflict } from "../lib/conflict";
 import { uniqueViolationConstraint } from "../lib/db-errors";
 import { invoiceBalancesFor } from "../lib/invoice-balance";
-import { fromPaise, toSignedPaise } from "../lib/invoice-math";
 import { normalizePhone } from "../lib/phone";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import {
@@ -112,6 +111,7 @@ async function assertActivePayer(orgId: string, payerId: string): Promise<void> 
     .from(payers)
     .where(and(eq(payers.orgId, orgId), eq(payers.id, payerId), eq(payers.active, true)))
     .limit(1);
+
   if (!payer) {
     throw new ORPCError("NOT_FOUND", { message: "That sponsor is not available." });
   }
@@ -123,6 +123,7 @@ export const patientRouter = {
       const { scope } = context;
       const { orgSlug: _claim, sponsor, guardian, emergencyContact, ...fields } = input;
       const id = Bun.randomUUIDv7();
+
       const [settings] = await Promise.all([
         // Bounded staleness is acceptable for numbering and keeps the counter lock window minimal.
         readOrgSettings(scope.orgId),
@@ -130,6 +131,7 @@ export const patientRouter = {
       ]);
 
       let patient: typeof patients.$inferSelect;
+
       try {
         patient = await db.transaction(async (tx) => {
           const seq = await nextCounter(tx, scope.orgId, "mrn");
@@ -157,6 +159,7 @@ export const patientRouter = {
               message: "Failed to register patient",
             });
           }
+
           if (sponsor) {
             await tx.insert(patientPayers).values({
               id: Bun.randomUUIDv7(),
@@ -167,18 +170,22 @@ export const patientRouter = {
               employeeNumber: sponsor.employeeNumber ?? null,
             });
           }
+
           return row;
         });
       } catch (error) {
         const constraint = uniqueViolationConstraint(error);
+
         if (constraint === "patients_org_uid_idx") {
           throw conflict("uid_taken", "A patient with this UID already exists.");
         }
+
         if (constraint !== undefined) {
           throw new ORPCError("CONFLICT", {
             message: "Those details match a patient who already exists.",
           });
         }
+
         throw error;
       }
 
@@ -215,6 +222,7 @@ export const patientRouter = {
     const normalizedQuery = input.query ? normalizePhone(input.query) : "";
     const queryPattern = input.query ? likePattern(input.query) : undefined;
     const phoneDigits = sql<string>`regexp_replace(${patients.phone}, '\\D', '', 'g')`;
+
     const scoped = and(
       eq(patients.orgId, context.scope.orgId),
       input.cursor ? lt(patients.id, input.cursor) : undefined,
@@ -248,10 +256,13 @@ export const patientRouter = {
       .limit(input.limit + 1);
 
     const hasNextPage = items.length > input.limit;
+
     if (hasNextPage) {
       items.pop();
     }
+
     const last = items[items.length - 1];
+
     return {
       items,
       nextCursor: hasNextPage && last ? last.id : null,
@@ -271,6 +282,7 @@ export const patientRouter = {
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
+
     const [, rows] = await Promise.all([
       assertPatientInScope(scope.orgId, input.patientId),
       db
@@ -308,11 +320,13 @@ export const patientRouter = {
     ]);
 
     const hasNextPage = rows.length > input.limit;
+
     if (hasNextPage) {
       rows.pop();
     }
 
     const visitIds = rows.map((row) => row.id);
+
     const [prescriptionCounts, visitInvoices] = visitIds.length
       ? await Promise.all([
           db
@@ -341,22 +355,26 @@ export const patientRouter = {
 
     const balances = await invoiceBalancesFor(db, scope.orgId, visitInvoices);
     const countByVisit = new Map(prescriptionCounts.map((row) => [row.targetId, row.total]));
-    const outstandingByVisit = new Map<string, number>();
+    const outstandingByVisit = new Map<string, bigint>();
+
     for (const invoice of visitInvoices) {
-      const outstanding = balances.get(invoice.id)?.outstanding ?? "0.00";
+      const balance = balances.get(invoice.id);
+
+      if (!balance) throw new Error(`Balance missing for invoice ${invoice.id}`);
       outstandingByVisit.set(
         invoice.opdAppointmentId,
-        (outstandingByVisit.get(invoice.opdAppointmentId) ?? 0) + toSignedPaise(outstanding),
+        (outstandingByVisit.get(invoice.opdAppointmentId) ?? 0n) + balance.outstanding,
       );
     }
 
     const items = rows.map((row) => ({
       ...row,
       prescriptionCount: countByVisit.get(row.id) ?? 0,
-      outstanding: fromPaise(outstandingByVisit.get(row.id) ?? 0),
+      outstanding: outstandingByVisit.get(row.id) ?? 0n,
     }));
 
     const last = rows[rows.length - 1];
+
     return {
       items,
       nextCursor: hasNextPage && last ? { businessDate: last.businessDate, id: last.id } : null,
@@ -366,6 +384,7 @@ export const patientRouter = {
   account: orgProcedure({ billing: ["read"] }, orgInput.extend({ patientId: z.string() })).handler(
     async ({ context, input }) => {
       const { scope } = context;
+
       const [, rows] = await Promise.all([
         assertPatientInScope(scope.orgId, input.patientId),
         db
@@ -382,23 +401,31 @@ export const patientRouter = {
       ]);
 
       const balances = await invoiceBalancesFor(db, scope.orgId, rows);
+      let openCount = 0;
+      let outstanding = 0n;
+
       const items = rows.map((invoice) => {
         const balance = balances.get(invoice.id);
+
+        if (!balance) throw new Error(`Balance missing for invoice ${invoice.id}`);
+        const invoiceOutstanding = balance.outstanding;
+
+        if (invoiceOutstanding !== 0n) {
+          openCount += 1;
+          outstanding += invoiceOutstanding;
+        }
+
         return {
           ...invoice,
-          paymentsTotal: balance?.paymentsTotal ?? "0.00",
-          outstanding: balance?.outstanding ?? "0.00",
+          paymentsTotal: balance.paymentsTotal,
+          outstanding: invoiceOutstanding,
         };
       });
 
-      const openInvoices = items.filter((invoice) => toSignedPaise(invoice.outstanding) !== 0);
-
       return {
         invoices: items,
-        openCount: openInvoices.length,
-        outstanding: fromPaise(
-          openInvoices.reduce((sum, invoice) => sum + toSignedPaise(invoice.outstanding), 0),
-        ),
+        openCount,
+        outstanding,
       };
     },
   ),
@@ -434,6 +461,7 @@ export const patientRouter = {
       if (!row) {
         throw new ORPCError("NOT_FOUND", { message: "That patient no longer exists." });
       }
+
       return {
         ...row.patient,
         updatedAt: row.patient.updatedAt.toISOString(),
@@ -453,6 +481,7 @@ export const patientRouter = {
 
   update: orgProcedure({ patient: ["update"] }, updateInput).handler(async ({ context, input }) => {
     const { scope } = context;
+
     const {
       orgSlug: _claim,
       patientId,
@@ -462,9 +491,11 @@ export const patientRouter = {
       emergencyContact,
       ...fields
     } = input;
+
     if (sponsor) await assertActivePayer(scope.orgId, sponsor.payerId);
 
     let patient: typeof patients.$inferSelect;
+
     try {
       patient = await db.transaction(async (tx) => {
         const [row] = await tx
@@ -491,6 +522,7 @@ export const patientRouter = {
         if (!row) {
           throw conflict("stale_record", "This patient changed after you opened it.");
         }
+
         if (sponsor === null) {
           await tx
             .delete(patientPayers)
@@ -517,18 +549,22 @@ export const patientRouter = {
               },
             });
         }
+
         return row;
       });
     } catch (error) {
       const constraint = uniqueViolationConstraint(error);
+
       if (constraint === "patients_org_uid_idx") {
         throw conflict("uid_taken", "A patient with this UID already exists.");
       }
+
       if (constraint !== undefined) {
         throw new ORPCError("CONFLICT", {
           message: "Those details match a patient who already exists.",
         });
       }
+
       throw error;
     }
 

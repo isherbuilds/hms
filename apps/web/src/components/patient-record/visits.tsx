@@ -16,7 +16,7 @@ import { toast } from "sonner";
 
 import { OpdAppointmentStatusBadge } from "@/components/opd-appointment";
 import { ErrorNote, ListState, LoadMore, Panel } from "@/components/page";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { formatBusinessDate, formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { formatFileSize, openOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
@@ -51,6 +51,7 @@ function VisitPanel({
   if (detail.isPending) {
     return <p className="text-muted-foreground">Loading visit…</p>;
   }
+
   if (detail.isError) {
     return <ErrorNote title="Could not load this visit" error={detail.error} />;
   }
@@ -148,7 +149,7 @@ type VisitRow = {
   practitionerName: string;
   departmentName: string;
   prescriptionCount: number;
-  outstanding: string;
+  outstanding: bigint;
 };
 
 function VisitAccordionRow({
@@ -161,7 +162,7 @@ function VisitAccordionRow({
   currency: string;
 }) {
   const [open, setOpen] = useState(false);
-  const due = Number(visit.outstanding) !== 0;
+  const due = visit.outstanding !== ZERO;
 
   return (
     <div className="border-b border-border/60 last:border-b-0">

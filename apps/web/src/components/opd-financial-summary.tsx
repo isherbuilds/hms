@@ -1,8 +1,7 @@
-import { toPaise } from "@hms/api/lib/invoice-math";
 import { Separator } from "@hms/ui/components/separator";
 import { type ReactNode } from "react";
 
-import { formatMoney } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { type WalkInQuote } from "@/lib/opd-service-preview";
 
 export function FinancialSummary({
@@ -13,6 +12,7 @@ export function FinancialSummary({
   discountRow?: ReactNode;
 }) {
   const { currency } = quote;
+
   return (
     <dl className="grid gap-2">
       <div className="flex justify-between">
@@ -20,7 +20,7 @@ export function FinancialSummary({
         <dd className="tabular-nums">{formatMoney(quote.subtotal, currency)}</dd>
       </div>
       {discountRow ??
-        (toPaise(quote.discountAmount) > 0 ? (
+        (quote.discountAmount > ZERO ? (
           <div className="flex justify-between">
             <dt className="text-muted-foreground">Discount</dt>
             <dd className="tabular-nums">-{formatMoney(quote.discountAmount, currency)}</dd>

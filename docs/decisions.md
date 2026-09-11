@@ -385,3 +385,38 @@ Each entry above names the numbered ADRs it consolidates or supersedes. The
 original ADRs, their alternatives, and the reasoning that was rejected remain in
 Git history before the documentation consolidation of 2026-08-23. Do not restate
 them here — if an old decision is being revisited, read the original.
+
+### D031 — Money is `bigint` paise; the conversion is a stop-the-world cutover
+
+**Accepted 2026-09-11.** Every money column is Postgres `bigint` paise and all
+arithmetic is `bigint`. Inputs and outputs of every procedure are `bigint` too (the
+RPC serializer carries it natively); decimal strings exist only where a person
+types or reads them: form inputs, PDF cells, and audit meta. The client keeps
+bigint literals out of `.tsx` files because the oxc React Compiler rewrites them
+to `undefined`; components compare against the imported `ZERO`.
+The now-squashed `0002_money_bigint_paise` migration rescaled retained rows in place
+(`USING round(col * 100)`), so a numeric-era server reading the migrated table
+sees amounts 100× too large and writes amounts 100× too small. D007's rolling
+compatibility does not hold for this release: stop every pre-0002 process
+before the migrator runs, run the migrator, then start only bigint-aware code.
+There is no compatible window and no down migration; restore from the
+pre-cutover backup if the release must be abandoned. Later releases return to
+D007's rolling rule.
+
+### D032 — Production journal reset to the single 2026-09-11 baseline
+
+**Accepted 2026-09-11; narrow exception to D022.** The repository squashed its
+migrations into one `0000_production_baseline` (timestamp `1788496041019`, the
+original `0000` ordering value). Production had applied only the committed
+`0000` and `0001_patient_contacts`; its money columns were still `numeric`.
+On 2026-09-11 the pilot was cut over by hand, with both applications stopped
+and a `pg_dump` taken first: the 22 money columns were converted in one
+transaction with `round(col * 100)`, the three `DEFAULT 0` values and eleven
+check constraints were re-declared to match the baseline, and
+`drizzle.__drizzle_migrations` was replaced by one row carrying the baseline's
+sha256 and timestamp. A catalog diff against a scratch database built from the
+baseline showed zero differences afterwards. Production therefore looks exactly
+like a fresh database that applied the baseline once; later migrations apply in
+both paths. `dev:status` exact-history checks pass everywhere. The old SQL
+remains recoverable from Git history. Migration history is append-only again
+after this one repository-only squash.

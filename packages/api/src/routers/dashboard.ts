@@ -44,14 +44,14 @@ export const dashboardRouter = {
     ]);
 
     const totals = counts.rows[0];
+
     if (!totals) {
       throw new Error("Dashboard today query returned no row");
     }
+
     return { ...totals, mix: mix.rows };
   }),
 
-  // Amounts stay strings: Postgres stores them as `numeric`, and a JavaScript float
-  // would cause money errors.
   collections: orgProcedure({ billing: ["read"] }, orgInput).handler(async ({ context }) => {
     const { orgId } = context.scope;
     const { timeZone, unbilledAlertHours } = await readOrgSettings(orgId);
@@ -64,7 +64,7 @@ export const dashboardRouter = {
         unbilled: string;
       }>(sql`
         with unbilled_appointments as (
-          select sum(${charges.unitPrice} * ${charges.qty}) as pending_value
+          select sum(${charges.unitPrice} * ${charges.qty})::bigint as pending_value
           from ${charges}
           inner join ${opdAppointments}
             on ${opdAppointments.orgId} = ${charges.orgId}
@@ -76,8 +76,8 @@ export const dashboardRouter = {
           having min(${charges.createdAt}) < ${unbilledBefore}
         )
         select
-          coalesce(sum(${payments.amount}), 0)::text as "collected",
-          (select coalesce(sum(pending_value), 0)::text
+          coalesce(sum(${payments.amount}), 0)::bigint as "collected",
+          (select coalesce(sum(pending_value), 0)::bigint
             from unbilled_appointments) as "unbilled"
         from ${payments}
         where ${payments.orgId} = ${orgId}
@@ -85,12 +85,12 @@ export const dashboardRouter = {
       `),
       db.execute<{ method: PaymentMethod; amount: string }>(sql`
         select ${payments.method} as "method",
-               sum(${payments.amount})::text as "amount"
+               sum(${payments.amount})::bigint as "amount"
         from ${payments}
         where ${payments.orgId} = ${orgId}
           and ${payments.businessDate} = ${currentDay}
         group by ${payments.method}
-        order by sum(${payments.amount}) desc
+        order by sum(${payments.amount})::bigint desc
       `),
       // Gap-filled: a day with no payments must plot as zero, not compress the axis.
       db.execute<{ day: string; amount: string }>(sql`
@@ -99,7 +99,7 @@ export const dashboardRouter = {
           from generate_series(13, 0, -1) as series(days_ago)
         )
         select to_char(days.day, 'YYYY-MM-DD') as "day",
-               coalesce(sum(${payments.amount}), 0)::text as "amount"
+               coalesce(sum(${payments.amount}), 0)::bigint as "amount"
         from days
         left join ${payments}
           on ${payments.orgId} = ${orgId}
@@ -110,10 +110,22 @@ export const dashboardRouter = {
     ]);
 
     const totals = result.rows[0];
+
     if (!totals) {
       throw new Error("Dashboard collections query returned no row");
     }
 
-    return { ...totals, byMethod: byMethod.rows, trend: trend.rows };
+    return {
+      collected: BigInt(totals.collected),
+      unbilled: BigInt(totals.unbilled),
+      byMethod: byMethod.rows.map((row) => ({
+        ...row,
+        amount: BigInt(row.amount),
+      })),
+      trend: trend.rows.map((row) => ({
+        ...row,
+        amount: BigInt(row.amount),
+      })),
+    };
   }),
 };

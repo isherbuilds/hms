@@ -8,7 +8,8 @@ import {
 } from "../../apps/web/src/lib/settlement";
 
 /** ₹982.50 — the worked example the desk prototype was measured against. */
-const DUE = 98250;
+const DUE = 98_250n;
+
 const INR = "INR";
 
 const line = (over: Partial<PaymentLine> & { id: number }): PaymentLine => ({
@@ -19,7 +20,7 @@ const line = (over: Partial<PaymentLine> & { id: number }): PaymentLine => ({
 });
 
 const problems = (over: {
-  due?: number;
+  due?: bigint;
   discount?: string;
   note?: string;
   payments?: PaymentLine[];
@@ -61,9 +62,11 @@ test("only cash skips a transaction reference", () => {
 
 test("the next payment line walks all four methods before falling back to cash", () => {
   const payments: Array<{ id: number; method: PaymentLine["method"] }> = [];
+
   const methods = Array.from({ length: 5 }, (_, index) => {
-    const next = nextPaymentLine(payments, index === 0 ? DUE : 0);
+    const next = nextPaymentLine(payments, index === 0 ? DUE : 0n);
     payments.push(next);
+
     return next.method;
   });
 
@@ -111,12 +114,16 @@ test("a balance left behind requires a written reason", () => {
 
 test("a discount also requires a reason, even when nothing is left owing", () => {
   expect(
-    problems({ discount: "50.00", due: DUE - 5000, payments: [line({ id: 1, amount: "932.50" })] }),
+    problems({
+      discount: "50.00",
+      due: DUE - 5_000n,
+      payments: [line({ id: 1, amount: "932.50" })],
+    }),
   ).toHaveLength(1);
   expect(
     problems({
       discount: "50.00",
-      due: DUE - 5000,
+      due: DUE - 5_000n,
       payments: [line({ id: 1, amount: "932.50" })],
       note: "Staff concession.",
     }),

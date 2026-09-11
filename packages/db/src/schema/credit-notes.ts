@@ -1,8 +1,8 @@
 import {
+  bigint,
   date,
   foreignKey,
   index,
-  numeric,
   pgTable,
   text,
   timestamp,
@@ -27,9 +27,9 @@ export const creditNotes = pgTable(
     fiscalYear: text("fiscal_year").notNull(),
     businessDate: date("business_date").notNull(),
     reason: text("reason").notNull(),
-    subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull(),
-    taxTotal: numeric("tax_total", { precision: 12, scale: 2 }).notNull(),
-    total: numeric("total", { precision: 12, scale: 2 }).notNull(),
+    subtotal: bigint("subtotal", { mode: "bigint" }).notNull(),
+    taxTotal: bigint("tax_total", { mode: "bigint" }).notNull(),
+    total: bigint("total", { mode: "bigint" }).notNull(),
     issuedBy: text("issued_by")
       .notNull()
       .references(() => user.id),

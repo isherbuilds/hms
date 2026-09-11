@@ -30,11 +30,13 @@ export async function addPendingCatalogCharge({
       .where(and(eq(opdAppointments.orgId, orgId), eq(opdAppointments.id, appointmentId)))
       .limit(1)
       .for("update");
+
     const [item] = await tx
       .select()
       .from(catalogItems)
       .where(and(eq(catalogItems.orgId, orgId), eq(catalogItems.id, catalogItemId)))
       .limit(1);
+
     if (!appointment || !item) throw new Error("Test charge fixture is incomplete");
 
     const [charge] = await tx
@@ -57,12 +59,14 @@ export async function addPendingCatalogCharge({
         createdAt,
       })
       .returning();
+
     if (!charge) throw new Error("Test charge was not inserted");
 
     await tx
       .update(opdAppointments)
       .set({ chargeRevision: sql`${opdAppointments.chargeRevision} + 1` })
       .where(and(eq(opdAppointments.orgId, orgId), eq(opdAppointments.id, appointment.id)));
+
     return charge;
   });
 }
@@ -72,11 +76,11 @@ export async function settlePendingCharges(
   input: {
     orgSlug: string;
     appointmentId: string;
-    discountAmount?: string;
+    discountAmount?: bigint;
     note?: string;
     payments?: Array<{
       method: "cash" | "upi" | "card";
-      amount: string;
+      amount: bigint;
       reference?: string;
     }>;
   },
@@ -85,8 +89,10 @@ export async function settlePendingCharges(
     orgSlug: input.orgSlug,
     appointmentId: input.appointmentId,
   });
-  const discountAmount = input.discountAmount ?? "0";
+
+  const discountAmount = input.discountAmount ?? 0n;
   const pending = review.charges.filter((charge) => charge.status === "pending");
+
   const quote = computeInvoiceLines(
     pending.map((charge) => ({
       chargeId: charge.id,

@@ -8,16 +8,17 @@ export type WalkInQuote = {
     description: string;
     category: string;
     qty: number;
-    unitPrice: string;
+    unitPrice: bigint;
     taxRatePercent: string;
     taxCode: string | null;
-    gross: string;
+    gross: bigint;
   }>;
-  subtotal: string;
-  discountAmount: string;
-  taxTotal: string;
-  grandTotal: string;
+  subtotal: bigint;
+  discountAmount: bigint;
+  taxTotal: bigint;
+  grandTotal: bigint;
 };
+
 type LineMetadata = Pick<WalkInQuote["lines"][number], "category" | "source">;
 
 function attachLineMetadata<T extends object>(
@@ -27,12 +28,14 @@ function attachLineMetadata<T extends object>(
 ): Array<T & LineMetadata> {
   return lines.map((line, index) => {
     const source = sources[index];
+
     if (!source) throw new Error(missingSourceMessage);
+
     return { ...line, category: source.category, source: source.source };
   });
 }
 
-export function applyDiscount(quote: WalkInQuote, discountAmount: string): WalkInQuote {
+export function applyDiscount(quote: WalkInQuote, discountAmount: bigint): WalkInQuote {
   const computed = computeInvoiceLines(
     quote.lines.map((line) => ({
       chargeId: line.chargeId,
@@ -59,7 +62,7 @@ type PreviewService = {
   catalogItemId: string;
   name: string;
   category: string;
-  unitPrice: string;
+  unitPrice: bigint;
   taxRatePercent: string;
   qty: number;
 };
@@ -75,7 +78,8 @@ export function servicePreview(services: PreviewService[], currency: string): Wa
     taxRatePercent: service.taxRatePercent,
     taxCode: null,
   }));
-  const computed = computeInvoiceLines(previewLines, "0");
+
+  const computed = computeInvoiceLines(previewLines, 0n);
 
   return {
     currency,
@@ -85,7 +89,7 @@ export function servicePreview(services: PreviewService[], currency: string): Wa
       "Computed preview line has no source line",
     ),
     subtotal: computed.subtotal,
-    discountAmount: "0.00",
+    discountAmount: 0n,
     taxTotal: computed.taxTotal,
     grandTotal: computed.grandTotal,
   };

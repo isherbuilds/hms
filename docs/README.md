@@ -72,6 +72,26 @@ the stable shape and why it exists.
   proved lowercase patient/guardian text is cased and readable. The existing PDF
   unit tests passed. Next: inspect thermal, receipt, credit-note, and refund
   layouts with retained sample documents before closing print verification.
+- Money columns moved from `numeric(12,2)` rupees to `bigint` paise (2026-09-11).
+  History is append-only, so `0002_money_bigint_paise` is hand-authored with
+  `USING round(col * 100)` and the CLI-generated `0003` re-states the types to
+  bring the snapshot in step. Release is a stop-the-world cutover, not a rolling
+  deploy (D031): stop all pre-0002 servers, migrate, start bigint-aware code. Type check, Oxlint, format and the suite match the
+  pre-change baseline (253 pass; the `@hms/storage` load error is pre-existing).
+- Money now crosses the RPC boundary as `bigint` (2026-09-11): router outputs
+  return paise unformatted, inputs are `z.bigint()`, and the client parses typed
+  rupees once at the form boundary. Components compare against an imported
+  `ZERO` because the oxc React Compiler rewrites bigint literals to `undefined`.
+  Verified: all workspaces type-check, Oxlint and format are clean, 79 unit and
+  254 integration tests pass (the `@hms/storage` load error remains), an
+  in-process oRPC round trip carries bigint both ways, and seroval round-trips
+  bigint for SSR hydration. Next: reset the local development database (its
+  money columns are still `numeric` and its journal predates the squash, so
+  `db:migrate` skips the baseline), then exercise settlement, record payment,
+  and the billing worklist in the browser.
+- Production cutover 2026-09-11: see D032. The pilot database was converted by
+  hand and its journal reset to the single baseline row; both applications were
+  redeployed on the bigint code.
 - The uncommitted migrations were replaced with CLI-generated
   `0001_patient_contacts`, based on the committed `0000` snapshot. It adds the
   contact columns and invoice relation snapshot; it does not rewrite existing

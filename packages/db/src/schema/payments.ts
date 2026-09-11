@@ -1,11 +1,11 @@
 import { type SQL, sql } from "drizzle-orm";
 import {
+  bigint,
   type AnyPgColumn,
   check,
   date,
   foreignKey,
   index,
-  numeric,
   pgTable,
   text,
   timestamp,
@@ -30,7 +30,7 @@ export const payments = pgTable(
       .references(() => organization.id, { onDelete: "cascade" }),
     invoiceId: text("invoice_id").notNull(),
     method: text("method").$type<PaymentMethod>().notNull(),
-    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    amount: bigint("amount", { mode: "bigint" }).notNull(),
     reference: text("reference"),
     receiptNumber: text("receipt_number").notNull(),
     fiscalYear: text("fiscal_year").notNull(),

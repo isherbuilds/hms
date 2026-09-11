@@ -11,7 +11,7 @@ test("selected services produce an immediate client-side financial preview", () 
           name: "Complete blood count",
           category: "lab",
           qty: 2,
-          unitPrice: "100.00",
+          unitPrice: 100_00n,
           taxRatePercent: "18.00",
         },
       ],
@@ -19,19 +19,19 @@ test("selected services produce an immediate client-side financial preview", () 
     ),
   ).toMatchObject({
     currency: "INR",
-    subtotal: "200.00",
-    discountAmount: "0.00",
-    taxTotal: "36.00",
-    grandTotal: "236.00",
+    subtotal: 200_00n,
+    discountAmount: 0n,
+    taxTotal: 36_00n,
+    grandTotal: 236_00n,
     lines: [
       {
         chargeId: "lab-cbc",
         source: "service",
         category: "lab",
         qty: 2,
-        unitPrice: "100.00",
-        taxAmount: "36.00",
-        gross: "236.00",
+        unitPrice: 100_00n,
+        taxAmount: 36_00n,
+        gross: 236_00n,
       },
     ],
   });
@@ -45,18 +45,18 @@ test("a discount updates tax and payable locally from the trusted quote", () => 
         name: "Complete blood count",
         category: "lab",
         qty: 1,
-        unitPrice: "100.00",
+        unitPrice: 100_00n,
         taxRatePercent: "18.00",
       },
     ],
     "INR",
   );
 
-  expect(applyDiscount(quote, "10")).toMatchObject({
-    subtotal: "100.00",
-    discountAmount: "10",
-    taxTotal: "16.20",
-    grandTotal: "106.20",
-    lines: [{ allocatedDiscount: "10.00", taxableValue: "90.00", gross: "106.20" }],
+  expect(applyDiscount(quote, 10_00n)).toMatchObject({
+    subtotal: 100_00n,
+    discountAmount: 10_00n,
+    taxTotal: 16_20n,
+    grandTotal: 106_20n,
+    lines: [{ allocatedDiscount: 10_00n, taxableValue: 90_00n, gross: 106_20n }],
   });
 });

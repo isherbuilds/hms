@@ -1,4 +1,3 @@
-import { fromPaise, toPaise } from "@hms/api/lib/invoice-math";
 import { authorize } from "@hms/auth/access";
 import { Badge } from "@hms/ui/components/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -16,7 +15,7 @@ import type { ReactNode } from "react";
 import { BarChart, type BarDatum } from "@/components/bar-chart";
 import { ListState, PageBody, PageHeader, Panel } from "@/components/page";
 import { useMembership } from "@/lib/membership";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { formatDay } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
@@ -28,6 +27,7 @@ export const Route = createFileRoute("/$orgSlug/dashboard")({
     const { roles } = await queryClient.query(orpc.member.me.queryOptions({ input: { orgSlug } }));
 
     const prefetches: Promise<unknown>[] = [];
+
     if (authorize(roles, { opd: ["read"] })) {
       prefetches.push(
         queryClient
@@ -42,6 +42,7 @@ export const Route = createFileRoute("/$orgSlug/dashboard")({
           .catch(() => {}),
       );
     }
+
     if (authorize(roles, { billing: ["read"] })) {
       prefetches.push(
         queryClient
@@ -100,9 +101,11 @@ function StatCard({
   );
 
   const shell = "flex flex-col rounded-xl bg-muted p-1";
+
   if (!to) {
     return <div className={shell}>{body}</div>;
   }
+
   return (
     <Link
       to={to}
@@ -118,23 +121,27 @@ function DashboardRoute() {
   const { orgSlug } = Route.useParams();
   const roles = useMembership(orgSlug, (membership) => membership.roles);
   const currency = useMembership(orgSlug, (membership) => membership.currency);
-  const money = (value: string | undefined) =>
+
+  const money = (value: bigint | undefined) =>
     value === undefined ? "—" : formatMoney(value, currency);
 
   // Each block asks for its own permission, so a role that may read appointments but
   // not money still gets the clinical half rather than an error page.
   const canReadOpdAppointments = authorize(roles, { opd: ["read"] });
   const canReadBilling = authorize(roles, { billing: ["read"] });
+
   const today = useQuery({
     ...orpc.dashboard.today.queryOptions({ input: { orgSlug } }),
     ...OPERATIONAL_REFETCH,
     enabled: canReadOpdAppointments,
   });
+
   const collections = useQuery({
     ...orpc.dashboard.collections.queryOptions({ input: { orgSlug } }),
     ...OPERATIONAL_REFETCH,
     enabled: canReadBilling,
   });
+
   const queue = useQuery({
     ...orpc.opd.day.queryOptions({
       input: { orgSlug, limit: 6 },
@@ -145,13 +152,15 @@ function DashboardRoute() {
 
   const mix = today.data?.mix ?? [];
   const mixTotal = mix.reduce((sum, row) => sum + row.count, 0);
+  const trendAmounts = new Map<number, bigint>();
+
   const trend: BarDatum[] = (collections.data?.trend ?? []).map(({ day, amount }) => {
     const label = formatDay(day);
-    return {
-      label,
-      value: toPaise(amount),
-      caption: label,
-    };
+    // The chart geometry requires numbers; money stays bigint everywhere else.
+    const value = Number(amount);
+    trendAmounts.set(value, amount);
+
+    return { label, value, caption: label };
   });
 
   return (
@@ -225,7 +234,7 @@ function DashboardRoute() {
                 >
                   <BarChart
                     data={trend}
-                    formatValue={(value) => formatMoney(fromPaise(value), currency)}
+                    formatValue={(value) => formatMoney(trendAmounts.get(value) ?? ZERO, currency)}
                     height={72}
                   />
                 </ListState>

@@ -12,6 +12,7 @@ import { audit } from "../audit";
 import { conflict } from "../lib/conflict";
 import { uniqueViolationConstraint } from "../lib/db-errors";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
+import { formatDecimal } from "../core/money";
 import { likePattern, money, pageLimit, searchQuery, shortName } from "../lib/schemas";
 
 const catalogFields = z.object({
@@ -37,7 +38,8 @@ export const catalogRouter = {
     }),
   ).handler(async ({ context, input }) => {
     const pattern = input.query ? likePattern(input.query) : undefined;
-    return db
+
+    const rows = await db
       .select({
         id: catalogItems.id,
         code: catalogItems.code,
@@ -66,6 +68,8 @@ export const catalogRouter = {
       )
       .orderBy(asc(catalogItems.name), asc(catalogItems.id))
       .limit(6);
+
+    return rows;
   }),
 
   list: orgProcedure(
@@ -80,6 +84,7 @@ export const catalogRouter = {
     }),
   ).handler(async ({ context, input }) => {
     const pattern = input.query ? likePattern(input.query) : undefined;
+
     const items = await db
       .select()
       .from(catalogItems)
@@ -100,9 +105,11 @@ export const catalogRouter = {
       .limit(input.limit + 1);
 
     const hasNextPage = items.length > input.limit;
+
     if (hasNextPage) {
       items.pop();
     }
+
     const last = items.at(-1);
 
     return {
@@ -141,7 +148,7 @@ export const catalogRouter = {
           target: `catalogItem:${id}`,
           // Origin entry of the price timeline; catalog.update meta carries every change after.
           meta: {
-            unitPrice: item.unitPrice,
+            unitPrice: formatDecimal(item.unitPrice),
             taxRatePercent: item.taxRatePercent,
             active: item.active,
           },
@@ -152,6 +159,7 @@ export const catalogRouter = {
         if (uniqueViolationConstraint(error) !== undefined) {
           throw conflict("duplicate", "A catalog item with this code already exists.");
         }
+
         throw error;
       }
     },
@@ -191,7 +199,7 @@ export const catalogRouter = {
         // Written values make the audit trail double as the price-change history, so
         // successive entries reconstruct the timeline without a dedicated table.
         meta: {
-          unitPrice: item.unitPrice,
+          unitPrice: formatDecimal(item.unitPrice),
           taxRatePercent: item.taxRatePercent,
           active: item.active,
         },
@@ -202,6 +210,7 @@ export const catalogRouter = {
       if (uniqueViolationConstraint(error) !== undefined) {
         throw conflict("duplicate", "A catalog item with this code already exists.");
       }
+
       throw error;
     }
   }),

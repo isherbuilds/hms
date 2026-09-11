@@ -1,4 +1,3 @@
-import { fromPaise } from "@hms/api/lib/invoice-math";
 import { Button } from "@hms/ui/components/button";
 import {
   Form,
@@ -18,7 +17,8 @@ import { toast } from "sonner";
 import { useBillingInvalidation } from "@/components/opd-billing/use-billing-invalidation";
 import { PaymentBalance, PaymentLine, PaymentLines } from "@/components/payment-lines";
 import { useZodForm } from "@/hooks/use-zod-form";
-import { formatMoney, parseMoneyInput } from "@/lib/money";
+import { formatDecimal } from "@hms/api/core/money";
+import { formatMoney, parseMoneyInput, ZERO } from "@/lib/money";
 import { useOpdErrorToast } from "@/lib/opd-error";
 import { orpc } from "@/lib/orpc";
 import { hasErrorCode } from "@/lib/orpc-error";
@@ -51,7 +51,7 @@ export function RecordPaymentForm({
   appointmentId: string;
   invoiceId: string;
   /** The server's figure; the form never recomputes it. */
-  outstanding: string;
+  outstanding: bigint;
   currency: string;
   /** After a recorded payment, and on CONFLICT: the overlay holds a stale snapshot. */
   onClose: () => void;
@@ -61,12 +61,13 @@ export function RecordPaymentForm({
 }) {
   const invalidate = useBillingInvalidation(orgSlug, appointmentId);
   const onOpdError = useOpdErrorToast(orgSlug);
-  const owedPaise = parseMoneyInput(outstanding) ?? 0;
+
   const form = useZodForm(paymentFormSchema, {
     defaultValues: {
-      payments: [{ id: 1, method: "cash", amount: outstanding, reference: "" }],
+      payments: [{ id: 1, method: "cash", amount: formatDecimal(outstanding), reference: "" }],
     },
   });
+
   // The ceiling is on the total, not on any one line, so it lives on the form root.
   const overCollected = useFormState({ control: form.control }).errors.root?.message;
   const lines = useFieldArray({ control: form.control, name: "payments", keyName: "fieldKey" });
@@ -76,11 +77,12 @@ export function RecordPaymentForm({
     const payments = form.getValues("payments");
     const index = payments.length - 1;
     const line = payments[index];
+
     if (!line) return;
-    const remaining = owedPaise - collectedPaise(payments);
+    const remaining = outstanding - collectedPaise(payments);
     form.setValue(
       `payments.${index}.amount`,
-      fromPaise((parseMoneyInput(line.amount) ?? 0) + remaining),
+      formatDecimal((parseMoneyInput(line.amount) ?? ZERO) + remaining),
     );
   };
 
@@ -99,6 +101,7 @@ export function RecordPaymentForm({
       },
     }),
   );
+
   const pending = record.isPending;
 
   return (
@@ -108,12 +111,14 @@ export function RecordPaymentForm({
         noValidate
         className="flex flex-col gap-3"
         onSubmit={form.handleSubmit((values) => {
-          if (collectedPaise(values.payments) > owedPaise) {
+          if (values.payments.reduce((sum, payment) => sum + payment.amount, ZERO) > outstanding) {
             form.setError("root", {
               message: `More than the ${formatMoney(outstanding, currency)} outstanding`,
             });
+
             return;
           }
+
           record.mutate({
             orgSlug,
             invoiceId,
@@ -218,7 +223,7 @@ export function RecordPaymentForm({
             onClick={() => {
               const payments = form.getValues("payments");
               lines.append(
-                nextPaymentLine(payments, owedPaise - collectedPaise(payments)),
+                nextPaymentLine(payments, outstanding - collectedPaise(payments)),
                 // Land in the amount: the method is already the one left unused.
                 { focusName: `payments.${payments.length}.amount` },
               );
@@ -233,7 +238,7 @@ export function RecordPaymentForm({
             name="payments"
             render={(payments) => (
               <PaymentBalance
-                remaining={owedPaise - collectedPaise(payments)}
+                remaining={outstanding - collectedPaise(payments)}
                 currency={currency}
                 disabled={pending}
                 onFill={fillLastLine}

@@ -1,4 +1,3 @@
-import { fromPaise, toSignedPaise } from "@hms/api/lib/invoice-math";
 import {
   Table,
   TableBody,
@@ -12,21 +11,21 @@ import { Link } from "@tanstack/react-router";
 import { ChevronRightIcon } from "lucide-react";
 
 import { ErrorNote, Panel, PanelEmpty } from "@/components/page";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
 
 export type PatientAccount = {
   invoices: {
     id: string;
     invoiceNumber: string;
-    grandTotal: string;
+    grandTotal: bigint;
     currency: string;
     createdAt: string | Date;
-    paymentsTotal: string;
-    outstanding: string;
+    paymentsTotal: bigint;
+    outstanding: bigint;
   }[];
   openCount: number;
-  outstanding: string;
+  outstanding: bigint;
 };
 
 export function PatientBilling({
@@ -44,26 +43,25 @@ export function PatientBilling({
 
   const invoices = account?.invoices ?? [];
   const [firstInvoice] = invoices;
-  const outstandingPaise = account ? toSignedPaise(account.outstanding) : 0;
+  const outstandingPaise = account?.outstanding ?? ZERO;
+  const isRefundDue = outstandingPaise < ZERO;
 
   return (
     <div className="flex flex-col gap-4">
       {account && firstInvoice ? (
         <section className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <p className="text-muted-foreground">
-            {outstandingPaise < 0 ? "Refund due" : "Outstanding"}
-          </p>
+          <p className="text-muted-foreground">{isRefundDue ? "Refund due" : "Outstanding"}</p>
           <p
             className={cn(
               "text-sm font-medium tabular-nums",
-              outstandingPaise < 0
+              isRefundDue
                 ? "text-destructive"
                 : account.openCount > 0
                   ? "text-clinical-alert"
                   : undefined,
             )}
           >
-            {formatMoney(fromPaise(Math.abs(outstandingPaise)), firstInvoice.currency)}
+            {formatMoney(isRefundDue ? -outstandingPaise : outstandingPaise, firstInvoice.currency)}
           </p>
           <p className="text-muted-foreground">
             {account.openCount === 0
@@ -92,7 +90,8 @@ export function PatientBilling({
             </TableHeader>
             <TableBody>
               {invoices.map((invoice) => {
-                const due = toSignedPaise(invoice.outstanding) !== 0;
+                const due = invoice.outstanding !== ZERO;
+
                 return (
                   <TableRow key={invoice.id}>
                     <TableCell className="font-mono whitespace-nowrap">

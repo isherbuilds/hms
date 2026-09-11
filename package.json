@@ -66,6 +66,7 @@
     "@hms/db": "workspace:*",
     "@orpc/client": "^1.15.0",
     "@orpc/server": "^1.15.0",
+    "@oxlint/plugins": "1.81.0",
     "@types/bun": "^1.4.1",
     "@types/pg": "^8.23.1",
     "chrome-devtools-axi": "^0.1.34",

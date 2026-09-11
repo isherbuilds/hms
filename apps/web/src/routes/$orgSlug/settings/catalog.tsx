@@ -1,3 +1,4 @@
+import { DECIMAL_PATTERN, formatDecimal, parseDecimal } from "@hms/api/core/money";
 import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
 import { Checkbox } from "@hms/ui/components/checkbox";
@@ -52,7 +53,6 @@ import {
   SearchInput,
 } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
-import { MONEY_INPUT_PATTERN } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
 import { applyOrpcFieldError, errorMessage } from "@/lib/orpc-error";
 import { requireOrgPermission } from "@/lib/route-permission";
@@ -118,19 +118,20 @@ const formSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200, "Keep the name under 200 characters"),
   code: z.string().trim().min(1, "Code is required").max(20, "Keep the code under 20 characters"),
   category: z.enum(CATALOG_CATEGORIES),
-  unitPrice: z.string().regex(MONEY_INPUT_PATTERN, "Amount like 150 or 150.00"),
+  unitPrice: z.string().regex(DECIMAL_PATTERN, "Amount like 150 or 150.00").transform(parseDecimal),
   taxRatePercent: z.string().regex(/^\d{1,2}(\.\d{1,2})?$/, "Rate like 0, 5, or 12.50"),
   taxCode: z.string().trim().max(20, "Keep the tax code under 20 characters").optional(),
   active: z.boolean(),
 });
 
-type CatalogFormValues = z.infer<typeof formSchema>;
+type CatalogFormValues = z.input<typeof formSchema>;
+
 type CatalogItem = {
   id: string;
   name: string;
   code: string;
   category: CatalogCategory;
-  unitPrice: string;
+  unitPrice: bigint;
   taxRatePercent: string;
   taxCode: string | null;
   active: boolean;
@@ -157,11 +158,13 @@ function CatalogRoute() {
   const [query, setQuery] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<CatalogItem | null>(null);
+
   const toggleActive = useMutation(
     orpc.catalog.update.mutationOptions({
       onMutate: async (variables) => {
         const queryKey = orpc.catalog.list.key({ input: { orgSlug }, type: "infinite" });
         await queryClient.cancelQueries({ queryKey });
+
         const snapshot = queryClient.getQueriesData<
           InfiniteData<{
             items: CatalogItem[];
@@ -194,6 +197,7 @@ function CatalogRoute() {
         for (const [queryKey, data] of context?.snapshot ?? []) {
           queryClient.setQueryData(queryKey, data);
         }
+
         toast.error(errorMessage(error, "Could not update catalog item"));
       },
       onSettled: () => {
@@ -202,14 +206,18 @@ function CatalogRoute() {
         const pending = queryClient.isMutating({
           mutationKey: orpc.catalog.update.mutationKey(),
         });
+
         if (pending > 1) return;
+
         return queryClient.invalidateQueries({
           queryKey: orpc.catalog.list.key({ input: { orgSlug } }),
         });
       },
     }),
   );
+
   const mutateToggle = toggleActive.mutate;
+
   const toggleItem = useCallback(
     (item: CatalogItem) =>
       mutateToggle({
@@ -225,6 +233,7 @@ function CatalogRoute() {
       }),
     [mutateToggle, orgSlug],
   );
+
   const catalog = useInfiniteQuery(
     catalogListQuery(orgSlug, {
       query,
@@ -232,6 +241,7 @@ function CatalogRoute() {
       activeOnly: activeOnly ?? false,
     }),
   );
+
   const items = catalog.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
@@ -371,7 +381,7 @@ const CatalogRow = memo(function CatalogRow({
       <TableCell className="font-mono">{item.code}</TableCell>
       <TableCell className="font-medium">{item.name}</TableCell>
       <TableCell>{CATEGORY_LABELS[item.category]}</TableCell>
-      <TableCell className="text-right tabular-nums">{item.unitPrice}</TableCell>
+      <TableCell className="text-right tabular-nums">{formatDecimal(item.unitPrice)}</TableCell>
       <TableCell className="text-right tabular-nums">{item.taxRatePercent}</TableCell>
       <TableCell className="font-mono">{item.taxCode || "—"}</TableCell>
       <TableCell>
@@ -415,13 +425,14 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
   const { mode, orgSlug, open, onOpenChange } = props;
   const queryClient = useQueryClient();
   const item = mode === "edit" ? props.item : null;
+
   const form = useZodForm(formSchema, {
     defaultValues: item
       ? {
           name: item.name,
           code: item.code,
           category: item.category,
-          unitPrice: item.unitPrice,
+          unitPrice: formatDecimal(item.unitPrice),
           taxRatePercent: item.taxRatePercent,
           taxCode: item.taxCode ?? "",
           active: item.active,
@@ -444,6 +455,7 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
     const mapped = applyOrpcFieldError(form, error, {
       duplicate: { field: "code", message: "Code already in use" },
     });
+
     toast.error(mapped ?? errorMessage(error, "Could not save catalog item"));
   };
 
@@ -453,6 +465,7 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
       onError: handleError,
     }),
   );
+
   const update = useMutation(
     orpc.catalog.update.mutationOptions({
       onSuccess: () => closeAfterSuccess("Catalog item updated"),
@@ -477,6 +490,7 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
       create.mutate(shared);
     }
   });
+
   const isPending = create.isPending || update.isPending;
 
   const changeOpen = (next: boolean) => {

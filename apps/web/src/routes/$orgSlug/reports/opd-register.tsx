@@ -30,6 +30,9 @@ function arrivalModeLabel(mode: "scheduled" | "walk_in"): string {
   return mode === "walk_in" ? "Walk-in" : "Scheduled";
 }
 
+// Spreadsheet cells want a plain number; nothing else does arithmetic on this.
+const rupees = (paise: bigint) => Number(paise) / 100;
+
 export const Route = createFileRoute("/$orgSlug/reports/opd-register")({
   head: () => ({ meta: [{ title: "OPD register · HMS" }] }),
   validateSearch: z.object({
@@ -44,11 +47,13 @@ export const Route = createFileRoute("/$orgSlug/reports/opd-register")({
       { report: ["readOpdRegister"] },
       "/$orgSlug/dashboard",
     );
+
     const fallback = defaultRange(timeZone);
     const range = { from: deps.from ?? fallback.from, to: deps.to ?? fallback.to };
     await loadRouteQuery(
       queryClient.query(orpc.report.opdRegister.queryOptions({ input: { orgSlug, ...range } })),
     );
+
     return range;
   },
   component: OpdRegisterRoute,
@@ -97,11 +102,11 @@ function OpdRegisterRoute() {
           arrivalMode: arrivalModeLabel(row.arrivalMode),
           status: OPD_STATUS_LABELS[row.status],
           arrivedAt: row.arrivedAt ? formatDateTime(row.arrivedAt, timeZone) : "",
-          billed: Number(row.billed),
-          paid: Number(row.paid),
-          credits: Number(row.credits),
-          refunds: Number(row.refunds),
-          outstanding: Number(row.outstanding),
+          billed: rupees(row.billed),
+          paid: rupees(row.paid),
+          credits: rupees(row.credits),
+          refunds: rupees(row.refunds),
+          outstanding: rupees(row.outstanding),
         })),
       },
       {
@@ -117,11 +122,11 @@ function OpdRegisterRoute() {
           { metric: "Checked in", value: report.data.totals.byStatus.checked_in },
           { metric: "Cancelled", value: report.data.totals.byStatus.cancelled },
           { metric: "No show", value: report.data.totals.byStatus.no_show },
-          { metric: "Billed", value: Number(report.data.totals.billed) },
-          { metric: "Paid", value: Number(report.data.totals.paid) },
-          { metric: "Credits", value: Number(report.data.totals.credits) },
-          { metric: "Refunds", value: Number(report.data.totals.refunds) },
-          { metric: "Outstanding", value: Number(report.data.totals.outstanding) },
+          { metric: "Billed", value: rupees(report.data.totals.billed) },
+          { metric: "Paid", value: rupees(report.data.totals.paid) },
+          { metric: "Credits", value: rupees(report.data.totals.credits) },
+          { metric: "Refunds", value: rupees(report.data.totals.refunds) },
+          { metric: "Outstanding", value: rupees(report.data.totals.outstanding) },
         ],
       },
     ]);

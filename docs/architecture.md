@@ -248,8 +248,9 @@ missing object. No anonymous bucket policy or unsigned read path is allowed.
 Invoices, Payments, Credit Notes, and Refunds post balanced journals in the
 same transaction. Stable `systemKey` accounts include Cash, Bank, Patient
 Receivables, GST Output, and category revenue accounts. A unique
-`(orgId, sourceType, sourceId)` prevents duplicate posting; all math uses integer
-paise while API/storage amounts remain decimal strings.
+`(orgId, sourceType, sourceId)` prevents duplicate posting; storage and all math use
+`bigint` paise, and the RPC link carries `bigint` end to end; decimal strings exist only
+where a person types or reads them (form inputs, PDF cells, audit meta).
 Payments use four methods: Cash, UPI, Card, and Bank transfer.
 
 Split collection is one tenant-scoped transaction containing up to four

@@ -1,4 +1,3 @@
-import { toSignedPaise } from "@hms/api/lib/invoice-math";
 import { authorize, type AppPermission } from "@hms/auth/access";
 import { guardianLabel } from "@hms/api/lib/schemas";
 import { Button, buttonVariants } from "@hms/ui/components/button";
@@ -16,7 +15,7 @@ import { PatientBilling, type PatientAccount } from "@/components/patient-record
 import { PatientVisits } from "@/components/patient-record/visits";
 import { PatientSheet } from "@/components/patient-sheet";
 import { useMembership } from "@/lib/membership";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { formatBusinessDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { PAYER_TYPE_LABELS } from "@/lib/payer";
@@ -69,7 +68,7 @@ function PinnedFacts({
 }) {
   const guardian = guardianLabel(record);
   const outstanding = account?.outstanding;
-  const owes = outstanding !== undefined && toSignedPaise(outstanding) !== 0;
+  const owes = outstanding !== undefined && outstanding !== ZERO;
 
   return (
     <div className="shrink-0 border-b border-border bg-card px-3 py-3 lg:px-6">
@@ -355,22 +354,27 @@ function PatientRecordSections({
 function PatientDetailRoute() {
   const { orgSlug, patientId } = Route.useParams();
   const { today } = useOrgDateTime();
+
   // The loader awaited this and turns a missing patient into a 404, so it is present
   // here — a `useQuery` beside it would only add branches that never run.
   const record = useSuspenseQuery(
     orpc.patient.get.queryOptions({ input: { orgSlug, patientId } }),
   ).data;
+
   const { roles, currency } = useMembership(orgSlug);
   const canReadPatient = authorize(roles, { patient: ["read"] });
   const canReadVisits = authorize(roles, { opd: ["read"] });
   const canReadBilling = authorize(roles, { billing: ["read"] });
+
   const visible = TABS.filter(({ id }) =>
     id === "record" ? canReadPatient : id === "visits" ? canReadVisits : canReadBilling,
   );
+
   const account = useQuery({
     ...orpc.patient.account.queryOptions({ input: { orgSlug, patientId } }),
     enabled: canReadBilling,
   });
+
   const ageLabel = patientAgeLabel(record.dateOfBirth, record.dobEstimated, today);
 
   return (

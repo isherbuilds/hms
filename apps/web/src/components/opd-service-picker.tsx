@@ -15,7 +15,7 @@ export type ServiceLine = {
   catalogItemId: string;
   name: string;
   category: string;
-  unitPrice: string;
+  unitPrice: bigint;
   taxRatePercent: string;
   qty: number;
 };
@@ -51,6 +51,7 @@ export function ServicePicker({
     }),
     enabled: searching,
   });
+
   const results = (catalogSearch.data ?? []).filter((item) => !chosen.has(item.id));
 
   const renderMatch = (item: (typeof results)[number]) => (

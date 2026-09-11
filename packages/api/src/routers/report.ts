@@ -17,7 +17,6 @@ import { and, asc, eq, gte, lt, lte, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import { businessDate } from "../lib/business-date";
-import { fromPaise, toPaise } from "../lib/invoice-math";
 import { closeExpiredBookings } from "../lib/opd-close";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
@@ -31,7 +30,9 @@ import {
 import { paymentMethod, type PaymentMethod } from "../lib/schemas";
 
 const reportDate = z.iso.date();
+
 const periodInput = orgInput.extend({ from: reportDate, to: reportDate });
+
 const asOfInput = orgInput.extend({ asOf: reportDate });
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -40,8 +41,11 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 // balance and balance sheet return one row per account whatever the range, and the
 // pool's statement timeout already bounds a long scan.
 const GST_BOUND = { report: "GST register", maxDays: 366 };
+
 const COLLECTIONS_BOUND = { report: "Daily collections", maxDays: 92 };
+
 const REGISTER_BOUND = { report: "OPD register", maxDays: 31 };
+
 const PAYMENT_METHODS = paymentMethod.options;
 
 function assertValidPeriod(
@@ -54,10 +58,12 @@ function assertValidPeriod(
       message: "The start date must not be after the end date",
     });
   }
+
   if (!bound) return;
 
   const inclusiveDays =
     (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS + 1;
+
   if (inclusiveDays > bound.maxDays) {
     throw new ORPCError("BAD_REQUEST", {
       message: `${bound.report} covers at most ${bound.maxDays} days`,
@@ -69,14 +75,14 @@ async function accountAggregates(
   orgId: string,
   ...datePredicates: SQL<unknown>[]
 ): Promise<AccountAggregate[]> {
-  return db
+  const rows = await db
     .select({
       accountId: accounts.id,
       code: accounts.code,
       name: accounts.name,
       type: accounts.type,
-      debit: sql<string>`coalesce(sum(${journalLines.debit}), 0)::text`,
-      credit: sql<string>`coalesce(sum(${journalLines.credit}), 0)::text`,
+      debit: sql`coalesce(sum(${journalLines.debit}), 0)::bigint`.mapWith(BigInt),
+      credit: sql`coalesce(sum(${journalLines.credit}), 0)::bigint`.mapWith(BigInt),
     })
     .from(accounts)
     .innerJoin(
@@ -89,6 +95,8 @@ async function accountAggregates(
     )
     .where(and(eq(accounts.orgId, orgId), ...datePredicates))
     .groupBy(accounts.id, accounts.code, accounts.name, accounts.type);
+
+  return rows;
 }
 
 export const reportRouter = {
@@ -129,12 +137,13 @@ export const reportRouter = {
     async ({ context, input }) => {
       assertValidPeriod(input.from, input.to, COLLECTIONS_BOUND);
       const orgId = context.scope.orgId;
+
       const [paymentRows, refundRows] = await Promise.all([
         db
           .select({
             businessDate: payments.businessDate,
             method: sql<PaymentMethod>`${payments.method}`,
-            amount: sql<string>`sum(${payments.amount})::text`,
+            amount: sql`sum(${payments.amount})::bigint`.mapWith(BigInt),
           })
           .from(payments)
           .where(
@@ -149,7 +158,7 @@ export const reportRouter = {
           .select({
             businessDate: refunds.businessDate,
             method: sql<PaymentMethod>`${refunds.method}`,
-            amount: sql<string>`sum(${refunds.amount})::text`,
+            amount: sql`sum(${refunds.amount})::bigint`.mapWith(BigInt),
           })
           .from(refunds)
           .where(
@@ -164,25 +173,29 @@ export const reportRouter = {
 
       const buckets = new Map<
         string,
-        { businessDate: string; method: PaymentMethod; payments: number; refunds: number }
+        { businessDate: string; method: PaymentMethod; payments: bigint; refunds: bigint }
       >();
+
       for (const row of paymentRows) {
         buckets.set(`${row.businessDate}:${row.method}`, {
           businessDate: row.businessDate,
           method: row.method,
-          payments: toPaise(row.amount),
-          refunds: 0,
+          payments: row.amount,
+          refunds: 0n,
         });
       }
+
       for (const row of refundRows) {
         const key = `${row.businessDate}:${row.method}`;
+
         const bucket = buckets.get(key) ?? {
           businessDate: row.businessDate,
           method: row.method,
-          payments: 0,
-          refunds: 0,
+          payments: 0n,
+          refunds: 0n,
         };
-        bucket.refunds += toPaise(row.amount);
+
+        bucket.refunds += row.amount;
         buckets.set(key, bucket);
       }
 
@@ -191,20 +204,24 @@ export const reportRouter = {
           left.businessDate.localeCompare(right.businessDate) ||
           left.method.localeCompare(right.method),
       );
+
       const methodTotals = Object.fromEntries(
-        PAYMENT_METHODS.map((method) => [method, { payments: 0, refunds: 0 }]),
-      ) as Record<PaymentMethod, { payments: number; refunds: number }>;
+        PAYMENT_METHODS.map((method) => [method, { payments: 0n, refunds: 0n }]),
+      ) as Record<PaymentMethod, { payments: bigint; refunds: bigint }>;
+
       const days = new Map<
         string,
         {
           businessDate: string;
-          byMethod: Record<PaymentMethod, number>;
-          payments: number;
-          refunds: number;
+          byMethod: Record<PaymentMethod, bigint>;
+          payments: bigint;
+          refunds: bigint;
         }
       >();
-      let paymentsTotal = 0;
-      let refundsTotal = 0;
+
+      let paymentsTotal = 0n;
+      let refundsTotal = 0n;
+
       for (const row of amounts) {
         methodTotals[row.method].payments += row.payments;
         methodTotals[row.method].refunds += row.refunds;
@@ -213,32 +230,35 @@ export const reportRouter = {
 
         const day = days.get(row.businessDate) ?? {
           businessDate: row.businessDate,
-          byMethod: Object.fromEntries(PAYMENT_METHODS.map((method) => [method, 0])) as Record<
+          byMethod: Object.fromEntries(PAYMENT_METHODS.map((method) => [method, 0n])) as Record<
             PaymentMethod,
-            number
+            bigint
           >,
-          payments: 0,
-          refunds: 0,
+          payments: 0n,
+          refunds: 0n,
         };
+
         day.byMethod[row.method] += row.payments - row.refunds;
         day.payments += row.payments;
         day.refunds += row.refunds;
         days.set(row.businessDate, day);
       }
+
       const rows = [...days.values()].map((day) => ({
         businessDate: day.businessDate,
         byMethod: Object.fromEntries(
-          PAYMENT_METHODS.map((method) => [method, fromPaise(day.byMethod[method])]),
-        ) as Record<PaymentMethod, string>,
-        payments: fromPaise(day.payments),
-        refunds: fromPaise(day.refunds),
-        net: fromPaise(day.payments - day.refunds),
+          PAYMENT_METHODS.map((method) => [method, day.byMethod[method]]),
+        ) as Record<PaymentMethod, bigint>,
+        payments: day.payments,
+        refunds: day.refunds,
+        net: day.payments - day.refunds,
       }));
+
       const byMethod = PAYMENT_METHODS.map((method) => ({
         method,
-        payments: fromPaise(methodTotals[method].payments),
-        refunds: fromPaise(methodTotals[method].refunds),
-        net: fromPaise(methodTotals[method].payments - methodTotals[method].refunds),
+        payments: methodTotals[method].payments,
+        refunds: methodTotals[method].refunds,
+        net: methodTotals[method].payments - methodTotals[method].refunds,
       }));
 
       return {
@@ -247,9 +267,9 @@ export const reportRouter = {
         rows,
         byMethod,
         totals: {
-          payments: fromPaise(paymentsTotal),
-          refunds: fromPaise(refundsTotal),
-          net: fromPaise(paymentsTotal - refundsTotal),
+          payments: paymentsTotal,
+          refunds: refundsTotal,
+          net: paymentsTotal - refundsTotal,
         },
       };
     },
@@ -262,6 +282,7 @@ export const reportRouter = {
       const settings = await readOrgSettings(scope.orgId);
       const now = new Date();
       const currentDay = businessDate(now, settings.timeZone);
+
       if (input.from < currentDay) {
         await closeExpiredBookings({
           orgId: scope.orgId,
@@ -271,27 +292,30 @@ export const reportRouter = {
         });
       }
 
-      const billed = sql<string>`coalesce((select sum(${invoices.grandTotal}) from ${invoices}
+      const billed = sql`coalesce((select sum(${invoices.grandTotal}) from ${invoices}
         where ${invoices.orgId} = ${scope.orgId}
-          and ${invoices.opdAppointmentId} = ${opdAppointments.id}), 0)::text`;
-      const paid = sql<string>`coalesce((select sum(${payments.amount}) from ${payments}
+          and ${invoices.opdAppointmentId} = ${opdAppointments.id}), 0)::bigint`.mapWith(BigInt);
+
+      const paid = sql`coalesce((select sum(${payments.amount}) from ${payments}
         inner join ${invoices}
           on ${invoices.id} = ${payments.invoiceId}
           and ${invoices.orgId} = ${scope.orgId}
         where ${payments.orgId} = ${scope.orgId}
-          and ${invoices.opdAppointmentId} = ${opdAppointments.id}), 0)::text`;
-      const credits = sql<string>`coalesce((select sum(${creditNotes.total}) from ${creditNotes}
+          and ${invoices.opdAppointmentId} = ${opdAppointments.id}), 0)::bigint`.mapWith(BigInt);
+
+      const credits = sql`coalesce((select sum(${creditNotes.total}) from ${creditNotes}
         inner join ${invoices}
           on ${invoices.id} = ${creditNotes.invoiceId}
           and ${invoices.orgId} = ${scope.orgId}
         where ${creditNotes.orgId} = ${scope.orgId}
-          and ${invoices.opdAppointmentId} = ${opdAppointments.id}), 0)::text`;
-      const refunded = sql<string>`coalesce((select sum(${refunds.amount}) from ${refunds}
+          and ${invoices.opdAppointmentId} = ${opdAppointments.id}), 0)::bigint`.mapWith(BigInt);
+
+      const refunded = sql`coalesce((select sum(${refunds.amount}) from ${refunds}
         inner join ${invoices}
           on ${invoices.id} = ${refunds.invoiceId}
           and ${invoices.orgId} = ${scope.orgId}
         where ${refunds.orgId} = ${scope.orgId}
-          and ${invoices.opdAppointmentId} = ${opdAppointments.id}), 0)::text`;
+          and ${invoices.opdAppointmentId} = ${opdAppointments.id}), 0)::bigint`.mapWith(BigInt);
 
       const selected = await db
         .select({
@@ -341,27 +365,21 @@ export const reportRouter = {
         );
 
       const byStatus = { booked: 0, checked_in: 0, cancelled: 0, no_show: 0 };
-      let billedTotal = 0;
-      let paidTotal = 0;
-      let creditsTotal = 0;
-      let refundsTotal = 0;
+      let billedTotal = 0n;
+      let paidTotal = 0n;
+      let creditsTotal = 0n;
+      let refundsTotal = 0n;
+
       const rows = selected.map((row) => {
-        const billedPaise = toPaise(row.billed);
-        const paidPaise = toPaise(row.paid);
-        const creditsPaise = toPaise(row.credits);
-        const refundsPaise = toPaise(row.refunds);
-        billedTotal += billedPaise;
-        paidTotal += paidPaise;
-        creditsTotal += creditsPaise;
-        refundsTotal += refundsPaise;
+        billedTotal += row.billed;
+        paidTotal += row.paid;
+        creditsTotal += row.credits;
+        refundsTotal += row.refunds;
         byStatus[row.status] += 1;
+
         return {
           ...row,
-          billed: fromPaise(billedPaise),
-          paid: fromPaise(paidPaise),
-          credits: fromPaise(creditsPaise),
-          refunds: fromPaise(refundsPaise),
-          outstanding: fromPaise(billedPaise - creditsPaise - paidPaise + refundsPaise),
+          outstanding: row.billed - row.credits - row.paid + row.refunds,
         };
       });
 
@@ -372,11 +390,11 @@ export const reportRouter = {
         totals: {
           appointments: rows.length,
           byStatus,
-          billed: fromPaise(billedTotal),
-          paid: fromPaise(paidTotal),
-          credits: fromPaise(creditsTotal),
-          refunds: fromPaise(refundsTotal),
-          outstanding: fromPaise(billedTotal - creditsTotal - paidTotal + refundsTotal),
+          billed: billedTotal,
+          paid: paidTotal,
+          credits: creditsTotal,
+          refunds: refundsTotal,
+          outstanding: billedTotal - creditsTotal - paidTotal + refundsTotal,
         },
       };
     },
@@ -399,9 +417,9 @@ export const reportRouter = {
             patientMrn: invoices.patientMrn,
             taxRatePercent: invoiceLines.taxRatePercent,
             taxCode: invoiceLines.taxCode,
-            taxableValue: sql<string>`sum(${invoiceLines.taxableValue})::text`,
-            taxAmount: sql<string>`sum(${invoiceLines.taxAmount})::text`,
-            gross: sql<string>`sum(${invoiceLines.gross})::text`,
+            taxableValue: sql`sum(${invoiceLines.taxableValue})::bigint`.mapWith(BigInt),
+            taxAmount: sql`sum(${invoiceLines.taxAmount})::bigint`.mapWith(BigInt),
+            gross: sql`sum(${invoiceLines.gross})::bigint`.mapWith(BigInt),
           })
           .from(invoices)
           .innerJoin(
@@ -433,9 +451,9 @@ export const reportRouter = {
             patientMrn: invoices.patientMrn,
             taxRatePercent: invoiceLines.taxRatePercent,
             taxCode: invoiceLines.taxCode,
-            taxableValue: sql<string>`sum(${creditNoteLines.taxableValue})::text`,
-            taxAmount: sql<string>`sum(${creditNoteLines.taxAmount})::text`,
-            gross: sql<string>`sum(${creditNoteLines.gross})::text`,
+            taxableValue: sql`sum(${creditNoteLines.taxableValue})::bigint`.mapWith(BigInt),
+            taxAmount: sql`sum(${creditNoteLines.taxAmount})::bigint`.mapWith(BigInt),
+            gross: sql`sum(${creditNoteLines.gross})::bigint`.mapWith(BigInt),
           })
           .from(creditNotes)
           .innerJoin(
@@ -469,8 +487,14 @@ export const reportRouter = {
       ]);
 
       const buckets: GstBucket[] = [
-        ...invoiceBuckets.map((row) => ({ ...row, docType: "invoice" as const })),
-        ...creditNoteBuckets.map((row) => ({ ...row, docType: "credit_note" as const })),
+        ...invoiceBuckets.map((row) => ({
+          ...row,
+          docType: "invoice" as const,
+        })),
+        ...creditNoteBuckets.map((row) => ({
+          ...row,
+          docType: "credit_note" as const,
+        })),
       ];
 
       return buildGstReport({

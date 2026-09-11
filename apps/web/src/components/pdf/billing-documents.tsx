@@ -1,15 +1,20 @@
-import { fromPaise, toPaise } from "@hms/api/lib/invoice-math";
+import { splitGst } from "@hms/api/lib/invoice-math";
 import type { AppRouter } from "@hms/api/routers/index";
 import type { RouterClient } from "@orpc/server";
 import type { CSSProperties, ReactNode } from "react";
 import { formatBusinessDate } from "@/lib/business-date";
-import { formatMoney } from "@/lib/money";
+import { formatDecimal } from "@hms/api/core/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { methodLabel } from "@/lib/settlement";
 
 export type InvoiceBundle = Awaited<ReturnType<RouterClient<AppRouter>["billing"]["getInvoice"]>>;
+
 type Invoice = InvoiceBundle["invoice"];
+
 type Payment = InvoiceBundle["payments"][number];
+
 type CreditNote = InvoiceBundle["creditNotes"][number];
+
 type Refund = InvoiceBundle["refunds"][number];
 
 // Person names are stored lowercase (`personName` in @hms/api/lib/schemas); print them cased.
@@ -193,6 +198,7 @@ export function InvoiceDocument({
   const currency = invoice.currency;
   // Snapshots store the relation before the first space; only the name is cased.
   const separator = (invoice.patientGuardian?.indexOf(" ") ?? -1) + 1;
+
   const guardian = invoice.patientGuardian ? (
     <>
       {invoice.patientGuardian.slice(0, separator)}
@@ -233,7 +239,7 @@ export function InvoiceDocument({
                 <span>{formatMoney(line.gross, currency)}</span>
               </div>
               <div style={{ color: colors.muted, fontSize: 8 }}>
-                {`Unit ${line.unitPrice} · taxable ${line.taxableValue} · tax ${line.taxAmount} @ ${line.taxRatePercent}%`}
+                {`Unit ${formatDecimal(line.unitPrice)} · taxable ${formatDecimal(line.taxableValue)} · tax ${formatDecimal(line.taxAmount)} @ ${line.taxRatePercent}%`}
               </div>
             </div>
           ))}
@@ -253,12 +259,17 @@ export function InvoiceDocument({
 
   const taxSummary = Array.from(
     lines.reduce((groups, line) => {
-      const current = groups.get(line.taxRatePercent) ?? { taxable: 0, tax: 0 };
-      current.taxable += toPaise(line.taxableValue);
-      current.tax += toPaise(line.taxAmount);
+      const current = groups.get(line.taxRatePercent) ?? {
+        taxable: ZERO,
+        tax: ZERO,
+      };
+
+      current.taxable += line.taxableValue;
+      current.tax += line.taxAmount;
       groups.set(line.taxRatePercent, current);
+
       return groups;
-    }, new Map<string, { taxable: number; tax: number }>()),
+    }, new Map<string, { taxable: bigint; tax: bigint }>()),
   );
 
   return (
@@ -310,12 +321,16 @@ export function InvoiceDocument({
                 ) : null}
               </td>
               <td style={{ ...cellStyle, textAlign: "right" }}>{line.qty}</td>
-              <td style={{ ...cellStyle, textAlign: "right" }}>{line.unitPrice}</td>
-              <td style={{ ...cellStyle, textAlign: "right" }}>{line.allocatedDiscount}</td>
-              <td style={{ ...cellStyle, textAlign: "right" }}>{line.taxableValue}</td>
+              <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(line.unitPrice)}</td>
+              <td style={{ ...cellStyle, textAlign: "right" }}>
+                {formatDecimal(line.allocatedDiscount)}
+              </td>
+              <td style={{ ...cellStyle, textAlign: "right" }}>
+                {formatDecimal(line.taxableValue)}
+              </td>
               <td style={{ ...cellStyle, textAlign: "right" }}>{line.taxRatePercent}%</td>
-              <td style={{ ...cellStyle, textAlign: "right" }}>{line.taxAmount}</td>
-              <td style={{ ...cellStyle, textAlign: "right" }}>{line.gross}</td>
+              <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(line.taxAmount)}</td>
+              <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(line.gross)}</td>
             </tr>
           ))}
         </tbody>
@@ -335,17 +350,16 @@ export function InvoiceDocument({
             </thead>
             <tbody>
               {taxSummary.map(([rate, amounts]) => {
-                const cgst = Math.floor((amounts.tax + 1) / 2);
+                const { cgst, sgst } = splitGst(amounts.tax);
+
                 return (
                   <tr key={rate}>
                     <td style={cellStyle}>{rate}%</td>
                     <td style={{ ...cellStyle, textAlign: "right" }}>
-                      {fromPaise(amounts.taxable)}
+                      {formatDecimal(amounts.taxable)}
                     </td>
-                    <td style={{ ...cellStyle, textAlign: "right" }}>{fromPaise(cgst)}</td>
-                    <td style={{ ...cellStyle, textAlign: "right" }}>
-                      {fromPaise(amounts.tax - cgst)}
-                    </td>
+                    <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(cgst)}</td>
+                    <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(sgst)}</td>
                   </tr>
                 );
               })}
@@ -402,13 +416,16 @@ export function CreditNoteDocument({
   note: CreditNote;
 }) {
   const descriptions = new Map(invoiceLines.map((line) => [line.id, line.description]));
+
   const rows = note.lines.map((line) => {
     const description = descriptions.get(line.invoiceLineId);
+
     if (!description) {
       throw new Error(
         `Invoice line ${line.invoiceLineId} is missing from ${invoice.invoiceNumber}`,
       );
     }
+
     return { line, description };
   });
 
@@ -447,9 +464,11 @@ export function CreditNoteDocument({
           {rows.map(({ line, description }) => (
             <tr key={line.id}>
               <td style={cellStyle}>{description}</td>
-              <td style={{ ...cellStyle, textAlign: "right" }}>{line.taxableValue}</td>
-              <td style={{ ...cellStyle, textAlign: "right" }}>{line.taxAmount}</td>
-              <td style={{ ...cellStyle, textAlign: "right" }}>{line.gross}</td>
+              <td style={{ ...cellStyle, textAlign: "right" }}>
+                {formatDecimal(line.taxableValue)}
+              </td>
+              <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(line.taxAmount)}</td>
+              <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(line.gross)}</td>
             </tr>
           ))}
         </tbody>

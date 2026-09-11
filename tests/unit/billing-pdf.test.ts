@@ -17,6 +17,7 @@ test("renders stored Devanagari text from application-owned fonts", async () => 
 
 test("invoice layouts preserve relation casing and capitalize only the guardian name", async () => {
   const data = billingPdfFixture({ unicode: false });
+
   for (const layout of ["a4", "thermal"] as const) {
     const renderGuardian = (patientGuardian: string) =>
       renderBillingPdf({
@@ -25,6 +26,7 @@ test("invoice layouts preserve relation casing and capitalize only the guardian 
         documentId: null,
         layout,
       });
+
     const lowerName = await renderGuardian("W/o gurmeet singh");
     const titleName = await renderGuardian("W/o Gurmeet Singh");
     const upperRelation = await renderGuardian("W/O Gurmeet Singh");
@@ -36,6 +38,7 @@ test("invoice layouts preserve relation casing and capitalize only the guardian 
 
 test("an invoice PDF uses its business date and ignores later account activity", async () => {
   const source = billingPdfFixture({ unicode: false });
+
   const afterPayment: InvoiceBundle = {
     ...source,
     invoice: {
@@ -48,7 +51,7 @@ test("an invoice PDF uses its business date and ignores later account activity",
         orgId: "org-1",
         invoiceId: "invoice-1",
         method: "cash",
-        amount: "118.00",
+        amount: 118_00n,
         reference: null,
         receiptNumber: "RCP-2026-0001",
         fiscalYear: "2026-27",
@@ -58,11 +61,11 @@ test("an invoice PDF uses its business date and ignores later account activity",
       },
     ],
     balance: {
-      grandTotal: "118.00",
-      paymentsTotal: "118.00",
-      creditTotal: "0.00",
-      refundsTotal: "0.00",
-      outstanding: "0.00",
+      grandTotal: 118_00n,
+      paymentsTotal: 118_00n,
+      creditTotal: 0n,
+      refundsTotal: 0n,
+      outstanding: 0n,
     },
   };
 
@@ -72,6 +75,7 @@ test("an invoice PDF uses its business date and ignores later account activity",
     documentId: null,
     layout: "a4",
   });
+
   const after = await renderBillingPdf({
     kind: "invoice",
     data: afterPayment,
@@ -84,12 +88,13 @@ test("an invoice PDF uses its business date and ignores later account activity",
 
 test("a receipt PDF does not change when later account activity changes", async () => {
   const source = billingPdfFixture({ unicode: false });
+
   const payment: InvoiceBundle["payments"][number] = {
     id: "payment-1",
     orgId: "org-1",
     invoiceId: "invoice-1",
     method: "cash",
-    amount: "50.00",
+    amount: 50_00n,
     reference: null,
     receiptNumber: "RCP-2026-0001",
     fiscalYear: "2026-27",
@@ -97,18 +102,20 @@ test("a receipt PDF does not change when later account activity changes", async 
     receivedBy: "user-1",
     createdAt: new Date("2026-08-27T10:30:00.000Z"),
   };
-  const issued = {
+
+  const issued: InvoiceBundle = {
     ...source,
     payments: [payment],
-    balance: { ...source.balance, paymentsTotal: "50.00", outstanding: "68.00" },
+    balance: { ...source.balance, paymentsTotal: 50_00n, outstanding: 68_00n },
   };
-  const later = {
+
+  const later: InvoiceBundle = {
     ...issued,
     payments: [
       payment,
-      { ...payment, id: "payment-2", amount: "68.00", receiptNumber: "RCP-2026-0002" },
+      { ...payment, id: "payment-2", amount: 68_00n, receiptNumber: "RCP-2026-0002" },
     ],
-    balance: { ...source.balance, paymentsTotal: "118.00", outstanding: "0.00" },
+    balance: { ...source.balance, paymentsTotal: 118_00n, outstanding: 0n },
   };
 
   const before = await renderBillingPdf({
@@ -117,6 +124,7 @@ test("a receipt PDF does not change when later account activity changes", async 
     documentId: payment.id,
     layout: "a4",
   });
+
   const after = await renderBillingPdf({
     kind: "receipt",
     data: later,

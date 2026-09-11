@@ -1,4 +1,3 @@
-import { toPaise } from "@hms/api/lib/invoice-math";
 import { authorize } from "@hms/auth/access";
 import { Button } from "@hms/ui/components/button";
 import {
@@ -35,7 +34,7 @@ import {
   invalidateOpdAppointmentState,
 } from "@/lib/domain-invalidation";
 import { useMembership } from "@/lib/membership";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { type WalkInQuote } from "@/lib/opd-service-preview";
 import { formatBusinessDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
@@ -62,7 +61,9 @@ const intakeSchema = z
   });
 
 type IntakeValues = z.input<typeof intakeSchema>;
+
 type IntakeDepartment = { id: string; name: string };
+
 type IntakePractitioner = { id: string; name: string; departmentId: string };
 
 function serviceClaims(services: ServiceLine[]) {
@@ -78,13 +79,14 @@ function quoteInput(orgSlug: string, values: IntakeValues) {
   if (values.when !== "now" || !values.patient || !values.practitionerId) {
     return null;
   }
+
   return {
     orgSlug,
     patientId: values.patient.id,
     practitionerId: values.practitionerId,
     services: serviceClaims(values.services),
     omitConsultFee: omitsConsultFee(values),
-    discountAmount: "0",
+    discountAmount: ZERO,
   };
 }
 
@@ -164,11 +166,13 @@ function CareTeamFields({
 }) {
   const form = useFormContext<IntakeValues>();
   const { timeZone } = useOrgDateTime();
+
   const departmentId = useWatch({
     control: form.control,
     name: "departmentId",
     exact: true,
   });
+
   const when = useWatch({ control: form.control, name: "when", exact: true });
 
   const practitionerOptions = practitioners.filter(
@@ -259,14 +263,18 @@ function CareTeamFields({
                   {...field}
                   onChange={(event) => {
                     field.onChange(event);
+
                     if (event.currentTarget.value !== "later") return;
                     const services = form.getValues("services");
+
                     const bookable = services.filter(
                       (service) => service.category !== "consultation",
                     );
+
                     if (bookable.length !== services.length) {
                       form.setValue("services", bookable, { shouldDirty: true });
                     }
+
                     if (form.getValues("omitConsultFee")) {
                       form.setValue("omitConsultFee", false, { shouldDirty: true });
                     }
@@ -317,26 +325,32 @@ function ServicesFields({
 }) {
   const form = useFormContext<IntakeValues>();
   const when = useWatch({ control: form.control, name: "when", exact: true });
+
   const services = useWatch({
     control: form.control,
     name: "services",
     exact: true,
   });
+
   const omitConsultFee = useWatch({
     control: form.control,
     name: "omitConsultFee",
     exact: true,
   });
+
   const consultation = quoteState.data.lines.find((line) => line.source === "consultation");
+
   const serviceGross = new Map(
     quoteState.data.lines
       .filter((line) => line.source === "service")
       .map((line) => [line.chargeId, line.gross]),
   );
+
   const chosen = new Set([
     ...services.map((service) => service.catalogItemId),
     ...(consultation ? [consultation.chargeId] : []),
   ]);
+
   const lines = [
     ...(when === "now" && consultation
       ? [
@@ -376,8 +390,10 @@ function ServicesFields({
   const remove = (catalogItemId: string, editable: boolean) => {
     if (!editable) {
       form.setValue("omitConsultFee", true, { shouldDirty: true });
+
       return;
     }
+
     form.setValue(
       "services",
       services.filter((service) => service.catalogItemId !== catalogItemId),
@@ -440,12 +456,14 @@ function IntakeSubmit({
 }) {
   const { control } = useFormContext<IntakeValues>();
   const when = useWatch({ control, name: "when", exact: true });
+
   const hasPatient = useWatch({
     control,
     name: "patient",
     exact: true,
     compute: (patient: SelectedPatient | null) => patient !== null,
   });
+
   // Only a reason the operator cannot see on the form itself is worth words; an
   // unchosen patient is already obvious from the empty field above.
   const reason =
@@ -454,6 +472,7 @@ function IntakeSubmit({
       : when === "now" && quoteState.error
         ? errorMessage(quoteState.error, "Could not calculate the bill")
         : undefined;
+
   const blocked = !hasPatient || Boolean(reason) || (when === "now" && !quoteState.ready);
 
   return (
@@ -481,6 +500,7 @@ function IntakeSubmit({
 
 function useScheduledPreview() {
   const { control } = useFormContext<IntakeValues>();
+
   return useWatch({
     control,
     name: "scheduledLocal",
@@ -513,20 +533,25 @@ function FinancialAside({
 }) {
   const { control } = useFormContext<IntakeValues>();
   const when = useWatch({ control, name: "when", exact: true });
+
   const patientName = useWatch({
     control,
     name: "patient",
     exact: true,
     compute: (patient: SelectedPatient | null) => patient?.name ?? "—",
   });
+
   const practitionerId = useWatch({ control, name: "practitionerId", exact: true });
+
   const serviceCount = useWatch({
     control,
     name: "services",
     exact: true,
     compute: (services: ServiceLine[]) => services.length,
   });
+
   const previewTime = useScheduledPreview();
+
   const practitionerName =
     practitioners.find((practitioner) => practitioner.id === practitionerId)?.name ?? "—";
 
@@ -625,6 +650,7 @@ export function OpdIntakeForm({
   const queryClient = useQueryClient();
   const { roles, currency } = useMembership(orgSlug);
   const canSettleWalkIn = authorize(roles, { billing: ["write"] });
+
   const intake = useZodForm(intakeSchema, {
     defaultValues: {
       patient: seedPatient ?? null,
@@ -636,37 +662,44 @@ export function OpdIntakeForm({
       omitConsultFee: false,
     },
   });
+
   const { isDirty } = useFormState({ control: intake.control });
+
   const blocker = useBlocker({
     shouldBlockFn: () => isDirty,
     enableBeforeUnload: isDirty,
     withResolver: true,
   });
+
   const input = useWatch({
     control: intake.control,
     compute: (values: IntakeValues) => quoteInput(orgSlug, values),
   });
+
   const quote = useQuery({
     ...orpc.opd.quoteWalkIn.queryOptions({ input: input ?? skipToken }),
     staleTime: 0,
   });
+
   const quoteReady = input !== null && quote.isSuccess && !quote.isFetching;
+
   const quoteState: QuoteState = {
     data:
       input !== null && quote.data
         ? quote.data
         : {
             currency,
-            subtotal: "0.00",
-            discountAmount: "0.00",
-            taxTotal: "0.00",
-            grandTotal: "0.00",
+            subtotal: ZERO,
+            discountAmount: ZERO,
+            taxTotal: ZERO,
+            grandTotal: ZERO,
             lines: [],
           },
     fetching: input !== null && quote.isFetching,
     error: input !== null && quote.isError ? quote.error : null,
     ready: quoteReady,
   };
+
   const [settlementOpen, setSettlementOpen] = useState(false);
 
   const goToAppointment = async (appointmentId: string) => {
@@ -699,6 +732,7 @@ export function OpdIntakeForm({
         setSettlementOpen(false);
         toast.success(`Token ${appointment.tokenNumber} created`);
         await goToAppointment(appointment.id);
+
         if (invoice) {
           void Promise.all([
             queryClient.invalidateQueries({
@@ -721,6 +755,7 @@ export function OpdIntakeForm({
 
   const settleWalkIn = (settlement: SettlementDraft) => {
     const current = intake.getValues();
+
     if (!current.patient || !canSettleWalkIn || !quoteState.ready) return;
     createWalkIn.mutate({
       orgSlug,
@@ -745,18 +780,22 @@ export function OpdIntakeForm({
         scheduledLocal: current.scheduledLocal,
         services: serviceClaims(current.services),
       });
+
       return;
     }
 
     if (!canSettleWalkIn || !quoteState.ready) return;
-    if (toPaise(quoteState.data.grandTotal) === 0) {
+
+    if (quoteState.data.grandTotal === ZERO) {
       settleWalkIn({
-        discountAmount: "0",
+        discountAmount: ZERO,
         expectedGrandTotal: quoteState.data.grandTotal,
         payments: [],
       });
+
       return;
     }
+
     setSettlementOpen(true);
   });
 
@@ -764,7 +803,9 @@ export function OpdIntakeForm({
     createWalkIn.error && !hasErrorCode(createWalkIn.error, "CONFLICT")
       ? errorMessage(createWalkIn.error, "Could not create the appointment")
       : undefined;
+
   const actionError = settlementOpen ? undefined : walkInError;
+
   const settlementBlockedReason = quoteState.ready
     ? undefined
     : quoteState.error
@@ -776,6 +817,7 @@ export function OpdIntakeForm({
   // The overlay opens from a submit that already proved a patient is chosen, and the
   // form behind a modal cannot change it.
   const settlementPatient = settlementOpen ? intake.getValues("patient") : null;
+
   return (
     <>
       <Form {...intake}>

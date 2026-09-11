@@ -13,10 +13,11 @@ import { and, asc, desc, eq, ilike, inArray, like, lt, ne, or, sql } from "drizz
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { formatDecimal } from "../core/money";
 import { impossible } from "../lib/conflict";
 import { businessDate, localDateTime, localMinute } from "../lib/business-date";
 import { invoiceBalancesFor } from "../lib/invoice-balance";
-import { computeInvoiceLines, fromPaise, toPaise, toSignedPaise } from "../lib/invoice-math";
+import { computeInvoiceLines } from "../lib/invoice-math";
 import { closeExpiredBookings, voidPendingCharges } from "../lib/opd-close";
 import { chargeRow, resolveOpdPricing } from "../lib/opd-charges";
 import { normalizePhone } from "../lib/phone";
@@ -36,7 +37,9 @@ import {
 import { billingDocumentContext, settleInvoiceTx } from "./billing";
 
 const appointmentIdInput = orgInput.extend({ appointmentId: z.string() });
+
 const localMinuteInput = z.iso.datetime({ local: true, precision: -1 });
+
 const serviceLines = z
   .array(
     z.object({
@@ -55,6 +58,7 @@ function futureLocalDateTime(scheduledLocal: string, timeZone: string, now: Date
       message: "Choose a future date and time",
     });
   }
+
   try {
     return localDateTime(scheduledLocal, timeZone);
   } catch {
@@ -75,6 +79,7 @@ async function transitionAppointment(options: {
   set: Partial<typeof opdAppointments.$inferInsert>;
 }) {
   const { orgId, appointmentId } = options;
+
   const [appointment] = await options.executor
     .update(opdAppointments)
     .set(options.set)
@@ -86,11 +91,13 @@ async function transitionAppointment(options: {
       ),
     )
     .returning();
+
   if (!appointment) {
     throw new ORPCError("CONFLICT", {
       message: "That appointment was already moved or no longer exists.",
     });
   }
+
   return appointment;
 }
 
@@ -119,6 +126,7 @@ export const opdRouter = {
     const settings = await readOrgSettings(scope.orgId);
     const now = new Date();
     const scheduledFor = futureLocalDateTime(input.scheduledLocal, settings.timeZone, now);
+
     const pricing = await resolveOpdPricing({
       orgId: scope.orgId,
       practitionerId: input.practitionerId,
@@ -128,7 +136,9 @@ export const opdRouter = {
       followUpValidityDays: settings.followUpValidityDays,
       now,
     });
+
     const appointmentId = Bun.randomUUIDv7();
+
     const chargeRows = pricing.serviceItems.map(({ item, qty }) =>
       chargeRow({
         orgId: scope.orgId,
@@ -161,10 +171,13 @@ export const opdRouter = {
           updatedAt: now,
         })
         .returning();
+
       if (!appointment) throw impossible("appointment insert returned no row");
+
       if (chargeRows.length > 0) {
         await tx.insert(charges).values(chargeRows);
       }
+
       return appointment;
     });
   }),
@@ -178,11 +191,12 @@ export const opdRouter = {
       practitionerId: z.string(),
       services: serviceLines.default([]),
       omitConsultFee: z.boolean().optional(),
-      discountAmount: money.default("0"),
+      discountAmount: money.default(0n),
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const settings = await readOrgSettings(scope.orgId);
+
     const pricing = await resolveOpdPricing({
       orgId: scope.orgId,
       practitionerId: input.practitionerId,
@@ -192,6 +206,7 @@ export const opdRouter = {
       followUpValidityDays: settings.followUpValidityDays,
       now: new Date(),
     });
+
     const quotedItems = [
       ...(pricing.feeItem
         ? [{ item: pricing.feeItem, qty: 1, source: "consultation" as const }]
@@ -202,13 +217,16 @@ export const opdRouter = {
         source: "service" as const,
       })),
     ];
+
     const subtotalPaise = quotedItems.reduce(
-      (sum, { item, qty }) => sum + qty * toPaise(item.unitPrice),
-      0,
+      (sum, { item, qty }) => sum + BigInt(qty) * item.unitPrice,
+      0n,
     );
-    if (toPaise(input.discountAmount) > subtotalPaise) {
+
+    if (input.discountAmount > subtotalPaise) {
       throw new ORPCError("BAD_REQUEST", { message: "Discount exceeds the bill subtotal" });
     }
+
     const computed = computeInvoiceLines(
       quotedItems.map(({ item, qty }) => ({
         chargeId: item.id,
@@ -225,8 +243,14 @@ export const opdRouter = {
       currency: settings.currency,
       lines: computed.lines.map((line, index) => {
         const quoted = quotedItems[index];
+
         if (!quoted) throw new Error("Computed invoice line has no quoted item");
-        return { ...line, category: quoted.item.category, source: quoted.source };
+
+        return {
+          ...line,
+          category: quoted.item.category,
+          source: quoted.source,
+        };
       }),
       subtotal: computed.subtotal,
       discountAmount: input.discountAmount,
@@ -243,7 +267,7 @@ export const opdRouter = {
       settlement: z.object({
         services: serviceLines.default([]),
         omitConsultFee: z.boolean().optional(),
-        discountAmount: money.default("0"),
+        discountAmount: money.default(0n),
         // Rejects catalog or fee changes between quote and commit.
         expectedGrandTotal: money,
         payments: z.array(paymentLine).max(4).default([]),
@@ -257,6 +281,7 @@ export const opdRouter = {
     const day = businessDate(billing.now, billing.settings.timeZone);
     const appointmentId = Bun.randomUUIDv7();
     const settlement = input.settlement;
+
     const pricing = await resolveOpdPricing({
       orgId: scope.orgId,
       practitionerId: input.practitionerId,
@@ -266,6 +291,7 @@ export const opdRouter = {
       followUpValidityDays: billing.settings.followUpValidityDays,
       now: billing.now,
     });
+
     const chargeRows = [
       ...(pricing.feeItem
         ? [
@@ -299,6 +325,7 @@ export const opdRouter = {
         scope.orgId,
         `opd-token:${input.practitionerId}:${day}`,
       );
+
       const [appointment] = await tx
         .insert(opdAppointments)
         .values({
@@ -317,27 +344,32 @@ export const opdRouter = {
           updatedAt: billing.now,
         })
         .returning();
+
       if (!appointment) throw impossible("appointment insert returned no row");
+
       if (chargeRows.length > 0) {
         await tx.insert(charges).values(chargeRows);
       }
 
       if (chargeRows.length === 0) {
-        if (toPaise(settlement.expectedGrandTotal) !== 0) {
+        if (settlement.expectedGrandTotal !== 0n) {
           throw new ORPCError("CONFLICT", {
             message: "The charges changed. Review the settlement and try again",
           });
         }
-        if (toPaise(settlement.discountAmount) > 0 || settlement.payments.length > 0) {
+
+        if (settlement.discountAmount > 0n || settlement.payments.length > 0) {
           throw new ORPCError("BAD_REQUEST", {
             message: "A zero-value walk-in cannot record a discount or payment",
           });
         }
+
         return { appointment, invoice: null, payments: [] };
       }
 
       // All or nothing: there is no state where a token exists owing money nobody chose to owe.
       const invoiceId = Bun.randomUUIDv7();
+
       const settled = await settleInvoiceTx(tx, {
         scope,
         appointmentId: appointment.id,
@@ -359,12 +391,14 @@ export const opdRouter = {
         payments: settled.payments,
       };
     });
+
     audit({
       action: "opd.walk_in.create",
       actorId: scope.userId,
       orgId: scope.orgId,
       target: `opd:${appointmentId}`,
     });
+
     if (result.invoice) {
       audit({
         action: "invoice.issue",
@@ -373,19 +407,21 @@ export const opdRouter = {
         target: `invoice:${result.invoice.id}`,
         meta: {
           invoiceNumber: result.invoice.invoiceNumber,
-          grandTotal: result.invoice.grandTotal,
+          grandTotal: formatDecimal(result.invoice.grandTotal),
         },
       });
     }
+
     for (const payment of result.payments) {
       audit({
         action: "payment.record",
         actorId: scope.userId,
         orgId: scope.orgId,
         target: `payment:${payment.id}`,
-        meta: { receiptNumber: payment.receiptNumber, amount: payment.amount },
+        meta: { receiptNumber: payment.receiptNumber, amount: formatDecimal(payment.amount) },
       });
     }
+
     return result;
   }),
 
@@ -395,6 +431,7 @@ export const opdRouter = {
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const now = new Date();
+
     const [settings, [snapshot]] = await Promise.all([
       readOrgSettings(scope.orgId),
       db
@@ -410,20 +447,25 @@ export const opdRouter = {
         )
         .limit(1),
     ]);
+
     if (!snapshot) {
       throw new ORPCError("NOT_FOUND", { message: "That appointment no longer exists." });
     }
+
     if (snapshot.status !== "booked") {
       throw new ORPCError("CONFLICT", {
         message: "That appointment was already moved.",
       });
     }
+
     const patientId = input.patientId ?? snapshot.patientId;
+
     if (!patientId) {
       throw new ORPCError("BAD_REQUEST", {
         message: "Choose a patient before check-in",
       });
     }
+
     const pricing = await resolveOpdPricing({
       orgId: scope.orgId,
       practitionerId: snapshot.practitionerId,
@@ -433,11 +475,13 @@ export const opdRouter = {
       followUpValidityDays: settings.followUpValidityDays,
       now,
     });
+
     if (pricing.departmentId !== snapshot.departmentId) {
       throw new ORPCError("CONFLICT", {
         message: "That practitioner moved departments after this appointment was booked.",
       });
     }
+
     const day = businessDate(now, settings.timeZone);
 
     return db.transaction(async (tx) => {
@@ -453,16 +497,19 @@ export const opdRouter = {
         )
         .limit(1)
         .for("update");
+
       if (!booked) {
         throw new ORPCError("CONFLICT", {
           message: "That appointment was already moved or no longer exists.",
         });
       }
+
       const tokenNumber = await nextCounter(
         tx,
         scope.orgId,
         `opd-token:${snapshot.practitionerId}:${day}`,
       );
+
       const appointment = await transitionAppointment({
         executor: tx,
         orgId: scope.orgId,
@@ -477,7 +524,9 @@ export const opdRouter = {
           updatedAt: now,
         },
       });
+
       let charge: typeof charges.$inferSelect | null = null;
+
       if (pricing.feeItem) {
         const [inserted] = await tx
           .insert(charges)
@@ -493,11 +542,15 @@ export const opdRouter = {
             }),
           )
           .returning();
+
         if (!inserted) throw impossible("consult fee charge insert returned no row");
         charge = inserted;
       }
 
-      return { appointment, charge };
+      return {
+        appointment,
+        charge,
+      };
     });
   }),
 
@@ -511,6 +564,7 @@ export const opdRouter = {
     const { timeZone } = await readOrgSettings(scope.orgId);
     const now = new Date();
     const scheduledFor = futureLocalDateTime(input.scheduledLocal, timeZone, now);
+
     return transitionAppointment({
       executor: db,
       orgId: scope.orgId,
@@ -528,6 +582,7 @@ export const opdRouter = {
     async ({ context, input }) => {
       const { scope } = context;
       const now = new Date();
+
       const result = await db.transaction(async (tx) => {
         const appointment = await transitionAppointment({
           executor: tx,
@@ -541,6 +596,7 @@ export const opdRouter = {
             updatedAt: now,
           },
         });
+
         const voided = await voidPendingCharges({
           tx,
           orgId: scope.orgId,
@@ -548,9 +604,12 @@ export const opdRouter = {
           reason: input.reason,
           now,
         });
+
         const voidedCharges = voided.length;
+
         return { appointment, voidedCharges };
       });
+
       audit({
         action: "opd.cancel",
         actorId: scope.userId,
@@ -558,6 +617,7 @@ export const opdRouter = {
         target: `opd:${input.appointmentId}`,
         meta: { voidedCharges: result.voidedCharges },
       });
+
       return result.appointment;
     },
   ),
@@ -566,6 +626,7 @@ export const opdRouter = {
     async ({ context, input }) => {
       const { scope } = context;
       const now = new Date();
+
       const result = await db.transaction(async (tx) => {
         const appointment = await transitionAppointment({
           executor: tx,
@@ -574,6 +635,7 @@ export const opdRouter = {
           from: ["booked"],
           set: { status: "no_show", noShowAt: now, updatedAt: now },
         });
+
         const voided = await voidPendingCharges({
           tx,
           orgId: scope.orgId,
@@ -581,9 +643,12 @@ export const opdRouter = {
           reason: "No-show",
           now,
         });
+
         const voidedCharges = voided.length;
+
         return { appointment, voidedCharges };
       });
+
       audit({
         action: "opd.no_show",
         actorId: scope.userId,
@@ -591,6 +656,7 @@ export const opdRouter = {
         target: `opd:${input.appointmentId}`,
         meta: { voidedCharges: result.voidedCharges },
       });
+
       return result.appointment;
     },
   ),
@@ -619,6 +685,7 @@ export const opdRouter = {
         now,
       });
     }
+
     const pagePredicate = and(
       eq(opdAppointments.orgId, scope.orgId),
       eq(opdAppointments.businessDate, day),
@@ -635,15 +702,18 @@ export const opdRouter = {
           )
         : undefined,
     );
+
     const tokenNumber =
       input.q && /^\d+$/.test(input.q) && Number(input.q) <= 2_147_483_647
         ? Number(input.q)
         : undefined;
+
     const search = input.q ? likePattern(input.q) : undefined;
     // Phones match on digits only, the way `patient.search` does, so a stored
     // `555-1234` is found by `5551234`.
     const digits = input.q ? normalizePhone(input.q) : "";
     const phoneSearch = digits.length >= 4 ? likePattern(digits) : undefined;
+
     const rows = await db
       .select({
         id: opdAppointments.id,
@@ -703,6 +773,7 @@ export const opdRouter = {
       .limit(input.limit + 1);
 
     const pageRows = rows.slice(0, input.limit);
+
     const appointmentInvoices =
       pageRows.length === 0
         ? []
@@ -722,21 +793,27 @@ export const opdRouter = {
                 ),
               ),
             );
+
     const balances = await invoiceBalancesFor(db, scope.orgId, appointmentInvoices);
-    const dueByAppointment = new Map<string, number>();
+    const dueByAppointment = new Map<string, bigint>();
+
     for (const invoice of appointmentInvoices) {
       const outstanding = balances.get(invoice.id)?.outstanding;
+
       if (outstanding === undefined) continue;
       dueByAppointment.set(
         invoice.opdAppointmentId,
-        (dueByAppointment.get(invoice.opdAppointmentId) ?? 0) + toSignedPaise(outstanding),
+        (dueByAppointment.get(invoice.opdAppointmentId) ?? 0n) + outstanding,
       );
     }
+
     const items = pageRows.map((row) => ({
       ...row,
-      balanceDue: fromPaise(dueByAppointment.get(row.id) ?? 0),
+      balanceDue: dueByAppointment.get(row.id) ?? 0n,
     }));
+
     const last = items[items.length - 1];
+
     return {
       items,
       nextCursor:
@@ -748,6 +825,7 @@ export const opdRouter = {
 
   get: orgProcedure({ opd: ["read"] }, appointmentIdInput).handler(async ({ context, input }) => {
     const { scope } = context;
+
     const [appointment] = await db
       .select()
       .from(opdAppointments)
@@ -755,8 +833,10 @@ export const opdRouter = {
         and(eq(opdAppointments.orgId, scope.orgId), eq(opdAppointments.id, input.appointmentId)),
       )
       .limit(1);
+
     if (!appointment)
       throw new ORPCError("NOT_FOUND", { message: "That appointment no longer exists." });
+
     // A booked row may exist on caller details alone, so `patient` is null until check-in.
     const [[patient], [practitioner], [department], appointmentCharges, prescriptions] =
       await Promise.all([
@@ -809,9 +889,11 @@ export const opdRouter = {
           )
           .orderBy(asc(attachments.createdAt)),
       ]);
+
     if (!practitioner || !department || (appointment.patientId != null && !patient)) {
       throw new ORPCError("NOT_FOUND", { message: "Could not load the full appointment record." });
     }
+
     return {
       appointment,
       patient: patient ?? null,
@@ -827,6 +909,7 @@ export const opdRouter = {
     appointmentIdInput.extend({ fileId: z.string() }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
+
     const attachment = await db.transaction(async (tx) => {
       // Locks: the file row so `file.delete` waits, the appointment row so a concurrent cancel is seen.
       const [appointment] = await tx
@@ -841,6 +924,7 @@ export const opdRouter = {
         )
         .limit(1)
         .for("update");
+
       const [readyFile] = await tx
         .select({ id: file.id })
         .from(file)
@@ -854,11 +938,13 @@ export const opdRouter = {
         )
         .limit(1)
         .for("key share");
+
       if (!appointment || !readyFile) {
         throw new ORPCError("NOT_FOUND", {
           message: "That appointment or file is no longer available.",
         });
       }
+
       const [attachment] = await tx
         .insert(attachments)
         .values({
@@ -871,11 +957,14 @@ export const opdRouter = {
         })
         .onConflictDoNothing()
         .returning();
+
       if (!attachment) {
         throw new ORPCError("CONFLICT", { message: "That scan is already attached." });
       }
+
       return attachment;
     });
+
     audit({
       action: "opd.prescription.attach",
       actorId: scope.userId,
@@ -883,6 +972,7 @@ export const opdRouter = {
       target: `opd:${attachment.targetId}`,
       meta: { attachmentId: attachment.id, fileId: attachment.fileId },
     });
+
     return attachment;
   }),
 
@@ -891,6 +981,7 @@ export const opdRouter = {
     orgInput.extend({ attachmentId: z.string() }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
+
     const [attachment] = await db
       .delete(attachments)
       .where(
@@ -901,6 +992,7 @@ export const opdRouter = {
         ),
       )
       .returning();
+
     if (!attachment)
       throw new ORPCError("NOT_FOUND", {
         message: "That prescription scan is no longer attached.",
@@ -912,6 +1004,7 @@ export const opdRouter = {
       target: `opd:${attachment.targetId}`,
       meta: { attachmentId: attachment.id, fileId: attachment.fileId },
     });
+
     return attachment;
   }),
 };

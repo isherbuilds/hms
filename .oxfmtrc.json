@@ -1,3 +1,7 @@
 {
-  "ignorePatterns": ["packages/db/src/migrations/**", "apps/web/src/routeTree.gen.ts"]
+  "ignorePatterns": [
+    "packages/db/src/migrations/**",
+    "apps/web/src/routeTree.gen.ts",
+    "tools/oxlint/anti-slop/**"
+  ]
 }

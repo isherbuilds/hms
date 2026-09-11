@@ -4,9 +4,9 @@ export function billingPdfFixture({
   lineCount = 1,
   unicode = true,
 }: { lineCount?: number; unicode?: boolean } = {}): InvoiceBundle {
-  const subtotal = (100 * lineCount).toFixed(2);
-  const tax = (18 * lineCount).toFixed(2);
-  const total = (118 * lineCount).toFixed(2);
+  const subtotal = 10_000n * BigInt(lineCount);
+  const tax = 1_800n * BigInt(lineCount);
+  const total = 11_800n * BigInt(lineCount);
 
   return {
     invoice: {
@@ -17,7 +17,7 @@ export function billingPdfFixture({
       invoiceNumber: "INV-2026-0001",
       fiscalYear: "2026-27",
       businessDate: "2026-08-27",
-      discountAmount: "0.00",
+      discountAmount: 0n,
       note: null,
       subtotal,
       taxTotal: tax,
@@ -41,12 +41,12 @@ export function billingPdfFixture({
       chargeId: `charge-${index + 1}`,
       description: unicode ? `सामान्य परामर्श ${index + 1}` : `General consultation ${index + 1}`,
       qty: 1,
-      unitPrice: "100.00",
-      lineSubtotal: "100.00",
-      allocatedDiscount: "0.00",
-      taxableValue: "100.00",
-      taxAmount: "18.00",
-      gross: "118.00",
+      unitPrice: 100_00n,
+      lineSubtotal: 100_00n,
+      allocatedDiscount: 0n,
+      taxableValue: 100_00n,
+      taxAmount: 18_00n,
+      gross: 118_00n,
       taxRatePercent: "18.00",
       taxCode: "9983",
       revenueCategory: "consultation" as const,
@@ -56,9 +56,9 @@ export function billingPdfFixture({
     refunds: [],
     balance: {
       grandTotal: total,
-      paymentsTotal: "0.00",
-      creditTotal: "0.00",
-      refundsTotal: "0.00",
+      paymentsTotal: 0n,
+      creditTotal: 0n,
+      refundsTotal: 0n,
       outstanding: total,
     },
   };

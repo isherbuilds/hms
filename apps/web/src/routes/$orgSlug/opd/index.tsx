@@ -1,4 +1,3 @@
-import { toSignedPaise } from "@hms/api/lib/invoice-math";
 import { authorize } from "@hms/auth/access";
 import { Badge } from "@hms/ui/components/badge";
 import { Button, buttonVariants } from "@hms/ui/components/button";
@@ -31,7 +30,7 @@ import {
 } from "@/components/page";
 import { StaleDataNotice } from "@/components/stale-data-notice";
 import { useCan, useMembership } from "@/lib/membership";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { OPERATIONAL_INFINITE_REFETCH } from "@/lib/operational-query";
 import { formatBusinessDate, formatTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
@@ -48,6 +47,7 @@ function DayStepper({
   const shift = (days: number) => {
     const next = new Date(`${date}T00:00:00Z`);
     next.setUTCDate(next.getUTCDate() + days);
+
     return next.toISOString().slice(0, 10);
   };
 
@@ -184,10 +184,12 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
   const { timeZone, today } = useOrgDateTime();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const shownDate = date ?? today;
+
   const day = useInfiniteQuery({
     ...dayQuery(orgSlug, date, search, includeClosed ?? false),
     ...OPERATIONAL_INFINITE_REFETCH,
   });
+
   const items = day.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
@@ -286,7 +288,7 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
                       />
                     </TableCell>
                     <TableCell className="text-right">
-                      {toSignedPaise(appointment.balanceDue) > 0 ? (
+                      {appointment.balanceDue > ZERO ? (
                         <Badge variant="destructive">
                           {formatMoney(appointment.balanceDue, currency)} due
                         </Badge>
@@ -325,7 +327,7 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
                       {" · "}
                       <span className="capitalize">{appointment.practitionerName}</span>
                     </span>
-                    {toSignedPaise(appointment.balanceDue) > 0 ? (
+                    {appointment.balanceDue > ZERO ? (
                       <span className="mt-1 block font-medium text-destructive">
                         {formatMoney(appointment.balanceDue, currency)} due
                       </span>
@@ -402,9 +404,11 @@ function OpdHeader({ orgSlug }: { orgSlug: string }) {
   const navigate = useNavigate();
   const { today } = useOrgDateTime();
   const roles = useMembership(orgSlug, (membership) => membership.roles);
+
   // Registering the patient is part of the same intake, so both grants are required.
   const canCreateOpdAppointments =
     authorize(roles, { opd: ["create"] }) && authorize(roles, { patient: ["read"] });
+
   const shownDate = date ?? today;
 
   return (

@@ -15,21 +15,26 @@ export type WorklistRow = {
   patientMrn: string;
   patientPhone: string | null;
   currency: string;
-  total: string;
-  owed: string;
+  total: bigint;
+  owed: bigint;
   at: Date;
   detail: string;
   state: WorklistState;
 };
 
 const DAY_MS = 86_400_000;
+
 const LATE_DAYS = 7;
+
 const STALE_DAYS = 30;
 
 function stateForAge(at: Date, now: number): WorklistState {
   const days = (now - at.getTime()) / DAY_MS;
+
   if (days >= STALE_DAYS) return "stale";
+
   if (days >= LATE_DAYS) return "late";
+
   return "fresh";
 }
 
@@ -41,7 +46,7 @@ type UnbilledInput = {
   patientPhone: string | null;
   practitionerName: string;
   chargeCount: number;
-  pendingValue: string;
+  pendingValue: bigint;
   oldestChargeAt: Date | string;
 };
 
@@ -52,9 +57,9 @@ type InvoiceInput = {
   patientName: string;
   patientMrn: string;
   patientPhone: string | null;
-  grandTotal: string;
-  paid: string;
-  outstanding: string;
+  grandTotal: bigint;
+  paid: bigint;
+  outstanding: bigint;
   createdAt: Date | string;
 };
 
@@ -95,8 +100,7 @@ export function toWorklistRows(
       total: row.grandTotal,
       owed: row.outstanding,
       at: new Date(row.createdAt),
-      detail:
-        Number(row.paid) > 0 ? `${formatMoney(row.paid, currency)} received` : "Nothing received",
+      detail: row.paid > 0n ? `${formatMoney(row.paid, currency)} received` : "Nothing received",
       state: stateForAge(new Date(row.createdAt), now),
     })),
   ];
@@ -105,11 +109,15 @@ export function toWorklistRows(
 /** "3h 11m" for money opened today, a date once it is older than that. */
 export function waitedLabel(at: Date, timeZone: string): string {
   const minutes = Math.round((Date.now() - at.getTime()) / 60_000);
+
   if (minutes < 60) return `${minutes}m`;
+
   if (minutes < 1440) {
     const hours = Math.floor(minutes / 60);
     const rest = minutes % 60;
+
     return rest ? `${hours}h ${rest}m` : `${hours}h`;
   }
+
   return formatDate(at, timeZone);
 }

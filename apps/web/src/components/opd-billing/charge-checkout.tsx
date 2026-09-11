@@ -1,4 +1,3 @@
-import { toPaise } from "@hms/api/lib/invoice-math";
 import { Button } from "@hms/ui/components/button";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
@@ -17,7 +16,7 @@ import { toast } from "sonner";
 
 import { FinancialSummary } from "@/components/opd-financial-summary";
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { servicePreview } from "@/lib/opd-service-preview";
 import { useOpdErrorToast } from "@/lib/opd-error";
 import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
@@ -29,14 +28,16 @@ type PendingCharge = {
   id: string;
   description: string;
   qty: number;
-  unitPrice: string;
+  unitPrice: bigint;
   taxRatePercent: string;
   revenueCategory: string;
 };
 
-function quotedAmount(grossById: Map<string, string>, chargeId: string): string {
+function quotedAmount(grossById: Map<string, bigint>, chargeId: string): bigint {
   const amount = grossById.get(chargeId);
+
   if (amount === undefined) throw new Error(`Quote missing pending charge ${chargeId}`);
+
   return amount;
 }
 
@@ -74,6 +75,7 @@ export function ChargeCheckout({
   const chargesChanged = chargeRevision !== reviewed.chargeRevision;
   // Shown charges follow the reviewed snapshot, so a total cannot change mid-count.
   const shown = canSettle ? reviewed.pending : pending;
+
   const quote = servicePreview(
     shown.map((charge) => ({
       catalogItemId: charge.id,
@@ -85,6 +87,7 @@ export function ChargeCheckout({
     })),
     currency,
   );
+
   const grossById = new Map(quote.lines.map((line) => [line.chargeId, line.gross]));
   const reason = chargesChanged ? CHARGES_MOVED : undefined;
 
@@ -98,6 +101,7 @@ export function ChargeCheckout({
       },
       onError: (error) => {
         if (hasErrorCode(error, "CONFLICT")) setCollecting(false);
+
         return onOpdError(appointmentId, "billing", error);
       },
     }),
@@ -114,13 +118,17 @@ export function ChargeCheckout({
   const issue = () => {
     if (reason) {
       document.getElementById(reason.fieldId)?.focus();
+
       return;
     }
+
     // Nothing to collect, so there is nothing for the overlay to ask.
-    if (toPaise(quote.grandTotal) === 0) {
-      settle({ discountAmount: "0", expectedGrandTotal: quote.grandTotal, payments: [] });
+    if (quote.grandTotal === ZERO) {
+      settle({ discountAmount: ZERO, expectedGrandTotal: quote.grandTotal, payments: [] });
+
       return;
     }
+
     setCollecting(true);
   };
 
@@ -202,7 +210,7 @@ export function ChargeCheckout({
               aria-describedby={reason ? "charge-checkout-issue" : undefined}
               onClick={issue}
             >
-              {toPaise(quote.grandTotal) === 0 ? "Issue invoice" : "Review and collect"}
+              {quote.grandTotal === ZERO ? "Issue invoice" : "Review and collect"}
             </SubmitButton>
             {reason ? (
               <p id="charge-checkout-issue" className="text-muted-foreground">

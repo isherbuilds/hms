@@ -1,24 +1,27 @@
-import { fromPaise, toPaise, toSignedPaise } from "@hms/api/lib/invoice-math";
-import { MONEY_PATTERN } from "@hms/api/lib/schemas";
+import { DECIMAL_PATTERN, formatDecimal, parseDecimal } from "@hms/api/core/money";
+
+// The oxc React Compiler rewrites a bigint literal such as `0n` inside a component
+// to `undefined`, so components compare against this import and `.tsx` files carry
+// no bigint literals at all.
+export const ZERO = 0n;
+
+/** Form boundary over the throwing parser: null for a typo. */
+export function parseMoneyInput(value: string): bigint | null {
+  return DECIMAL_PATTERN.test(value) ? parseDecimal(value) : null;
+}
 
 const moneyFormatters = new Map<string, Intl.NumberFormat>();
 
-/** Uses the API money pattern, so forms reject what the API would. */
-export const MONEY_INPUT_PATTERN = MONEY_PATTERN;
-
-/** Form-boundary wrapper over the server's throwing parser: null for user typos. */
-export function parseMoneyInput(value: string): number | null {
-  return MONEY_INPUT_PATTERN.test(value) ? toPaise(value) : null;
-}
-
-export function formatMoney(amount: string, currency: string): string {
+/** Paise as currency text, for example ₹1,234.50. */
+export function formatMoney(paise: bigint, currency: string): string {
   let formatter = moneyFormatters.get(currency);
+
   if (!formatter) {
     formatter = new Intl.NumberFormat("en-IN", { style: "currency", currency });
     moneyFormatters.set(currency, formatter);
   }
-  const exactAmount = fromPaise(toSignedPaise(amount));
+
   // Intl accepts decimal strings without first rounding through a binary float. The
   // project's current TypeScript lib target still exposes only the older number overload.
-  return (formatter.format as unknown as (value: string) => string)(exactAmount);
+  return (formatter.format as unknown as (value: string) => string)(formatDecimal(paise));
 }

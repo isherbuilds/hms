@@ -7,8 +7,8 @@ import type { CatalogCategory } from "@hms/db/schema/catalog-items";
 import { journalEntries } from "@hms/db/schema/journal-entries";
 import { journalLines } from "@hms/db/schema/journal-lines";
 
+import { formatDecimal } from "../core/money";
 import { businessDate } from "./business-date";
-import { fromPaise, toPaise } from "./invoice-math";
 
 const SYSTEM_ACCOUNTS = [
   { key: "cash", code: "1000", name: "Cash in Hand", type: "asset" },
@@ -93,6 +93,7 @@ async function ensureChartOfAccounts(
     .where(and(eq(accounts.orgId, orgId), isNotNull(accounts.systemKey)));
 
   const accountIds = new Map<SystemAccountKey, string>();
+
   for (const row of existing) {
     if (row.systemKey !== null && isSystemAccountKey(row.systemKey)) {
       accountIds.set(row.systemKey, row.id);
@@ -100,6 +101,7 @@ async function ensureChartOfAccounts(
   }
 
   const missing = SYSTEM_ACCOUNTS.filter((account) => !accountIds.has(account.key));
+
   if (missing.length > 0) {
     await tx
       .insert(accounts)
@@ -119,6 +121,7 @@ async function ensureChartOfAccounts(
       .select({ id: accounts.id, systemKey: accounts.systemKey })
       .from(accounts)
       .where(and(eq(accounts.orgId, orgId), isNotNull(accounts.systemKey)));
+
     for (const row of resolved) {
       if (row.systemKey !== null && isSystemAccountKey(row.systemKey)) {
         accountIds.set(row.systemKey, row.id);
@@ -127,20 +130,24 @@ async function ensureChartOfAccounts(
   }
 
   const complete = {} as Record<SystemAccountKey, string>;
+
   for (const account of SYSTEM_ACCOUNTS) {
     const id = accountIds.get(account.key);
+
     if (id === undefined) {
       throw new Error(`System account could not be resolved: ${account.key}`);
     }
+
     complete[account.key] = id;
   }
+
   return complete;
 }
 
 type JournalLineInput = {
   account: SystemAccountKey;
-  debit?: string;
-  credit?: string;
+  debit?: bigint;
+  credit?: bigint;
 };
 
 export async function postJournalEntry(
@@ -158,39 +165,40 @@ export async function postJournalEntry(
 ): Promise<void> {
   const preparedLines: Array<{
     account: SystemAccountKey;
-    debitPaise: number;
-    creditPaise: number;
+    debit: bigint;
+    credit: bigint;
   }> = [];
-  let debitTotalPaise = 0;
-  let creditTotalPaise = 0;
+
+  let debitTotal = 0n;
+  let creditTotal = 0n;
 
   for (const line of args.lines) {
     const hasDebit = line.debit !== undefined;
     const hasCredit = line.credit !== undefined;
+
     if (hasDebit === hasCredit) {
       throw new Error(`Journal line for ${line.account} must set exactly one side`);
     }
 
-    const debitPaise = hasDebit ? toPaise(line.debit as string) : 0;
-    const creditPaise = hasCredit ? toPaise(line.credit as string) : 0;
-    if (debitPaise === 0 && creditPaise === 0) {
+    const debit = line.debit ?? 0n;
+    const credit = line.credit ?? 0n;
+
+    if (debit === 0n && credit === 0n) {
       continue;
     }
 
-    debitTotalPaise += debitPaise;
-    creditTotalPaise += creditPaise;
-    if (!Number.isSafeInteger(debitTotalPaise) || !Number.isSafeInteger(creditTotalPaise)) {
-      throw new Error("Journal entry total exceeds the safe integer range");
-    }
-    preparedLines.push({ account: line.account, debitPaise, creditPaise });
+    debitTotal += debit;
+    creditTotal += credit;
+    preparedLines.push({ account: line.account, debit, credit });
   }
 
   if (preparedLines.length === 0) {
     throw new Error("Journal entry must contain at least one non-zero line");
   }
-  if (debitTotalPaise !== creditTotalPaise) {
+
+  if (debitTotal !== creditTotal) {
     throw new Error(
-      `Journal entry is imbalanced: debit ${fromPaise(debitTotalPaise)}, credit ${fromPaise(creditTotalPaise)}`,
+      `Journal entry is imbalanced: debit ${formatDecimal(debitTotal)}, credit ${formatDecimal(creditTotal)}`,
     );
   }
 
@@ -211,8 +219,8 @@ export async function postJournalEntry(
       orgId: args.orgId,
       entryId,
       accountId: accountIds[line.account],
-      debit: fromPaise(line.debitPaise),
-      credit: fromPaise(line.creditPaise),
+      debit: line.debit,
+      credit: line.credit,
     })),
   );
 }

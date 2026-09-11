@@ -189,7 +189,7 @@ range; a passing TypeScript build cannot prove an auth database is migratable.
 - Use keyset pagination and tenant-leading indexes. Scope writes with one
   `UPDATE/DELETE ... RETURNING` where possible.
 - Never hand-edit generated migrations or `apps/web/src/routeTree.gen.ts`.
-- Migration history is append-only once any environment retains data. A baseline squash requires a recorded decision-log disposition first (D022). After the 2026-08-31 baseline reset, recreate any pre-existing local database with `bun run db:seed -- --reset`.
+- Migration history is append-only once any environment retains data. A baseline squash requires a recorded decision-log disposition first (D022). After the 2026-09-11 baseline reset, recreate any pre-existing local database with `bun run db:seed -- --reset`; production follows D032 and keeps its applied journal.
 
 - No secret or server-only value import may reach client assets.
 
@@ -199,6 +199,10 @@ React Compiler is enabled for the web app. Keep transient search, tab, and form
 state in the smallest subtree that renders it; extract the owner boundary before
 adding manual `memo` or `useMemo`, and let each one that survives cite the
 measurement that justified it.
+
+Do not put a `0n` literal in a `.tsx` file. The current Oxc React Compiler emits
+that literal as `undefined`. Construct zero and compare money through the helpers
+in `apps/web/src/lib/money.ts`, which stays outside the component transform.
 
 Each rule below answers one question, so the shape of a screen is decided rather
 than chosen. Anything not on a list here is not a third option — it is a

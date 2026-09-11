@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, foreignKey, index, numeric, pgTable, text } from "drizzle-orm/pg-core";
+import { bigint, check, foreignKey, index, pgTable, text } from "drizzle-orm/pg-core";
 
 import { accounts } from "./accounts";
 import { organization } from "./auth";
@@ -14,8 +14,12 @@ export const journalLines = pgTable(
       .references(() => organization.id, { onDelete: "cascade" }),
     entryId: text("entry_id").notNull(),
     accountId: text("account_id").notNull(),
-    debit: numeric("debit", { precision: 12, scale: 2 }).notNull().default("0"),
-    credit: numeric("credit", { precision: 12, scale: 2 }).notNull().default("0"),
+    debit: bigint("debit", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
+    credit: bigint("credit", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
   },
   (table) => [
     check("journal_lines_debit_check", sql`${table.debit} >= 0`),
