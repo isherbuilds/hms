@@ -10,8 +10,9 @@ import {
   TableRow,
 } from "@hms/ui/components/table";
 import { Trash2Icon } from "lucide-react";
+import { formatDecimal } from "@hms/api/core/money";
 
-import { formatMoney } from "@/lib/money";
+import { formatMoney, parseMoneyInput } from "@/lib/money";
 
 type IntakeServiceLine = {
   key: string;
@@ -19,26 +20,67 @@ type IntakeServiceLine = {
   category: string;
   qty: number;
   unitPrice: bigint;
+  customRate: boolean;
+  customUnitPrice?: bigint;
   taxRatePercent: string;
   gross?: bigint;
   editable: boolean;
 };
 
+function RateInput({
+  line,
+  onCommit,
+}: {
+  line: IntakeServiceLine;
+  onCommit: (customUnitPrice: bigint | undefined) => void;
+}) {
+  const committed = line.customUnitPrice ?? line.unitPrice;
+
+  const commit = (input: HTMLInputElement) => {
+    const text = input.value.trim();
+    const paise = text === "" ? line.unitPrice : parseMoneyInput(text);
+    const next = paise !== null && paise >= line.unitPrice ? paise : committed;
+
+    input.value = formatDecimal(next);
+    onCommit(next === line.unitPrice ? undefined : next);
+  };
+
+  return (
+    <Input
+      type="text"
+      inputMode="decimal"
+      enterKeyHint="done"
+      defaultValue={formatDecimal(committed)}
+      aria-label={`${line.description} rate`}
+      className="w-24 text-right tabular-nums"
+      onBlur={(event) => commit(event.currentTarget)}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+        event.preventDefault();
+        commit(event.currentTarget);
+      }}
+    />
+  );
+}
+
 export function ServiceLines({
   lines,
   currency,
-  onQuantityChange,
+  onChange,
   onRemove,
 }: {
   lines: IntakeServiceLine[];
   currency: string;
-  onQuantityChange: (key: string, qty: number) => void;
+  onChange: (
+    key: string,
+    patch: Partial<Pick<IntakeServiceLine, "qty" | "customUnitPrice">>,
+  ) => void;
   onRemove: (key: string, editable: boolean) => void;
 }) {
   const commitQty = (key: string, input: HTMLInputElement) => {
     const qty = Math.min(999, Math.max(1, input.valueAsNumber || 1));
     input.value = String(qty);
-    onQuantityChange(key, qty);
+    onChange(key, { qty });
   };
 
   if (lines.length === 0) {
@@ -95,13 +137,20 @@ export function ServiceLines({
                   )}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {formatMoney(line.unitPrice, currency)}
+                  {line.customRate ? (
+                    <RateInput
+                      line={line}
+                      onCommit={(customUnitPrice) => onChange(line.key, { customUnitPrice })}
+                    />
+                  ) : (
+                    formatMoney(line.unitPrice, currency)
+                  )}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {line.taxRatePercent === "0.00" ? "—" : `${line.taxRatePercent}%`}
                 </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {line.gross ? formatMoney(line.gross, currency) : "—"}
+                <TableCell className="text-right tabular-nums group-aria-busy/quote:opacity-50">
+                  {line.gross !== undefined ? formatMoney(line.gross, currency) : "—"}
                 </TableCell>
                 <TableCell>
                   <Button
@@ -138,28 +187,40 @@ export function ServiceLines({
               </div>
             </div>
             <div className="grid justify-items-end gap-2">
-              {line.gross ? (
-                <span className="font-medium tabular-nums">
+              {line.gross !== undefined ? (
+                <span className="font-medium tabular-nums group-aria-busy/quote:opacity-50">
                   {formatMoney(line.gross, currency)}
                 </span>
               ) : null}
-              <div className="flex items-center gap-1">
+              <div className="flex items-end gap-2">
+                {line.customRate ? (
+                  <label className="grid justify-items-end gap-1 text-muted-foreground">
+                    Rate
+                    <RateInput
+                      line={line}
+                      onCommit={(customUnitPrice) => onChange(line.key, { customUnitPrice })}
+                    />
+                  </label>
+                ) : null}
                 {line.editable ? (
-                  <Input
-                    key={`${line.key}:${line.qty}`}
-                    type="number"
-                    min={1}
-                    max={999}
-                    defaultValue={line.qty}
-                    aria-label={`${line.description} quantity`}
-                    className="w-16 tabular-nums"
-                    onBlur={(event) => commitQty(line.key, event.currentTarget)}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      event.preventDefault();
-                      commitQty(line.key, event.currentTarget);
-                    }}
-                  />
+                  <label className="grid justify-items-end gap-1 text-muted-foreground">
+                    Qty
+                    <Input
+                      key={`${line.key}:${line.qty}`}
+                      type="number"
+                      min={1}
+                      max={999}
+                      defaultValue={line.qty}
+                      aria-label={`${line.description} quantity`}
+                      className="w-16 tabular-nums"
+                      onBlur={(event) => commitQty(line.key, event.currentTarget)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") return;
+                        event.preventDefault();
+                        commitQty(line.key, event.currentTarget);
+                      }}
+                    />
+                  </label>
                 ) : (
                   <span
                     className="flex h-8 w-16 items-center px-2 tabular-nums"

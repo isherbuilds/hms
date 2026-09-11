@@ -17,7 +17,6 @@ type CreditNote = InvoiceBundle["creditNotes"][number];
 
 type Refund = InvoiceBundle["refunds"][number];
 
-// Person names are stored lowercase (`personName` in @hms/api/lib/schemas); print them cased.
 const personName = { textTransform: "capitalize" } as const;
 
 const colors = {
@@ -196,7 +195,6 @@ export function InvoiceDocument({
   layout: "a4" | "thermal";
 }) {
   const currency = invoice.currency;
-  // Snapshots store the relation before the first space; only the name is cased.
   const separator = (invoice.patientGuardian?.indexOf(" ") ?? -1) + 1;
 
   const guardian = invoice.patientGuardian ? (
@@ -222,6 +220,7 @@ export function InvoiceDocument({
               ),
             },
             { label: "MRN", value: invoice.patientMrn },
+            { label: "Issued by", value: invoice.issuedByName },
           ]}
         />
         <section style={{ marginTop: 10 }}>
@@ -281,6 +280,7 @@ export function InvoiceDocument({
             rows={[
               { label: "Invoice #", value: invoice.invoiceNumber },
               { label: "Issued", value: formatBusinessDate(invoice.businessDate) },
+              { label: "Issued by", value: invoice.issuedByName },
               { label: "Currency", value: currency },
             ]}
           />

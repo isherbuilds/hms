@@ -11,19 +11,20 @@ const DAY_MS = 86_400_000;
 
 type OpdItemSnapshot = Pick<
   typeof catalogItems.$inferSelect,
-  "id" | "name" | "category" | "unitPrice" | "taxRatePercent" | "taxCode"
+  "id" | "name" | "category" | "unitPrice" | "customRate" | "taxRatePercent" | "taxCode"
 >;
 
 export async function resolveOpdPricing(options: {
   orgId: string;
   practitionerId: string;
   patientId: string | null;
-  services: readonly { catalogItemId: string; qty: number }[];
+  services: readonly { catalogItemId: string; qty: number; unitPrice?: bigint }[];
   consultation: "auto" | "omit" | "none";
   followUpValidityDays: number;
   now: Date;
 }) {
   const { orgId, patientId } = options;
+
   const [careTeam] = await db
     .select({
       id: practitioners.id,
@@ -40,11 +41,13 @@ export async function resolveOpdPricing(options: {
     )
     .where(and(eq(practitioners.orgId, orgId), eq(practitioners.id, options.practitionerId)))
     .limit(1);
+
   if (!careTeam) {
     throw new ORPCError("NOT_FOUND", { message: "That practitioner no longer exists." });
   }
 
   const serviceIds = options.services.map((service) => service.catalogItemId);
+
   const feeIds =
     options.consultation === "auto"
       ? [
@@ -53,6 +56,7 @@ export async function resolveOpdPricing(options: {
           careTeam.defaultConsultFeeItemId,
         ].filter((id): id is string => id != null)
       : [];
+
   const catalogItemIds = [...new Set([...feeIds, ...serviceIds])];
   const followUpDays = careTeam.followUpValidityDays ?? options.followUpValidityDays;
 
@@ -89,6 +93,7 @@ export async function resolveOpdPricing(options: {
             name: catalogItems.name,
             category: catalogItems.category,
             unitPrice: catalogItems.unitPrice,
+            customRate: catalogItems.customRate,
             taxRatePercent: catalogItems.taxRatePercent,
             taxCode: catalogItems.taxCode,
           })
@@ -100,7 +105,7 @@ export async function resolveOpdPricing(options: {
               inArray(catalogItems.id, catalogItemIds),
             ),
           )
-      : Promise.resolve([] as OpdItemSnapshot[]),
+      : Promise.resolve<OpdItemSnapshot[]>([]),
   ]);
 
   if (patientId != null && !patientRows[0]) {
@@ -110,6 +115,7 @@ export async function resolveOpdPricing(options: {
   const items: Record<string, OpdItemSnapshot> = Object.fromEntries(
     itemRows.map((item) => [item.id, item]),
   );
+
   const feeItem =
     options.consultation === "auto"
       ? ((recentRows[0] && careTeam.followUpFeeItemId
@@ -118,9 +124,12 @@ export async function resolveOpdPricing(options: {
         (careTeam.consultFeeItemId ? items[careTeam.consultFeeItemId] : undefined) ??
         (careTeam.defaultConsultFeeItemId ? items[careTeam.defaultConsultFeeItemId] : undefined))
       : undefined;
+
   const serviceItems = options.services.map((service) => {
     const item = items[service.catalogItemId];
+
     const billable = item && OPD_BILLABLE_CATEGORIES.some((category) => category === item.category);
+
     if (
       !item ||
       !billable ||
@@ -128,10 +137,25 @@ export async function resolveOpdPricing(options: {
     ) {
       throw new ORPCError("NOT_FOUND", { message: "That service is no longer available." });
     }
-    return { item, qty: service.qty };
+
+    if (service.unitPrice !== undefined && !item.customRate) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: `${item.name} has a fixed rate.`,
+      });
+    }
+
+    if (service.unitPrice !== undefined && service.unitPrice < item.unitPrice) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: `${item.name} cannot be billed below its catalog rate.`,
+      });
+    }
+
+    return { item, qty: service.qty, unitPrice: service.unitPrice ?? item.unitPrice };
   });
 
-  return { departmentId: careTeam.departmentId, feeItem, serviceItems };
+  const fee = feeItem ? { item: feeItem, qty: 1, unitPrice: feeItem.unitPrice } : undefined;
+
+  return { departmentId: careTeam.departmentId, fee, serviceItems };
 }
 
 export function chargeRow(args: {
@@ -139,6 +163,7 @@ export function chargeRow(args: {
   appointmentId: string;
   item: OpdItemSnapshot;
   qty: number;
+  unitPrice: bigint;
   sourceType: "consult_fee" | "catalog";
   userId: string;
   now: Date;
@@ -150,7 +175,7 @@ export function chargeRow(args: {
     catalogItemId: args.item.id,
     description: args.item.name,
     qty: args.qty,
-    unitPrice: args.item.unitPrice,
+    unitPrice: args.unitPrice,
     taxRatePercent: args.item.taxRatePercent,
     taxCode: args.item.taxCode,
     revenueCategory: args.item.category,

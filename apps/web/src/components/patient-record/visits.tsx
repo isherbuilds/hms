@@ -22,8 +22,6 @@ import { formatFileSize, openOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
 import { errorMessage } from "@/lib/orpc-error";
 
-// A row carries only what tells visits apart; opening one fetches that appointment
-// on its own. Every action on a visit belongs to the outpatient record.
 const visitsQuery = (orgSlug: string, patientId: string) =>
   orpc.patient.visits.infiniteOptions({
     input: (cursor: { businessDate: string; id: string } | undefined) => ({
@@ -72,7 +70,7 @@ function VisitPanel({
                 <button
                   type="button"
                   onClick={() =>
-                    openOrgFile(orgSlug, file.fileId).catch((error: unknown) =>
+                    openOrgFile(orgSlug, file.fileId).catch((error) =>
                       toast.error(errorMessage(error, "Could not open that file")),
                     )
                   }
@@ -208,8 +206,6 @@ function VisitAccordionRow({
         </span>
       </button>
 
-      {/* Animating grid-template-rows is the honest way to open a panel of
-          unknown height; the row is the only layout dependent. */}
       <div
         data-open={open || undefined}
         className={cn(

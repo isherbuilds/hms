@@ -13,7 +13,13 @@ import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { cn } from "@hms/ui/lib/utils";
-import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  skipToken,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { ClientOnly, useBlocker, useNavigate } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { useFormContext, useFormState, useWatch } from "react-hook-form";
@@ -67,11 +73,14 @@ type IntakeDepartment = { id: string; name: string };
 type IntakePractitioner = { id: string; name: string; departmentId: string };
 
 function serviceClaims(services: ServiceLine[]) {
-  return services.map(({ catalogItemId, qty }) => ({ catalogItemId, qty }));
+  return services.map(({ catalogItemId, qty, customUnitPrice }) => ({
+    catalogItemId,
+    qty,
+    unitPrice: customUnitPrice,
+  }));
 }
 
-/** A consultation the operator picked replaces the practitioner's own fee. */
-function omitsConsultFee(values: IntakeValues) {
+function omitsConsultFee(values: Pick<IntakeValues, "omitConsultFee" | "services">) {
   return values.omitConsultFee || values.services.some((s) => s.category === "consultation");
 }
 
@@ -116,8 +125,6 @@ function IntakeSection({
   );
 }
 
-// One behaviour whether or not the address named a patient: `?patientId` seeds the
-// field and the field owns it from there.
 function PatientField({ orgSlug }: { orgSlug: string }) {
   const { control, setValue, setFocus } = useFormContext<IntakeValues>();
   const patient = useWatch({ control, name: "patient", exact: true });
@@ -193,7 +200,6 @@ function CareTeamFields({
                 <NativeSelect
                   {...field}
                   onChange={(event) => {
-                    // The old practitioner belongs to the old department.
                     form.setValue("practitionerId", "", { shouldDirty: true });
                     field.onChange(event);
                   }}
@@ -351,7 +357,7 @@ function ServicesFields({
   ]);
 
   const lines = [
-    ...(when === "now" && consultation
+    ...(when === "now" && consultation && !omitsConsultFee({ omitConsultFee, services })
       ? [
           {
             key: "consultation",
@@ -359,6 +365,7 @@ function ServicesFields({
             category: consultation.category,
             qty: 1,
             unitPrice: consultation.unitPrice,
+            customRate: false,
             taxRatePercent: consultation.taxRatePercent,
             gross: consultation.gross,
             editable: false,
@@ -371,17 +378,19 @@ function ServicesFields({
       category: service.category,
       qty: service.qty,
       unitPrice: service.unitPrice,
+      customRate: service.customRate,
+      customUnitPrice: service.customUnitPrice,
       taxRatePercent: service.taxRatePercent,
       gross: when === "now" ? serviceGross.get(service.catalogItemId) : undefined,
       editable: true,
     })),
   ];
 
-  const setQty = (catalogItemId: string, qty: number) =>
+  const patchService = (catalogItemId: string, patch: Partial<ServiceLine>) =>
     form.setValue(
       "services",
       services.map((service) =>
-        service.catalogItemId === catalogItemId ? { ...service, qty } : service,
+        service.catalogItemId === catalogItemId ? { ...service, ...patch } : service,
       ),
       { shouldDirty: true },
     );
@@ -416,8 +425,7 @@ function ServicesFields({
           </p>
         </div>
       ) : null}
-      <ServiceLines lines={lines} currency={currency} onQuantityChange={setQty} onRemove={remove} />
-      {/* A line-level action, so it stays with the lines rather than below the totals. */}
+      <ServiceLines lines={lines} currency={currency} onChange={patchService} onRemove={remove} />
       {when === "now" && omitConsultFee ? (
         <Button
           type="button"
@@ -463,8 +471,6 @@ function IntakeSubmit({
     compute: (patient: SelectedPatient | null) => patient !== null,
   });
 
-  // Only a reason the operator cannot see on the form itself is worth words; an
-  // unchosen patient is already obvious from the empty field above.
   const reason =
     when === "now" && !canSettleWalkIn
       ? "Your role cannot settle an immediate appointment."
@@ -472,7 +478,7 @@ function IntakeSubmit({
         ? errorMessage(quoteState.error, "Could not calculate the bill")
         : undefined;
 
-  const blocked = !hasPatient || Boolean(reason) || (when === "now" && !quoteState.ready);
+  const blocked = !hasPatient || Boolean(reason);
 
   return (
     <>
@@ -555,14 +561,10 @@ function FinancialAside({
     practitioners.find((practitioner) => practitioner.id === practitionerId)?.name ?? "—";
 
   return (
-    // `top-0` keeps the tray level with the form card: sticky offsets are measured
-    // from PageBody's padding edge, so any offset here drops it below the card.
     <div className="sticky top-0">
       <Panel label={when === "now" ? "Payment" : "Booking"} minHeight="min-h-0" padded>
         {when === "now" ? <FinancialSummary quote={quoteState.data} /> : null}
         {when === "later" ? (
-          // Nothing is billed at booking, so the panel confirms the appointment
-          // itself rather than showing a column of zeroes.
           <dl className="grid gap-2">
             <SummaryRow term="Patient">
               <span className="capitalize">{patientName}</span>
@@ -614,7 +616,7 @@ function IntakeFooter({
             ? `Payable · ${lineCount} line${lineCount === 1 ? "" : "s"}`
             : "Appointment time"}
         </p>
-        <p className="truncate text-sm font-medium tabular-nums">
+        <p className="truncate text-sm font-medium tabular-nums group-aria-busy/quote:opacity-50">
           {when === "now"
             ? formatMoney(quoteState.data.grandTotal, quoteState.data.currency)
             : previewTime || "Choose a time"}
@@ -678,6 +680,7 @@ export function OpdIntakeForm({
   const quote = useQuery({
     ...orpc.opd.quoteWalkIn.queryOptions({ input: input ?? skipToken }),
     staleTime: 0,
+    placeholderData: keepPreviousData,
   });
 
   const quoteReady = input !== null && quote.isSuccess && !quote.isFetching;
@@ -755,7 +758,7 @@ export function OpdIntakeForm({
   const settleWalkIn = (settlement: SettlementDraft) => {
     const current = intake.getValues();
 
-    if (!current.patient || !canSettleWalkIn || !quoteState.ready) return;
+    if (!current.patient || !canSettleWalkIn) return;
     createWalkIn.mutate({
       orgSlug,
       patientId: current.patient.id,
@@ -768,7 +771,7 @@ export function OpdIntakeForm({
     });
   };
 
-  const submitValidated = intake.handleSubmit((current) => {
+  const submitValidated = intake.handleSubmit(async (current) => {
     if (!current.patient) return;
 
     if (current.when === "later") {
@@ -783,12 +786,20 @@ export function OpdIntakeForm({
       return;
     }
 
-    if (!canSettleWalkIn || !quoteState.ready) return;
+    const input = quoteInput(orgSlug, current);
 
-    if (quoteState.data.grandTotal === ZERO) {
+    if (!canSettleWalkIn || !input) return;
+
+    const fresh = await queryClient
+      .ensureQueryData(orpc.opd.quoteWalkIn.queryOptions({ input }))
+      .catch(() => undefined);
+
+    if (!fresh) return;
+
+    if (fresh.grandTotal === ZERO) {
       settleWalkIn({
         discountAmount: ZERO,
-        expectedGrandTotal: quoteState.data.grandTotal,
+        expectedGrandTotal: fresh.grandTotal,
         payments: [],
       });
 
@@ -813,15 +824,17 @@ export function OpdIntakeForm({
         ? "Quote is updating. Wait to confirm."
         : "Waiting for the current quote.";
 
-  // The overlay opens from a submit that already proved a patient is chosen, and the
-  // form behind a modal cannot change it.
   const settlementPatient = settlementOpen ? intake.getValues("patient") : null;
 
   return (
     <>
       <Form {...intake}>
         <form noValidate onSubmit={submitValidated}>
-          <fieldset disabled={pending} className="contents">
+          <fieldset
+            disabled={pending}
+            aria-busy={quoteState.fetching}
+            className="group/quote contents"
+          >
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
               <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
                 <IntakeSection title="Patient">

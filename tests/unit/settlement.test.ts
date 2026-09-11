@@ -7,7 +7,6 @@ import {
   type PaymentLine,
 } from "../../apps/web/src/lib/settlement";
 
-/** ₹982.50 — the worked example the desk prototype was measured against. */
 const DUE = 98_250n;
 
 const INR = "INR";
@@ -43,7 +42,7 @@ test("a full cash payment that clears the bill has nothing left to resolve", () 
 test("an amount with three decimal places is rejected against its own line", () => {
   const found = problems({ payments: [line({ id: 7, amount: "12.345" })] });
 
-  expect(found).toHaveLength(2); // the format failure, and the balance it leaves
+  expect(found).toHaveLength(2);
   expect(found[0]).toMatchObject({
     key: "amount:7",
     fieldId: "payment-amount-7",
@@ -53,11 +52,9 @@ test("an amount with three decimal places is rejected against its own line", () 
 });
 
 test("only cash skips a transaction reference", () => {
-  expect(
-    ["cash", "upi", "card", "bank"].map((method) =>
-      needsReference(method as PaymentLine["method"]),
-    ),
-  ).toEqual([false, true, true, true]);
+  const methods: PaymentLine["method"][] = ["cash", "upi", "card", "bank"];
+
+  expect(methods.map(needsReference)).toEqual([false, true, true, true]);
 });
 
 test("the next payment line walks all four methods before falling back to cash", () => {

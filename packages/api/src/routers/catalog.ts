@@ -20,6 +20,7 @@ const catalogFields = z.object({
   code: z.string().trim().min(1).max(20),
   category: z.enum(CATALOG_CATEGORIES),
   unitPrice: money,
+  customRate: z.boolean(),
   taxRatePercent: z
     .string()
     .regex(/^\d{1,2}(\.\d{1,2})?$/)
@@ -28,8 +29,6 @@ const catalogFields = z.object({
 });
 
 export const catalogRouter = {
-  // Consultations require an explicit opt-in from immediate intake or billing;
-  // scheduled intake cannot surface them.
   searchServices: orgProcedure(
     { catalog: ["read"] },
     orgInput.extend({
@@ -46,6 +45,7 @@ export const catalogRouter = {
         name: catalogItems.name,
         category: catalogItems.category,
         unitPrice: catalogItems.unitPrice,
+        customRate: catalogItems.customRate,
         taxRatePercent: catalogItems.taxRatePercent,
       })
       .from(catalogItems)
@@ -53,8 +53,6 @@ export const catalogRouter = {
         and(
           eq(catalogItems.orgId, context.scope.orgId),
           eq(catalogItems.active, true),
-          // `resolveOpdPricing` refuses the rest anyway; showing it would be an
-          // invitation to fail.
           inArray(catalogItems.category, [...OPD_BILLABLE_CATEGORIES]),
           input.includeConsultation ? undefined : ne(catalogItems.category, "consultation"),
           pattern
@@ -78,7 +76,6 @@ export const catalogRouter = {
       query: searchQuery,
       category: z.enum(CATALOG_CATEGORIES).optional(),
       activeOnly: z.boolean().default(false),
-      // The keyset is (name, id) because the list orders by name and ids break ties.
       cursor: z.object({ name: z.string(), id: z.string() }).optional(),
       limit: pageLimit,
     }),
@@ -118,60 +115,56 @@ export const catalogRouter = {
     };
   }),
 
-  create: orgProcedure({ catalog: ["create"] }, orgInput.extend(catalogFields.shape)).handler(
-    async ({ context, input }) => {
-      const { scope } = context;
-      const { orgSlug: _claim, ...fields } = input;
-      const id = Bun.randomUUIDv7();
+  create: orgProcedure(
+    { catalog: ["create"] },
+    orgInput.extend({ ...catalogFields.shape, customRate: z.boolean().default(false) }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+    const { orgSlug: _claim, ...fields } = input;
+    const id = Bun.randomUUIDv7();
 
-      try {
-        const [item] = await db
-          .insert(catalogItems)
-          .values({
-            ...fields,
-            id,
-            orgId: scope.orgId,
-            taxCode: fields.taxCode ?? null,
-          })
-          .returning();
-
-        if (!item) {
-          throw new ORPCError("INTERNAL_SERVER_ERROR", {
-            message: "Failed to create catalog item",
-          });
-        }
-
-        audit({
-          action: "catalog.create",
-          actorId: scope.userId,
+    try {
+      const [item] = await db
+        .insert(catalogItems)
+        .values({
+          ...fields,
+          id,
           orgId: scope.orgId,
-          target: `catalogItem:${id}`,
-          // Origin entry of the price timeline; catalog.update meta carries every change after.
-          meta: {
-            unitPrice: formatDecimal(item.unitPrice),
-            taxRatePercent: item.taxRatePercent,
-            active: item.active,
-          },
+          taxCode: fields.taxCode ?? null,
+        })
+        .returning();
+
+      if (!item) {
+        throw new ORPCError("INTERNAL_SERVER_ERROR", {
+          message: "Failed to create catalog item",
         });
-
-        return item;
-      } catch (error) {
-        if (uniqueViolationConstraint(error) !== undefined) {
-          throw conflict("duplicate", "A catalog item with this code already exists.");
-        }
-
-        throw error;
       }
-    },
-  ),
+
+      audit({
+        action: "catalog.create",
+        actorId: scope.userId,
+        orgId: scope.orgId,
+        target: `catalogItem:${id}`,
+        meta: {
+          unitPrice: formatDecimal(item.unitPrice),
+          taxRatePercent: item.taxRatePercent,
+          active: item.active,
+        },
+      });
+
+      return item;
+    } catch (error) {
+      if (uniqueViolationConstraint(error) !== undefined) {
+        throw conflict("duplicate", "A catalog item with this code already exists.");
+      }
+
+      throw error;
+    }
+  }),
 
   update: orgProcedure(
     { catalog: ["update"] },
-    orgInput.extend({
-      itemId: z.string(),
-      ...catalogFields.shape,
-      active: z.boolean(),
-    }),
+    orgInput.extend({ itemId: z.string(), ...catalogFields.shape }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const { orgSlug: _claim, itemId, ...fields } = input;
@@ -196,8 +189,6 @@ export const catalogRouter = {
         actorId: scope.userId,
         orgId: scope.orgId,
         target: `catalogItem:${itemId}`,
-        // Written values make the audit trail double as the price-change history, so
-        // successive entries reconstruct the timeline without a dedicated table.
         meta: {
           unitPrice: formatDecimal(item.unitPrice),
           taxRatePercent: item.taxRatePercent,
@@ -213,5 +204,32 @@ export const catalogRouter = {
 
       throw error;
     }
+  }),
+
+  setActive: orgProcedure(
+    { catalog: ["update"] },
+    orgInput.extend({ itemId: z.string(), active: z.boolean() }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+
+    const [item] = await db
+      .update(catalogItems)
+      .set({ active: input.active, updatedAt: new Date() })
+      .where(and(eq(catalogItems.orgId, scope.orgId), eq(catalogItems.id, input.itemId)))
+      .returning({ id: catalogItems.id, active: catalogItems.active });
+
+    if (!item) {
+      throw new ORPCError("NOT_FOUND", { message: "That catalog item no longer exists." });
+    }
+
+    audit({
+      action: "catalog.active.set",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `catalogItem:${item.id}`,
+      meta: { active: item.active },
+    });
+
+    return item;
   }),
 };

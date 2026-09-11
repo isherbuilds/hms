@@ -1,4 +1,3 @@
-// Journal dates follow the organization's configured time zone.
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import type { DbTransaction } from "@hms/db/counter";
@@ -129,6 +128,7 @@ async function ensureChartOfAccounts(
     }
   }
 
+  // SAFETY: the loop below fills every SYSTEM_ACCOUNTS key or throws.
   const complete = {} as Record<SystemAccountKey, string>;
 
   for (const account of SYSTEM_ACCOUNTS) {

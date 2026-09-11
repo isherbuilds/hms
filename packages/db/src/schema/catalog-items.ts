@@ -24,16 +24,12 @@ export const CATALOG_CATEGORIES = [
 
 export type CatalogCategory = (typeof CATALOG_CATEGORIES)[number];
 
-// Revenue posts per category, so a lab item on an OPD invoice would make the two
-// streams indistinguishable at the document level. Lab and radiology are billed by
-// the domain that orders them.
 export const OPD_BILLABLE_CATEGORIES = [
   "consultation",
   "procedure",
 ] as const satisfies readonly CatalogCategory[];
 
-// Soft-deactivate only: charges snapshot price and tax at creation, so a deleted
-// item would leave existing charges dangling.
+// Soft-deactivate only: charges snapshot price and tax, so deleting would leave them dangling.
 export const catalogItems = pgTable(
   "catalog_items",
   {
@@ -45,7 +41,7 @@ export const catalogItems = pgTable(
     code: text("code").notNull(),
     category: text("category", { enum: CATALOG_CATEGORIES }).notNull(),
     unitPrice: bigint("unit_price", { mode: "bigint" }).notNull(),
-    // The single stored rate; the CGST/SGST split is display-time.
+    customRate: boolean("custom_rate").notNull().default(false),
     taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull().default("0"),
     taxCode: text("tax_code"),
     active: boolean("active").notNull().default(true),

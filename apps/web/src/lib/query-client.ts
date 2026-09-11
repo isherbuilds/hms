@@ -1,4 +1,8 @@
+import { StandardRPCJsonSerializer } from "@orpc/client/standard";
 import { MutationCache, QueryCache, QueryClient, environmentManager } from "@tanstack/react-query";
+
+// TanStack's default JSON.stringify hash throws on bigint query keys.
+const keySerializer = new StandardRPCJsonSerializer();
 
 function statusOf(error: unknown): unknown {
   return typeof error === "object" && error !== null && "status" in error
@@ -6,8 +10,6 @@ function statusOf(error: unknown): unknown {
     : undefined;
 }
 
-// Pages render their own errors; only an expired session needs global recovery.
-// Both caches call this, so a form-only screen does not toast forever.
 function recoverFromExpiredSession(error: unknown): void {
   if (environmentManager.isServer() || statusOf(error) !== 401) {
     return;
@@ -24,12 +26,11 @@ export function createQueryClient() {
     mutationCache: new MutationCache({ onError: recoverFromExpiredSession }),
     defaultOptions: {
       queries: {
-        // Query keys carry procedure inputs, and money inputs are bigint, which
-        // JSON.stringify refuses. Tag them so they hash like any other value.
-        queryKeyHashFn: (queryKey) =>
-          JSON.stringify(queryKey, (_, value: unknown) =>
-            typeof value === "bigint" ? `${value}n` : value,
-          ),
+        queryKeyHashFn: (queryKey) => {
+          const [json, meta] = keySerializer.serialize(queryKey);
+
+          return JSON.stringify({ json, meta });
+        },
         staleTime: 60 * 1000,
         retry: (failureCount, error: unknown) => {
           if (environmentManager.isServer()) {

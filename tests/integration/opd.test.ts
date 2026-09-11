@@ -55,6 +55,7 @@ function catalogItemInput(orgSlug: string, code: string, name: string, unitPrice
     unitPrice,
     taxRatePercent: "5.00",
     taxCode: "GST5",
+    customRate: false,
   };
 }
 
@@ -243,14 +244,10 @@ test("walk-in creation requires patient read and denial writes nothing", async (
   await joinOrganization(operator, organization.id);
   const operatorApi = clientFor(operator);
 
-  // Every production role grants patient:read; the serial runner lets this test
-  // fabricate the otherwise unreachable denial branch.
-  const receptionStatements = roles.reception.statements as unknown as {
-    patient: Array<"create" | "read" | "update">;
-  };
-
+  // No production role lacks patient:read, so the serial runner fabricates this denial.
+  const receptionStatements = roles.reception.statements;
   const originalPatientGrants = receptionStatements.patient;
-  receptionStatements.patient = ["create", "update"];
+  Object.assign(receptionStatements, { patient: ["create", "update"] });
 
   try {
     await expectORPCCode(
@@ -263,7 +260,7 @@ test("walk-in creation requires patient read and denial writes nothing", async (
       "FORBIDDEN",
     );
   } finally {
-    receptionStatements.patient = originalPatientGrants;
+    Object.assign(receptionStatements, { patient: originalPatientGrants });
   }
 
   expect(
@@ -366,9 +363,9 @@ test("a practitioner consult fee creates an immutable snapshot charge", async ()
     code: fee.code,
     category: fee.category,
     unitPrice: 425_00n,
+    customRate: false,
     taxRatePercent: fee.taxRatePercent,
     taxCode: fee.taxCode,
-    active: true,
   });
 
   const readBack = await api.opd.get({
@@ -646,17 +643,7 @@ test("an inactive practitioner fee falls through to the active department fee", 
     catalogItemInput(organization.slug, `INACTIVE-${uniqueSuffix()}`, "Inactive Consultation"),
   );
 
-  await api.catalog.update({
-    orgSlug: organization.slug,
-    itemId: inactive.id,
-    name: inactive.name,
-    code: inactive.code,
-    category: inactive.category,
-    unitPrice: inactive.unitPrice,
-    taxRatePercent: inactive.taxRatePercent,
-    taxCode: inactive.taxCode,
-    active: false,
-  });
+  await api.catalog.setActive({ orgSlug: organization.slug, itemId: inactive.id, active: false });
 
   const fallback = await api.catalog.create(
     catalogItemInput(organization.slug, `FALLBACK-${uniqueSuffix()}`, "Fallback Consultation"),
@@ -935,7 +922,6 @@ test("prescription attachment rechecks cancellation after waiting on the OPD row
 
     let reachedOpdLock = false;
 
-    // PostgreSQL exposes no application signal for this external lock wait.
     for (let attempt = 0; attempt < 100; attempt++) {
       const blocked = await locker.query<{ blocked: boolean }>(
         `select exists (
@@ -1403,6 +1389,140 @@ test("an outpatient appointment refuses a charge it may not carry", async () => 
     "NOT_FOUND",
   );
   expect((await api.opd.day({ orgSlug: organization.slug, date: "2030-04-02" })).items).toEqual([]);
+});
+
+test("procedure rates flow through booking, walk-in quotes and stored charges", async () => {
+  const { organization, api, patient, department } = await createOpdAppointmentSetup(
+    "opd-custom-procedure-rate",
+    false,
+  );
+
+  const procedure = await api.catalog.create({
+    ...catalogItemInput(
+      organization.slug,
+      `CUSTOM-RATE-${uniqueSuffix()}`,
+      "Custom-rate procedure",
+      30_00n,
+    ),
+    category: "procedure" as const,
+    customRate: true,
+  });
+
+  const practitioner = await createPractitioner(
+    api,
+    organization.slug,
+    department.id,
+    "Dr. Custom Rate",
+  );
+
+  const booked = await api.opd.book({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    scheduledLocal: "2030-04-02T10:00",
+    services: [{ catalogItemId: procedure.id, qty: 1, unitPrice: 45_00n }],
+  });
+
+  expect(await appointmentCharges(api, organization.slug, booked.id)).toEqual([
+    expect.objectContaining({ catalogItemId: procedure.id, qty: 1, unitPrice: 45_00n }),
+  ]);
+
+  const services = [{ catalogItemId: procedure.id, qty: 2, unitPrice: 40_00n }];
+
+  const quote = await api.opd.quoteWalkIn({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    services,
+    omitConsultFee: true,
+  });
+
+  expect(quote).toMatchObject({ subtotal: 80_00n, taxTotal: 4_00n, grandTotal: 84_00n });
+  expect(quote.lines).toEqual([
+    expect.objectContaining({
+      chargeId: procedure.id,
+      qty: 2,
+      unitPrice: 40_00n,
+      gross: 84_00n,
+    }),
+  ]);
+
+  const walkIn = await api.opd.createWalkIn({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    settlement: {
+      services,
+      omitConsultFee: true,
+      expectedGrandTotal: quote.grandTotal,
+      payments: [{ method: "cash", amount: quote.grandTotal }],
+    },
+  });
+
+  expect(requireInvoice(walkIn)).toMatchObject({
+    subtotal: 80_00n,
+    taxTotal: 4_00n,
+    grandTotal: 84_00n,
+  });
+  expect(await appointmentCharges(api, organization.slug, walkIn.appointment.id)).toEqual([
+    expect.objectContaining({ catalogItemId: procedure.id, qty: 2, unitPrice: 40_00n }),
+  ]);
+  expect(
+    (
+      await api.catalog.searchServices({
+        orgSlug: organization.slug,
+        query: procedure.code,
+        includeConsultation: false,
+      })
+    )[0],
+  ).toMatchObject({ id: procedure.id, unitPrice: 30_00n, customRate: true });
+});
+
+test("a custom rate needs the catalog flag and cannot go below the catalog rate", async () => {
+  const { organization, api, patient, department } = await createOpdAppointmentSetup(
+    "opd-custom-rate-validation",
+    false,
+  );
+
+  const fixed = await api.catalog.create({
+    ...catalogItemInput(organization.slug, `FIXED-RATE-${uniqueSuffix()}`, "Fixed-rate procedure"),
+    category: "procedure" as const,
+  });
+
+  const variable = await api.catalog.create({
+    ...catalogItemInput(organization.slug, `CUSTOM-RATE-${uniqueSuffix()}`, "Variable procedure"),
+    category: "procedure" as const,
+    customRate: true,
+  });
+
+  const practitioner = await createPractitioner(
+    api,
+    organization.slug,
+    department.id,
+    "Dr. Custom Rate Validation",
+  );
+
+  const base = {
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    omitConsultFee: true,
+  };
+
+  await expectORPCCode(
+    api.opd.quoteWalkIn({
+      ...base,
+      services: [{ catalogItemId: fixed.id, qty: 1, unitPrice: 200_00n }],
+    }),
+    "BAD_REQUEST",
+  );
+  await expectORPCCode(
+    api.opd.quoteWalkIn({
+      ...base,
+      services: [{ catalogItemId: variable.id, qty: 1, unitPrice: variable.unitPrice - 1n }],
+    }),
+    "BAD_REQUEST",
+  );
 });
 
 test("a scheduled appointment keeps selected services until check-in", async () => {
@@ -1932,8 +2052,7 @@ test("marking a booking no-show voids its pending charges and audits the write-o
     scheduledLocal: "2030-05-01T09:00",
   });
 
-  // Charges are refused before check-in, so plant one directly: the write-off must
-  // clear money however it landed.
+  // Charges are refused before check-in, so plant one directly.
   await db.insert(charges).values({
     id: Bun.randomUUIDv7(),
     orgId: organization.id,
@@ -2141,6 +2260,7 @@ test("leaving a walk-in unpaid needs a note, and so does a discount", async () =
     practitionerId: practitioner.id,
   };
 
+  // SAFETY: omits `settlement` so server validation, not the client type, rejects it.
   await expectORPCCode(api.opd.createWalkIn(walkIn as never), "BAD_REQUEST");
 
   await expectORPCCode(
@@ -2258,8 +2378,6 @@ test("a walk-in that fails to settle leaves no token behind", async () => {
     { consultFeeItemId: fee.id },
   );
 
-  // Overpaying is refused after the token and invoice are written, so this passes
-  // only if the whole commit rolls back.
   await expectORPCCode(
     api.opd.createWalkIn({
       orgSlug: organization.slug,
@@ -2556,9 +2674,9 @@ test("a walk-in reprices selected services after a stale quote", async () => {
     code: service.code,
     category: service.category,
     unitPrice: 75_00n,
+    customRate: false,
     taxRatePercent: service.taxRatePercent,
     taxCode: service.taxCode,
-    active: true,
   });
   await expect(
     api.opd.createWalkIn({

@@ -6,6 +6,7 @@ import { invoiceBalancesFor } from "@hms/api/lib/invoice-balance";
 test("loads invoice movement totals in one database round trip", async () => {
   let calls = 0;
 
+  // SAFETY: the stub only needs `execute`, the one method invoiceBalancesFor calls.
   const executor = {
     execute: async () => {
       calls += 1;
@@ -21,7 +22,7 @@ test("loads invoice movement totals in one database round trip", async () => {
         ],
       };
     },
-  } as unknown as Parameters<typeof invoiceBalancesFor>[0];
+  } as never;
 
   const balances = await invoiceBalancesFor(executor, "org-1", [
     { id: "invoice-1", grandTotal: parseDecimal("100.00") },

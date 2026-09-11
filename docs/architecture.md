@@ -67,8 +67,10 @@ session state and never falls back:
 - Every primary-key lookup and write includes the tenant predicate. Reads and
   direct writes turn foreign ids into `NOT_FOUND`; conditional state writes may
   deliberately return the same `CONFLICT` for missing and already-moved rows.
-- Every referenced id is re-verified under the same tenant. Prices and taxes
-  come from server-read catalog rows, never browser claims.
+- Every referenced id is re-verified under the same tenant. Taxes and default
+  prices come from server-read catalog rows. OPD intake may supply a custom rate,
+  which the server accepts only after it verifies the active tenant-scoped
+  catalog row and its custom-rate setting.
 - RLS is not currently used. Application predicates plus integration guardrails
   are the accepted enforcement model; RLS may later be additive defense in
   depth, never a replacement for membership/permission checks.
@@ -198,6 +200,8 @@ The catalog is a flat chargeable-item registry. Charges snapshot name/code,
 category, unit price, tax rate, and tax code so later catalog edits never
 rewrite financial history. New/follow-up attendance pricing is configured per
 practitioner; a configured zero-price item represents intentional free care.
+An OPD intake custom rate changes only the new Charge snapshot. It
+does not update the catalog item.
 
 One OPD Appointment is the parent for its Patient link, queue lifecycle,
 Charges, Invoices, and prescription attachments. Check-in enriches a booked row;

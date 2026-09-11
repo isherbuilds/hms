@@ -59,8 +59,7 @@ import { requireOrgPermission } from "@/lib/route-permission";
 
 import { SettingsTabs } from "./route";
 
-// Mirrors CATALOG_CATEGORIES in @hms/db, kept local so no server schema module
-// reaches the client bundle (hard rule 6).
+// Kept local so no @hms/db server module reaches the client bundle (hard rule 6).
 const CATALOG_CATEGORIES = ["consultation", "procedure", "lab", "radiology", "other"] as const;
 
 type CatalogCategory = (typeof CATALOG_CATEGORIES)[number];
@@ -98,8 +97,6 @@ export const Route = createFileRoute("/$orgSlug/settings/catalog")({
   }),
   loaderDeps: ({ search }) => ({ category: search.category, activeOnly: search.activeOnly }),
   loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {
-    // Reading the catalog is org-wide; this page only edits it, so the tab strip gates
-    // it on `update` too.
     await requireOrgPermission(queryClient, orgSlug, { catalog: ["update"] }, "/$orgSlug/settings");
     await queryClient
       .infiniteQuery(
@@ -121,7 +118,7 @@ const formSchema = z.object({
   unitPrice: z.string().regex(DECIMAL_PATTERN, "Amount like 150 or 150.00").transform(parseDecimal),
   taxRatePercent: z.string().regex(/^\d{1,2}(\.\d{1,2})?$/, "Rate like 0, 5, or 12.50"),
   taxCode: z.string().trim().max(20, "Keep the tax code under 20 characters").optional(),
-  active: z.boolean(),
+  customRate: z.boolean(),
 });
 
 type CatalogFormValues = z.input<typeof formSchema>;
@@ -134,6 +131,7 @@ type CatalogItem = {
   unitPrice: bigint;
   taxRatePercent: string;
   taxCode: string | null;
+  customRate: boolean;
   active: boolean;
   createdAt: Date | string;
   updatedAt: Date | string;
@@ -146,13 +144,12 @@ const EMPTY_VALUES: CatalogFormValues = {
   unitPrice: "",
   taxRatePercent: "0",
   taxCode: "",
-  active: true,
+  customRate: false,
 };
 
 function CatalogRoute() {
   const { orgSlug } = Route.useParams();
   const queryClient = useQueryClient();
-  // Filters live in the URL, so a filtered view is shareable and Back restores it.
   const { category, activeOnly } = Route.useSearch();
   const navigate = Route.useNavigate();
   const [query, setQuery] = useState("");
@@ -160,7 +157,7 @@ function CatalogRoute() {
   const [editing, setEditing] = useState<CatalogItem | null>(null);
 
   const toggleActive = useMutation(
-    orpc.catalog.update.mutationOptions({
+    orpc.catalog.setActive.mutationOptions({
       onMutate: async (variables) => {
         const queryKey = orpc.catalog.list.key({ input: { orgSlug }, type: "infinite" });
         await queryClient.cancelQueries({ queryKey });
@@ -201,10 +198,8 @@ function CatalogRoute() {
         toast.error(errorMessage(error, "Could not update catalog item"));
       },
       onSettled: () => {
-        // The settling mutation still counts as pending, so >1 means a sibling update is in
-        // flight and refetching now would overwrite its optimistic patch.
         const pending = queryClient.isMutating({
-          mutationKey: orpc.catalog.update.mutationKey(),
+          mutationKey: orpc.catalog.setActive.mutationKey(),
         });
 
         if (pending > 1) return;
@@ -223,12 +218,6 @@ function CatalogRoute() {
       mutateToggle({
         orgSlug,
         itemId: item.id,
-        name: item.name,
-        code: item.code,
-        category: item.category,
-        unitPrice: item.unitPrice,
-        taxRatePercent: item.taxRatePercent,
-        taxCode: item.taxCode,
         active: !item.active,
       }),
     [mutateToggle, orgSlug],
@@ -260,7 +249,6 @@ function CatalogRoute() {
             placeholder="Search code or name"
             onQueryChange={setQuery}
           />
-          {/* A select, not a toggle group: categories are data, not a fixed set. */}
           <FilterSelect<"all" | CatalogCategory>
             label="Category"
             value={category ?? "all"}
@@ -364,7 +352,6 @@ function CatalogRoute() {
   );
 }
 
-/** Memoized so an optimistic toggle re-renders one row, not the whole catalog. */
 const CatalogRow = memo(function CatalogRow({
   item,
   pending,
@@ -381,7 +368,10 @@ const CatalogRow = memo(function CatalogRow({
       <TableCell className="font-mono">{item.code}</TableCell>
       <TableCell className="font-medium">{item.name}</TableCell>
       <TableCell>{CATEGORY_LABELS[item.category]}</TableCell>
-      <TableCell className="text-right tabular-nums">{formatDecimal(item.unitPrice)}</TableCell>
+      <TableCell className="text-right tabular-nums">
+        {formatDecimal(item.unitPrice)}
+        {item.customRate ? <span className="text-muted-foreground"> default</span> : null}
+      </TableCell>
       <TableCell className="text-right tabular-nums">{item.taxRatePercent}</TableCell>
       <TableCell className="font-mono">{item.taxCode || "—"}</TableCell>
       <TableCell>
@@ -435,13 +425,11 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
           unitPrice: formatDecimal(item.unitPrice),
           taxRatePercent: item.taxRatePercent,
           taxCode: item.taxCode ?? "",
-          active: item.active,
+          customRate: item.customRate,
         }
       : EMPTY_VALUES,
   });
 
-  // Awaiting the refetch keeps the mutation pending, so the dialog closes onto a list
-  // that is already correct.
   const closeAfterSuccess = async (message: string) => {
     await queryClient.invalidateQueries({
       queryKey: orpc.catalog.list.key({ input: { orgSlug } }),
@@ -451,7 +439,7 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
     form.reset(item ? undefined : EMPTY_VALUES);
   };
 
-  const handleError = (error: unknown) => {
+  const handleError = (error: Error) => {
     const mapped = applyOrpcFieldError(form, error, {
       duplicate: { field: "code", message: "Code already in use" },
     });
@@ -482,10 +470,11 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
       unitPrice: values.unitPrice,
       taxRatePercent: values.taxRatePercent,
       taxCode: values.taxCode || null,
+      customRate: values.customRate,
     };
 
     if (item) {
-      update.mutate({ ...shared, itemId: item.id, active: values.active });
+      update.mutate({ ...shared, itemId: item.id });
     } else {
       create.mutate(shared);
     }
@@ -510,7 +499,7 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
             <DialogTitle>{item ? "Edit catalog item" : "New catalog item"}</DialogTitle>
             <DialogDescription>
               {item
-                ? "Update pricing, tax details, or whether this item is available."
+                ? "Update pricing and tax details."
                 : "Add a billable service to this organization's catalog."}
             </DialogDescription>
           </DialogHeader>
@@ -608,25 +597,23 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
                 />
               </div>
 
-              {item ? (
-                <FormField
-                  control={form.control}
-                  name="active"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center gap-2">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                          disabled={isPending}
-                        />
-                      </FormControl>
-                      <FormLabel>Active</FormLabel>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              ) : null}
+              <FormField
+                control={form.control}
+                name="customRate"
+                render={({ field }) => (
+                  <FormItem className="flex items-center gap-2">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={isPending}
+                      />
+                    </FormControl>
+                    <FormLabel>Rate set at intake (unit price is the minimum)</FormLabel>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <DialogFooter>
                 <Button

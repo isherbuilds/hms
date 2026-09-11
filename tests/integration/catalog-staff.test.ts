@@ -20,6 +20,7 @@ function catalogItemInput(orgSlug: string, code: string, name = "Consultation") 
     category: "consultation" as const,
     unitPrice: 150_00n,
     taxRatePercent: "0",
+    customRate: false,
   };
 }
 
@@ -49,8 +50,7 @@ test("catalog CRUD, filters, deactivation, and code uniqueness are organization-
     unitPrice: 150_00n,
     active: true,
   });
-  expect(typeof created.unitPrice).toBe("bigint");
-  expect(typeof created.taxRatePercent).toBe("string");
+  expect(created.taxRatePercent).toMatch(/^\d+(\.\d+)?$/);
   expect((await api.catalog.list({ orgSlug: one.slug })).items.map((item) => item.id)).toContain(
     created.id,
   );
@@ -62,14 +62,31 @@ test("catalog CRUD, filters, deactivation, and code uniqueness are organization-
     code: created.code,
     category: created.category,
     unitPrice: 200_00n,
+    customRate: true,
     taxRatePercent: created.taxRatePercent,
     taxCode: created.taxCode,
-    active: true,
   });
 
   expect(updated.unitPrice).toBe(200_00n);
-  expect(typeof updated.unitPrice).toBe("bigint");
-  expect(typeof updated.taxRatePercent).toBe("string");
+  expect(updated.taxRatePercent).toBe(created.taxRatePercent);
+
+  const activeOnly = await api.catalog.setActive({
+    orgSlug: one.slug,
+    itemId: created.id,
+    active: false,
+  });
+
+  expect(activeOnly.active).toBe(false);
+
+  const afterActiveChange = (await api.catalog.list({ orgSlug: one.slug })).items.find(
+    (item) => item.id === created.id,
+  );
+
+  expect(afterActiveChange).toMatchObject({
+    active: false,
+    unitPrice: updated.unitPrice,
+    customRate: true,
+  });
 
   await expectORPCCode(
     api.catalog.create(catalogItemInput(one.slug, code, "Duplicate")),
@@ -81,18 +98,6 @@ test("catalog CRUD, filters, deactivation, and code uniqueness are organization-
   const procedure = await api.catalog.create({
     ...catalogItemInput(one.slug, `PROC-${uniqueSuffix()}`, "Procedure"),
     category: "procedure",
-  });
-
-  await api.catalog.update({
-    orgSlug: one.slug,
-    itemId: created.id,
-    name: created.name,
-    code: created.code,
-    category: created.category,
-    unitPrice: updated.unitPrice,
-    taxRatePercent: updated.taxRatePercent,
-    taxCode: updated.taxCode,
-    active: false,
   });
 
   const active = await api.catalog.list({ orgSlug: one.slug, activeOnly: true });
@@ -170,9 +175,9 @@ test("plain members can read catalog and staff but cannot mutate either domain",
       code: item.code,
       category: item.category,
       unitPrice: item.unitPrice,
+      customRate: false,
       taxRatePercent: item.taxRatePercent,
       taxCode: item.taxCode,
-      active: item.active,
     }),
     "FORBIDDEN",
   );
@@ -218,7 +223,7 @@ test("service search returns only the first six active matching additional servi
 
   expect(results.map((item) => item.name)).toEqual(["Panel procedure"]);
   expect(Object.keys(results[0]!).sort()).toEqual(
-    ["category", "code", "id", "name", "taxRatePercent", "unitPrice"].sort(),
+    ["category", "code", "customRate", "id", "name", "taxRatePercent", "unitPrice"].sort(),
   );
 });
 
@@ -473,9 +478,9 @@ test("catalog, department, and practitioner updates hide unknown and foreign ids
         code: alphaItem.code,
         category: alphaItem.category,
         unitPrice: alphaItem.unitPrice,
+        customRate: false,
         taxRatePercent: alphaItem.taxRatePercent,
         taxCode: alphaItem.taxCode,
-        active: true,
       }),
       "NOT_FOUND",
     );
@@ -536,9 +541,9 @@ test("catalog mutations and practitioner creates are audited, with price meta as
     code: item.code,
     category: item.category,
     unitPrice: 225_00n,
+    customRate: false,
     taxRatePercent: item.taxRatePercent,
     taxCode: item.taxCode,
-    active: true,
   });
 
   const entries = await eventually(async () => {

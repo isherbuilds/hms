@@ -35,18 +35,12 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 export const Route = createFileRoute("/$orgSlug/patients/$patientId")({
-  // Every open editor and expanded visit belongs to the record above it, so patient A
-  // must not hand its state to patient B.
   remountDeps: ({ params }) => ({ patientId: params.patientId }),
   loader: async ({ context: { queryClient }, params: { orgSlug, patientId } }) => {
-    // The page is the record: without it there is nothing to show, so a failure belongs
-    // to the route, not to a note inside a page that has no content.
     await loadRouteQuery(
       queryClient.query(orpc.patient.get.queryOptions({ input: { orgSlug, patientId } })),
     );
   },
-  // The open tab lives in the URL so a link is shareable and Back from a visit lands
-  // where the user left.
   validateSearch: z.object({
     tab: z.enum(["record", "visits", "billing"]).optional().catch(undefined),
   }),
@@ -91,8 +85,6 @@ function PinnedFacts({
             {` · ${ageLabel} years`}
             {record.bloodGroup ? ` · ${record.bloodGroup}` : ""}
           </p>
-          {/* Who is covering this patient, nothing more: the policy and employee
-              numbers belong beside the Edit button that changes them. */}
           {record.sponsor ? (
             <p className="truncate text-xs text-muted-foreground">
               Sponsor: {record.sponsor.payerName}
@@ -135,8 +127,6 @@ function ClinicalBlock({
   children,
 }: {
   title: string;
-  // The colour is the claim — see docs/design.md §5 for why these tokens are the
-  // only chromatic exception.
   tone: "alert" | "note" | "clear";
   children: ReactNode;
 }) {
@@ -313,7 +303,7 @@ function PatientRecordSections({
   accountError: Error | null;
 }) {
   const { tab } = Route.useSearch();
-  const active: TabId = visible.some((entry) => entry.id === tab) ? (tab as TabId) : "record";
+  const active: TabId = visible.find((entry) => entry.id === tab)?.id ?? "record";
 
   return (
     <>
@@ -355,8 +345,6 @@ function PatientDetailRoute() {
   const { orgSlug, patientId } = Route.useParams();
   const { today } = useOrgDateTime();
 
-  // The loader awaited this and turns a missing patient into a 404, so it is present
-  // here — a `useQuery` beside it would only add branches that never run.
   const record = useSuspenseQuery(
     orpc.patient.get.queryOptions({ input: { orgSlug, patientId } }),
   ).data;

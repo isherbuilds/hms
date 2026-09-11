@@ -25,6 +25,7 @@ until their trigger is met and they enter this registry.
 
 | Work                                                                                        | Lifecycle    | Exit condition                                                                                                             |
 | ------------------------------------------------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| [Custom OPD rates](./opd.md#catalog-and-charge-meaning)                                     | Verification | Finish desktop/mobile browser checks                                                                                       |
 | [Patient contacts and name casing](./product.md#patient-contacts)                           | Verification | Resolve the existing test import of `@hms/storage`, rerun the full type/test gates, and finish the print checks below      |
 | [Invitation account onboarding](./research/invitation-account-onboarding.md)                | Blocked      | An email provider exists; then add mailbox verification per the memo and retire the id-as-proof rule in D006               |
 | [Payment methods, bank transfer, sponsors](./specs/payment-methods-cheques-and-sponsors.md) | Active       | After one month of pilot use the method-mix and sponsor-share counts are recorded and the payer-domain go/no-go is decided |

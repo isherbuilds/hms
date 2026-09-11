@@ -68,13 +68,17 @@ check-in.
 
 Both paths use the same optional, server-searched Services picker. The picker
 returns at most six active tenant-scoped catalog matches. Selected rows are local
-editable state. For **Now**, every amount on screen comes from one server quote
-(`opd.quoteWalkIn`) that re-reads each id, price, and tax fact. The financial
+editable state. An item marked for intake pricing starts at its catalog rate, and
+the operator may raise that rate but never lower it; any reduction is a discount,
+which needs a note. Clearing the field returns to the catalog rate.
+For **Now**, every amount on screen comes from one server
+quote (`opd.quoteWalkIn`) that re-reads each id, category, and tax fact. It uses
+the supplied intake rate only after that validation. The financial
 shell stays visible at zero before a quote and while its inputs change; submit
 waits for the current quote. For **Later**,
-the form lists the chosen services with their catalog rate and no totals, because
-a booking collects nothing. The client sends the practitioner only; the server
-derives the department from the practitioner record.
+the form lists the chosen services with their effective rate and no totals,
+because a booking collects nothing. The client sends the practitioner only; the
+server derives the department from the practitioner record.
 
 ### Now
 
@@ -110,6 +114,8 @@ There is no quote, attendance-fee omission, discount, or collection during
 booking. Selected non-consultation services are verified and snapshotted as
 pending Charges in the booking transaction. They remain outside cashier and
 dashboard unbilled work until check-in; cancellation or no-show voids them.
+For an eligible item, the Charge snapshots the optional intake rate. The catalog
+price remains unchanged.
 
 The Later picker hides consultation items and `opd.book` rejects a consultation
 item even when called directly. Check-in still applies the automatic attendance
@@ -124,6 +130,15 @@ consultation and procedure (D024). `resolveOpdPricing` and
 `catalog.searchServices` both enforce it, so `opd.book`, `opd.createWalkIn`, and
 `opd.quoteWalkIn` cannot take a lab or radiology line. Those bill where the work
 is ordered, once those domains ship.
+
+Any catalog category may opt into an intake rate. The rate applies where the
+operator picks the item as a service; the automatic attendance fee always bills
+its catalog rate. OPD still accepts only its billable categories. The API rejects a supplied rate
+unless the item opted in, rejects a rate below the catalog price, and always
+reuses the catalog tax fields. The immutable Charge records the applied
+rate and actor. An issued Invoice records the same financial value, so the
+ordinary intake rate does not create a separate audit event. The printed Invoice
+names the member who issued it.
 
 Categories are discovery and revenue-grouping vocabulary, not clinical workflow
 state. A Charge or Invoice line never proves that a procedure was ordered,

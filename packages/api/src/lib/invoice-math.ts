@@ -46,15 +46,7 @@ type InvoiceLine = {
   taxCode: string | null;
 };
 
-export function computeInvoiceLines(
-  charges: ChargeInput[],
-  discountPaise: bigint,
-): {
-  lines: InvoiceLine[];
-  subtotal: bigint;
-  taxTotal: bigint;
-  grandTotal: bigint;
-} {
+export function computeInvoiceLines(charges: ChargeInput[], discountPaise: bigint) {
   const preparedLines = charges.map((charge) => {
     if (!Number.isSafeInteger(charge.qty) || charge.qty < 0) {
       throw new Error(`Invalid quantity: ${charge.qty}`);
@@ -93,7 +85,6 @@ export function computeInvoiceLines(
   const lines = preparedLines.map(({ charge, lineSubtotal, allocatedDiscount }): InvoiceLine => {
     const taxableValuePaise = lineSubtotal - allocatedDiscount;
 
-    // The rate string "18.00" parses to 1800 hundredths of a percent.
     const taxAmountPaise = divideHalfUp(
       taxableValuePaise * parseDecimal(charge.taxRatePercent),
       10_000n,
@@ -127,17 +118,14 @@ export function computeInvoiceLines(
   };
 }
 
-export function derivePartialCredit(
-  gross: bigint,
-  taxRatePercent: string,
-): { taxableValue: bigint; taxAmount: bigint; gross: bigint } {
+export function derivePartialCredit(gross: bigint, taxRatePercent: string) {
   const taxableValue = divideHalfUp(gross * 10_000n, 10_000n + parseDecimal(taxRatePercent));
 
   return { taxableValue, taxAmount: gross - taxableValue, gross };
 }
 
 /** Half-up on CGST, remainder to SGST; sign-preserving so credit notes split the same way. */
-export function splitGst(taxAmount: bigint): { cgst: bigint; sgst: bigint } {
+export function splitGst(taxAmount: bigint) {
   const cgst = divideHalfUp(taxAmount, 2n);
 
   return { cgst, sgst: taxAmount - cgst };

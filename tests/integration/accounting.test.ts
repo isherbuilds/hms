@@ -57,7 +57,7 @@ type AccountingFixture = {
     taxRatePercent?: string,
     description?: string,
     taxCode?: string,
-  ) => Promise<unknown>;
+  ) => Promise<object>;
   addCatalogCharge: (
     appointmentId: string,
     options: {
@@ -247,8 +247,7 @@ test("dashboard collection trend labels the organization's Business Dates", asyn
   const now = new Date();
   const utcDate = now.toISOString().slice(0, 10);
 
-  // These fixed-offset extremes overlap around UTC noon, so one is always on a
-  // different calendar date. America/Adak's DST offset made this time-dependent.
+  // These fixed-offset extremes never share a calendar date.
   const timeZone = ["Pacific/Kiritimati", "Etc/GMT+12"].find(
     (candidate) => businessDate(now, candidate) !== utcDate,
   );
@@ -853,9 +852,9 @@ test("invoice and credit note keep the revenue category captured when the charge
     code: item.code,
     category: "lab",
     unitPrice: item.unitPrice,
+    customRate: false,
     taxRatePercent: item.taxRatePercent,
     taxCode: item.taxCode,
-    active: item.active,
   });
 
   const issued = await settlePendingCharges(fixture.api, {

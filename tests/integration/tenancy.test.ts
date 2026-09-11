@@ -99,8 +99,7 @@ test("a foreign org claim cannot write into that tenant's audit trail", async ()
     clientFor(visitor).settings.get({ orgSlug: organization.slug }),
     "FORBIDDEN",
   );
-  // Draining beats sleeping: a negative assertion behind a fixed interval passes
-  // wrongly the moment a reintroduced write lands just after it.
+  // Drain instead of sleeping so a late write still fails the test.
   await drainAuditWrites();
 
   const audit = await clientFor(owner).audit.list({ orgSlug: organization.slug });
@@ -321,7 +320,6 @@ test("a member,admin holder gets the union of both roles' permissions", async ()
 
   await setMemberRoles(owner, row!.id, ["reception", "admin"], organization.id);
 
-  // Reading only the first stored role would leave this denied.
   const ownDenial = await eventually(async () => {
     const audit = await personClient.audit.list({ orgSlug: organization.slug });
 
@@ -363,13 +361,13 @@ test("an unknown slug is FORBIDDEN, not NOT_FOUND — existence never leaks", as
   const organization = await createOrganization(user, "unknown-slug");
   const api = clientFor(user);
 
-  // Identical to a real-but-foreign org, so a caller cannot probe which slugs exist.
   await expectORPCCode(api.settings.get({ orgSlug: `absent-${uniqueSuffix()}` }), "FORBIDDEN");
   await api.settings.get({ orgSlug: organization.slug });
 });
 
-// Compared against `appRouter` below, so a new procedure that is not listed here
-// fails the suite rather than going uncovered.
+// Compared against `appRouter` so an unlisted procedure fails the suite.
+type OrgClaim = { orgSlug: string };
+
 const GUARDED_CALLS = {
   "dashboard.today": (api, claim) => api.dashboard.today({ ...claim }),
   "dashboard.collections": (api, claim) => api.dashboard.collections({ ...claim }),
@@ -442,9 +440,11 @@ const GUARDED_CALLS = {
       code: `INTR-${uniqueSuffix()}`,
       category: "other",
       unitPrice: 1_00n,
+      customRate: false,
       taxRatePercent: "0",
-      active: true,
     }),
+  "catalog.setActive": (api, claim) =>
+    api.catalog.setActive({ ...claim, itemId: Bun.randomUUIDv7(), active: true }),
   "payer.list": (api, claim) => api.payer.list({ ...claim }),
   "payer.create": (api, claim) =>
     api.payer.create({ ...claim, name: `Intrusion ${uniqueSuffix()}`, type: "insurer" }),
@@ -591,11 +591,12 @@ const GUARDED_CALLS = {
   "member.updateRole": (api, claim) =>
     api.member.updateRole({ ...claim, memberId: "m", role: "admin" }),
   "member.remove": (api, claim) => api.member.remove({ ...claim, memberId: "m" }),
-} satisfies Record<string, (api: AppRouterClient, claim: { orgSlug: string }) => Promise<unknown>>;
+} satisfies Record<string, (api: AppRouterClient, claim: OrgClaim) => Promise<object | void>>;
 
-const NO_CLAIM = {} as { orgSlug: string };
+// SAFETY: deliberately empty claim, typed only to reach the procedure signatures.
+const NO_CLAIM = {} as OrgClaim;
 
-function reportRange(): { from: string; to: string } {
+function reportRange() {
   const day = 24 * 60 * 60 * 1_000;
   const now = Date.now();
 
@@ -632,8 +633,6 @@ test("every procedure rejects a missing org claim as BAD_REQUEST, not FORBIDDEN"
   const user = await createTestUser("no-claim");
   const api = clientFor(user);
 
-  // D001: a missing claim fails validation, not authorization — so the code, not
-  // merely the rejection, is what is asserted.
   for (const [name, call] of Object.entries(GUARDED_CALLS)) {
     await expectORPCCode(call(api, NO_CLAIM), "BAD_REQUEST", name);
   }
@@ -646,8 +645,6 @@ test("every procedure is FORBIDDEN for a removed member on the very next request
   await joinOrganization(member, organization.id);
 
   const memberClient = clientFor(member);
-  // Control case: without it the sweep below would pass against a user who never
-  // joined at all.
   const before = await memberClient.settings.get({ orgSlug: organization.slug });
   expect(before.currency).toBe("INR");
 
@@ -673,8 +670,7 @@ test("member mutations reject an id belonging to another tenant", async () => {
 
   expect(inAlpha).toBeDefined();
 
-  // Bob owns beta, so the guard passes — only the scoped pre-read stops alpha's
-  // member id reaching Better Auth.
+  // Bob owns beta, so only the scoped pre-read stops alpha's member id.
   const bobClient = clientFor(bob);
   await expectORPCCode(
     bobClient.member.updateRole({ orgSlug: beta.slug, memberId: inAlpha!.id, role: "admin" }),
@@ -813,10 +809,14 @@ test("catalog rows are invisible from another org and cannot be updated by forei
       code: item.code,
       category: item.category,
       unitPrice: item.unitPrice,
+      customRate: false,
       taxRatePercent: item.taxRatePercent,
       taxCode: item.taxCode,
-      active: item.active,
     }),
+    "NOT_FOUND",
+  );
+  await expectORPCCode(
+    bobClient.catalog.setActive({ orgSlug: beta.slug, itemId: item.id, active: false }),
     "NOT_FOUND",
   );
 });

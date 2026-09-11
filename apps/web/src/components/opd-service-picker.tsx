@@ -16,8 +16,10 @@ export type ServiceLine = {
   name: string;
   category: string;
   unitPrice: bigint;
+  customRate: boolean;
   taxRatePercent: string;
   qty: number;
+  customUnitPrice?: bigint;
 };
 
 export function ServicePicker({
@@ -33,10 +35,8 @@ export function ServicePicker({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const currency = useMembership(orgSlug, (membership) => membership.currency);
-  // The DOM holds what is typed; only the settled term becomes state.
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
-  // Base UI owns the input text, so clearing it after a pick means mounting a fresh one.
   const [box, setBox] = useState(0);
   const settle = useDebouncedCallback(setSearch, 250);
   const searching = search.length > 0;
@@ -96,6 +96,7 @@ export function ServicePicker({
                 name: item.name,
                 category: item.category,
                 unitPrice: item.unitPrice,
+                customRate: item.customRate,
                 taxRatePercent: item.taxRatePercent,
                 qty: 1,
               });
@@ -112,7 +113,6 @@ export function ServicePicker({
               name: "service-search",
               autoComplete: "off",
               placeholder: "Search service code, name or category",
-              // Only after a pick: a fresh input must not steal focus when the section mounts.
               autoFocus: box > 0,
               onFocus: () => {
                 if (typed().length > 0) setOpen(true);

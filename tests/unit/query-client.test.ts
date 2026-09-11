@@ -62,8 +62,10 @@ test("query retries are disabled during SSR and for auth failures", async () => 
   }
 });
 
-// Procedure inputs sit inside query keys; money inputs are bigint.
 test("query keys carrying bigint hash instead of throwing", () => {
   const hash = createQueryClient().getDefaultOptions().queries?.queryKeyHashFn;
-  expect(hash?.(["opd", { input: { discountAmount: 12_34n } }])).toContain('"1234n"');
+  const key = (amount: bigint | string) => ["opd", { input: { discountAmount: amount } }];
+
+  expect(hash?.(key(12_34n))).toBe(hash?.(key(12_34n)));
+  expect(hash?.(key(12_34n))).not.toBe(hash?.(key("1234")));
 });

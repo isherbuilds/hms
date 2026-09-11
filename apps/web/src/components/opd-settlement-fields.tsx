@@ -141,9 +141,10 @@ export function SettlementFields({
                         aria-label={`Payment ${index + 1} method`}
                         value={payment.method}
                         disabled={pending}
-                        onChange={(event) =>
-                          replace(payment.id, { method: event.target.value as PaymentMethod })
-                        }
+                        onChange={(event) => {
+                          // SAFETY: the options are rendered from PAYMENT_METHODS.
+                          replace(payment.id, { method: event.target.value as PaymentMethod });
+                        }}
                       >
                         {PAYMENT_METHODS.map((method) => (
                           <option key={method} value={method}>
@@ -177,8 +178,6 @@ export function SettlementFields({
                   reference={
                     needsReference(payment.method) ? (
                       <Field data-invalid={Boolean(referenceProblem) || undefined}>
-                        {/* Nothing on screen derives from the reference until it settles,
-                            so the DOM holds it and a keystroke renders nothing. */}
                         <Input
                           id={`payment-reference-${payment.id}`}
                           name={`payment-reference-${payment.id}`}
@@ -194,8 +193,6 @@ export function SettlementFields({
                           }
                           onBlur={(event) => replace(payment.id, { reference: event.target.value })}
                           onKeyDown={(event) => {
-                            // Enter submits the form and the submit handler reads state, so
-                            // the reference has to land before the browser gets there.
                             if (event.key === "Enter") {
                               replace(payment.id, { reference: event.currentTarget.value });
                             }
@@ -220,7 +217,6 @@ export function SettlementFields({
               onClick={() => {
                 const line = nextPaymentLine(payments, remaining);
                 onPaymentsChange([...payments, line]);
-                // Land in the amount: the method is already the one left unused.
                 requestAnimationFrame(() =>
                   document.getElementById(`payment-amount-${line.id}`)?.focus(),
                 );
@@ -244,8 +240,6 @@ export function SettlementFields({
         <FieldLabel htmlFor="settlement-note">
           Note {reasonRequired ? <span className="text-destructive">*</span> : null}
         </FieldLabel>
-        {/* The note drives no readout either, so it settles on blur too. The key
-            re-seeds the box when a settled draft clears the note behind it. */}
         <Textarea
           key={note}
           id="settlement-note"

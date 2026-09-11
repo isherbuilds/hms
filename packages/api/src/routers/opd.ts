@@ -45,6 +45,7 @@ const serviceLines = z
     z.object({
       catalogItemId: z.string(),
       qty: z.number().int().min(1).max(999).default(1),
+      unitPrice: money.optional(),
     }),
   )
   .max(20)
@@ -62,15 +63,14 @@ function futureLocalDateTime(scheduledLocal: string, timeZone: string, now: Date
   try {
     return localDateTime(scheduledLocal, timeZone);
   } catch {
-    // Zod proved the shape; only a DST gap is left, and that is the operator's input.
+    // Only a DST gap is left, and that is the operator's input.
     throw new ORPCError("BAD_REQUEST", {
       message: "That time does not exist on that day in this timezone",
     });
   }
 }
 
-// The status predicate keeps the UPDATE a no-op when a concurrent command already
-// moved the row — load-bearing even after a FOR UPDATE read.
+// The status predicate keeps the UPDATE a no-op after a concurrent move, even after FOR UPDATE.
 async function transitionAppointment(options: {
   executor: typeof db | DbTransaction;
   orgId: string;
@@ -139,12 +139,11 @@ export const opdRouter = {
 
     const appointmentId = Bun.randomUUIDv7();
 
-    const chargeRows = pricing.serviceItems.map(({ item, qty }) =>
+    const chargeRows = pricing.serviceItems.map((line) =>
       chargeRow({
+        ...line,
         orgId: scope.orgId,
         appointmentId,
-        item,
-        qty,
         sourceType: "catalog",
         userId: scope.userId,
         now,
@@ -182,8 +181,6 @@ export const opdRouter = {
     });
   }),
 
-  // The fee depends on whether this patient counts as a follow-up, which only the
-  // server knows.
   quoteWalkIn: orgProcedure(
     { opd: ["read"], patient: ["read"] },
     orgInput.extend({
@@ -208,18 +205,12 @@ export const opdRouter = {
     });
 
     const quotedItems = [
-      ...(pricing.feeItem
-        ? [{ item: pricing.feeItem, qty: 1, source: "consultation" as const }]
-        : []),
-      ...pricing.serviceItems.map(({ item, qty }) => ({
-        item,
-        qty,
-        source: "service" as const,
-      })),
+      ...(pricing.fee ? [{ ...pricing.fee, source: "consultation" as const }] : []),
+      ...pricing.serviceItems.map((line) => ({ ...line, source: "service" as const })),
     ];
 
     const subtotalPaise = quotedItems.reduce(
-      (sum, { item, qty }) => sum + BigInt(qty) * item.unitPrice,
+      (sum, { unitPrice, qty }) => sum + BigInt(qty) * unitPrice,
       0n,
     );
 
@@ -228,11 +219,11 @@ export const opdRouter = {
     }
 
     const computed = computeInvoiceLines(
-      quotedItems.map(({ item, qty }) => ({
+      quotedItems.map(({ item, qty, unitPrice }) => ({
         chargeId: item.id,
         description: item.name,
         qty,
-        unitPrice: item.unitPrice,
+        unitPrice,
         taxRatePercent: item.taxRatePercent,
         taxCode: item.taxCode,
       })),
@@ -268,10 +259,8 @@ export const opdRouter = {
         services: serviceLines.default([]),
         omitConsultFee: z.boolean().optional(),
         discountAmount: money.default(0n),
-        // Rejects catalog or fee changes between quote and commit.
         expectedGrandTotal: money,
         payments: z.array(paymentLine).max(4).default([]),
-        // Required whenever there is a discount, or the bill is not cleared.
         note,
       }),
     }),
@@ -293,25 +282,23 @@ export const opdRouter = {
     });
 
     const chargeRows = [
-      ...(pricing.feeItem
+      ...(pricing.fee
         ? [
             chargeRow({
+              ...pricing.fee,
               orgId: scope.orgId,
               appointmentId,
-              item: pricing.feeItem,
-              qty: 1,
               sourceType: "consult_fee",
               userId: scope.userId,
               now: billing.now,
             }),
           ]
         : []),
-      ...pricing.serviceItems.map(({ item, qty }) =>
+      ...pricing.serviceItems.map((line) =>
         chargeRow({
+          ...line,
           orgId: scope.orgId,
           appointmentId,
-          item,
-          qty,
           sourceType: "catalog",
           userId: scope.userId,
           now: billing.now,
@@ -367,7 +354,6 @@ export const opdRouter = {
         return { appointment, invoice: null, payments: [] };
       }
 
-      // All or nothing: there is no state where a token exists owing money nobody chose to owe.
       const invoiceId = Bun.randomUUIDv7();
 
       const settled = await settleInvoiceTx(tx, {
@@ -527,15 +513,14 @@ export const opdRouter = {
 
       let charge: typeof charges.$inferSelect | null = null;
 
-      if (pricing.feeItem) {
+      if (pricing.fee) {
         const [inserted] = await tx
           .insert(charges)
           .values(
             chargeRow({
+              ...pricing.fee,
               orgId: scope.orgId,
               appointmentId: appointment.id,
-              item: pricing.feeItem,
-              qty: 1,
               sourceType: "consult_fee",
               userId: scope.userId,
               now,
@@ -709,8 +694,6 @@ export const opdRouter = {
         : undefined;
 
     const search = input.q ? likePattern(input.q) : undefined;
-    // Phones match on digits only, the way `patient.search` does, so a stored
-    // `555-1234` is found by `5551234`.
     const digits = input.q ? normalizePhone(input.q) : "";
     const phoneSearch = digits.length >= 4 ? likePattern(digits) : undefined;
 
@@ -837,7 +820,6 @@ export const opdRouter = {
     if (!appointment)
       throw new ORPCError("NOT_FOUND", { message: "That appointment no longer exists." });
 
-    // A booked row may exist on caller details alone, so `patient` is null until check-in.
     const [[patient], [practitioner], [department], appointmentCharges, prescriptions] =
       await Promise.all([
         appointment.patientId

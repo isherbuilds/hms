@@ -14,7 +14,7 @@ export function FinancialSummary({
   const { currency } = quote;
 
   return (
-    <dl className="grid gap-2">
+    <dl className="grid gap-2 group-aria-busy/quote:opacity-50">
       <div className="flex justify-between">
         <dt className="text-muted-foreground">Subtotal</dt>
         <dd className="tabular-nums">{formatMoney(quote.subtotal, currency)}</dd>

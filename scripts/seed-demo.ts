@@ -1,4 +1,4 @@
-import { formatMoney, parseMoney } from "@hms/api/core/money";
+import { formatDecimal, parseDecimal } from "@hms/api/core/money";
 import { businessDate } from "@hms/api/lib/business-date";
 import { documentNumber, fiscalYearLabel } from "@hms/api/lib/invoice-math";
 import { db } from "@hms/db";
@@ -16,12 +16,6 @@ import { payments } from "@hms/db/schema/payments";
 import { practitioners } from "@hms/db/schema/practitioners";
 import { env } from "@hms/env/server";
 import { and, eq, like } from "drizzle-orm";
-
-// Throwaway demo data for screenshots: three weeks of a plausible outpatient
-// practice at Mercy General. Every row's id starts with `demo-`, so a re-run
-// wipes only its own data and leaves anything you created by hand alone.
-// All writes commit together. Existing references to demo rows make a rerun
-// fail without changing the database.
 
 if (env.NODE_ENV === "production") throw new Error("Refusing to seed a production database.");
 
@@ -52,13 +46,10 @@ if (!actor) throw new Error("No owner@example.com. Run `bun run db:seed` first."
 
 const userId = actor.id;
 
-// --- Deterministic ids and randomness ----------------------------------------
-
 let sequence = 0;
 
 const id = (kind: string) => `demo-${kind}-${(sequence += 1).toString().padStart(6, "0")}`;
 
-// A fixed seed, so two runs produce the same screenshots.
 let rngState = 0x5eed_2026;
 
 function random(): number {
@@ -78,11 +69,8 @@ function dayBefore(days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-// An IST wall-clock time on a business date, as an instant.
 const at = (day: string, hour: number, minute: number) =>
   new Date(`${day}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00+05:30`);
-
-// --- Catalog, departments, practitioners -------------------------------------
 
 const DEPARTMENTS = [
   { name: "General Medicine", fee: "400.00", code: "CONS-GEN", share: 4 },
@@ -102,6 +90,7 @@ const PROCEDURES = [
   { name: "Cryotherapy, single lesion", code: "PROC-CRY", price: "900.00" },
   { name: "ECG, 12 lead", code: "PROC-ECG", price: "400.00" },
   { name: "Vision screening", code: "PROC-VIS", price: "300.00" },
+  { name: "Physiotherapy session", code: "PROC-PHY", price: "500.00", customRate: true },
 ];
 
 const DOCTORS = [
@@ -120,7 +109,7 @@ const consultItems = DEPARTMENTS.map((d) => ({
   name: `${d.name} consultation`,
   code: d.code,
   category: "consultation" as const,
-  unitPrice: parseMoney(d.fee),
+  unitPrice: parseDecimal(d.fee),
   taxRatePercent: "0",
   taxCode: null,
   active: true,
@@ -132,7 +121,8 @@ const procedureItems = PROCEDURES.map((p) => ({
   name: p.name,
   code: p.code,
   category: "procedure" as const,
-  unitPrice: parseMoney(p.price),
+  unitPrice: parseDecimal(p.price),
+  customRate: "customRate" in p,
   taxRatePercent: "0",
   taxCode: null,
   active: true,
@@ -164,12 +154,8 @@ const doctorRows = DOCTORS.map((doc) => {
   };
 });
 
-// Weighted so the queue mix is not a flat six-way split.
 const DOCTOR_POOL = doctorRows.flatMap((doc) => Array<typeof doc>(doc.share).fill(doc));
 
-// --- Patients -----------------------------------------------------------------
-
-// Kept apart so a record never reads "Fatima Sayed · Male".
 const FEMALE_GIVEN = [
   "Meera",
   "Farida",
@@ -247,6 +233,7 @@ const PATIENT_COUNT = 160;
 
 const patientRows = Array.from({ length: PATIENT_COUNT }, () => {
   const female = random() < 0.52;
+  const sex: "female" | "male" = female ? "female" : "male";
 
   return {
     id: id("pat"),
@@ -254,7 +241,7 @@ const patientRows = Array.from({ length: PATIENT_COUNT }, () => {
     mrn: "",
     name: `${pick(female ? FEMALE_GIVEN : MALE_GIVEN)} ${pick(FAMILY)}`,
     phone: `9${between(700000000, 899999999)}`,
-    sex: (female ? "female" : "male") as "female" | "male",
+    sex,
     dateOfBirth: `${between(1942, 2022)}-${String(between(1, 12)).padStart(2, "0")}-${String(between(1, 28)).padStart(2, "0")}`,
     dobEstimated: random() < 0.08,
     address: `${pick(AREAS)}, Pune`,
@@ -269,8 +256,6 @@ const patientRows = Array.from({ length: PATIENT_COUNT }, () => {
     createdBy: userId,
   };
 });
-
-// --- The practice, day by day --------------------------------------------------
 
 const fyOf = (day: string) =>
   fiscalYearLabel(new Date(`${day}T06:00:00Z`), settings.fiscalYearStartMonth);
@@ -421,7 +406,6 @@ for (let offset = HISTORY_DAYS; offset >= 0; offset--) {
   const day = dayBefore(offset);
   const weekday = new Date(`${day}T06:00:00Z`).getUTCDay();
   const sunday = weekday === 0;
-  // A real week has shape: Sundays are short, Mondays are the crush.
   const load = sunday ? between(4, 7) : weekday === 1 ? between(18, 24) : between(11, 18);
 
   for (let i = 0; i < load; i++) {
@@ -440,7 +424,6 @@ for (let offset = HISTORY_DAYS; offset >= 0; offset--) {
     });
   }
 
-  // Bookings still to come, only for today; earlier days are closed out.
   if (offset === 0) {
     for (let i = 0; i < 7; i++) {
       const doctor = pick(DOCTOR_POOL);
@@ -463,7 +446,6 @@ for (let offset = HISTORY_DAYS; offset >= 0; offset--) {
       });
     }
 
-    // One of each closed state, so the "All" filter is not a wall of one status.
     for (const status of ["cancelled", "no_show"] as const) {
       const doctor = pick(DOCTOR_POOL);
       const scheduledFor = at(day, 11, 30);
@@ -490,7 +472,6 @@ for (let offset = HISTORY_DAYS; offset >= 0; offset--) {
   }
 }
 
-// Allocate through the same counters as the app, then insert in dependency order.
 await db.transaction(async (tx) => {
   for (const table of [
     invoiceLines,
@@ -554,7 +535,7 @@ console.info(
     "",
     "Demo practice seeded.",
     `  ${HISTORY_DAYS + 1} days, ${appointmentRows.length} appointments, ${invoiceRows.length} invoices, ${paymentRows.length} receipts.`,
-    `  Today (${today}): ₹${formatMoney(collectedToday)} collected.`,
+    `  Today (${today}): ₹${formatDecimal(collectedToday)} collected.`,
     `  Sign in as owner@example.com / password123 and open /${SLUG}/dashboard`,
     "",
   ].join("\n"),

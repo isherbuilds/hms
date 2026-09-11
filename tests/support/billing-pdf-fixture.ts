@@ -32,6 +32,7 @@ export function billingPdfFixture({
       patientAddress: unicode ? "शिवाजी नगर, पुणे" : "Shivaji Nagar, Pune",
       patientGuardian: unicode ? "W/o राजेश शर्मा" : "W/o Rajesh Sharma",
       issuedBy: "user-1",
+      issuedByName: unicode ? "अनीता देसाई" : "Anita Desai",
       createdAt: new Date("2026-08-26T20:00:00.000Z"),
     },
     lines: Array.from({ length: lineCount }, (_, index) => ({

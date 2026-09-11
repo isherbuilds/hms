@@ -37,9 +37,6 @@ const asOfInput = orgInput.extend({ asOf: reportDate });
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
-// `maxDays` belongs only to reports whose row count grows with the period. Trial
-// balance and balance sheet return one row per account whatever the range, and the
-// pool's statement timeout already bounds a long scan.
 const GST_BOUND = { report: "GST register", maxDays: 366 };
 
 const COLLECTIONS_BOUND = { report: "Daily collections", maxDays: 92 };
@@ -97,6 +94,14 @@ async function accountAggregates(
     .groupBy(accounts.id, accounts.code, accounts.name, accounts.type);
 
   return rows;
+}
+
+function perMethod<T>(value: (method: PaymentMethod) => T): Record<PaymentMethod, T> {
+  // SAFETY: the entries are keyed by every PAYMENT_METHODS member.
+  return Object.fromEntries(PAYMENT_METHODS.map((method) => [method, value(method)])) as Record<
+    PaymentMethod,
+    T
+  >;
 }
 
 export const reportRouter = {
@@ -205,9 +210,7 @@ export const reportRouter = {
           left.method.localeCompare(right.method),
       );
 
-      const methodTotals = Object.fromEntries(
-        PAYMENT_METHODS.map((method) => [method, { payments: 0n, refunds: 0n }]),
-      ) as Record<PaymentMethod, { payments: bigint; refunds: bigint }>;
+      const methodTotals = perMethod(() => ({ payments: 0n, refunds: 0n }));
 
       const days = new Map<
         string,
@@ -230,10 +233,7 @@ export const reportRouter = {
 
         const day = days.get(row.businessDate) ?? {
           businessDate: row.businessDate,
-          byMethod: Object.fromEntries(PAYMENT_METHODS.map((method) => [method, 0n])) as Record<
-            PaymentMethod,
-            bigint
-          >,
+          byMethod: perMethod(() => 0n),
           payments: 0n,
           refunds: 0n,
         };
@@ -246,9 +246,7 @@ export const reportRouter = {
 
       const rows = [...days.values()].map((day) => ({
         businessDate: day.businessDate,
-        byMethod: Object.fromEntries(
-          PAYMENT_METHODS.map((method) => [method, day.byMethod[method]]),
-        ) as Record<PaymentMethod, bigint>,
+        byMethod: perMethod((method) => day.byMethod[method]),
         payments: day.payments,
         refunds: day.refunds,
         net: day.payments - day.refunds,
@@ -405,8 +403,7 @@ export const reportRouter = {
       assertValidPeriod(input.from, input.to, GST_BOUND);
       const orgId = context.scope.orgId;
 
-      // The stored Business Date, never `createdAt` reinterpreted through the current
-      // timezone: an issued document's date does not move when settings change.
+      // The stored Business Date, never `createdAt` reinterpreted through the current timezone.
       const [invoiceBuckets, creditNoteBuckets] = await Promise.all([
         db
           .select({

@@ -19,17 +19,16 @@ beforeAll(async () => {
   await resetTestDatabase();
 });
 
-// The fixture's organization runs on Asia/Kolkata, so the expected fiscal year comes
-// from that calendar, not the UTC one the test process happens to be in.
+// The fixture org runs on Asia/Kolkata, so the fiscal year follows that calendar.
 function fiscalYearNow(): string {
-  const [year, month] = new Intl.DateTimeFormat("en-CA", {
+  const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
     year: "numeric",
     month: "2-digit",
-  })
-    .format(new Date())
-    .split("-")
-    .map(Number) as [number, number];
+  }).format(new Date());
+
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
 
   const startYear = month >= 4 ? year : year - 1;
 
@@ -702,9 +701,13 @@ test("concurrent invoice issuance has one winner and leaves no charges for re-is
   ]);
 
   expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-  const rejected = results.filter((result) => result.status === "rejected");
+
+  const rejected = results.filter(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+
   expect(rejected).toHaveLength(1);
-  expect((rejected[0] as PromiseRejectedResult).reason.code).toBe("CONFLICT");
+  expect(rejected[0]?.reason.code).toBe("CONFLICT");
   await expectORPCCode(settlePendingCharges(fixture.api, input), "CONFLICT");
 });
 
@@ -1317,8 +1320,7 @@ test("settlement and appointment cancellation serialize without crossing states"
 
     if (!invoiceBackendPid) throw new Error("Expected invoice transaction backend pid");
 
-    // The invoice transaction already holds the appointment lock, so cancellation
-    // queues behind it — the reverse order of the case above.
+    // The invoice transaction already holds the appointment lock, so cancellation waits.
     const cancellationPromise = fixture.api.opd.cancel({
       orgSlug: fixture.organization.slug,
       appointmentId: invoiceFirstOpdAppointment.id,

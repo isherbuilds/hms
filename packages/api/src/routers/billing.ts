@@ -10,6 +10,7 @@ import { guardianLabel } from "@hms/db/schema/patient-relations";
 import { payments } from "@hms/db/schema/payments";
 import { refunds } from "@hms/db/schema/refunds";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
+import { user } from "@hms/db/schema/auth";
 import { ORPCError } from "@orpc/server";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -81,8 +82,6 @@ async function lockInvoice(tx: DbTransaction, orgId: string, invoiceId: string) 
   return invoice;
 }
 
-// The caller owns the transaction: `opd.createWalkIn` and
-// `billing.settleCharges` both issue inside their own.
 async function issueInvoiceTx(
   tx: DbTransaction,
   args: {
@@ -99,7 +98,6 @@ async function issueInvoiceTx(
 ) {
   const { scope, settings, now, fiscalYear, invoiceId } = args;
 
-  // Held here so every caller obeys it — no entry point may discount without a reason.
   if (args.discountAmount > 0n && !args.note) {
     throw new ORPCError("BAD_REQUEST", { message: "Add a reason for the discount" });
   }
@@ -331,8 +329,6 @@ async function recordPaymentsTx(
   const balance = await invoiceBalanceFor(tx, scope.orgId, invoice);
   const collectedPaise = args.payments.reduce((sum, payment) => sum + payment.amount, 0n);
 
-  // The form already caps at what it was shown, so reaching here means another
-  // terminal moved the balance: CONFLICT, and the client refreshes (D026).
   if (collectedPaise > (balance.outstanding > 0n ? balance.outstanding : 0n)) {
     throw new ORPCError("CONFLICT", {
       message: "That payment is more than the invoice still owes.",
@@ -383,8 +379,6 @@ async function recordPaymentsTx(
   return recorded;
 }
 
-// Billing owns the reviewed total, collection bounds and payment rules; the care
-// workflow owns the records around them.
 export async function settleInvoiceTx(
   tx: DbTransaction,
   args: {
@@ -398,7 +392,7 @@ export async function settleInvoiceTx(
     fiscalYear: string;
     invoiceId: string;
     expectedGrandTotal: bigint;
-    // "fresh" declares the care row was created in this transaction, so no concurrent charge writer exists.
+    // "fresh" means the care row was created in this transaction, so no concurrent charge writer exists.
     expectedChargeRevision: number | "fresh";
   },
 ) {
@@ -620,7 +614,6 @@ export const billingRouter = {
     const result = await db.transaction(async (tx) => {
       const invoice = await lockInvoice(tx, scope.orgId, input.invoiceId);
 
-      // Independent after the lock, so one round trip.
       const [sourceLines, [priorCredit], priorLines] = await Promise.all([
         tx
           .select({
@@ -700,7 +693,7 @@ export const billingRouter = {
           gross: 0n,
         };
 
-        let values: { taxableValue: bigint; taxAmount: bigint; gross: bigint };
+        let values: ReturnType<typeof derivePartialCredit>;
 
         if ("full" in requested) {
           const remainingGross = source.gross - prior.gross;
@@ -969,18 +962,20 @@ export const billingRouter = {
   ).handler(async ({ context, input }) => {
     const { scope } = context;
 
-    const [invoice] = await db
-      .select()
+    // `user` is the global auth table: attribution only; the org predicate stays on `invoices`.
+    const [row] = await db
+      .select({ invoice: invoices, issuedByName: user.name })
       .from(invoices)
+      .innerJoin(user, eq(user.id, invoices.issuedBy))
       .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.id, input.invoiceId)))
       .limit(1);
+
+    const invoice = row && { ...row.invoice, issuedByName: row.issuedByName };
 
     if (!invoice) {
       throw new ORPCError("NOT_FOUND", { message: "That invoice no longer exists." });
     }
 
-    // Ids are UUIDv7 minted in issuance order, so they break the ties `createdAt`
-    // leaves when one settlement stamps every row with the same instant.
     const [lines, invoicePayments, noteRows, invoiceRefunds] = await Promise.all([
       db
         .select()
