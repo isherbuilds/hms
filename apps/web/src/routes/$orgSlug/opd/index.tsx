@@ -34,6 +34,7 @@ import { formatMoney, ZERO } from "@/lib/money";
 import { OPERATIONAL_INFINITE_REFETCH } from "@/lib/operational-query";
 import { formatBusinessDate, formatTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
+import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 function DayStepper({
   date,
@@ -273,8 +274,11 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
                       {formatTime(appointment.dayOrderAt ?? appointment.createdAt, timeZone)}
                     </TableCell>
                     <TableCell className="max-w-0">
-                      <div className="truncate capitalize" title={appointment.practitionerName}>
-                        {appointment.practitionerName}
+                      <div
+                        className="truncate capitalize"
+                        title={practitionerDisplayName(appointment.practitionerName)}
+                      >
+                        {practitionerDisplayName(appointment.practitionerName)}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -325,7 +329,9 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
                     <span className="mt-1 block truncate text-muted-foreground">
                       {formatTime(appointment.dayOrderAt ?? appointment.createdAt, timeZone)}
                       {" · "}
-                      <span className="capitalize">{appointment.practitionerName}</span>
+                      <span className="capitalize">
+                        {practitionerDisplayName(appointment.practitionerName)}
+                      </span>
                     </span>
                     {appointment.balanceDue > ZERO ? (
                       <span className="mt-1 block font-medium text-destructive">

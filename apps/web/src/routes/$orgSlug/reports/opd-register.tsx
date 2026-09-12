@@ -23,6 +23,7 @@ import { downloadXlsx } from "@/lib/report-export";
 import { REPORT_PRINT_LANDSCAPE_CSS } from "@/lib/report-presentation";
 import { formatDateTime, orgMonthToDate as defaultRange, useOrgDateTime } from "@/lib/org-datetime";
 import { requireOrgPermission } from "@/lib/route-permission";
+import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 const MAX_DAYS = 31;
 
@@ -97,7 +98,7 @@ function OpdRegisterRoute() {
           patientName: row.patientName ?? "",
           patientMrn: row.patientMrn ?? "",
           callerName: row.callerName ?? "",
-          practitionerName: row.practitionerName,
+          practitionerName: practitionerDisplayName(row.practitionerName),
           departmentName: row.departmentName,
           arrivalMode: arrivalModeLabel(row.arrivalMode),
           status: OPD_STATUS_LABELS[row.status],
@@ -209,7 +210,9 @@ function OpdRegisterRoute() {
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="capitalize">{row.practitionerName}</TableCell>
+                      <TableCell className="capitalize">
+                        {practitionerDisplayName(row.practitionerName)}
+                      </TableCell>
                       <TableCell>{row.departmentName}</TableCell>
                       <TableCell className="whitespace-nowrap">
                         {arrivalModeLabel(row.arrivalMode)}

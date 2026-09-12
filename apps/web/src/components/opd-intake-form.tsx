@@ -45,6 +45,7 @@ import { type WalkInQuote } from "@/lib/opd-service-preview";
 import { formatBusinessDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
+import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 const intakeSchema = z
   .object({
@@ -248,7 +249,7 @@ function CareTeamFields({
                   </option>
                   {practitionerOptions.map((practitioner) => (
                     <option key={practitioner.id} value={practitioner.id}>
-                      {practitioner.name}
+                      {practitionerDisplayName(practitioner.name)}
                     </option>
                   ))}
                 </NativeSelect>
@@ -557,8 +558,13 @@ function FinancialAside({
 
   const previewTime = useScheduledPreview();
 
-  const practitionerName =
-    practitioners.find((practitioner) => practitioner.id === practitionerId)?.name ?? "—";
+  const selectedPractitioner = practitioners.find(
+    (practitioner) => practitioner.id === practitionerId,
+  );
+
+  const practitionerName = selectedPractitioner
+    ? practitionerDisplayName(selectedPractitioner.name)
+    : "—";
 
   return (
     <div className="sticky top-0">

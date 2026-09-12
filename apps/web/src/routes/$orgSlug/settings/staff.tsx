@@ -49,6 +49,7 @@ import { orpc } from "@/lib/orpc";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
 import { errorMessage } from "@/lib/orpc-error";
 import { requireOrgPermission } from "@/lib/route-permission";
+import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 import { SettingsTabs } from "./route";
 
@@ -282,7 +283,7 @@ function StaffRoute() {
                     return (
                       <TableRow key={practitioner.id}>
                         <TableCell className="font-medium capitalize">
-                          {practitioner.name}
+                          {practitionerDisplayName(practitioner.name)}
                         </TableCell>
                         <TableCell>
                           {departmentById.get(practitioner.departmentId)?.name ?? "—"}

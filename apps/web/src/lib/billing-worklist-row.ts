@@ -2,6 +2,7 @@
 // for money are the same question, so the desk works one ordered list.
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/org-datetime";
+import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 type WorklistState = "to-bill" | "fresh" | "late" | "stale";
 
@@ -85,7 +86,7 @@ export function toWorklistRows(
       total: row.pendingValue,
       owed: row.pendingValue,
       at: new Date(row.oldestChargeAt),
-      detail: `${row.chargeCount} charge${row.chargeCount === 1 ? "" : "s"} · ${row.practitionerName}`,
+      detail: `${row.chargeCount} charge${row.chargeCount === 1 ? "" : "s"} · ${practitionerDisplayName(row.practitionerName)}`,
       state: "to-bill" as const,
     })),
     ...invoices.map((row) => ({

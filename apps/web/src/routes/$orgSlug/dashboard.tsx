@@ -20,6 +20,7 @@ import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { formatDay } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { methodLabel } from "@/lib/settlement";
+import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 export const Route = createFileRoute("/$orgSlug/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard · HMS" }] }),
@@ -331,7 +332,7 @@ function DashboardRoute() {
                         </td>
                         <td className="py-2 text-muted-foreground">{appointment.departmentName}</td>
                         <td className="py-2 text-muted-foreground capitalize">
-                          {appointment.practitionerName}
+                          {practitionerDisplayName(appointment.practitionerName)}
                         </td>
                         <td className="py-2 text-right">
                           <Badge variant="secondary">

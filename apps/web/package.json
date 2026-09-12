@@ -24,9 +24,9 @@
     "@orpc/tanstack-query": "^1.15.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "^5.102.8",
-    "@tanstack/react-router": "^1.170.32",
+    "@tanstack/react-router": "^1.170.35",
     "@tanstack/react-router-ssr-query": "^1.167.2",
-    "@tanstack/react-start": "^1.168.49",
+    "@tanstack/react-start": "^1.168.52",
     "@types/mdx": "^2.0.14",
     "better-auth": "catalog:",
     "evlog": "catalog:",
@@ -39,7 +39,7 @@
     "react-hook-form": "catalog:",
     "sonner": "catalog:",
     "tailwindcss": "catalog:",
-    "takumi-pdf": "^0.14.2",
+    "takumi-pdf": "^0.14.3",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -49,9 +49,9 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "^6.1.1",
-    "oxc-transform-react": "^0.148.0",
+    "oxc-transform-react": "^0.149.0",
     "typescript": "catalog:",
-    "vite": "^8.2.2"
+    "vite": "^8.3.0"
   },
   "portless": {
     "name": "hms",

@@ -24,6 +24,7 @@ import { errorMessage } from "@/lib/orpc-error";
 import { patientAgeLabel } from "@/lib/patient-age";
 
 import { useOpdRecord } from "@/lib/opd-record";
+import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 const SCAN_EXTENSION_TYPES: Record<string, string> = {
   pdf: "application/pdf",
@@ -136,7 +137,7 @@ function OpdAppointmentDetailRoute() {
               {` · ${patient.mrn} · ${age} · ${patient.sex}`}
             </dd>
             <dt className="font-semibold">Practitioner</dt>
-            <dd className="capitalize">{practitioner.name}</dd>
+            <dd className="capitalize">{practitionerDisplayName(practitioner.name)}</dd>
             <dt className="font-semibold">Department</dt>
             <dd>{department.name}</dd>
           </dl>

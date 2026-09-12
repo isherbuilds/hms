@@ -28,6 +28,7 @@ import { OpdRecordContext, useOpdRecord } from "@/lib/opd-record";
 import { orpc } from "@/lib/orpc";
 import { hasErrorCode, loadRouteQuery } from "@/lib/orpc-error";
 import { patientAgeLabel } from "@/lib/patient-age";
+import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 // Two separate screens — the billing surface is large and its mistakes expensive —
 // sharing a URL root so a terminal moves between them without a list in between.
@@ -442,7 +443,7 @@ function OpdRecordFacts({ record }: { record: OpdRecordIdentity }) {
       )}
       <div className="flex flex-col gap-1">
         <h2 className="text-muted-foreground">Care team</h2>
-        <p className="font-medium capitalize">{practitioner.name}</p>
+        <p className="font-medium capitalize">{practitionerDisplayName(practitioner.name)}</p>
         <p className="text-muted-foreground">{department.name}</p>
       </div>
     </section>

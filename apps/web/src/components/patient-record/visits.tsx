@@ -21,6 +21,7 @@ import { formatBusinessDate, formatDateTime, useOrgDateTime } from "@/lib/org-da
 import { formatFileSize, openOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
 import { errorMessage } from "@/lib/orpc-error";
+import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 const visitsQuery = (orgSlug: string, patientId: string) =>
   orpc.patient.visits.infiniteOptions({
@@ -187,7 +188,9 @@ function VisitAccordionRow({
         </span>
         <span className="min-w-0 flex-1 truncate">
           {visit.departmentName}
-          <span className="pl-2 text-muted-foreground capitalize">{visit.practitionerName}</span>
+          <span className="pl-2 text-muted-foreground capitalize">
+            {practitionerDisplayName(visit.practitionerName)}
+          </span>
         </span>
         {visit.prescriptionCount > 0 ? (
           <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
