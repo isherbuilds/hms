@@ -11,7 +11,10 @@ import { invitationClaim } from "./invitation-claim";
 import { organizationSlugIssue } from "./organization-slug";
 
 export function invitationUrl(invitationId: string): string {
-  return new URL(`/join?invitation=${invitationId}`, env.CORS_ORIGIN).toString();
+  return new URL(
+    `/join?invitation=${invitationId}`,
+    env.CORS_ORIGIN,
+  ).toString();
 }
 
 function createAuth() {
@@ -35,7 +38,10 @@ function createAuth() {
     session: {
       cookieCache: {
         enabled: true,
+        maxAge: 60 * 60 * 24 * 30, // 30 days
       },
+      expiresIn: 60 * 60 * 24 * 30, // 90 days
+      updateAge: 60 * 60 * 24, // Update session daily
     },
     advanced: {
       database: {
@@ -89,7 +95,8 @@ function createAuth() {
           beforeUpdateOrganization: async ({ organization: update }) => {
             if (update.slug !== undefined) {
               throw new APIError("BAD_REQUEST", {
-                message: "An organization slug cannot be changed after creation",
+                message:
+                  "An organization slug cannot be changed after creation",
               });
             }
           },
