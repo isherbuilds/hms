@@ -522,6 +522,16 @@ test("payments, credits, and refunds post exactly and reconcile in the OPD regis
   expect(lineByCode(refundJournal.lines, "1100")).toMatchObject({ debit: 0n, credit: 59_00n });
   expectBalanced(refundJournal.lines);
 
+  const refundedCollections = await fixture.api.dashboard.collections({
+    orgSlug: fixture.organization.slug,
+  });
+
+  expect(refundedCollections.collected).toBe(59_00n);
+
+  const worklist = await fixture.api.billing.worklist({ orgSlug: fixture.organization.slug });
+
+  expect(worklist.summary.collectedToday).toBe(59_00n);
+
   const { appointment } = await fixture.api.opd.get({
     orgSlug: fixture.organization.slug,
     appointmentId: issued.appointment.id,
@@ -625,7 +635,7 @@ test("daily collections nets payments and refunds by Business Date and method", 
   });
 
   expect(dashboard.collected).toBe(0n);
-  expect(dashboard.trend.find((row) => row.day === collectionDay)?.amount).toBe(118_00n);
+  expect(dashboard.trend.find((row) => row.day === collectionDay)?.amount).toBe(98_00n);
   await expectORPCCode(
     fixture.api.report.dailyCollections({
       orgSlug: fixture.organization.slug,

@@ -129,7 +129,11 @@ export const billingWorklistRouter = {
         .where(eq(invoices.orgId, scope.orgId)),
       db
         .select({
-          total: sql`coalesce(sum(${payments.amount}), 0)::bigint`.mapWith(BigInt),
+          total:
+            sql`(coalesce(sum(${payments.amount}), 0) - coalesce((select sum(${refunds.amount}) from ${refunds}
+              where ${refunds.orgId} = ${scope.orgId} and ${refunds.businessDate} = ${today}), 0))::bigint`.mapWith(
+              BigInt,
+            ),
           receiptCount: sql<number>`count(*)::integer`,
         })
         .from(payments)
