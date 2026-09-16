@@ -181,11 +181,21 @@ export function OpdTreatmentPanel({
                           onClick={() => {
                             const remaining = item.qtyPlanned - item.postedQty;
 
-                            if (remaining > 1) {
+                            // An ordinary charge for the same service may be this work;
+                            // the desk decides, the server never guesses (D038).
+                            const billed = record.charges.some(
+                              (charge) =>
+                                charge.catalogItemId === item.catalogItemId &&
+                                charge.sourceType === "catalog" &&
+                                charge.status !== "voided",
+                            );
+
+                            if (remaining > 1 || billed) {
                               setPosting({
                                 itemId: item.id,
                                 description: item.description,
                                 remaining,
+                                billed,
                               });
                             } else {
                               post.mutate({ orgSlug, appointmentId, itemId: item.id, qty: 1 });

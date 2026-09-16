@@ -93,9 +93,9 @@ record layout loads the Patient's plans once, and the Clinical panel and the
 Billing tab's advance form both read that one query. For a
 checked-in sitting, **Post to this visit** creates a Charge from the plan
 item's immutable quote snapshot and refuses a quantity above the plan or an item
-this visit already carries. A pending intake Charge for the same service becomes
-that delivery instead of a second Charge, so plan work is billed once wherever
-the desk bills it (D038). Voiding delivered work reopens a completed plan. Work
+this visit already carries. An ordinary Charge for the same service stays
+separate; the panel warns before posting, and the desk voids or credits it if it
+was the same work (D038). Voiding delivered work reopens a completed plan. Work
 posted after the visit was settled becomes a second Invoice on that visit; the
 Billing tab lists each one.
 

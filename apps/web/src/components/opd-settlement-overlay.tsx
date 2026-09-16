@@ -192,19 +192,7 @@ export function SettlementOverlay({
                 disabled={pending}
                 aria-invalid={creditInvalid}
                 className="text-right tabular-nums"
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  const applied = parseMoneyInput(value.trim() || "0") ?? ZERO;
-                  const [line] = payments;
-
-                  setCredit(value);
-
-                  if (line && payments.length === 1) {
-                    const rest = discounted.grandTotal - applied;
-
-                    setPayments([{ ...line, amount: formatDecimal(rest > ZERO ? rest : ZERO) }]);
-                  }
-                }}
+                onChange={(event) => setCredit(event.currentTarget.value)}
               />
               {creditInvalid ? (
                 <span className="text-destructive">
@@ -231,6 +219,11 @@ export function SettlementOverlay({
     </form>
   );
 
+  // A pending collection keeps the overlay open, so the desk cannot start a second one.
+  const dismiss = (open: boolean) => {
+    if (open || !pending) onOpenChange(open);
+  };
+
   const blocked = problems.length > 0 || blockedReason !== undefined || creditInvalid;
 
   const submit = (
@@ -245,7 +238,7 @@ export function SettlementOverlay({
 
   if (mobile) {
     return (
-      <Sheet open onOpenChange={onOpenChange}>
+      <Sheet open onOpenChange={dismiss}>
         <SheetContent side="bottom" className="max-h-svh">
           {body(
             <SheetHeader className="mx-auto w-full max-w-lg border-0">
@@ -260,7 +253,7 @@ export function SettlementOverlay({
   }
 
   return (
-    <Dialog open onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={dismiss}>
       <DialogContent className="max-h-[calc(100svh-2rem)] max-w-xl gap-0 overflow-hidden p-0">
         {body(
           <DialogHeader className="mx-auto w-full max-w-lg p-4">

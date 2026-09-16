@@ -204,8 +204,7 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
 
   expect(detail.items[0]).toMatchObject({ postedQty: 0, done: false });
 
-  // D038: posting claims the service billed at intake, so the patient pays once and the
-  // course still counts the delivery.
+  // D038: the service billed at intake stays ordinary work; the plan post is its own charge.
   const posted = await setup.api.treatment.postToVisit({
     orgSlug: setup.organization.slug,
     appointmentId: second.appointment.id,
@@ -217,15 +216,17 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
     appointmentId: second.appointment.id,
   });
 
-  expect(secondVisit.charges.filter((charge) => charge.catalogItemId === setup.service.id)).toEqual(
-    [
-      expect.objectContaining({
-        id: posted.charge.id,
-        sourceType: "treatment_plan",
-        sourceId: detail.items[0]!.id,
-      }),
-    ],
+  expect(
+    secondVisit.charges
+      .filter((charge) => charge.catalogItemId === setup.service.id)
+      .map((charge) => [charge.sourceType, charge.sourceId]),
+  ).toEqual(
+    expect.arrayContaining([
+      ["catalog", null],
+      ["treatment_plan", detail.items[0]!.id],
+    ]),
   );
+  expect(posted.charge.sourceId).toBe(detail.items[0]!.id);
   expect((await planDetail(setup, plan.id)).items[0]).toMatchObject({ postedQty: 1, done: true });
   expect(detail.sittings.map((sitting) => sitting.id)).toEqual([
     first.appointment.id,

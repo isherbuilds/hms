@@ -2,12 +2,14 @@ import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
 import { Separator } from "@hms/ui/components/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@hms/ui/components/sheet";
+import { useIsMutating } from "@tanstack/react-query";
 import { ClientOnly, Link } from "@tanstack/react-router";
 import { ExternalLinkIcon, PhoneIcon } from "lucide-react";
 
 import { RecordPaymentForm } from "@/components/record-payment-form";
 import type { WorklistRow } from "@/lib/billing-worklist-row";
 import { formatMoney } from "@/lib/money";
+import { orpc } from "@/lib/orpc";
 
 /** The row as the list shows it, with the credit read when the desk opened it. */
 type OpenRow = { row: WorklistRow; credit: bigint };
@@ -21,9 +23,12 @@ export function BillingWorklistSheet({
   open: OpenRow | null;
   onClose: () => void;
 }) {
+  // A pending payment keeps the sheet open; reopening would mint a new request key (D039).
+  const paying = useIsMutating({ mutationKey: orpc.billing.recordPayments.mutationKey() }) > 0;
+
   return (
     <ClientOnly fallback={null}>
-      <Sheet open={open !== null} onOpenChange={(next) => (next ? undefined : onClose())}>
+      <Sheet open={open !== null} onOpenChange={(next) => (next || paying ? undefined : onClose())}>
         <SheetContent>
           {open ? (
             // Keyed by the row, not by what it owes: a background refetch must not remount the
