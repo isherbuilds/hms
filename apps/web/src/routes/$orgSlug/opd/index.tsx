@@ -413,7 +413,13 @@ function OpdDeskView({
       {followUps ? (
         <OpdFollowUps orgSlug={orgSlug} search={search} />
       ) : (
-        <OpdAppointments orgSlug={orgSlug} search={search} />
+        // A new day or filter remounts the list, so another queue's rows and their check-in
+        // controls never stand in while it loads; only typing keeps previous rows (D037).
+        <OpdAppointments
+          key={`${filters.date ?? ""}:${filters.status ?? ""}`}
+          orgSlug={orgSlug}
+          search={search}
+        />
       )}
     </PageBody>
   );
