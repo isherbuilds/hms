@@ -69,3 +69,32 @@ test("query keys carrying bigint hash instead of throwing", () => {
   expect(hash?.(key(12_34n))).toBe(hash?.(key(12_34n)));
   expect(hash?.(key(12_34n))).not.toBe(hash?.(key("1234")));
 });
+
+test("every settled write ages cached queries before its own callbacks, even when writes overlap", async () => {
+  const client = createQueryClient();
+  const key = ["account"];
+
+  const run = (mutationFn: () => Promise<string>, seen: boolean[]) => {
+    client.setQueryData(key, "fresh");
+
+    const record = () => seen.push(client.getQueryState(key)?.isInvalidated ?? false);
+
+    return client
+      .getMutationCache()
+      .build(client, { mutationFn, onSuccess: record, onError: record })
+      .execute(undefined);
+  };
+
+  const seen: boolean[] = [];
+  let release = () => {};
+
+  const slow = run(() => new Promise<string>((resolve) => (release = () => resolve("slow"))), seen);
+
+  await run(() => Promise.resolve("fast"), seen);
+  client.setQueryData(key, "fresh");
+  release();
+  await slow;
+  await expect(run(() => Promise.reject(new Error("refused")), seen)).rejects.toThrow("refused");
+
+  expect(seen).toEqual([true, true, true]);
+});

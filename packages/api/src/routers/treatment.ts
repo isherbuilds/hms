@@ -682,8 +682,8 @@ export const treatmentRouter = {
       query: searchQuery,
       cursor: z
         .object({
-          nextSittingOn: z.string().nullable(),
-          lastSittingOn: z.string().nullable(),
+          nextSittingOn: dateOnly.nullable(),
+          lastSittingOn: dateOnly.nullable(),
           id: z.string(),
         })
         .optional(),

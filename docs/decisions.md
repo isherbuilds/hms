@@ -475,7 +475,9 @@ toggling a filter never blanks rows that are about to be replaced. The first
 load of a list still renders nothing, and `/$orgSlug` carries
 `remountDeps: ({ params }) => ({ orgSlug })` so previous rows can never cross a
 tenant boundary. The rule that nothing stands in for data that has not arrived
-still holds for a region that has never had data.
+still holds for a region that has never had data. A list whose rows carry actions keys itself by
+its day and filter, so only a search term keeps previous rows; another day's
+queue never stands in with live check-in controls.
 
 ### D038 — A plan item is charged once, and the rule lives at posting
 
