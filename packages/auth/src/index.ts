@@ -11,10 +11,7 @@ import { invitationClaim } from "./invitation-claim";
 import { organizationSlugIssue } from "./organization-slug";
 
 export function invitationUrl(invitationId: string): string {
-  return new URL(
-    `/join?invitation=${invitationId}`,
-    env.CORS_ORIGIN,
-  ).toString();
+  return new URL(`/join?invitation=${invitationId}`, env.CORS_ORIGIN).toString();
 }
 
 function createAuth() {
@@ -83,6 +80,7 @@ function createAuth() {
         organizationHooks: {
           beforeCreateOrganization: async ({ organization: candidate }) => {
             const issue = organizationSlugIssue(candidate.slug);
+
             if (issue) {
               throw new APIError("BAD_REQUEST", {
                 message: issue,
@@ -95,8 +93,7 @@ function createAuth() {
           beforeUpdateOrganization: async ({ organization: update }) => {
             if (update.slug !== undefined) {
               throw new APIError("BAD_REQUEST", {
-                message:
-                  "An organization slug cannot be changed after creation",
+                message: "An organization slug cannot be changed after creation",
               });
             }
           },
@@ -108,4 +105,5 @@ function createAuth() {
 }
 
 export const auth = createAuth();
+
 export type AuthSession = typeof auth.$Infer.Session;

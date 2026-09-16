@@ -11,6 +11,7 @@ import { requireOrgPermission } from "@/lib/route-permission";
 
 const intakeSearch = z.object({
   patientId: z.string().optional(),
+  treatmentPlanId: z.string().optional(),
 });
 
 // Wider than the grant its name suggests: both selects are fed from the staff
@@ -25,8 +26,12 @@ const INTAKE_PERMISSION = {
 export const Route = createFileRoute("/$orgSlug/opd/new")({
   head: () => ({ meta: [{ title: "Appointment · HMS" }] }),
   validateSearch: intakeSearch,
-  loaderDeps: ({ search: { patientId } }) => ({ patientId }),
-  loader: async ({ context: { queryClient }, params: { orgSlug }, deps: { patientId } }) => {
+  loaderDeps: ({ search: { patientId, treatmentPlanId } }) => ({ patientId, treatmentPlanId }),
+  loader: async ({
+    context: { queryClient },
+    params: { orgSlug },
+    deps: { patientId, treatmentPlanId },
+  }) => {
     await requireOrgPermission(queryClient, orgSlug, INTAKE_PERMISSION, "/$orgSlug/opd");
 
     const [patient] = await Promise.all([
@@ -40,8 +45,12 @@ export const Route = createFileRoute("/$orgSlug/opd/new")({
       queryClient.query(orpc.staff.listDepartments.queryOptions({ input: { orgSlug } })),
       queryClient.query(orpc.staff.listPractitioners.queryOptions({ input: { orgSlug } })),
     ]);
+
     return {
       seedPatient: patient ? { id: patient.id, name: patient.name, mrn: patient.mrn } : undefined,
+      seedTreatmentPlanId: patient?.openTreatmentPlans.some((plan) => plan.id === treatmentPlanId)
+        ? treatmentPlanId
+        : undefined,
     };
   },
   component: NewOpdAppointmentRoute,
@@ -49,11 +58,13 @@ export const Route = createFileRoute("/$orgSlug/opd/new")({
 
 function NewOpdAppointmentRoute() {
   const { orgSlug } = Route.useParams();
-  const { seedPatient } = Route.useLoaderData();
+  const { seedPatient, seedTreatmentPlanId } = Route.useLoaderData();
   const { today } = useOrgDateTime();
+
   const departments = useSuspenseQuery(
     orpc.staff.listDepartments.queryOptions({ input: { orgSlug } }),
   ).data;
+
   const practitioners = useSuspenseQuery(
     orpc.staff.listPractitioners.queryOptions({ input: { orgSlug } }),
   ).data;
@@ -64,9 +75,10 @@ function NewOpdAppointmentRoute() {
       <PageBody className="mx-auto w-full max-w-6xl pb-24 lg:pb-4">
         <OpdIntakeForm
           // The seed only feeds the form's defaults, so a new `?patientId` remounts it.
-          key={seedPatient?.id ?? ""}
+          key={`${seedPatient?.id ?? ""}:${seedTreatmentPlanId ?? ""}`}
           orgSlug={orgSlug}
           seedPatient={seedPatient}
+          seedTreatmentPlanId={seedTreatmentPlanId}
           departments={departments}
           practitioners={practitioners}
         />

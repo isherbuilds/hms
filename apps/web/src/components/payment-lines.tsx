@@ -1,9 +1,14 @@
 import { Button } from "@hms/ui/components/button";
+import { FormControl } from "@hms/ui/components/form";
+import { NativeSelect } from "@hms/ui/components/native-select";
 import { cn } from "@hms/ui/lib/utils";
 import { Trash2Icon } from "lucide-react";
 import type { ReactNode } from "react";
+import { useFormContext, Watch } from "react-hook-form";
 
+import { ControlledField, TextField } from "@/components/form-fields";
 import { formatMoney, ZERO } from "@/lib/money";
+import { methodLabel, needsReference, PAYMENT_METHODS, type PaymentMethod } from "@/lib/settlement";
 
 /**
  * The one layout every "collect money" form uses: column labels once at the top,
@@ -103,5 +108,42 @@ export function PaymentBalance({
     <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={onFill}>
       <span className="tabular-nums">Fill {formatMoney(remaining, currency)}</span>
     </Button>
+  );
+}
+
+/**
+ * One payment's method and amount, plus the reference a traceable method needs.
+ * Registers `method`, `amount` and `reference` on the surrounding form.
+ */
+export function PaymentLineFields() {
+  const { control } = useFormContext<{ method: PaymentMethod }>();
+
+  return (
+    <>
+      <ControlledField
+        name="method"
+        label="Method"
+        render={(field) => (
+          <FormControl>
+            <NativeSelect {...field}>
+              {PAYMENT_METHODS.map((method) => (
+                <option key={method} value={method}>
+                  {methodLabel(method)}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormControl>
+        )}
+      />
+      <TextField name="amount" label="Amount" inputMode="decimal" />
+      <Watch
+        control={control}
+        name="method"
+        exact
+        render={(method) =>
+          needsReference(method) ? <TextField name="reference" label="Reference" /> : null
+        }
+      />
+    </>
   );
 }

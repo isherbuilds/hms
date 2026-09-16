@@ -1,4 +1,5 @@
 import { db } from "@hms/db";
+import { advanceReceipts } from "@hms/db/schema/advance-receipts";
 import { charges } from "@hms/db/schema/charges";
 import { departments } from "@hms/db/schema/departments";
 import { payments } from "@hms/db/schema/payments";
@@ -58,6 +59,8 @@ export const dashboardRouter = {
     const { timeZone, unbilledAlertHours } = await readOrgSettings(orgId);
     const currentDay = businessDate(new Date(), timeZone);
     const unbilledBefore = new Date(Date.now() - unbilledAlertHours * 3_600_000);
+    // Matches the 14-day series below; without it each arm scans the org's whole history.
+    const trendStart = sql`${currentDay}::date - 13`;
 
     const [result, byMethod, trend] = await Promise.all([
       db.execute<{ unbilled: string }>(sql`
@@ -83,6 +86,11 @@ export const dashboardRouter = {
           where ${payments.orgId} = ${orgId}
             and ${payments.businessDate} = ${currentDay}
           union all
+          select ${advanceReceipts.method} as method, ${advanceReceipts.amount} as amount
+          from ${advanceReceipts}
+          where ${advanceReceipts.orgId} = ${orgId}
+            and ${advanceReceipts.businessDate} = ${currentDay}
+          union all
           select ${refunds.method} as method, -${refunds.amount} as amount
           from ${refunds}
           where ${refunds.orgId} = ${orgId}
@@ -98,16 +106,26 @@ export const dashboardRouter = {
         with days as (
           select (${currentDay}::date - series.days_ago)::date as day
           from generate_series(13, 0, -1) as series(days_ago)
+        ), collections as (
+          select ${payments.businessDate} as day, ${payments.amount} as amount
+          from ${payments}
+          where ${payments.orgId} = ${orgId}
+            and ${payments.businessDate} between ${trendStart} and ${currentDay}
+          union all
+          select ${advanceReceipts.businessDate} as day, ${advanceReceipts.amount} as amount
+          from ${advanceReceipts}
+          where ${advanceReceipts.orgId} = ${orgId}
+            and ${advanceReceipts.businessDate} between ${trendStart} and ${currentDay}
+          union all
+          select ${refunds.businessDate} as day, -${refunds.amount} as amount
+          from ${refunds}
+          where ${refunds.orgId} = ${orgId}
+            and ${refunds.businessDate} between ${trendStart} and ${currentDay}
         )
         select to_char(days.day, 'YYYY-MM-DD') as "day",
-               (coalesce(sum(${payments.amount}), 0) -
-                 coalesce((select sum(${refunds.amount}) from ${refunds}
-                   where ${refunds.orgId} = ${orgId}
-                     and ${refunds.businessDate} = days.day), 0))::bigint as "amount"
+               coalesce(sum(collections.amount), 0)::bigint as "amount"
         from days
-        left join ${payments}
-          on ${payments.orgId} = ${orgId}
-         and ${payments.businessDate} = days.day
+        left join collections on collections.day = days.day
         group by days.day
         order by days.day asc
       `),

@@ -25,6 +25,12 @@ const SYSTEM_ACCOUNTS = [
     type: "liability",
   },
   {
+    key: "patient_advances",
+    code: "2200",
+    name: "Patient Advances",
+    type: "liability",
+  },
+  {
     key: "revenue_consultation",
     code: "4100",
     name: "Consultation Revenue",

@@ -1,5 +1,6 @@
 import { db } from "@hms/db";
 import { nextCounter } from "@hms/db/counter";
+import { advanceReceipts } from "@hms/db/schema/advance-receipts";
 import { attachments } from "@hms/db/schema/attachments";
 import { departments } from "@hms/db/schema/departments";
 import { invoices } from "@hms/db/schema/invoices";
@@ -8,15 +9,19 @@ import { patients } from "@hms/db/schema/patients";
 import { patientPayers } from "@hms/db/schema/patient-payers";
 import { payers } from "@hms/db/schema/payers";
 import { practitioners } from "@hms/db/schema/practitioners";
+import { refunds } from "@hms/db/schema/refunds";
+import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { ORPCError } from "@orpc/server";
-import { and, count, desc, eq, ilike, inArray, lt, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { advanceRemaining } from "../lib/advance-credit";
 import { conflict } from "../lib/conflict";
 import { uniqueViolationConstraint } from "../lib/db-errors";
 import { invoiceBalancesFor } from "../lib/invoice-balance";
 import { normalizePhone } from "../lib/phone";
+import { planLabel } from "../lib/treatment-label";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import {
   dateOnly,
@@ -385,7 +390,7 @@ export const patientRouter = {
     async ({ context, input }) => {
       const { scope } = context;
 
-      const [, rows] = await Promise.all([
+      const [, rows, advanceRows, advanceRefunds] = await Promise.all([
         assertPatientInScope(scope.orgId, input.patientId),
         db
           .select({
@@ -398,6 +403,45 @@ export const patientRouter = {
           .from(invoices)
           .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.patientId, input.patientId)))
           .orderBy(desc(invoices.createdAt), desc(invoices.id)),
+        // The receipts, oldest first, each with its unused credit.
+        db
+          .select({
+            id: advanceReceipts.id,
+            receiptNumber: advanceReceipts.receiptNumber,
+            purpose: advanceReceipts.purpose,
+            businessDate: advanceReceipts.businessDate,
+            currency: advanceReceipts.currency,
+            amount: advanceReceipts.amount,
+            remaining: advanceRemaining(scope.orgId),
+          })
+          .from(advanceReceipts)
+          .where(
+            and(
+              eq(advanceReceipts.orgId, scope.orgId),
+              eq(advanceReceipts.patientId, input.patientId),
+            ),
+          )
+          .orderBy(asc(advanceReceipts.createdAt), asc(advanceReceipts.id)),
+        // Refund vouchers stay reachable after the dialog that printed them closed.
+        db
+          .select({
+            id: refunds.id,
+            advanceReceiptId: advanceReceipts.id,
+            amount: refunds.amount,
+            businessDate: refunds.businessDate,
+          })
+          .from(refunds)
+          .innerJoin(
+            advanceReceipts,
+            and(
+              eq(advanceReceipts.orgId, scope.orgId),
+              eq(advanceReceipts.id, refunds.advanceReceiptId),
+            ),
+          )
+          .where(
+            and(eq(refunds.orgId, scope.orgId), eq(advanceReceipts.patientId, input.patientId)),
+          )
+          .orderBy(asc(refunds.createdAt), asc(refunds.id)),
       ]);
 
       const balances = await invoiceBalancesFor(db, scope.orgId, rows);
@@ -418,12 +462,16 @@ export const patientRouter = {
         return {
           ...invoice,
           paymentsTotal: balance.paymentsTotal,
+          allocationsTotal: balance.allocationsTotal,
           outstanding: invoiceOutstanding,
         };
       });
 
       return {
         invoices: items,
+        advanceReceipts: advanceRows,
+        advanceRefunds,
+        creditHeld: advanceRows.reduce((sum, receipt) => sum + receipt.remaining, 0n),
         openCount,
         outstanding,
       };
@@ -434,29 +482,42 @@ export const patientRouter = {
     async ({ context, input }) => {
       // Two joined tables, so Drizzle cannot nullify `sponsor` as one object; the
       // payer columns are only null when the link row is absent.
-      const [row] = await db
-        .select({
-          patient: patients,
-          payerId: payers.id,
-          payerName: payers.name,
-          payerType: payers.type,
-          policyNumber: patientPayers.policyNumber,
-          employeeNumber: patientPayers.employeeNumber,
-        })
-        .from(patients)
-        .leftJoin(
-          patientPayers,
-          and(
-            eq(patientPayers.orgId, context.scope.orgId),
-            eq(patientPayers.patientId, patients.id),
-          ),
-        )
-        .leftJoin(
-          payers,
-          and(eq(payers.orgId, context.scope.orgId), eq(payers.id, patientPayers.payerId)),
-        )
-        .where(and(eq(patients.orgId, context.scope.orgId), eq(patients.id, input.patientId)))
-        .limit(1);
+      const [[row], openTreatmentPlans] = await Promise.all([
+        db
+          .select({
+            patient: patients,
+            payerId: payers.id,
+            payerName: payers.name,
+            payerType: payers.type,
+            policyNumber: patientPayers.policyNumber,
+            employeeNumber: patientPayers.employeeNumber,
+          })
+          .from(patients)
+          .leftJoin(
+            patientPayers,
+            and(
+              eq(patientPayers.orgId, context.scope.orgId),
+              eq(patientPayers.patientId, patients.id),
+            ),
+          )
+          .leftJoin(
+            payers,
+            and(eq(payers.orgId, context.scope.orgId), eq(payers.id, patientPayers.payerId)),
+          )
+          .where(and(eq(patients.orgId, context.scope.orgId), eq(patients.id, input.patientId)))
+          .limit(1),
+        db
+          .select({ id: treatmentPlans.id, label: planLabel(context.scope.orgId) })
+          .from(treatmentPlans)
+          .where(
+            and(
+              eq(treatmentPlans.orgId, context.scope.orgId),
+              eq(treatmentPlans.patientId, input.patientId),
+              eq(treatmentPlans.status, "open"),
+            ),
+          )
+          .orderBy(desc(treatmentPlans.createdAt), desc(treatmentPlans.id)),
+      ]);
 
       if (!row) {
         throw new ORPCError("NOT_FOUND", { message: "That patient no longer exists." });
@@ -475,6 +536,7 @@ export const patientRouter = {
                 employeeNumber: row.employeeNumber,
               }
             : null,
+        openTreatmentPlans,
       };
     },
   ),

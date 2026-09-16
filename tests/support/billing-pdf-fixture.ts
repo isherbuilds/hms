@@ -53,11 +53,13 @@ export function billingPdfFixture({
       revenueCategory: "consultation" as const,
     })),
     payments: [],
+    allocations: [],
     creditNotes: [],
     refunds: [],
     balance: {
       grandTotal: total,
       paymentsTotal: 0n,
+      allocationsTotal: 0n,
       creditTotal: 0n,
       refundsTotal: 0n,
       outstanding: total,

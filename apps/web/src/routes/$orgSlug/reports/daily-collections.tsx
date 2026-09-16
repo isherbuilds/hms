@@ -40,6 +40,7 @@ export const Route = createFileRoute("/$orgSlug/reports/daily-collections")({
       { report: ["readDailyCollections"] },
       "/$orgSlug/dashboard",
     );
+
     const fallback = defaultRange(timeZone);
     const range = { from: deps.from ?? fallback.from, to: deps.to ?? fallback.to };
     await loadRouteQuery(
@@ -47,6 +48,7 @@ export const Route = createFileRoute("/$orgSlug/reports/daily-collections")({
         orpc.report.dailyCollections.queryOptions({ input: { orgSlug, ...range } }),
       ),
     );
+
     return range;
   },
   component: DailyCollectionsRoute,
@@ -57,6 +59,7 @@ function DailyCollectionsRoute() {
   const navigate = Route.useNavigate();
   const { from, to } = Route.useLoaderData();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
+
   const report = useQuery(
     orpc.report.dailyCollections.queryOptions({ input: { orgSlug, from, to } }),
   );
@@ -75,7 +78,9 @@ function DailyCollectionsRoute() {
             width: 16,
           })),
           { header: "Payments", key: "payments", width: 16 },
+          { header: "Advances", key: "advances", width: 16 },
           { header: "Refunds", key: "refunds", width: 16 },
+          { header: "Advance refunds", key: "advanceRefunds", width: 18 },
           { header: "Net", key: "net", width: 16 },
         ],
         rows: rows.map((row) => ({
@@ -84,7 +89,9 @@ function DailyCollectionsRoute() {
             byMethod.map(({ method }) => [method, Number(row.byMethod[method])]),
           ),
           payments: Number(row.payments),
+          advances: Number(row.advances),
           refunds: Number(row.refunds),
+          advanceRefunds: Number(row.advanceRefunds),
           net: Number(row.net),
         })),
       },
@@ -93,20 +100,26 @@ function DailyCollectionsRoute() {
         columns: [
           { header: "Method", key: "method", width: 12 },
           { header: "Payments", key: "payments", width: 16 },
+          { header: "Advances", key: "advances", width: 16 },
           { header: "Refunds", key: "refunds", width: 16 },
+          { header: "Advance refunds", key: "advanceRefunds", width: 18 },
           { header: "Net", key: "net", width: 16 },
         ],
         rows: [
           ...byMethod.map((row) => ({
             method: methodLabel(row.method),
             payments: Number(row.payments),
+            advances: Number(row.advances),
             refunds: Number(row.refunds),
+            advanceRefunds: Number(row.advanceRefunds),
             net: Number(row.net),
           })),
           {
             method: "Total",
             payments: Number(totals.payments),
+            advances: Number(totals.advances),
             refunds: Number(totals.refunds),
+            advanceRefunds: Number(totals.advanceRefunds),
             net: Number(totals.net),
           },
         ],
@@ -118,7 +131,7 @@ function DailyCollectionsRoute() {
     <>
       <PageHeader
         title="Daily collections"
-        description="Payments minus refunds by method and business date"
+        description="Payments and advances, less refunds, by method and business date"
       />
       <PageBody>
         <ReportPeriodControls
@@ -165,7 +178,9 @@ function DailyCollectionsRoute() {
                       </TableHead>
                     ))}
                     <TableHead className="text-right">Payments</TableHead>
+                    <TableHead className="text-right">Advances</TableHead>
                     <TableHead className="text-right">Refunds</TableHead>
+                    <TableHead className="text-right">Advance refunds</TableHead>
                     <TableHead className="text-right">Net</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -182,7 +197,13 @@ function DailyCollectionsRoute() {
                         {formatMoney(day.payments, currency)}
                       </TableCell>
                       <TableCell className="text-right whitespace-nowrap">
+                        {formatMoney(day.advances, currency)}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
                         {formatMoney(day.refunds, currency)}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        {formatMoney(day.advanceRefunds, currency)}
                       </TableCell>
                       <TableCell className="text-right font-medium whitespace-nowrap">
                         {formatMoney(day.net, currency)}
@@ -200,7 +221,13 @@ function DailyCollectionsRoute() {
                       {formatMoney(report.data.totals.payments, currency)}
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
+                      {formatMoney(report.data.totals.advances, currency)}
+                    </TableCell>
+                    <TableCell className="text-right whitespace-nowrap">
                       {formatMoney(report.data.totals.refunds, currency)}
+                    </TableCell>
+                    <TableCell className="text-right whitespace-nowrap">
+                      {formatMoney(report.data.totals.advanceRefunds, currency)}
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
                       {formatMoney(report.data.totals.net, currency)}
@@ -218,7 +245,9 @@ function DailyCollectionsRoute() {
                     <TableRow>
                       <TableHead>Method</TableHead>
                       <TableHead className="text-right">Payments</TableHead>
+                      <TableHead className="text-right">Advances</TableHead>
                       <TableHead className="text-right">Refunds</TableHead>
+                      <TableHead className="text-right">Advance refunds</TableHead>
                       <TableHead className="text-right">Net</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -230,7 +259,13 @@ function DailyCollectionsRoute() {
                           {formatMoney(row.payments, currency)}
                         </TableCell>
                         <TableCell className="text-right">
+                          {formatMoney(row.advances, currency)}
+                        </TableCell>
+                        <TableCell className="text-right">
                           {formatMoney(row.refunds, currency)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatMoney(row.advanceRefunds, currency)}
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatMoney(row.net, currency)}

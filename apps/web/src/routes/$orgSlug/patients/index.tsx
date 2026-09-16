@@ -7,7 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { z } from "zod";
@@ -37,6 +37,9 @@ const patientSearchQuery = (orgSlug: string, query: string) =>
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
+    // Typing keeps the previous matches on screen; a blank list between keystrokes
+    // reads as "nothing found".
+    placeholderData: keepPreviousData,
   });
 
 function PatientResults({ orgSlug, query }: { orgSlug: string; query: string }) {

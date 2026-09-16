@@ -192,7 +192,8 @@ export function FilterGroup<T extends string>({
       spacing={1}
       className="bg-muted p-0.5"
       onValueChange={(next) => {
-        const nextValue = next[0] as T | undefined;
+        const nextValue = options.find((option) => option.value === next[0])?.value;
+
         if (nextValue !== undefined) onValueChange(nextValue);
       }}
     >
@@ -221,7 +222,11 @@ export function FilterSelect<T extends string>({
     <NativeSelect
       aria-label={label}
       value={value}
-      onChange={(event) => onValueChange(event.target.value as T)}
+      onChange={(event) => {
+        const nextValue = options.find((option) => option.value === event.target.value)?.value;
+
+        if (nextValue !== undefined) onValueChange(nextValue);
+      }}
       className="w-44"
     >
       {options.map((option) => (
@@ -291,9 +296,10 @@ export function ListState({
 }: {
   query: {
     isPending: boolean;
-    isError: boolean;
+    /** Only the first load: a failed refetch keeps the rows it already painted. */
+    isLoadingError: boolean;
     error: unknown;
-    refetch: () => unknown;
+    refetch: () => void;
   };
   errorTitle: string;
   /** Explicit, so a message can never paint over real rows. */
@@ -303,7 +309,7 @@ export function ListState({
 }) {
   if (query.isPending) return null;
 
-  if (query.isError) {
+  if (query.isLoadingError) {
     return (
       <div className="flex flex-1 flex-col items-start justify-center gap-3 p-4">
         <ErrorNote title={errorTitle} error={query.error} />
@@ -324,14 +330,28 @@ export function LoadMore({
   shown,
 }: {
   query: {
-    isError: boolean;
+    isFetchNextPageError: boolean;
     hasNextPage: boolean;
     isFetchingNextPage: boolean;
-    fetchNextPage: () => unknown;
+    fetchNextPage: () => void;
   };
   shown: number;
 }) {
-  if (shown === 0 || query.isError) return null;
+  if (shown === 0) return null;
+
+  if (query.isFetchNextPageError) {
+    return (
+      <div
+        role="alert"
+        className="flex h-9 items-center justify-between gap-2 px-3 text-destructive"
+      >
+        <span>Could not load more</span>
+        <Button variant="outline" size="xs" onClick={() => void query.fetchNextPage()}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-9 items-center justify-between gap-2 px-3 text-muted-foreground">

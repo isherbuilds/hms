@@ -26,6 +26,7 @@ type NavEntry<Route extends string> = {
 };
 
 export const NAV_GROUPS = ["Care", "Finance", "Workspace"] as const;
+
 type NavGroup = (typeof NAV_GROUPS)[number];
 
 type PrimaryNavItem = NavEntry<
@@ -129,7 +130,7 @@ export const REPORT_LINKS: readonly ReportLink[] = [
   {
     to: "/$orgSlug/reports/daily-collections",
     label: "Daily collections",
-    description: "Payments minus refunds by method and business date.",
+    description: "Payments and advances, less refunds, by method and business date.",
     icon: WalletIcon,
     permission: { report: ["readDailyCollections"] },
   },

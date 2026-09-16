@@ -35,16 +35,13 @@ import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient
 import { Panel } from "@/components/page";
 import { ServicePicker, type ServiceLine } from "@/components/opd-service-picker";
 import { useZodForm } from "@/hooks/use-zod-form";
-import {
-  invalidateAccountingReports,
-  invalidateOpdAppointmentState,
-} from "@/lib/domain-invalidation";
 import { useMembership } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
 import { type WalkInQuote } from "@/lib/opd-service-preview";
 import { formatBusinessDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
+import { closeOnConflict, errorMessage } from "@/lib/orpc-error";
+import { openingCredit } from "@/lib/patient-credit";
 import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 const intakeSchema = z
@@ -53,6 +50,7 @@ const intakeSchema = z
     when: z.enum(["now", "later"]),
     departmentId: z.string().min(1, "Choose a department"),
     practitionerId: z.string().min(1, "Choose a practitioner"),
+    treatmentPlanId: z.string(),
     scheduledLocal: z.string(),
     services: z.array(z.custom<ServiceLine>()),
     omitConsultFee: z.boolean(),
@@ -143,7 +141,10 @@ function PatientField({ orgSlug }: { orgSlug: string }) {
           size="sm"
           variant="ghost"
           className="ml-auto"
-          onClick={() => setValue("patient", null, { shouldDirty: true })}
+          onClick={() => {
+            setValue("patient", null, { shouldDirty: true });
+            setValue("treatmentPlanId", "", { shouldDirty: true });
+          }}
         >
           Change
         </Button>
@@ -156,9 +157,47 @@ function PatientField({ orgSlug }: { orgSlug: string }) {
       orgSlug={orgSlug}
       onSelect={(selected) => {
         setValue("patient", selected, { shouldDirty: true });
+        setValue("treatmentPlanId", "", { shouldDirty: true });
         requestAnimationFrame(() => setFocus("departmentId"));
       }}
     />
+  );
+}
+
+function SittingForField({ orgSlug }: { orgSlug: string }) {
+  const form = useFormContext<IntakeValues>();
+  const patient = useWatch({ control: form.control, name: "patient", exact: true });
+
+  const patientRecord = useQuery(
+    orpc.patient.get.queryOptions({
+      input: patient ? { orgSlug, patientId: patient.id } : skipToken,
+    }),
+  );
+
+  if (!patient || !patientRecord.data?.openTreatmentPlans.length) return null;
+
+  return (
+    <IntakeSection title="Sitting for" description="Optional treatment plan link">
+      <RegisteredFormField
+        name="treatmentPlanId"
+        render={({ field }) => (
+          <FormItem className="max-w-md gap-2">
+            <FormLabel className="text-muted-foreground">Treatment plan</FormLabel>
+            <FormControl>
+              <NativeSelect {...field}>
+                <option value="">Not linked to a plan</option>
+                {patientRecord.data.openTreatmentPlans.map((plan) => (
+                  <option key={plan.id} value={plan.id}>
+                    {plan.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+    </IntakeSection>
   );
 }
 
@@ -438,7 +477,8 @@ function ServicesFields({
           Restore consultation fee
         </Button>
       ) : null}
-      {when === "now" ? (
+      {/* No bill while the quote is unreachable: the server never gave that total. */}
+      {when === "now" && !quoteState.error ? (
         <div className="border-t border-border pt-3 lg:hidden">
           <FinancialSummary quote={quoteState.data} />
         </div>
@@ -451,14 +491,12 @@ function IntakeSubmit({
   id,
   canSettleWalkIn,
   pending,
-  actionError,
   quoteState,
   messageClassName,
 }: {
   id: string;
   canSettleWalkIn: boolean;
   pending: boolean;
-  actionError: string | undefined;
   quoteState: QuoteState;
   messageClassName?: string;
 }) {
@@ -495,11 +533,6 @@ function IntakeSubmit({
           {reason}
         </p>
       ) : null}
-      {actionError ? (
-        <p role="alert" className={cn("text-destructive", messageClassName)}>
-          {actionError}
-        </p>
-      ) : null}
     </>
   );
 }
@@ -528,13 +561,11 @@ function FinancialAside({
   practitioners,
   canSettleWalkIn,
   pending,
-  actionError,
   quoteState,
 }: {
   practitioners: IntakePractitioner[];
   canSettleWalkIn: boolean;
   pending: boolean;
-  actionError: string | undefined;
   quoteState: QuoteState;
 }) {
   const { control } = useFormContext<IntakeValues>();
@@ -569,7 +600,7 @@ function FinancialAside({
   return (
     <div className="sticky top-0">
       <Panel label={when === "now" ? "Payment" : "Booking"} minHeight="min-h-0" padded>
-        {when === "now" ? <FinancialSummary quote={quoteState.data} /> : null}
+        {when === "now" && !quoteState.error ? <FinancialSummary quote={quoteState.data} /> : null}
         {when === "later" ? (
           <dl className="grid gap-2">
             <SummaryRow term="Patient">
@@ -590,7 +621,6 @@ function FinancialAside({
           id="intake-desktop-issue"
           canSettleWalkIn={canSettleWalkIn}
           pending={pending}
-          actionError={actionError}
           quoteState={quoteState}
         />
       </Panel>
@@ -601,12 +631,10 @@ function FinancialAside({
 function IntakeFooter({
   canSettleWalkIn,
   pending,
-  actionError,
   quoteState,
 }: {
   canSettleWalkIn: boolean;
   pending: boolean;
-  actionError: string | undefined;
   quoteState: QuoteState;
 }) {
   const { control } = useFormContext<IntakeValues>();
@@ -623,9 +651,11 @@ function IntakeFooter({
             : "Appointment time"}
         </p>
         <p className="truncate text-sm font-medium tabular-nums group-aria-busy/quote:opacity-50">
-          {when === "now"
-            ? formatMoney(quoteState.data.grandTotal, quoteState.data.currency)
-            : previewTime || "Choose a time"}
+          {when !== "now"
+            ? previewTime || "Choose a time"
+            : quoteState.error
+              ? "—"
+              : formatMoney(quoteState.data.grandTotal, quoteState.data.currency)}
         </p>
       </div>
       <div className="ml-auto grid shrink-0 justify-items-end gap-1">
@@ -633,7 +663,6 @@ function IntakeFooter({
           id="intake-mobile-issue"
           canSettleWalkIn={canSettleWalkIn}
           pending={pending}
-          actionError={actionError}
           quoteState={quoteState}
           messageClassName="max-w-48 text-right"
         />
@@ -645,11 +674,13 @@ function IntakeFooter({
 export function OpdIntakeForm({
   orgSlug,
   seedPatient,
+  seedTreatmentPlanId,
   departments,
   practitioners,
 }: {
   orgSlug: string;
   seedPatient?: SelectedPatient;
+  seedTreatmentPlanId?: string;
   departments: IntakeDepartment[];
   practitioners: IntakePractitioner[];
 }) {
@@ -664,6 +695,7 @@ export function OpdIntakeForm({
       when: "now",
       departmentId: "",
       practitionerId: "",
+      treatmentPlanId: seedTreatmentPlanId ?? "",
       scheduledLocal: "",
       services: [],
       omitConsultFee: false,
@@ -708,7 +740,8 @@ export function OpdIntakeForm({
     ready: quoteReady,
   };
 
-  const [settlementOpen, setSettlementOpen] = useState(false);
+  // The credit the overlay opens with, read on Confirm; null while it is closed.
+  const [settlement, setSettlement] = useState<bigint | null>(null);
 
   const goToAppointment = async (appointmentId: string) => {
     await navigate({
@@ -716,7 +749,6 @@ export function OpdIntakeForm({
       params: { orgSlug, appointmentId },
       ignoreBlocker: true,
     });
-    void invalidateOpdAppointmentState(queryClient, orgSlug, appointmentId, "create");
   };
 
   const book = useMutation(
@@ -725,37 +757,18 @@ export function OpdIntakeForm({
         toast.success("Appointment booked");
         await goToAppointment(appointment.id);
       },
-      onError: (error) =>
-        intake.setError(
-          "scheduledLocal",
-          { message: errorMessage(error, "Could not book the appointment") },
-          { shouldFocus: true },
-        ),
     }),
   );
 
   const createWalkIn = useMutation(
     orpc.opd.createWalkIn.mutationOptions({
-      onSuccess: async ({ appointment, invoice }) => {
-        setSettlementOpen(false);
+      onSuccess: async ({ appointment }) => {
+        setSettlement(null);
         toast.success(`Token ${appointment.tokenNumber} created`);
         await goToAppointment(appointment.id);
-
-        if (invoice) {
-          void Promise.all([
-            queryClient.invalidateQueries({
-              queryKey: orpc.patient.account.key({ input: { orgSlug } }),
-            }),
-            invalidateAccountingReports(queryClient, orgSlug),
-          ]);
-        }
       },
-      onError: async (error) => {
-        if (!hasErrorCode(error, "CONFLICT")) return;
-        setSettlementOpen(false);
-        await quote.refetch();
-        toast.error(errorMessage(error, "The quote changed. Review it and try again."));
-      },
+      // The overlay holds the quote the server refused; the refresh brings the new one.
+      onError: closeOnConflict(() => setSettlement(null)),
     }),
   );
 
@@ -769,6 +782,7 @@ export function OpdIntakeForm({
       orgSlug,
       patientId: current.patient.id,
       practitionerId: current.practitionerId,
+      treatmentPlanId: current.treatmentPlanId || undefined,
       settlement: {
         services: serviceClaims(current.services),
         omitConsultFee: omitsConsultFee(current),
@@ -785,6 +799,7 @@ export function OpdIntakeForm({
         orgSlug,
         patientId: current.patient.id,
         practitionerId: current.practitionerId,
+        treatmentPlanId: current.treatmentPlanId || undefined,
         scheduledLocal: current.scheduledLocal,
         services: serviceClaims(current.services),
       });
@@ -797,13 +812,14 @@ export function OpdIntakeForm({
     if (!canSettleWalkIn || !input) return;
 
     const fresh = await queryClient
-      .ensureQueryData(orpc.opd.quoteWalkIn.queryOptions({ input }))
+      .query(orpc.opd.quoteWalkIn.queryOptions({ input }))
       .catch(() => undefined);
 
     if (!fresh) return;
 
     if (fresh.grandTotal === ZERO) {
       settleWalkIn({
+        applyCredit: ZERO,
         discountAmount: ZERO,
         expectedGrandTotal: fresh.grandTotal,
         payments: [],
@@ -812,15 +828,11 @@ export function OpdIntakeForm({
       return;
     }
 
-    setSettlementOpen(true);
+    const credit = await openingCredit(queryClient, orgSlug, current.patient.id);
+
+    if (credit === null) return;
+    setSettlement(credit);
   });
-
-  const walkInError =
-    createWalkIn.error && !hasErrorCode(createWalkIn.error, "CONFLICT")
-      ? errorMessage(createWalkIn.error, "Could not create the appointment")
-      : undefined;
-
-  const actionError = settlementOpen ? undefined : walkInError;
 
   const settlementBlockedReason = quoteState.ready
     ? undefined
@@ -830,7 +842,7 @@ export function OpdIntakeForm({
         ? "Quote is updating. Wait to confirm."
         : "Waiting for the current quote.";
 
-  const settlementPatient = settlementOpen ? intake.getValues("patient") : null;
+  const settlementPatient = settlement === null ? null : intake.getValues("patient");
 
   return (
     <>
@@ -858,6 +870,8 @@ export function OpdIntakeForm({
                   />
                 </IntakeSection>
 
+                <SittingForField orgSlug={orgSlug} />
+
                 <IntakeSection title="Services" description="Optional for Now and Later">
                   <ServicesFields orgSlug={orgSlug} currency={currency} quoteState={quoteState} />
                 </IntakeSection>
@@ -868,7 +882,6 @@ export function OpdIntakeForm({
                   practitioners={practitioners}
                   canSettleWalkIn={canSettleWalkIn}
                   pending={pending}
-                  actionError={actionError}
                   quoteState={quoteState}
                 />
               </aside>
@@ -877,20 +890,21 @@ export function OpdIntakeForm({
             <IntakeFooter
               canSettleWalkIn={canSettleWalkIn}
               pending={pending}
-              actionError={actionError}
               quoteState={quoteState}
             />
 
-            {settlementOpen && settlementPatient ? (
+            {settlement !== null && settlementPatient ? (
               <ClientOnly fallback={null}>
                 <SettlementOverlay
                   quote={quoteState.data}
+                  availableCredit={settlement}
                   description={`${settlementPatient.name} · walk-in now`}
                   label="Confirm walk-in"
                   blockedReason={settlementBlockedReason}
                   pending={createWalkIn.isPending}
-                  error={walkInError}
-                  onOpenChange={setSettlementOpen}
+                  onOpenChange={(open) => {
+                    if (!open) setSettlement(null);
+                  }}
                   onConfirm={settleWalkIn}
                 />
               </ClientOnly>

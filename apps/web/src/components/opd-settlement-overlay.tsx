@@ -15,12 +15,13 @@ import {
   SheetTitle,
 } from "@hms/ui/components/sheet";
 import { SubmitButton } from "@hms/ui/components/submit-button";
+import { Input } from "@hms/ui/components/input";
 import { useIsMobile } from "@hms/ui/hooks/use-mobile";
 import { useState, type ReactNode } from "react";
 
 import { SettlementFields } from "@/components/opd-settlement-fields";
 import { formatDecimal } from "@hms/api/core/money";
-import { parseMoneyInput, ZERO } from "@/lib/money";
+import { formatMoney, parseMoneyInput, ZERO } from "@/lib/money";
 import { applyDiscount, type WalkInQuote } from "@/lib/opd-service-preview";
 import {
   amountOf,
@@ -34,6 +35,7 @@ export type SettlementDraft = {
   expectedGrandTotal: bigint;
   note?: string;
   payments: { method: PaymentMethod; amount: bigint; reference?: string }[];
+  applyCredit: bigint;
 };
 
 type SettlementOverlayProps = {
@@ -42,7 +44,7 @@ type SettlementOverlayProps = {
   description: string;
   label: string;
   pending: boolean;
-  error?: string;
+  availableCredit: bigint;
   /**
    * A reason the page behind knows and the draft cannot — charges that moved on
    * another terminal. Blocks the submit, because the server would refuse the stale
@@ -75,7 +77,7 @@ export function SettlementOverlay({
   label,
   blockedReason,
   pending,
-  error,
+  availableCredit,
   onOpenChange,
   onConfirm,
 }: SettlementOverlayProps) {
@@ -83,8 +85,20 @@ export function SettlementOverlay({
   const [discount, setDiscount] = useState("");
   const [note, setNote] = useState("");
 
+  // Credit is applied unless the cashier says otherwise; cash covers what is left.
+  const seededCredit = availableCredit < quote.grandTotal ? availableCredit : quote.grandTotal;
+
+  // Null until the cashier types, so the field follows the post-discount cap. A seeded
+  // string would sit above that cap the moment a discount is entered and block the submit.
+  const [credit, setCredit] = useState<string | null>(null);
+
   const [payments, setPayments] = useState<PaymentLine[]>(() => [
-    { id: 1, method: "cash", amount: formatDecimal(quote.grandTotal), reference: "" },
+    {
+      id: 1,
+      method: "cash",
+      amount: formatDecimal(quote.grandTotal - seededCredit),
+      reference: "",
+    },
   ]);
 
   // Quiet problems stay quiet until the operator has tried to confirm.
@@ -99,7 +113,15 @@ export function SettlementOverlay({
       ? applyDiscount(quote, discountPaise)
       : quote;
 
-  const due = discounted.grandTotal;
+  const creditCap =
+    availableCredit < discounted.grandTotal ? availableCredit : discounted.grandTotal;
+
+  const creditValue = credit ?? formatDecimal(creditCap);
+  const parsedCredit = parseMoneyInput(creditValue.trim() || "0");
+  const creditInvalid = parsedCredit === null || parsedCredit > creditCap;
+  const appliedCredit = creditInvalid ? ZERO : parsedCredit;
+
+  const due = discounted.grandTotal - appliedCredit;
 
   const problems = settlementProblems({
     due,
@@ -114,6 +136,8 @@ export function SettlementOverlay({
   const confirm = () => {
     if (blockedReason) return;
     setAttempted(true);
+
+    if (creditInvalid) return focusProblemField("settlement-credit", true);
     const [blocking] = problems;
 
     if (blocking) return focusProblemField(blocking.fieldId, blocking.selectOnFocus);
@@ -131,6 +155,7 @@ export function SettlementOverlay({
           { method: payment.method, amount, reference: payment.reference.trim() || undefined },
         ];
       }),
+      applyCredit: appliedCredit,
     });
   };
 
@@ -148,10 +173,33 @@ export function SettlementOverlay({
       <div className="border-b border-border">{header}</div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto grid w-full max-w-lg content-start gap-3 p-4">
-          {(error ?? blockedReason) ? (
+          {blockedReason ? (
             <p role="alert" className="border-l-2 border-destructive pl-3 text-destructive">
-              {error ?? blockedReason}
+              {blockedReason}
             </p>
+          ) : null}
+          {availableCredit > ZERO ? (
+            <label
+              className="flex flex-col gap-1 text-muted-foreground"
+              htmlFor="settlement-credit"
+            >
+              Credit available {formatMoney(availableCredit, quote.currency)}
+              <Input
+                id="settlement-credit"
+                name="applyCredit"
+                inputMode="decimal"
+                value={creditValue}
+                disabled={pending}
+                aria-invalid={creditInvalid}
+                className="text-right tabular-nums"
+                onChange={(event) => setCredit(event.currentTarget.value)}
+              />
+              {creditInvalid ? (
+                <span className="text-destructive">
+                  Apply at most {formatMoney(creditCap, quote.currency)}
+                </span>
+              ) : null}
+            </label>
           ) : null}
           <SettlementFields
             quote={discounted}
@@ -171,7 +219,7 @@ export function SettlementOverlay({
     </form>
   );
 
-  const blocked = problems.length > 0 || blockedReason !== undefined;
+  const blocked = problems.length > 0 || blockedReason !== undefined || creditInvalid;
 
   const submit = (
     <SubmitButton

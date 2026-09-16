@@ -14,8 +14,7 @@ import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SheetFooter } from "@hms/ui/components/sheet";
 import { SubmitButton } from "@hms/ui/components/submit-button";
-import { Textarea } from "@hms/ui/components/textarea";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { RouterClient } from "@orpc/server";
 import { AlertTriangleIcon, ChevronDownIcon, MailIcon, PhoneIcon } from "lucide-react";
@@ -24,13 +23,13 @@ import { useFormContext, useFormState, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { TextField } from "@/components/form-fields";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useZodForm } from "@/hooks/use-zod-form";
-import { invalidatePatientState } from "@/lib/domain-invalidation";
 import { optionalNumberText, optionalText, patientFieldSchema } from "@/lib/form-schema";
 import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { applyOrpcFieldError, errorMessage } from "@/lib/orpc-error";
+import { applyOrpcFieldError } from "@/lib/orpc-error";
 import { ageYearsToEstimatedDateOfBirth, patientAgeYears } from "@/lib/patient-age";
 
 const patientFormSchema = patientFieldSchema
@@ -58,7 +57,9 @@ export type EditablePatient = Awaited<ReturnType<RouterClient<AppRouter>["patien
 
 function guardianEmergencyRelation(relation: string | null) {
   if (relation === "S/o" || relation === "D/o") return "parent";
+
   if (relation === "W/o" || relation === "H/o") return "spouse";
+
   return "";
 }
 
@@ -140,12 +141,14 @@ function PatientPhoneDuplicateWarning({
   const { control } = useFormContext<PatientFormValues>();
   const phone = useWatch({ control, name: "phone", exact: true });
   const debouncedPhone = useDebouncedValue(phone.trim(), 300);
+
   const duplicates = useQuery({
     ...orpc.patient.search.queryOptions({
       input: { orgSlug, phone: debouncedPhone, limit: 100 },
     }),
     enabled: debouncedPhone.length >= 4,
   });
+
   const matches =
     phone.trim() === debouncedPhone && debouncedPhone.length >= 4
       ? (duplicates.data?.items ?? []).filter((patient) => patient.id !== selfId)
@@ -264,6 +267,7 @@ function SponsorFields({
   // A deactivated payer takes no new links, so it is offered only to the record that
   // already holds it — otherwise its name silently disappears and the save drops it.
   const options = list.filter((payer) => payer.active || payer.id === current);
+
   const inactive =
     !payers.isPending &&
     payerId !== "" &&
@@ -317,30 +321,8 @@ function SponsorFields({
       />
       {payerId ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <RegisteredFormField
-            name="sponsorPolicyNumber"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Policy number</FormLabel>
-                <FormControl>
-                  <Input {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <RegisteredFormField
-            name="sponsorEmployeeNumber"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Employee number</FormLabel>
-                <FormControl>
-                  <Input {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          <TextField name="sponsorPolicyNumber" label="Policy number" />
+          <TextField name="sponsorEmployeeNumber" label="Employee number" />
         </div>
       ) : null}
     </div>
@@ -350,6 +332,7 @@ function SponsorFields({
 function EmergencyContactFields() {
   const { control, setValue } = useFormContext<PatientFormValues>();
   const guardian = useWatch({ control, name: "guardian" });
+
   return (
     <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
       <legend className="pr-2 text-sm font-medium">Emergency contact</legend>
@@ -376,18 +359,7 @@ function EmergencyContactFields() {
         Copy from relation
       </Button>
       <div className="flex flex-col gap-3">
-        <RegisteredFormField
-          name="emergencyContact.name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Name</FormLabel>
-              <FormControl>
-                <Input {...field} placeholder="Who to call" />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <TextField name="emergencyContact.name" label="Name" placeholder="Who to call" />
         <div className="grid grid-cols-[1fr_8rem] gap-2">
           <RegisteredFormField
             name="emergencyContact.phone"
@@ -453,13 +425,13 @@ export function PatientForm({
   onRegistered?: (patient: { id: string; name: string; mrn: string }) => void;
 }) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { today } = useOrgDateTime();
   // Frozen at mount. The page behind this sheet refetches on focus, so a live prop
   // would hand the save a compare-and-swap token newer than the values on screen and
   // quietly overwrite whoever changed the record meanwhile.
   const [record] = useState(patient);
   const formRef = useRef<HTMLFormElement>(null);
+
   const form = useZodForm(patientFormSchema, {
     defaultValues: defaultValues(record, seed, today),
   });
@@ -470,6 +442,7 @@ export function PatientForm({
       const section = formRef.current
         ?.querySelector(`[name="${name}"], [name^="${name}."]`)
         ?.closest("details");
+
       if (section) section.open = true;
     }
   }
@@ -477,16 +450,16 @@ export function PatientForm({
   const register = useMutation(
     orpc.patient.register.mutationOptions({
       onSuccess: async (created) => {
-        await queryClient.invalidateQueries({
-          queryKey: orpc.patient.search.key({ input: { orgSlug } }),
-        });
         toast.success(`Patient registered as ${created.mrn}`);
+
         // Registering inside another task hands the record straight back.
         if (onRegistered) {
           onRegistered(created);
           onSaved();
+
           return;
         }
+
         await navigate({
           to: "/$orgSlug/patients/$patientId",
           params: { orgSlug, patientId: created.id },
@@ -494,27 +467,21 @@ export function PatientForm({
         });
       },
       onError: (error) => {
-        const mapped = applyOrpcFieldError(form, error, UID_CONFLICT);
-        if (mapped) revealFields([UID_CONFLICT.uid_taken.field]);
-        toast.error(mapped ?? errorMessage(error, "Could not register the patient"));
+        if (applyOrpcFieldError(form, error, UID_CONFLICT))
+          revealFields([UID_CONFLICT.uid_taken.field]);
       },
     }),
   );
 
   const update = useMutation(
     orpc.patient.update.mutationOptions({
-      onSuccess: async (saved) => {
-        await invalidatePatientState(queryClient, orgSlug, saved.id);
-        toast.success("Changes saved");
+      onSuccess: () => {
         onSaved();
+        toast.success("Changes saved");
       },
       onError: (error) => {
-        // A stale token means the record moved under the open sheet, so this save would
-        // overwrite whoever got there first. Closing and reopening is the only honest
-        // recovery: it is what rebuilds the form from the record as it now stands.
-        const mapped = applyOrpcFieldError(form, error, UID_CONFLICT);
-        if (mapped) revealFields([UID_CONFLICT.uid_taken.field]);
-        toast.error(mapped ?? errorMessage(error, "Could not save the changes"));
+        if (applyOrpcFieldError(form, error, UID_CONFLICT))
+          revealFields([UID_CONFLICT.uid_taken.field]);
       },
     }),
   );
@@ -525,10 +492,13 @@ export function PatientForm({
     ({ age, sponsorPayerId, sponsorPolicyNumber, sponsorEmployeeNumber, ...fields }) => {
       const dateOfBirth =
         fields.dateOfBirth ?? (age === null ? null : ageYearsToEstimatedDateOfBirth(age, today));
+
       if (dateOfBirth === null) {
         form.setError("dateOfBirth", { message: "Enter a date of birth or age" });
+
         return;
       }
+
       // The procedure takes the whole record, not a patch, so both paths send the
       // same body — the update adds only the id and the token it must match.
       const values = {
@@ -547,12 +517,15 @@ export function PatientForm({
 
       if (record) {
         update.mutate({ ...values, patientId: record.id, updatedAt: record.updatedAt });
+
         return;
       }
+
       register.mutate(values);
     },
     (errors) => revealFields(Object.keys(errors)),
   );
+
   return (
     <Form {...form}>
       {/* `noValidate`: Zod owns every message, so the browser must not pre-empt
@@ -562,17 +535,11 @@ export function PatientForm({
           instead of lifted into its state — see `PatientSheet`. */}
       <PatientFormFrame ref={formRef} pending={pending} onCancel={onCancel} onSubmit={onSubmit}>
         <div className="flex flex-col gap-4">
-          <RegisteredFormField
+          <TextField
             name="name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Full name</FormLabel>
-                <FormControl>
-                  <Input {...field} autoComplete="name" placeholder="Enter the patient's name" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
+            label="Full name"
+            autoComplete="name"
+            placeholder="Enter the patient's name"
           />
 
           <RegisteredFormField
@@ -631,6 +598,7 @@ export function PatientForm({
                     type="date"
                     onChange={(event) => {
                       field.onChange(event);
+
                       if (event.target.value !== "") form.setValue("age", "");
                     }}
                   />
@@ -654,6 +622,7 @@ export function PatientForm({
                     placeholder="Enter an estimated age"
                     onChange={(event) => {
                       field.onChange(event);
+
                       if (event.target.value !== "") form.setValue("dateOfBirth", "");
                     }}
                   />
@@ -685,36 +654,19 @@ export function PatientForm({
                   </FormItem>
                 )}
               />
-              <RegisteredFormField
+              <TextField
                 name="guardian.name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Guardian</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="Father, husband, or guardian" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                label="Guardian"
+                placeholder="Father, husband, or guardian"
               />
             </div>
 
-            <RegisteredFormField
+            <TextField
               name="guardian.phone"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Relation mobile number (optional)</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      type="tel"
-                      autoComplete="section-guardian tel"
-                      placeholder="Mobile number"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              label="Relation mobile number (optional)"
+              type="tel"
+              autoComplete="section-guardian tel"
+              placeholder="Mobile number"
             />
 
             <EmergencyContactFields />
@@ -754,17 +706,12 @@ export function PatientForm({
               )}
             />
 
-            <RegisteredFormField
+            <TextField
               name="address"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Address</FormLabel>
-                  <FormControl>
-                    <Textarea {...field} rows={2} placeholder="Enter address" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              label="Address"
+              multiline
+              rows={2}
+              placeholder="Enter address"
             />
           </PatientFormSection>
           <PatientFormSection title="Sponsor">
@@ -794,34 +741,20 @@ export function PatientForm({
               )}
             />
 
-            <RegisteredFormField
+            <TextField
               name="allergies"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Allergies</FormLabel>
-                  <FormControl>
-                    <Textarea {...field} rows={2} placeholder="What reaction, and when" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              label="Allergies"
+              multiline
+              rows={2}
+              placeholder="What reaction, and when"
             />
 
-            <RegisteredFormField
+            <TextField
               name="medicalHistory"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Medical history</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      {...field}
-                      rows={2}
-                      placeholder="Ongoing conditions, past surgeries"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              label="Medical history"
+              multiline
+              rows={2}
+              placeholder="Ongoing conditions, past surgeries"
             />
           </PatientFormSection>
         </div>

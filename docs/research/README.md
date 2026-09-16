@@ -8,6 +8,12 @@ the first documentation consolidation is commit `35550b9`.
 
 Active temporary memos:
 
+- [Treatment plans and advances](./treatment-plans-and-advances.md) — Marley,
+  Open Dental, Jane, Cliniko, Odoo, Ind AS 115 and CGST Rules 50–51 read
+  2026-09-14; supports a course parent, delivery-based Charges on ordinary OPD
+  sittings, and unearned money as a liability; does not settle GST voucher
+  particulars or the RCT earning milestone (CA questions). Evidence for the
+  [active spec](../specs/treatment-plans-and-advances.md).
 - [Invitation account onboarding](./invitation-account-onboarding.md) — proposal
   from 2026-09-07, checked against Better Auth 1.7.2; recommends invitation-gated
   email verification before account setup. Deferred on 2026-09-08: no email

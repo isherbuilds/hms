@@ -1,5 +1,8 @@
 import { StandardRPCJsonSerializer } from "@orpc/client/standard";
 import { MutationCache, QueryCache, QueryClient, environmentManager } from "@tanstack/react-query";
+import { toast } from "sonner";
+
+import { errorMessage } from "./orpc-error";
 
 // TanStack's default JSON.stringify hash throws on bigint query keys.
 const keySerializer = new StandardRPCJsonSerializer();
@@ -21,9 +24,21 @@ function recoverFromExpiredSession(error: unknown): void {
 }
 
 export function createQueryClient() {
-  return new QueryClient({
+  // The last pending write refreshes every mounted query, before its own callbacks (D036).
+  const refreshAll = () => {
+    if (queryClient.isMutating() === 1) void queryClient.invalidateQueries();
+  };
+
+  const queryClient: QueryClient = new QueryClient({
     queryCache: new QueryCache({ onError: recoverFromExpiredSession }),
-    mutationCache: new MutationCache({ onError: recoverFromExpiredSession }),
+    mutationCache: new MutationCache({
+      onSuccess: refreshAll,
+      onError: (error) => {
+        refreshAll();
+        recoverFromExpiredSession(error);
+        toast.error(errorMessage(error, "Could not save. Try again."));
+      },
+    }),
     defaultOptions: {
       queries: {
         queryKeyHashFn: (queryKey) => {
@@ -47,4 +62,6 @@ export function createQueryClient() {
       },
     },
   });
+
+  return queryClient;
 }

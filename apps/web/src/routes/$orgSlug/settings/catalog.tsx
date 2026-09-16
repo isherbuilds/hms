@@ -19,7 +19,6 @@ import {
   FormMessage,
   RegisteredFormField,
 } from "@hms/ui/components/form";
-import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
@@ -32,6 +31,7 @@ import {
 } from "@hms/ui/components/table";
 import {
   type InfiniteData,
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQueryClient,
@@ -41,6 +41,7 @@ import { memo, useCallback, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { TextField } from "@/components/form-fields";
 import {
   FilterGroup,
   FilterSelect,
@@ -54,7 +55,7 @@ import {
 } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
-import { applyOrpcFieldError, errorMessage } from "@/lib/orpc-error";
+import { applyOrpcFieldError } from "@/lib/orpc-error";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 import { SettingsTabs } from "./route";
@@ -87,6 +88,7 @@ const catalogListQuery = (
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
   });
 
 export const Route = createFileRoute("/$orgSlug/settings/catalog")({
@@ -190,23 +192,10 @@ function CatalogRoute() {
 
         return { snapshot };
       },
-      onError: (error, _variables, context) => {
+      onError: (_error, _variables, context) => {
         for (const [queryKey, data] of context?.snapshot ?? []) {
           queryClient.setQueryData(queryKey, data);
         }
-
-        toast.error(errorMessage(error, "Could not update catalog item"));
-      },
-      onSettled: () => {
-        const pending = queryClient.isMutating({
-          mutationKey: orpc.catalog.setActive.mutationKey(),
-        });
-
-        if (pending > 1) return;
-
-        return queryClient.invalidateQueries({
-          queryKey: orpc.catalog.list.key({ input: { orgSlug } }),
-        });
       },
     }),
   );
@@ -413,7 +402,6 @@ type CatalogItemDialogProps =
 
 function CatalogItemDialog(props: CatalogItemDialogProps) {
   const { mode, orgSlug, open, onOpenChange } = props;
-  const queryClient = useQueryClient();
   const item = mode === "edit" ? props.item : null;
 
   const form = useZodForm(formSchema, {
@@ -430,22 +418,16 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
       : EMPTY_VALUES,
   });
 
-  const closeAfterSuccess = async (message: string) => {
-    await queryClient.invalidateQueries({
-      queryKey: orpc.catalog.list.key({ input: { orgSlug } }),
-    });
+  const closeAfterSuccess = (message: string) => {
     toast.success(message);
     onOpenChange(false);
     form.reset(item ? undefined : EMPTY_VALUES);
   };
 
-  const handleError = (error: Error) => {
-    const mapped = applyOrpcFieldError(form, error, {
+  const handleError = (error: Error) =>
+    applyOrpcFieldError(form, error, {
       duplicate: { field: "code", message: "Code already in use" },
     });
-
-    toast.error(mapped ?? errorMessage(error, "Could not save catalog item"));
-  };
 
   const create = useMutation(
     orpc.catalog.create.mutationOptions({
@@ -507,30 +489,8 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
           <Form {...form}>
             <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <RegisteredFormField
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Name</FormLabel>
-                      <FormControl>
-                        <Input {...field} disabled={isPending} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <RegisteredFormField
-                  name="code"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Code</FormLabel>
-                      <FormControl>
-                        <Input {...field} disabled={isPending} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <TextField name="name" label="Name" disabled={isPending} />
+                <TextField name="code" label="Code" disabled={isPending} />
                 <RegisteredFormField
                   name="category"
                   render={({ field }) => (
@@ -549,52 +509,21 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
                     </FormItem>
                   )}
                 />
-                <RegisteredFormField
+                <TextField
                   name="unitPrice"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Unit price</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          inputMode="decimal"
-                          placeholder="150.00"
-                          disabled={isPending}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  label="Unit price"
+                  inputMode="decimal"
+                  placeholder="150.00"
+                  disabled={isPending}
                 />
-                <RegisteredFormField
+                <TextField
                   name="taxRatePercent"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Tax %</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          inputMode="decimal"
-                          placeholder="0"
-                          disabled={isPending}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  label="Tax %"
+                  inputMode="decimal"
+                  placeholder="0"
+                  disabled={isPending}
                 />
-                <RegisteredFormField
-                  name="taxCode"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Tax code (optional)</FormLabel>
-                      <FormControl>
-                        <Input {...field} disabled={isPending} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <TextField name="taxCode" label="Tax code (optional)" disabled={isPending} />
               </div>
 
               <FormField

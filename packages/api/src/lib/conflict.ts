@@ -1,7 +1,7 @@
 import { ORPCError } from "@orpc/server";
 
 /**
- * Why a CONFLICT happened, for the three cases where the web client branches on it:
+ * Why a CONFLICT happened when the web client must branch on it:
  *
  * - `duplicate` — a catalog code is already in use (mapped to the code field).
  * - `uid_taken` — that patient UID belongs to someone else (mapped to the UID field).

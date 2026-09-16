@@ -13,6 +13,7 @@ export const SETTINGS_DEFAULTS = {
   mrnPrefix: "",
   invoicePrefix: "INV",
   receiptPrefix: "RCT",
+  advanceReceiptPrefix: "ADV",
   creditNotePrefix: "CN",
   fiscalYearStartMonth: 4,
   followUpValidityDays: 14,
@@ -32,6 +33,7 @@ export const organizationSettings = pgTable(
     mrnPrefix: text("mrn_prefix").notNull(),
     invoicePrefix: text("invoice_prefix").notNull(),
     receiptPrefix: text("receipt_prefix").notNull(),
+    advanceReceiptPrefix: text("advance_receipt_prefix").notNull().default("ADV"),
     creditNotePrefix: text("credit_note_prefix").notNull(),
     // 1-12; April (4) is the Indian fiscal year start.
     fiscalYearStartMonth: integer("fiscal_year_start_month").notNull(),

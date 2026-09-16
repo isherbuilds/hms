@@ -1,4 +1,5 @@
 import { db } from "@hms/db";
+import { advanceAllocations } from "@hms/db/schema/advance-allocations";
 import { creditNotes } from "@hms/db/schema/credit-notes";
 import { payments } from "@hms/db/schema/payments";
 import { refunds } from "@hms/db/schema/refunds";
@@ -26,23 +27,30 @@ export async function invoiceBalancesFor(
     invoiceId: string;
     creditTotal: string;
     paymentsTotal: string;
+    allocationsTotal: string;
     refundsTotal: string;
   }>(sql`
     with movements as (
       select ${creditNotes.invoiceId} as invoice_id,
              ${creditNotes.total} as credit,
              0::bigint as payment,
+             0::bigint as allocation,
              0::bigint as refund
       from ${creditNotes}
       where ${creditNotes.orgId} = ${orgId}
         and ${inArray(creditNotes.invoiceId, invoiceIds)}
       union all
-      select ${payments.invoiceId}, 0::bigint, ${payments.amount}, 0::bigint
+      select ${payments.invoiceId}, 0::bigint, ${payments.amount}, 0::bigint, 0::bigint
       from ${payments}
       where ${payments.orgId} = ${orgId}
         and ${inArray(payments.invoiceId, invoiceIds)}
       union all
-      select ${refunds.invoiceId}, 0::bigint, 0::bigint, ${refunds.amount}
+      select ${advanceAllocations.invoiceId}, 0::bigint, 0::bigint, ${advanceAllocations.amount}, 0::bigint
+      from ${advanceAllocations}
+      where ${advanceAllocations.orgId} = ${orgId}
+        and ${inArray(advanceAllocations.invoiceId, invoiceIds)}
+      union all
+      select ${refunds.invoiceId}, 0::bigint, 0::bigint, 0::bigint, ${refunds.amount}
       from ${refunds}
       where ${refunds.orgId} = ${orgId}
         and ${inArray(refunds.invoiceId, invoiceIds)}
@@ -50,6 +58,7 @@ export async function invoiceBalancesFor(
     select invoice_id as "invoiceId",
            coalesce(sum(credit), 0)::bigint as "creditTotal",
            coalesce(sum(payment), 0)::bigint as "paymentsTotal",
+           coalesce(sum(allocation), 0)::bigint as "allocationsTotal",
            coalesce(sum(refund), 0)::bigint as "refundsTotal"
     from movements
     group by invoice_id
@@ -67,6 +76,7 @@ export async function invoiceBalancesFor(
           grandTotal: invoice.grandTotal,
           creditTotal: BigInt(movementTotals?.creditTotal ?? "0"),
           paymentsTotal: BigInt(movementTotals?.paymentsTotal ?? "0"),
+          allocationsTotal: BigInt(movementTotals?.allocationsTotal ?? "0"),
           refundsTotal: BigInt(movementTotals?.refundsTotal ?? "0"),
         }),
       ] as const;

@@ -1,5 +1,7 @@
 import { db } from "@hms/db";
 import { nextCounter, type DbTransaction } from "@hms/db/counter";
+import { advanceAllocations } from "@hms/db/schema/advance-allocations";
+import { advanceReceipts } from "@hms/db/schema/advance-receipts";
 import { charges } from "@hms/db/schema/charges";
 import { creditNoteLines } from "@hms/db/schema/credit-note-lines";
 import { creditNotes } from "@hms/db/schema/credit-notes";
@@ -11,6 +13,7 @@ import { payments } from "@hms/db/schema/payments";
 import { refunds } from "@hms/db/schema/refunds";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { user } from "@hms/db/schema/auth";
+import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { ORPCError } from "@orpc/server";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -18,8 +21,10 @@ import { z } from "zod";
 import { formatDecimal } from "../core/money";
 import { audit } from "../audit";
 import { businessDate, businessDateAnchor } from "../lib/business-date";
+import { advanceRemaining } from "../lib/advance-credit";
 import { impossible } from "../lib/conflict";
 import { invoiceBalanceFor, invoiceBalancesFor } from "../lib/invoice-balance";
+import { planLabel } from "../lib/treatment-label";
 import {
   calculateInvoiceBalance,
   computeInvoiceLines,
@@ -69,17 +74,120 @@ async function lockInvoice(tx: DbTransaction, orgId: string, invoiceId: string) 
       id: invoices.id,
       invoiceNumber: invoices.invoiceNumber,
       grandTotal: invoices.grandTotal,
+      patientId: invoices.patientId,
+      treatmentPlanId: opdAppointments.treatmentPlanId,
     })
     .from(invoices)
+    .innerJoin(
+      opdAppointments,
+      and(eq(opdAppointments.orgId, orgId), eq(opdAppointments.id, invoices.opdAppointmentId)),
+    )
     .where(and(eq(invoices.orgId, orgId), eq(invoices.id, invoiceId)))
     .limit(1)
-    .for("update");
+    .for("update", { of: invoices });
 
   if (!invoice) {
     throw new ORPCError("NOT_FOUND", { message: "That invoice no longer exists." });
   }
 
   return invoice;
+}
+
+async function applyPatientCreditTx(
+  tx: DbTransaction,
+  args: {
+    scope: { orgId: string; userId: string };
+    invoice: Awaited<ReturnType<typeof lockInvoice>>;
+    amount: bigint;
+    now: Date;
+    timeZone: string;
+  },
+) {
+  const { scope, invoice } = args;
+
+  if (args.amount === 0n) return;
+
+  // Lock in one stable order, then read balances in a new statement: under READ COMMITTED
+  // only a statement that starts after the lock sees allocations committed while it waited.
+  const locked = await tx
+    .select({ id: advanceReceipts.id })
+    .from(advanceReceipts)
+    .where(
+      and(eq(advanceReceipts.orgId, scope.orgId), eq(advanceReceipts.patientId, invoice.patientId)),
+    )
+    .orderBy(asc(advanceReceipts.createdAt), asc(advanceReceipts.id))
+    .for("update");
+
+  const receipts = await tx
+    .select({
+      id: advanceReceipts.id,
+      treatmentPlanId: advanceReceipts.treatmentPlanId,
+      remaining: advanceRemaining(scope.orgId),
+    })
+    .from(advanceReceipts)
+    .where(
+      and(
+        eq(advanceReceipts.orgId, scope.orgId),
+        eq(advanceReceipts.patientId, invoice.patientId),
+        inArray(
+          advanceReceipts.id,
+          locked.map((receipt) => receipt.id),
+        ),
+      ),
+    )
+    .orderBy(asc(advanceReceipts.createdAt), asc(advanceReceipts.id));
+
+  const available = receipts.reduce((sum, receipt) => sum + receipt.remaining, 0n);
+
+  if (args.amount > available) {
+    throw new ORPCError("CONFLICT", { message: "That credit is no longer available." });
+  }
+
+  // Credit taken for this visit's plan goes first; a visit with no plan spends untagged
+  // credit first. The sort is stable, so each group stays oldest-first.
+  receipts.sort(
+    (first, second) =>
+      Number(second.treatmentPlanId === invoice.treatmentPlanId) -
+      Number(first.treatmentPlanId === invoice.treatmentPlanId),
+  );
+
+  let due = args.amount;
+  const rows: Array<typeof advanceAllocations.$inferInsert> = [];
+
+  for (const receipt of receipts) {
+    const amount = receipt.remaining < due ? receipt.remaining : due;
+
+    if (amount === 0n) continue;
+
+    rows.push({
+      id: Bun.randomUUIDv7(),
+      orgId: scope.orgId,
+      advanceReceiptId: receipt.id,
+      invoiceId: invoice.id,
+      amount,
+      allocatedBy: scope.userId,
+      createdAt: args.now,
+    });
+    due -= amount;
+  }
+
+  const inserted = await tx.insert(advanceAllocations).values(rows).returning();
+
+  for (const allocation of inserted) {
+    await postJournalEntry(tx, {
+      orgId: scope.orgId,
+      sourceType: "advance_allocation",
+      sourceId: allocation.id,
+      narration: `Advance allocation · Invoice ${invoice.invoiceNumber}`,
+      createdBy: scope.userId,
+      now: args.now,
+      timeZone: args.timeZone,
+      lines: [
+        { account: "patient_advances", debit: allocation.amount },
+        { account: "patient_receivables", credit: allocation.amount },
+      ],
+    });
+  }
 }
 
 async function issueInvoiceTx(
@@ -318,6 +426,7 @@ async function recordPaymentsTx(
     scope: { orgId: string; userId: string };
     invoiceId: string;
     payments: Array<{ method: PaymentMethod; amount: bigint; reference?: string }>;
+    applyCredit: bigint;
     settings: Awaited<ReturnType<typeof billingDocumentContext>>["settings"];
     now: Date;
     fiscalYear: string;
@@ -328,12 +437,27 @@ async function recordPaymentsTx(
 
   const balance = await invoiceBalanceFor(tx, scope.orgId, invoice);
   const collectedPaise = args.payments.reduce((sum, payment) => sum + payment.amount, 0n);
+  const outstanding = balance.outstanding > 0n ? balance.outstanding : 0n;
 
-  if (collectedPaise > (balance.outstanding > 0n ? balance.outstanding : 0n)) {
+  if (args.applyCredit > outstanding) {
+    throw new ORPCError("CONFLICT", {
+      message: "That credit is more than the invoice still owes.",
+    });
+  }
+
+  if (collectedPaise > outstanding - args.applyCredit) {
     throw new ORPCError("CONFLICT", {
       message: "That payment is more than the invoice still owes.",
     });
   }
+
+  await applyPatientCreditTx(tx, {
+    scope,
+    invoice,
+    amount: args.applyCredit,
+    now,
+    timeZone: settings.timeZone,
+  });
 
   const recorded = [];
 
@@ -387,6 +511,7 @@ export async function settleInvoiceTx(
     discountAmount: bigint;
     note?: string;
     payments: Array<{ method: PaymentMethod; amount: bigint; reference?: string }>;
+    applyCredit: bigint;
     settings: Awaited<ReturnType<typeof billingDocumentContext>>["settings"];
     now: Date;
     fiscalYear: string;
@@ -407,19 +532,25 @@ export async function settleInvoiceTx(
   const collected = args.payments.reduce((sum, payment) => sum + payment.amount, 0n);
   const due = issued.invoice.grandTotal;
 
-  if (collected > due) {
+  if (args.applyCredit > due) {
+    throw new ORPCError("CONFLICT", {
+      message: "That credit is more than the invoice still owes.",
+    });
+  }
+
+  if (collected > due - args.applyCredit) {
     throw new ORPCError("BAD_REQUEST", {
       message: "Collected amount cannot exceed the invoice total",
     });
   }
 
-  if (collected < due && !args.note) {
+  if (collected + args.applyCredit < due && !args.note) {
     throw new ORPCError("BAD_REQUEST", {
       message: "Add a reason for the outstanding balance",
     });
   }
 
-  if (args.payments.length === 0) {
+  if (args.payments.length === 0 && args.applyCredit === 0n) {
     return { ...issued, payments: [] };
   }
 
@@ -427,12 +558,72 @@ export async function settleInvoiceTx(
     scope: args.scope,
     invoiceId: args.invoiceId,
     payments: args.payments,
+    applyCredit: args.applyCredit,
     settings: args.settings,
     now: args.now,
     fiscalYear: args.fiscalYear,
   });
 
   return { ...issued, payments: recorded };
+}
+
+/** Numbers, stores, and posts one Refund once its caller has locked and capped the source. */
+async function insertRefundTx(
+  tx: DbTransaction,
+  args: {
+    scope: { orgId: string; userId: string };
+    settings: { timeZone: string };
+    now: Date;
+    fiscalYear: string;
+    refundId: string;
+    line: { method: PaymentMethod; amount: bigint; reference?: string };
+    source: {
+      invoiceId: string | null;
+      creditNoteId: string | null;
+      advanceReceiptId: string | null;
+    };
+    debit: "patient_advances" | "patient_receivables";
+    narration: string;
+  },
+) {
+  const { scope, fiscalYear, now } = args;
+  const sequence = await nextCounter(tx, scope.orgId, `refund:${fiscalYear}`);
+  const refundNumber = documentNumber("RF", fiscalYear, sequence);
+
+  const [inserted] = await tx
+    .insert(refunds)
+    .values({
+      id: args.refundId,
+      orgId: scope.orgId,
+      ...args.source,
+      method: args.line.method,
+      amount: args.line.amount,
+      reference: args.line.reference ?? null,
+      refundNumber,
+      fiscalYear,
+      businessDate: businessDate(now, args.settings.timeZone),
+      refundedBy: scope.userId,
+      createdAt: now,
+    })
+    .returning();
+
+  if (!inserted) throw impossible("refund insert returned no row");
+
+  await postJournalEntry(tx, {
+    orgId: scope.orgId,
+    sourceType: "refund",
+    sourceId: args.refundId,
+    narration: `Refund ${refundNumber} · ${args.narration}`,
+    createdBy: scope.userId,
+    now,
+    timeZone: args.settings.timeZone,
+    lines: [
+      { account: args.debit, debit: inserted.amount },
+      { account: settlementAccountFor(args.line.method), credit: inserted.amount },
+    ],
+  });
+
+  return inserted;
 }
 
 export const billingRouter = {
@@ -504,6 +695,184 @@ export const billingRouter = {
     return charge;
   }),
 
+  recordAdvance: orgProcedure(
+    { billing: ["write"] },
+    orgInput
+      .extend({
+        patientId: z.string(),
+        treatmentPlanId: z.string().optional(),
+        method: paymentLine.shape.method,
+        amount: positiveMoney,
+        reference: paymentLine.shape.reference,
+        note,
+      })
+      .superRefine(requirePaymentReference),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+    const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
+    const advanceId = Bun.randomUUIDv7();
+
+    const [patient] = await db
+      .select({
+        id: patients.id,
+        name: patients.name,
+        mrn: patients.mrn,
+        phone: patients.phone,
+        address: patients.address,
+        guardianRelation: patients.guardianRelation,
+        guardianName: patients.guardianName,
+      })
+      .from(patients)
+      .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, input.patientId)))
+      .limit(1);
+
+    if (!patient) {
+      throw new ORPCError("NOT_FOUND", { message: "That patient no longer exists." });
+    }
+
+    const guardian = guardianLabel({
+      guardianRelation: patient.guardianRelation,
+      guardianName: patient.guardianName,
+    });
+
+    const advance = await db.transaction(async (tx) => {
+      const plan = input.treatmentPlanId
+        ? await tx
+            .select({ id: treatmentPlans.id, label: planLabel(scope.orgId) })
+            .from(treatmentPlans)
+            .where(
+              and(
+                eq(treatmentPlans.orgId, scope.orgId),
+                eq(treatmentPlans.id, input.treatmentPlanId),
+                eq(treatmentPlans.patientId, patient.id),
+                eq(treatmentPlans.status, "open"),
+              ),
+            )
+            .limit(1)
+            .then((rows) => rows[0])
+        : undefined;
+
+      if (input.treatmentPlanId && !plan) {
+        throw new ORPCError("CONFLICT", { message: "That treatment plan is no longer available." });
+      }
+
+      const sequence = await nextCounter(tx, scope.orgId, `advance:${fiscalYear}`);
+      const receiptNumber = documentNumber(settings.advanceReceiptPrefix, fiscalYear, sequence);
+
+      const [inserted] = await tx
+        .insert(advanceReceipts)
+        .values({
+          id: advanceId,
+          orgId: scope.orgId,
+          patientId: patient.id,
+          treatmentPlanId: plan?.id ?? null,
+          method: input.method,
+          amount: input.amount,
+          reference: input.reference ?? null,
+          note: input.note ?? null,
+          purpose: plan?.label ?? "Future services",
+          receiptNumber,
+          fiscalYear,
+          businessDate: businessDate(now, settings.timeZone),
+          orgLegalName: settings.legalName,
+          orgAddress: settings.address,
+          orgTaxId: settings.taxId,
+          currency: settings.currency,
+          patientName: patient.name,
+          patientMrn: patient.mrn,
+          patientPhone: patient.phone,
+          patientAddress: patient.address,
+          patientGuardian: guardian ? `${guardian.relation} ${guardian.name}` : null,
+          receivedBy: scope.userId,
+          createdAt: now,
+        })
+        .returning();
+
+      if (!inserted) throw impossible("advance receipt insert returned no row");
+
+      await postJournalEntry(tx, {
+        orgId: scope.orgId,
+        sourceType: "advance_receipt",
+        sourceId: advanceId,
+        narration: `Advance receipt ${receiptNumber}`,
+        createdBy: scope.userId,
+        now,
+        timeZone: settings.timeZone,
+        lines: [
+          { account: settlementAccountFor(input.method), debit: input.amount },
+          { account: "patient_advances", credit: input.amount },
+        ],
+      });
+
+      return inserted;
+    });
+
+    audit({
+      action: "advance.record",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `advance:${advanceId}`,
+      meta: { receiptNumber: advance.receiptNumber, amount: formatDecimal(advance.amount) },
+    });
+
+    return advance;
+  }),
+
+  patientCredit: orgProcedure(
+    { billing: ["read"] },
+    orgInput.extend({ patientId: z.string() }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+
+    const [credit] = await db
+      .select({
+        total: sql<bigint>`coalesce(sum(${advanceRemaining(scope.orgId)}), 0)`.mapWith(BigInt),
+      })
+      .from(patients)
+      .leftJoin(
+        advanceReceipts,
+        and(eq(advanceReceipts.orgId, scope.orgId), eq(advanceReceipts.patientId, patients.id)),
+      )
+      .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, input.patientId)))
+      .groupBy(patients.id);
+
+    if (!credit) {
+      throw new ORPCError("NOT_FOUND", { message: "That patient no longer exists." });
+    }
+
+    return credit;
+  }),
+
+  getAdvanceReceipt: orgProcedure(
+    { billing: ["read"] },
+    orgInput.extend({ advanceId: z.string() }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+
+    const [[row], advanceRefunds] = await Promise.all([
+      db
+        .select({ receipt: advanceReceipts, receivedByName: user.name })
+        .from(advanceReceipts)
+        .innerJoin(user, eq(user.id, advanceReceipts.receivedBy))
+        .where(and(eq(advanceReceipts.orgId, scope.orgId), eq(advanceReceipts.id, input.advanceId)))
+        .limit(1),
+      db
+        .select()
+        .from(refunds)
+        .where(and(eq(refunds.orgId, scope.orgId), eq(refunds.advanceReceiptId, input.advanceId)))
+        .orderBy(asc(refunds.createdAt), asc(refunds.id)),
+    ]);
+
+    if (!row) {
+      throw new ORPCError("NOT_FOUND", { message: "That advance receipt no longer exists." });
+    }
+
+    return {
+      receipt: { ...row.receipt, receivedByName: row.receivedByName },
+      refunds: advanceRefunds,
+    };
+  }),
+
   settleCharges: orgProcedure(
     { billing: ["write"] },
     orgInput.extend({
@@ -513,6 +882,7 @@ export const billingRouter = {
       discountAmount: money.default(0n),
       note,
       payments: z.array(paymentLine).max(4).default([]),
+      applyCredit: money.default(0n),
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
@@ -530,6 +900,7 @@ export const billingRouter = {
         fiscalYear,
         invoiceId,
         payments: input.payments,
+        applyCredit: input.applyCredit,
         expectedGrandTotal: input.expectedGrandTotal,
         expectedChargeRevision: input.expectedChargeRevision,
       }),
@@ -561,10 +932,15 @@ export const billingRouter = {
 
   recordPayments: orgProcedure(
     { billing: ["write"] },
-    orgInput.extend({
-      invoiceId: z.string(),
-      payments: z.array(paymentLine).min(1).max(4),
-    }),
+    orgInput
+      .extend({
+        invoiceId: z.string(),
+        payments: z.array(paymentLine).max(4).default([]),
+        applyCredit: money.default(0n),
+      })
+      .refine((value) => value.payments.length > 0 || value.applyCredit > 0n, {
+        message: "Record a payment or apply patient credit",
+      }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
@@ -574,6 +950,7 @@ export const billingRouter = {
         scope,
         invoiceId: input.invoiceId,
         payments: input.payments,
+        applyCredit: input.applyCredit,
         settings,
         now,
         fiscalYear,
@@ -814,10 +1191,83 @@ export const billingRouter = {
     return { creditNote: result.creditNote, lines: result.lines };
   }),
 
+  recordAdvanceRefund: orgProcedure(
+    { billing: ["advanceRefund"] },
+    orgInput
+      .extend({
+        advanceReceiptId: z.string(),
+        ...paymentLine.shape,
+      })
+      .superRefine(requirePaymentReference),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+    const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
+    const refundId = Bun.randomUUIDv7();
+
+    const refund = await db.transaction(async (tx) => {
+      const [advance] = await tx
+        .select({ id: advanceReceipts.id, receiptNumber: advanceReceipts.receiptNumber })
+        .from(advanceReceipts)
+        .where(
+          and(
+            eq(advanceReceipts.orgId, scope.orgId),
+            eq(advanceReceipts.id, input.advanceReceiptId),
+          ),
+        )
+        .limit(1)
+        .for("update");
+
+      if (!advance) {
+        throw new ORPCError("NOT_FOUND", {
+          message: "That advance receipt no longer exists.",
+        });
+      }
+
+      // A new statement after the lock, so it sees allocations committed while this waited.
+      const [balance] = await tx
+        .select({ remaining: advanceRemaining(scope.orgId) })
+        .from(advanceReceipts)
+        .where(and(eq(advanceReceipts.orgId, scope.orgId), eq(advanceReceipts.id, advance.id)));
+
+      if (!balance) throw impossible("locked advance receipt vanished before its balance read");
+
+      if (input.amount > balance.remaining) {
+        throw new ORPCError("CONFLICT", {
+          message: "That refund is more than the advance credit available.",
+        });
+      }
+
+      return insertRefundTx(tx, {
+        scope,
+        settings,
+        now,
+        fiscalYear,
+        refundId,
+        line: input,
+        source: { invoiceId: null, creditNoteId: null, advanceReceiptId: advance.id },
+        debit: "patient_advances",
+        narration: `Advance ${advance.receiptNumber}`,
+      });
+    });
+
+    audit({
+      action: "refund.record",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `refund:${refundId}`,
+      meta: { refundNumber: refund.refundNumber, amount: formatDecimal(refund.amount) },
+    });
+
+    return refund;
+  }),
+
   recordRefund: orgProcedure(
     { billing: ["creditNote"] },
     orgInput
-      .extend({ creditNoteId: z.string(), ...paymentLine.shape })
+      .extend({
+        creditNoteId: z.string(),
+        ...paymentLine.shape,
+      })
       .superRefine(requirePaymentReference),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
@@ -862,43 +1312,21 @@ export const billingRouter = {
         });
       }
 
-      const sequence = await nextCounter(tx, scope.orgId, `refund:${fiscalYear}`);
-      const refundNumber = documentNumber("RF", fiscalYear, sequence);
-
-      const [inserted] = await tx
-        .insert(refunds)
-        .values({
-          id: refundId,
-          orgId: scope.orgId,
+      return insertRefundTx(tx, {
+        scope,
+        settings,
+        now,
+        fiscalYear,
+        refundId,
+        line: input,
+        source: {
           invoiceId: creditNote.invoiceId,
           creditNoteId: input.creditNoteId,
-          method: input.method,
-          amount: input.amount,
-          reference: input.reference ?? null,
-          refundNumber,
-          fiscalYear,
-          businessDate: businessDate(now, settings.timeZone),
-          refundedBy: scope.userId,
-          createdAt: now,
-        })
-        .returning();
-
-      if (!inserted) throw impossible("refund insert returned no row");
-      await postJournalEntry(tx, {
-        orgId: scope.orgId,
-        sourceType: "refund",
-        sourceId: refundId,
-        narration: `Refund ${refundNumber} · Invoice ${invoice.invoiceNumber}`,
-        createdBy: scope.userId,
-        now,
-        timeZone: settings.timeZone,
-        lines: [
-          { account: "patient_receivables", debit: inserted.amount },
-          { account: settlementAccountFor(input.method), credit: inserted.amount },
-        ],
+          advanceReceiptId: null,
+        },
+        debit: "patient_receivables",
+        narration: `Invoice ${invoice.invoiceNumber}`,
       });
-
-      return inserted;
     });
 
     audit({
@@ -933,6 +1361,7 @@ export const billingRouter = {
     const rows = await db
       .select({
         id: invoices.id,
+        patientId: invoices.patientId,
         invoiceNumber: invoices.invoiceNumber,
         currency: invoices.currency,
         grandTotal: invoices.grandTotal,
@@ -951,6 +1380,7 @@ export const billingRouter = {
       return {
         ...invoice,
         paymentsTotal: balance.paymentsTotal,
+        allocationsTotal: balance.allocationsTotal,
         outstanding: balance.outstanding,
       };
     });
@@ -976,37 +1406,50 @@ export const billingRouter = {
       throw new ORPCError("NOT_FOUND", { message: "That invoice no longer exists." });
     }
 
-    const [lines, invoicePayments, noteRows, invoiceRefunds] = await Promise.all([
-      db
-        .select()
-        .from(invoiceLines)
-        .where(
-          and(eq(invoiceLines.orgId, scope.orgId), eq(invoiceLines.invoiceId, input.invoiceId)),
-        )
-        .orderBy(asc(invoiceLines.id)),
-      db
-        .select()
-        .from(payments)
-        .where(and(eq(payments.orgId, scope.orgId), eq(payments.invoiceId, input.invoiceId)))
-        .orderBy(asc(payments.createdAt), asc(payments.id)),
-      db
-        .select({ creditNote: creditNotes, line: creditNoteLines })
-        .from(creditNotes)
-        .leftJoin(
-          creditNoteLines,
-          and(
-            eq(creditNoteLines.orgId, scope.orgId),
-            eq(creditNotes.id, creditNoteLines.creditNoteId),
-          ),
-        )
-        .where(and(eq(creditNotes.orgId, scope.orgId), eq(creditNotes.invoiceId, input.invoiceId)))
-        .orderBy(asc(creditNotes.createdAt), asc(creditNotes.id), asc(creditNoteLines.id)),
-      db
-        .select()
-        .from(refunds)
-        .where(and(eq(refunds.orgId, scope.orgId), eq(refunds.invoiceId, input.invoiceId)))
-        .orderBy(asc(refunds.createdAt), asc(refunds.id)),
-    ]);
+    const [lines, invoicePayments, invoiceAllocations, noteRows, invoiceRefunds] =
+      await Promise.all([
+        db
+          .select()
+          .from(invoiceLines)
+          .where(
+            and(eq(invoiceLines.orgId, scope.orgId), eq(invoiceLines.invoiceId, input.invoiceId)),
+          )
+          .orderBy(asc(invoiceLines.id)),
+        db
+          .select()
+          .from(payments)
+          .where(and(eq(payments.orgId, scope.orgId), eq(payments.invoiceId, input.invoiceId)))
+          .orderBy(asc(payments.createdAt), asc(payments.id)),
+        db
+          .select()
+          .from(advanceAllocations)
+          .where(
+            and(
+              eq(advanceAllocations.orgId, scope.orgId),
+              eq(advanceAllocations.invoiceId, input.invoiceId),
+            ),
+          )
+          .orderBy(asc(advanceAllocations.createdAt), asc(advanceAllocations.id)),
+        db
+          .select({ creditNote: creditNotes, line: creditNoteLines })
+          .from(creditNotes)
+          .leftJoin(
+            creditNoteLines,
+            and(
+              eq(creditNoteLines.orgId, scope.orgId),
+              eq(creditNotes.id, creditNoteLines.creditNoteId),
+            ),
+          )
+          .where(
+            and(eq(creditNotes.orgId, scope.orgId), eq(creditNotes.invoiceId, input.invoiceId)),
+          )
+          .orderBy(asc(creditNotes.createdAt), asc(creditNotes.id), asc(creditNoteLines.id)),
+        db
+          .select()
+          .from(refunds)
+          .where(and(eq(refunds.orgId, scope.orgId), eq(refunds.invoiceId, input.invoiceId)))
+          .orderBy(asc(refunds.createdAt), asc(refunds.id)),
+      ]);
 
     type NoteRow = (typeof noteRows)[number];
 
@@ -1028,6 +1471,7 @@ export const billingRouter = {
       grandTotal: invoice.grandTotal,
       creditTotal: notesWithLines.reduce((sum, note) => sum + note.total, 0n),
       paymentsTotal: invoicePayments.reduce((sum, payment) => sum + payment.amount, 0n),
+      allocationsTotal: invoiceAllocations.reduce((sum, allocation) => sum + allocation.amount, 0n),
       refundsTotal: invoiceRefunds.reduce((sum, refund) => sum + refund.amount, 0n),
     });
 
@@ -1035,6 +1479,7 @@ export const billingRouter = {
       invoice,
       lines,
       payments: invoicePayments,
+      allocations: invoiceAllocations,
       creditNotes: notesWithLines,
       refunds: invoiceRefunds,
       balance,

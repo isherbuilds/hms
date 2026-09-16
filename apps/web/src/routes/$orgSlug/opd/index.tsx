@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { ClientOnly, Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
@@ -18,6 +18,7 @@ import { z } from "zod";
 
 import { OpdAppointmentStatusBadge, useOpdCheckIn } from "@/components/opd-appointment";
 import { CheckInOpdAppointmentDialog } from "@/components/opd-appointment-dialogs";
+import { followUpsQuery, OpdFollowUps } from "@/components/opd-follow-ups";
 import {
   FilterGroup,
   ListState,
@@ -91,7 +92,8 @@ const opdDaySearchSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
-  includeClosed: z.boolean().optional().catch(undefined),
+  // Absent is the open queue. Follow-ups lists due treatment plans instead of the day.
+  status: z.enum(["all", "follow-ups"]).optional().catch(undefined),
 });
 
 const dayQuery = (orgSlug: string, date: string | undefined, q: string, includeClosed: boolean) =>
@@ -107,20 +109,24 @@ const dayQuery = (orgSlug: string, date: string | undefined, q: string, includeC
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
+    // Typing keeps the day on screen; a blank queue between keystrokes reads as
+    // "nobody is waiting".
+    placeholderData: keepPreviousData,
   });
 
 export const Route = createFileRoute("/$orgSlug/opd/")({
   head: () => ({ meta: [{ title: "Outpatient · HMS" }] }),
   validateSearch: opdDaySearchSchema,
-  loaderDeps: ({ search: { date, includeClosed } }) => ({ date, includeClosed }),
-  loader: async ({
-    context: { queryClient },
-    deps: { date, includeClosed },
-    params: { orgSlug },
-  }) => {
-    await queryClient
-      .infiniteQuery(dayQuery(orgSlug, date, "", includeClosed ?? false))
-      .catch(() => {});
+  loaderDeps: ({ search: { date, status } }) => ({ date, status }),
+  loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {
+    const { roles } = await queryClient.query(orpc.member.me.queryOptions({ input: { orgSlug } }));
+
+    // Whichever list the URL names arrives with the page, never after it.
+    await (
+      deps.status === "follow-ups" && authorize(roles, { treatment: ["read"] })
+        ? queryClient.infiniteQuery(followUpsQuery(orgSlug, ""))
+        : queryClient.infiniteQuery(dayQuery(orgSlug, deps.date, "", deps.status === "all"))
+    ).catch(() => {});
   },
   component: OpdRoute,
 });
@@ -141,7 +147,7 @@ function OpdStatusCell({
   status: "booked" | "checked_in" | "cancelled" | "no_show";
 }) {
   const [checkingIn, setCheckingIn] = useState(false);
-  const checkIn = useOpdCheckIn(orgSlug);
+  const checkIn = useOpdCheckIn();
   // Cashiers and accountants read the queue; checking in needs `opd:update`.
   const canUpdate = useCan(orgSlug, { opd: ["update"] });
 
@@ -181,13 +187,13 @@ function OpdStatusCell({
 }
 
 function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string }) {
-  const { date, includeClosed } = Route.useSearch();
+  const { date, status } = Route.useSearch();
   const { timeZone, today } = useOrgDateTime();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const shownDate = date ?? today;
 
   const day = useInfiniteQuery({
-    ...dayQuery(orgSlug, date, search, includeClosed ?? false),
+    ...dayQuery(orgSlug, date, search, status === "all"),
     ...OPERATIONAL_INFINITE_REFETCH,
   });
 
@@ -360,37 +366,55 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
 }
 
 // Owns the settled search term so the page header above never sees a keystroke.
-function OpdDayView({ orgSlug }: { orgSlug: string }) {
+function OpdDeskView({
+  orgSlug,
+  followUps,
+  canReadTreatment,
+}: {
+  orgSlug: string;
+  followUps: boolean;
+  canReadTreatment: boolean;
+}) {
   const [search, setSearch] = useState("");
-  const { date, includeClosed } = Route.useSearch();
+  const filters = Route.useSearch();
   const navigate = useNavigate();
 
   return (
     <PageBody>
       <ListToolbar>
         <SearchInput
-          label="Search outpatient appointments"
-          placeholder="Search name, MRN, phone or token"
+          label="Search outpatient"
+          placeholder={
+            followUps ? "Search patient, MRN or phone" : "Search name, MRN, phone or token"
+          }
           onQueryChange={setSearch}
         />
         <FilterGroup
           label="Status"
-          value={includeClosed ? "all" : "open"}
+          value={followUps ? "follow-ups" : filters.status === "all" ? "all" : "open"}
           options={[
             { value: "open", label: "Open" },
             { value: "all", label: "All" },
+            ...(canReadTreatment ? [{ value: "follow-ups", label: "Follow-ups" }] : []),
           ]}
           onValueChange={(next) =>
             void navigate({
               to: "/$orgSlug/opd",
               params: { orgSlug },
-              search: { date, includeClosed: next === "all" ? true : undefined },
+              search: {
+                ...filters,
+                status: next === "all" || next === "follow-ups" ? next : undefined,
+              },
               replace: true,
             })
           }
         />
       </ListToolbar>
-      <OpdAppointments orgSlug={orgSlug} search={search} />
+      {followUps ? (
+        <OpdFollowUps orgSlug={orgSlug} search={search} />
+      ) : (
+        <OpdAppointments orgSlug={orgSlug} search={search} />
+      )}
     </PageBody>
   );
 }
@@ -405,8 +429,8 @@ function NewAppointmentLink({ orgSlug }: { orgSlug: string }) {
   );
 }
 
-function OpdHeader({ orgSlug }: { orgSlug: string }) {
-  const date = Route.useSearch({ select: (search) => search.date });
+function OpdHeader({ orgSlug, showDay }: { orgSlug: string; showDay: boolean }) {
+  const filters = Route.useSearch();
   const navigate = useNavigate();
   const { today } = useOrgDateTime();
   const roles = useMembership(orgSlug, (membership) => membership.roles);
@@ -415,7 +439,7 @@ function OpdHeader({ orgSlug }: { orgSlug: string }) {
   const canCreateOpdAppointments =
     authorize(roles, { opd: ["create"] }) && authorize(roles, { patient: ["read"] });
 
-  const shownDate = date ?? today;
+  const shownDate = filters.date ?? today;
 
   return (
     <>
@@ -423,20 +447,20 @@ function OpdHeader({ orgSlug }: { orgSlug: string }) {
         title="Outpatient"
         action={
           <>
-            <DayStepper
-              date={shownDate}
-              today={today}
-              onChange={(next) =>
-                void navigate({
-                  to: "/$orgSlug/opd",
-                  params: { orgSlug },
-                  search: (previous) => ({
-                    ...previous,
-                    date: next === today ? undefined : next,
-                  }),
-                })
-              }
-            />
+            {/* A day belongs to the queue; the call sheet is not a day's list. */}
+            {showDay ? (
+              <DayStepper
+                date={shownDate}
+                today={today}
+                onChange={(next) =>
+                  void navigate({
+                    to: "/$orgSlug/opd",
+                    params: { orgSlug },
+                    search: { ...filters, date: next === today ? undefined : next },
+                  })
+                }
+              />
+            ) : null}
             {canCreateOpdAppointments ? <NewAppointmentLink orgSlug={orgSlug} /> : null}
           </>
         }
@@ -447,11 +471,20 @@ function OpdHeader({ orgSlug }: { orgSlug: string }) {
 
 function OpdRoute() {
   const { orgSlug } = Route.useParams();
+  const status = Route.useSearch({ select: (search) => search.status });
+  const canReadTreatment = useCan(orgSlug, { treatment: ["read"] });
+  // A hand-typed `?status=follow-ups` without the grant falls back to the open queue.
+  const followUps = status === "follow-ups" && canReadTreatment;
 
   return (
     <>
-      <OpdHeader orgSlug={orgSlug} />
-      <OpdDayView key={orgSlug} orgSlug={orgSlug} />
+      <OpdHeader orgSlug={orgSlug} showDay={!followUps} />
+      <OpdDeskView
+        key={orgSlug}
+        orgSlug={orgSlug}
+        followUps={followUps}
+        canReadTreatment={canReadTreatment}
+      />
     </>
   );
 }

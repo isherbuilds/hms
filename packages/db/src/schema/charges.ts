@@ -50,7 +50,10 @@ export const charges = pgTable(
     check("charges_qty_check", sql`${table.qty} > 0`),
     check("charges_unit_price_check", sql`${table.unitPrice} >= 0`),
     check("charges_tax_rate_percent_check", sql`${table.taxRatePercent} >= 0`),
-    check("charges_source_type_check", sql`${table.sourceType} in ('consult_fee', 'catalog')`),
+    check(
+      "charges_source_type_check",
+      sql`${table.sourceType} in ('consult_fee', 'catalog', 'treatment_plan')`,
+    ),
     check("charges_status_check", sql`${table.status} in ('pending', 'invoiced', 'voided')`),
     check(
       "charges_revenue_category_check",
@@ -70,6 +73,11 @@ export const charges = pgTable(
       foreignColumns: [invoices.orgId, invoices.id],
     }),
     index("charges_org_opd_appointment_idx").on(table.orgId, table.opdAppointmentId, table.status),
+    // Only a plan-posted charge carries a source id, so the partial index skips every
+    // consult fee and visit service; the source type filters after the lookup.
+    index("charges_org_source_idx")
+      .on(table.orgId, table.sourceId)
+      .where(sql`${table.sourceId} is not null`),
     index("charges_org_status_created_idx").on(
       table.orgId,
       table.status,

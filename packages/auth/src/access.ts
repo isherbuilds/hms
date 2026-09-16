@@ -14,7 +14,8 @@ export const ac = createAccessControl({
   member: ["create", "read", "update", "delete"],
   patient: ["create", "read", "update"],
   opd: ["create", "read", "update"],
-  billing: ["read", "write", "creditNote"],
+  billing: ["read", "write", "creditNote", "advanceRefund"],
+  treatment: ["create", "read", "update"],
   catalog: ["create", "read", "update"],
   payer: ["create", "read", "update"],
   staff: ["create", "read", "update"],
@@ -30,6 +31,7 @@ export const reception = ac.newRole({
   patient: ["create", "read", "update"],
   opd: ["create", "read", "update"],
   billing: ["read", "write"],
+  treatment: ["create", "read", "update"],
   catalog: ["read"],
   payer: ["read"],
   staff: ["read"],
@@ -44,7 +46,8 @@ export const cashier = ac.newRole({
   member: ["read"],
   patient: ["read"],
   opd: ["read"],
-  billing: ["read", "write"],
+  billing: ["read", "write", "advanceRefund"],
+  treatment: ["read"],
   catalog: ["read"],
   payer: ["read"],
   staff: ["read"],
@@ -58,7 +61,8 @@ export const accountant = ac.newRole({
   member: ["read"],
   patient: ["read"],
   opd: ["read"],
-  billing: ["read", "creditNote"],
+  billing: ["read", "creditNote", "advanceRefund"],
+  treatment: ["read"],
   catalog: ["read"],
   payer: ["read"],
   staff: ["read"],
@@ -76,7 +80,8 @@ export const admin = ac.newRole({
   member: ["create", "read", "update", "delete"],
   patient: ["create", "read", "update"],
   opd: ["create", "read", "update"],
-  billing: ["read", "write", "creditNote"],
+  billing: ["read", "write", "creditNote", "advanceRefund"],
+  treatment: ["create", "read", "update"],
   catalog: ["create", "read", "update"],
   payer: ["create", "read", "update"],
   staff: ["create", "read", "update"],
@@ -91,7 +96,8 @@ export const owner = ac.newRole({
   member: ["create", "read", "update", "delete"],
   patient: ["create", "read", "update"],
   opd: ["create", "read", "update"],
-  billing: ["read", "write", "creditNote"],
+  billing: ["read", "write", "creditNote", "advanceRefund"],
+  treatment: ["create", "read", "update"],
   catalog: ["create", "read", "update"],
   payer: ["create", "read", "update"],
   staff: ["create", "read", "update"],
@@ -134,10 +140,14 @@ export function parseRoles(stored: string): RoleKey[] {
     .split(",")
     .map((role) => role.trim())
     .filter(Boolean);
+
   const unknown = parsed.filter((role) => !(role in roles));
+
   if (unknown.length > 0) {
     throw new Error(`Unknown organization role(s): ${unknown.join(", ")}`);
   }
+
+  // SAFETY: every parsed value was checked against the complete roles map above.
   return parsed as RoleKey[];
 }
 

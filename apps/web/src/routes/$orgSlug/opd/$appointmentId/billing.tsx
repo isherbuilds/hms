@@ -1,12 +1,13 @@
 import { authorize } from "@hms/auth/access";
-import { useQuery } from "@tanstack/react-query";
-import { ClientOnly, createFileRoute } from "@tanstack/react-router";
+import { skipToken, useQuery } from "@tanstack/react-query";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { ChargeCheckout } from "@/components/opd-billing/charge-checkout";
+import { AdvanceForm } from "@/components/advance-form";
 import { InvoiceAccount } from "@/components/opd-billing/invoice-account";
 import { VoidChargeDialog } from "@/components/opd-billing/void-charge-dialog";
-import { ErrorNote, Panel, PanelEmpty } from "@/components/page";
+import { ErrorNote } from "@/components/page";
 import { StaleDataNotice } from "@/components/stale-data-notice";
 import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
@@ -29,15 +30,28 @@ function BillingOpdAppointmentRoute() {
   const { orgSlug, appointmentId } = Route.useParams();
   const { record, refreshError: recordRefreshError } = useOpdRecord();
   const [voiding, setVoiding] = useState<{ id: string; description: string } | null>(null);
-  const invoices = useQuery({
-    ...orpc.billing.listInvoices.queryOptions({ input: { orgSlug, appointmentId } }),
-    ...OPERATIONAL_REFETCH,
-  });
+  const patientId = record.patient?.id;
+
   // From membership, not `settings.get`: the same currency, already loaded by the org
   // layout, and readable by a cashier who has no `settings:read` grant.
   const { roles, currency } = useMembership(orgSlug);
   const canCredit = authorize(roles, { billing: ["creditNote"] });
   const canWrite = authorize(roles, { billing: ["write"] });
+
+  const invoices = useQuery({
+    ...orpc.billing.listInvoices.queryOptions({ input: { orgSlug, appointmentId } }),
+    ...OPERATIONAL_REFETCH,
+  });
+
+  // The record layout prefetches the patient's plans; the advance form needs the open
+  // ones, and only a billing writer sees it.
+  const plans = useQuery(
+    orpc.treatment.listForPatient.queryOptions({
+      input: canWrite && patientId ? { orgSlug, patientId } : skipToken,
+    }),
+  );
+
+  const openPlans = plans.data?.filter((plan) => plan.status === "open");
 
   // The layout has proven the record; only the invoice list can be missing here.
   if (!invoices.data) {
@@ -60,16 +74,29 @@ function BillingOpdAppointmentRoute() {
         />
       ) : null}
 
+      {patientId && openPlans ? (
+        <div className="flex justify-end">
+          <AdvanceForm
+            orgSlug={orgSlug}
+            patientId={patientId}
+            plans={openPlans}
+            linkedPlanId={record.appointment.treatmentPlanId ?? undefined}
+          />
+        </div>
+      ) : null}
+
       {/* One list for both roles now that the counter cannot add to it: the
           cashier gets a Void column and the invoice beside it, nobody gets a
-          catalog. */}
-      <Panel label="Charges" minHeight="min-h-16">
+          catalog. Flat like Invoices below; a card around a table is noise. */}
+      <section className="flex flex-col gap-2">
+        <h2 className="flex min-h-6 items-center text-muted-foreground">Charges</h2>
         {pending.length === 0 ? (
-          <PanelEmpty>No charge is waiting to be invoiced.</PanelEmpty>
+          <p className="text-muted-foreground">No charge is waiting to be invoiced.</p>
         ) : (
           <ChargeCheckout
             orgSlug={orgSlug}
             appointmentId={appointmentId}
+            patientId={patientId}
             pending={pending}
             chargeRevision={record.appointment.chargeRevision}
             currency={currency}
@@ -77,7 +104,7 @@ function BillingOpdAppointmentRoute() {
             onVoid={setVoiding}
           />
         )}
-      </Panel>
+      </section>
 
       {/* Each invoice already carries its own surface and its own actions, so
           the list stays flat: a card around a stack of boxes is noise. The
@@ -93,7 +120,6 @@ function BillingOpdAppointmentRoute() {
               <InvoiceAccount
                 key={invoice.id}
                 orgSlug={orgSlug}
-                appointmentId={appointmentId}
                 invoice={invoice}
                 canCredit={canCredit}
                 canPay={canWrite}
@@ -103,17 +129,8 @@ function BillingOpdAppointmentRoute() {
         )}
       </section>
 
-      {canChangeCharges && canWrite ? (
-        <ClientOnly fallback={null}>
-          {voiding ? (
-            <VoidChargeDialog
-              charge={voiding}
-              orgSlug={orgSlug}
-              appointmentId={appointmentId}
-              onClose={() => setVoiding(null)}
-            />
-          ) : null}
-        </ClientOnly>
+      {canChangeCharges && canWrite && voiding ? (
+        <VoidChargeDialog charge={voiding} orgSlug={orgSlug} onClose={() => setVoiding(null)} />
       ) : null}
     </>
   );
@@ -124,5 +141,6 @@ function BillingFreshness({ orgSlug, appointmentId }: { orgSlug: string; appoint
     ...orpc.billing.listInvoices.queryOptions({ input: { orgSlug, appointmentId } }),
     enabled: false,
   });
+
   return <StaleDataNotice dataUpdatedAt={dataUpdatedAt} />;
 }

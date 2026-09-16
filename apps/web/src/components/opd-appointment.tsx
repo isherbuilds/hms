@@ -17,16 +17,14 @@ import {
 } from "@hms/ui/components/form";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { Textarea } from "@hms/ui/components/textarea";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { useZodForm } from "@/hooks/use-zod-form";
-import { invalidateOpdAppointmentState } from "@/lib/domain-invalidation";
-import { useOpdErrorToast } from "@/lib/opd-error";
-import { hasErrorCode } from "@/lib/orpc-error";
 import { orpc } from "@/lib/orpc";
+import { closeOnConflict } from "@/lib/orpc-error";
 
 // Staff copy, not the stored value.
 export const OPD_STATUS_LABELS = {
@@ -41,37 +39,29 @@ export type OpdAppointmentStatus = keyof typeof OPD_STATUS_LABELS;
 export function OpdAppointmentStatusBadge({ status }: { status: OpdAppointmentStatus }) {
   const variant =
     status === "checked_in" ? "secondary" : status === "cancelled" ? "destructive" : "muted";
+
   return <Badge variant={variant}>{OPD_STATUS_LABELS[status]}</Badge>;
 }
 
 // On its own so a list row can take check-in without also observing no-show.
-export function useOpdCheckIn(orgSlug: string) {
-  const queryClient = useQueryClient();
-  const onOpdError = useOpdErrorToast(orgSlug);
-
+export function useOpdCheckIn() {
   return useMutation(
     orpc.opd.checkIn.mutationOptions({
       onSuccess: ({ appointment }) => {
         toast.success(`Checked in · Token ${appointment.tokenNumber}`);
-        return invalidateOpdAppointmentState(queryClient, orgSlug, appointment.id, "checkIn");
       },
-      onError: (error, variables) => onOpdError(variables.appointmentId, "checkIn", error),
     }),
   );
 }
 
-export function useOpdStatusActions(orgSlug: string) {
-  const queryClient = useQueryClient();
-  const onOpdError = useOpdErrorToast(orgSlug);
+export function useOpdStatusActions() {
+  const checkIn = useOpdCheckIn();
 
-  const checkIn = useOpdCheckIn(orgSlug);
   const markNoShow = useMutation(
     orpc.opd.markNoShow.mutationOptions({
-      onSuccess: (appointment) => {
+      onSuccess: () => {
         toast.success("Marked as no show");
-        return invalidateOpdAppointmentState(queryClient, orgSlug, appointment.id, "noShow");
       },
-      onError: (error, variables) => onOpdError(variables.appointmentId, "noShow", error),
     }),
   );
 
@@ -91,23 +81,18 @@ export function CancelOpdAppointmentDialog({
   appointmentId: string;
   onClose: () => void;
 }) {
-  const queryClient = useQueryClient();
-  const onOpdError = useOpdErrorToast(orgSlug);
   const form = useZodForm(cancelSchema, { defaultValues: { cancelReason: "" } });
+
   const cancel = useMutation(
     orpc.opd.cancel.mutationOptions({
-      onSuccess: async () => {
-        // Awaited so the dialog closes onto a day that no longer lists this appointment.
-        await invalidateOpdAppointmentState(queryClient, orgSlug, appointmentId, "cancel");
-        toast.success("OPD appointment cancelled");
+      onSuccess: () => {
         onClose();
+        toast.success("OPD appointment cancelled");
       },
-      onError: (error) => {
-        if (hasErrorCode(error, "CONFLICT")) onClose();
-        return onOpdError(appointmentId, "cancel", error);
-      },
+      onError: closeOnConflict(onClose),
     }),
   );
+
   const submit = form.handleSubmit(({ cancelReason }) => {
     cancel.mutate({ orgSlug, appointmentId, reason: cancelReason });
   });
