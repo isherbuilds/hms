@@ -174,7 +174,12 @@ export function NextSittingDialog({
   );
 }
 
-export type PostTarget = { itemId: string; description: string; remaining: number };
+export type PostTarget = {
+  itemId: string;
+  description: string;
+  remaining: number;
+  billed: boolean;
+};
 
 export function PostItemDialog({
   orgSlug,
@@ -190,7 +195,11 @@ export function PostItemDialog({
   return (
     <FormDialog
       title="Post to this visit"
-      description={`${target.description}: ${target.remaining} left in the plan.`}
+      description={
+        target.billed
+          ? `This visit already bills ${target.description} as a service. If that was this work, void or credit it in Billing after posting.`
+          : `${target.description}: ${target.remaining} left in the plan.`
+      }
       submitLabel="Post to this visit"
       schema={z.object({ qty: z.coerce.number().int().min(1).max(target.remaining) })}
       defaultValues={{ qty: 1 }}

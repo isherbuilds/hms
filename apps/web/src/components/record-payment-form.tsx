@@ -178,17 +178,6 @@ export function RecordPaymentForm({
                     inputMode="decimal"
                     disabled={pending}
                     className="text-right tabular-nums"
-                    onChange={(event) => {
-                      field.onChange(event);
-                      const applied = parseMoneyInput(event.target.value) ?? ZERO;
-
-                      if (lines.fields.length === 1) {
-                        form.setValue(
-                          "payments.0.amount",
-                          formatDecimal(outstanding > applied ? outstanding - applied : ZERO),
-                        );
-                      }
-                    }}
                   />
                 </FormControl>
                 <FormMessage />

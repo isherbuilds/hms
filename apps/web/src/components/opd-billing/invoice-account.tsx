@@ -25,7 +25,7 @@ import {
   TableRow,
 } from "@hms/ui/components/table";
 import { requirePaymentReference } from "@hms/api/lib/schemas";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClientOnly, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useFormContext, useFormState, Watch } from "react-hook-form";
@@ -282,8 +282,11 @@ function PaymentDialog({
   currency: string;
   onIssueCreditNote?: () => void;
 }) {
+  // A pending payment keeps the dialog open; reopening would mint a new request key (D039).
+  const paying = useIsMutating({ mutationKey: orpc.billing.recordPayments.mutationKey() }) > 0;
+
   return (
-    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
+    <Dialog open onOpenChange={(open) => (open || paying ? undefined : onClose())}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Record payment</DialogTitle>

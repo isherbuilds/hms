@@ -490,15 +490,17 @@ booked sitting must drop off the Follow-ups call sheet.
 first rule refused a plan post after the desk had billed the same service at
 intake, so the course never counted that delivery, and it refused two plan
 items for one procedure on different teeth. Now a post refuses only the same
-plan item twice on one visit. A pending intake Charge for the same service is
-claimed instead: it becomes the item's delivery at the quoted price and
-quantity, so the patient pays once and progress still counts it. An intake
-Charge already invoiced, or billing more units than the post, is refused.
+plan item twice on one visit and always creates its own Charge. An ordinary
+Charge for the same service stays ordinary work: the server cannot tell a
+second tooth from the same delivery, so it never adopts or reprices one. Before
+posting, the Clinical panel warns when the visit already bills that service, and
+the desk voids or credits the ordinary Charge if it was this work.
 
 Completion counts pending Charges, so voiding one could leave a completed plan
 short with no way to post again. Every void goes through `voidPendingCharges`,
 which locks the delivering plans first and reopens a completed plan that loses
-a non-dropped item's delivery. Lock order is appointment, item, plan, charge.
+a non-dropped item's delivery. Lock order is appointment, item, plan, charge;
+`linkVisit` locks the appointment before the plan for the same reason.
 
 ### D039 — A money command carries a request key
 
@@ -513,6 +515,8 @@ it into `request_keys` under `(orgId, id)`; a key that already exists is a
 first commits, or proceeds if it rolled back, so a failed attempt never burns
 its key. The replay is refused rather than returning the original result:
 invalidation (D036) shows the saved record, and storing results would add a
-second copy of every document. `settleCharges` needs no key because its
+second copy of every document. A payment sheet, dialog, or settlement overlay cannot be dismissed while its write
+is pending, so reopening it cannot mint a second key for one collection.
+`settleCharges` needs no key because its
 `chargeRevision` check already refuses a replay (D020). Matching on patient,
 amount, or time was rejected: two genuine receipts can share all of them.
