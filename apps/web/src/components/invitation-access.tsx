@@ -18,7 +18,6 @@ export function InvitationAccess({
   accountEmail?: string;
 }) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const invitation = useQuery({
     queryKey: ["auth", "invitation", invitationId],
     queryFn: async () => {
@@ -36,8 +35,6 @@ export function InvitationAccess({
         throw new Error(authErrorMessage(error, "Could not join the organization. Try again."));
       await navigate({ to: "/$orgSlug/onboarding", params: { orgSlug: organizationSlug } });
     },
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: ["auth", "join"], refetchType: "none" }),
   });
 
   if (invitation.isPending)
@@ -78,9 +75,6 @@ export function InvitationAccess({
             >
               {joining.isPending ? "Joining…" : "Join"}
             </Button>
-          )}
-          {joining.error && (
-            <ErrorNote title="Could not join the organization" error={joining.error} />
           )}
         </>
       )}

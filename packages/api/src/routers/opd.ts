@@ -8,8 +8,9 @@ import { file } from "@hms/db/schema/file";
 import { OPD_APPOINTMENT_STATUSES, opdAppointments } from "@hms/db/schema/opd-appointments";
 import { patients } from "@hms/db/schema/patients";
 import { practitioners } from "@hms/db/schema/practitioners";
+import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { ORPCError } from "@orpc/server";
-import { and, asc, desc, eq, ilike, inArray, like, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, like, lt, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
@@ -101,6 +102,38 @@ async function transitionAppointment(options: {
   return appointment;
 }
 
+/** A sitting belongs to an open plan of the same patient. Double-charging is `treatment.postToVisit`'s rule. */
+async function requireOpenTreatmentPlan(
+  orgId: string,
+  treatmentPlanId: string | undefined,
+  patientId: string | null | undefined,
+) {
+  if (!treatmentPlanId) return null;
+
+  if (!patientId) {
+    throw new ORPCError("BAD_REQUEST", { message: "Choose a patient for this sitting." });
+  }
+
+  const [plan] = await db
+    .select({ id: treatmentPlans.id })
+    .from(treatmentPlans)
+    .where(
+      and(
+        eq(treatmentPlans.orgId, orgId),
+        eq(treatmentPlans.id, treatmentPlanId),
+        eq(treatmentPlans.patientId, patientId),
+        eq(treatmentPlans.status, "open"),
+      ),
+    )
+    .limit(1);
+
+  if (!plan) {
+    throw new ORPCError("CONFLICT", { message: "That treatment plan is no longer available." });
+  }
+
+  return plan;
+}
+
 const bookInput = orgInput
   .extend({
     patientId: z.string().nullable().optional(),
@@ -108,6 +141,7 @@ const bookInput = orgInput
     callerPhone: phone.optional(),
     practitionerId: z.string(),
     scheduledLocal: localMinuteInput,
+    treatmentPlanId: z.string().optional(),
     services: serviceLines.default([]),
   })
   .superRefine((value, context) => {
@@ -127,15 +161,18 @@ export const opdRouter = {
     const now = new Date();
     const scheduledFor = futureLocalDateTime(input.scheduledLocal, settings.timeZone, now);
 
-    const pricing = await resolveOpdPricing({
-      orgId: scope.orgId,
-      practitionerId: input.practitionerId,
-      patientId: input.patientId ?? null,
-      services: input.services,
-      consultation: "none",
-      followUpValidityDays: settings.followUpValidityDays,
-      now,
-    });
+    const [pricing, plan] = await Promise.all([
+      resolveOpdPricing({
+        orgId: scope.orgId,
+        practitionerId: input.practitionerId,
+        patientId: input.patientId ?? null,
+        services: input.services,
+        consultation: "none",
+        followUpValidityDays: settings.followUpValidityDays,
+        now,
+      }),
+      requireOpenTreatmentPlan(scope.orgId, input.treatmentPlanId, input.patientId),
+    ]);
 
     const appointmentId = Bun.randomUUIDv7();
 
@@ -157,6 +194,7 @@ export const opdRouter = {
           id: appointmentId,
           orgId: scope.orgId,
           patientId: input.patientId ?? null,
+          treatmentPlanId: plan?.id ?? null,
           callerName: input.callerName ?? null,
           callerPhone: input.callerPhone ?? null,
           practitionerId: input.practitionerId,
@@ -255,12 +293,14 @@ export const opdRouter = {
     orgInput.extend({
       patientId: z.string(),
       practitionerId: z.string(),
+      treatmentPlanId: z.string().optional(),
       settlement: z.object({
         services: serviceLines.default([]),
         omitConsultFee: z.boolean().optional(),
         discountAmount: money.default(0n),
         expectedGrandTotal: money,
         payments: z.array(paymentLine).max(4).default([]),
+        applyCredit: money.default(0n),
         note,
       }),
     }),
@@ -271,15 +311,18 @@ export const opdRouter = {
     const appointmentId = Bun.randomUUIDv7();
     const settlement = input.settlement;
 
-    const pricing = await resolveOpdPricing({
-      orgId: scope.orgId,
-      practitionerId: input.practitionerId,
-      patientId: input.patientId,
-      services: settlement.services,
-      consultation: settlement.omitConsultFee ? "omit" : "auto",
-      followUpValidityDays: billing.settings.followUpValidityDays,
-      now: billing.now,
-    });
+    const [pricing, plan] = await Promise.all([
+      resolveOpdPricing({
+        orgId: scope.orgId,
+        practitionerId: input.practitionerId,
+        patientId: input.patientId,
+        services: settlement.services,
+        consultation: settlement.omitConsultFee ? "omit" : "auto",
+        followUpValidityDays: billing.settings.followUpValidityDays,
+        now: billing.now,
+      }),
+      requireOpenTreatmentPlan(scope.orgId, input.treatmentPlanId, input.patientId),
+    ]);
 
     const chargeRows = [
       ...(pricing.fee
@@ -319,6 +362,7 @@ export const opdRouter = {
           id: appointmentId,
           orgId: scope.orgId,
           patientId: input.patientId,
+          treatmentPlanId: plan?.id ?? null,
           practitionerId: input.practitionerId,
           departmentId: pricing.departmentId,
           arrivalMode: "walk_in",
@@ -345,7 +389,11 @@ export const opdRouter = {
           });
         }
 
-        if (settlement.discountAmount > 0n || settlement.payments.length > 0) {
+        if (
+          settlement.discountAmount > 0n ||
+          settlement.payments.length > 0 ||
+          settlement.applyCredit > 0n
+        ) {
           throw new ORPCError("BAD_REQUEST", {
             message: "A zero-value walk-in cannot record a discount or payment",
           });
@@ -366,6 +414,7 @@ export const opdRouter = {
         fiscalYear: billing.fiscalYear,
         invoiceId,
         payments: settlement.payments,
+        applyCredit: settlement.applyCredit,
         expectedGrandTotal: settlement.expectedGrandTotal,
         // This transaction inserted the appointment, so no concurrent charge writer exists.
         expectedChargeRevision: "fresh",
@@ -479,6 +528,7 @@ export const opdRouter = {
             eq(opdAppointments.orgId, scope.orgId),
             eq(opdAppointments.id, input.appointmentId),
             eq(opdAppointments.status, "booked"),
+            or(isNull(opdAppointments.treatmentPlanId), eq(opdAppointments.patientId, patientId)),
           ),
         )
         .limit(1)

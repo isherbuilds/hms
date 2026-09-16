@@ -7,6 +7,7 @@ import type { AppRouterClient } from "@hms/api/routers/index";
 
 import { db } from "@hms/db";
 import { accounts } from "@hms/db/schema/accounts";
+import { advanceReceipts } from "@hms/db/schema/advance-receipts";
 import { charges } from "@hms/db/schema/charges";
 import { invoices } from "@hms/db/schema/invoices";
 import { journalEntries } from "@hms/db/schema/journal-entries";
@@ -49,7 +50,7 @@ function sumMoney(values: bigint[]): bigint {
 type AccountingFixture = {
   organization: { id: string; slug: string };
   api: AppRouterClient;
-  patient: { name: string; mrn: string };
+  patient: { id: string; name: string; mrn: string };
   createOpdAppointment: () => Promise<{ id: string }>;
   addOtherCharge: (
     appointmentId: string,
@@ -93,6 +94,7 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     mrnPrefix: "MRN",
     invoicePrefix: "INV",
     receiptPrefix: "RCT",
+    advanceReceiptPrefix: "ADV",
     creditNotePrefix: "CN",
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
@@ -590,6 +592,22 @@ test("daily collections nets payments and refunds by Business Date and method", 
     amount: 20_00n,
   });
 
+  const advance = await fixture.api.billing.recordAdvance({
+    orgSlug: fixture.organization.slug,
+    patientId: fixture.patient.id,
+    method: "bank",
+    amount: 30_00n,
+    reference: "BANK-COLLECTIONS",
+  });
+
+  await fixture.api.billing.recordAdvanceRefund({
+    orgSlug: fixture.organization.slug,
+    advanceReceiptId: advance.id,
+    method: "bank",
+    amount: 10_00n,
+    reference: "BANK-ADVANCE-REFUND",
+  });
+
   const today = reportDate();
   const collectionDay = addDays(today, -1);
   await Promise.all([
@@ -602,8 +620,12 @@ test("daily collections nets payments and refunds by Business Date and method", 
     db
       .update(refunds)
       .set({ businessDate: collectionDay })
+      .where(eq(refunds.orgId, fixture.organization.id)),
+    db
+      .update(advanceReceipts)
+      .set({ businessDate: collectionDay })
       .where(
-        and(eq(refunds.orgId, fixture.organization.id), eq(refunds.invoiceId, issued.invoice.id)),
+        and(eq(advanceReceipts.orgId, fixture.organization.id), eq(advanceReceipts.id, advance.id)),
       ),
   ]);
 
@@ -620,22 +642,24 @@ test("daily collections nets payments and refunds by Business Date and method", 
         cash: 50_00n,
         upi: 48_00n,
         card: 0n,
-        bank: 0n,
+        bank: 20_00n,
       },
       payments: 118_00n,
+      advances: 30_00n,
       refunds: 20_00n,
-      net: 98_00n,
+      advanceRefunds: 10_00n,
+      net: 118_00n,
     },
   ]);
   expect(report.byMethod.find((row) => row.method === "cash")?.net).toBe(50_00n);
-  expect(report.totals.net).toBe(98_00n);
+  expect(report.totals.net).toBe(118_00n);
 
   const dashboard = await fixture.api.dashboard.collections({
     orgSlug: fixture.organization.slug,
   });
 
   expect(dashboard.collected).toBe(0n);
-  expect(dashboard.trend.find((row) => row.day === collectionDay)?.amount).toBe(98_00n);
+  expect(dashboard.trend.find((row) => row.day === collectionDay)?.amount).toBe(118_00n);
   await expectORPCCode(
     fixture.api.report.dailyCollections({
       orgSlug: fixture.organization.slug,
@@ -708,19 +732,57 @@ test("trial balance is balanced, agrees with invoice outstanding, and carries pr
 
 test("balance sheet balances GST output and current surplus against assets", async () => {
   const fixture = await createAccountingFixture("accounting-balance-sheet");
-  await issueConsultationInvoice(fixture, "Balance Sheet");
+  const issued = await issueConsultationInvoice(fixture, "Balance Sheet");
+
+  const advance = await fixture.api.billing.recordAdvance({
+    orgSlug: fixture.organization.slug,
+    patientId: fixture.patient.id,
+    method: "cash",
+    amount: 30_00n,
+  });
+
+  // An allocation and an advance refund both balance whichever accounts they name, so
+  // the only proof they named the right ones is the account balances they leave behind.
+  await fixture.api.billing.recordPayments({
+    orgSlug: fixture.organization.slug,
+    invoiceId: issued.invoice.id,
+    payments: [],
+    applyCredit: 10_00n,
+  });
+
+  await fixture.api.billing.recordAdvanceRefund({
+    orgSlug: fixture.organization.slug,
+    advanceReceiptId: advance.id,
+    method: "cash",
+    amount: 5_00n,
+  });
 
   const report = await fixture.api.report.balanceSheet({
     orgSlug: fixture.organization.slug,
     asOf: reportDate(),
   });
 
-  expect(report.totals.assets).toBe(118_00n);
+  expect(report.totals.assets).toBe(133_00n);
   expect(report.totals.assets).toBe(report.totals.liabilitiesAndEquity);
+  expect(report.assets).toContainEqual({
+    code: "1000",
+    name: "Cash in Hand",
+    balance: 25_00n,
+  });
+  expect(report.assets).toContainEqual({
+    code: "1200",
+    name: "Patient Receivables",
+    balance: 108_00n,
+  });
   expect(report.liabilities).toContainEqual({
     code: "2100",
     name: "GST Output Payable",
     balance: 18_00n,
+  });
+  expect(report.liabilities).toContainEqual({
+    code: "2200",
+    name: "Patient Advances",
+    balance: 15_00n,
   });
   expect(report.equity).toContainEqual({
     code: "3900",
@@ -924,8 +986,8 @@ test("concurrent first invoices seed one complete chart and both post", async ()
     .from(accounts)
     .where(eq(accounts.orgId, fixture.organization.id));
 
-  expect(chart).toHaveLength(9);
-  expect(new Set(chart.map((row) => row.systemKey)).size).toBe(9);
+  expect(chart).toHaveLength(10);
+  expect(new Set(chart.map((row) => row.systemKey)).size).toBe(10);
 });
 
 test("journal lines reject accounts and entries from another organization", async () => {

@@ -383,6 +383,7 @@ const GUARDED_CALLS = {
       mrnPrefix: "",
       invoicePrefix: "INV",
       receiptPrefix: "RCT",
+      advanceReceiptPrefix: "ADV",
       creditNotePrefix: "CN",
       fiscalYearStartMonth: 4,
       followUpValidityDays: 14,
@@ -534,6 +535,7 @@ const GUARDED_CALLS = {
       attachmentId: Bun.randomUUIDv7(),
     }),
   "billing.worklist": (api, claim) => api.billing.worklist({ ...claim }),
+  "billing.advancesHeld": (api, claim) => api.billing.advancesHeld({ ...claim }),
   "billing.refundDue": (api, claim) => api.billing.refundDue({ ...claim }),
   "billing.openInvoices": (api, claim) => api.billing.openInvoices({ ...claim }),
   "billing.voidCharge": (api, claim) =>
@@ -556,6 +558,24 @@ const GUARDED_CALLS = {
       invoiceId: Bun.randomUUIDv7(),
       payments: [{ method: "cash", amount: 1_00n }],
     }),
+  "billing.recordAdvance": (api, claim) =>
+    api.billing.recordAdvance({
+      ...claim,
+      patientId: Bun.randomUUIDv7(),
+      method: "cash",
+      amount: 1_00n,
+    }),
+  "billing.recordAdvanceRefund": (api, claim) =>
+    api.billing.recordAdvanceRefund({
+      ...claim,
+      advanceReceiptId: Bun.randomUUIDv7(),
+      method: "cash",
+      amount: 1_00n,
+    }),
+  "billing.patientCredit": (api, claim) =>
+    api.billing.patientCredit({ ...claim, patientId: Bun.randomUUIDv7() }),
+  "billing.getAdvanceReceipt": (api, claim) =>
+    api.billing.getAdvanceReceipt({ ...claim, advanceId: Bun.randomUUIDv7() }),
   "billing.issueCreditNote": (api, claim) =>
     api.billing.issueCreditNote({
       ...claim,
@@ -574,6 +594,47 @@ const GUARDED_CALLS = {
     api.billing.listInvoices({ ...claim, appointmentId: Bun.randomUUIDv7() }),
   "billing.getInvoice": (api, claim) =>
     api.billing.getInvoice({ ...claim, invoiceId: Bun.randomUUIDv7() }),
+  "treatment.create": (api, claim) =>
+    api.treatment.create({
+      ...claim,
+      patientId: Bun.randomUUIDv7(),
+      practitionerId: Bun.randomUUIDv7(),
+      item: { catalogItemId: Bun.randomUUIDv7(), qtyPlanned: 1 },
+    }),
+  "treatment.addItem": (api, claim) =>
+    api.treatment.addItem({
+      ...claim,
+      planId: Bun.randomUUIDv7(),
+      item: { catalogItemId: Bun.randomUUIDv7(), qtyPlanned: 1 },
+    }),
+  "treatment.dropItem": (api, claim) =>
+    api.treatment.dropItem({ ...claim, itemId: Bun.randomUUIDv7(), reason: "Intrusion" }),
+  "treatment.setNextSitting": (api, claim) =>
+    api.treatment.setNextSitting({
+      ...claim,
+      planId: Bun.randomUUIDv7(),
+      nextSittingOn: null,
+      note: null,
+    }),
+  "treatment.linkVisit": (api, claim) =>
+    api.treatment.linkVisit({
+      ...claim,
+      planId: Bun.randomUUIDv7(),
+      appointmentId: Bun.randomUUIDv7(),
+    }),
+  "treatment.postToVisit": (api, claim) =>
+    api.treatment.postToVisit({
+      ...claim,
+      itemId: Bun.randomUUIDv7(),
+      appointmentId: Bun.randomUUIDv7(),
+    }),
+  "treatment.complete": (api, claim) =>
+    api.treatment.complete({ ...claim, planId: Bun.randomUUIDv7() }),
+  "treatment.close": (api, claim) =>
+    api.treatment.close({ ...claim, planId: Bun.randomUUIDv7(), reason: "Intrusion" }),
+  "treatment.listForPatient": (api, claim) =>
+    api.treatment.listForPatient({ ...claim, patientId: Bun.randomUUIDv7() }),
+  "treatment.followUps": (api, claim) => api.treatment.followUps({ ...claim }),
   "report.trialBalance": (api, claim) =>
     api.report.trialBalance({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
   "report.balanceSheet": (api, claim) => api.report.balanceSheet({ ...claim, asOf: "2024-01-31" }),
@@ -653,6 +714,130 @@ test("every procedure is FORBIDDEN for a removed member on the very next request
   for (const [name, call] of Object.entries(GUARDED_CALLS)) {
     await expectORPCCode(call(memberClient, { orgSlug: organization.slug }), "FORBIDDEN", name);
   }
+});
+
+async function createTreatmentScopeFixture(
+  api: AppRouterClient,
+  organization: { slug: string },
+  seed: string,
+) {
+  const patient = await api.patient.register({
+    orgSlug: organization.slug,
+    name: `${seed} Patient`,
+    phone: `555${uniqueSuffix().slice(-7)}`,
+    sex: "other",
+    dateOfBirth: "1996-08-27",
+    dobEstimated: true,
+  });
+
+  const service = await api.catalog.create({
+    orgSlug: organization.slug,
+    name: `${seed} Service`,
+    code: `TREAT-${uniqueSuffix()}`,
+    category: "procedure",
+    unitPrice: 10_00n,
+    taxRatePercent: "0",
+  });
+
+  const department = await api.staff.createDepartment({
+    orgSlug: organization.slug,
+    name: `${seed} Department`,
+  });
+
+  const practitioner = await api.staff.createPractitioner({
+    orgSlug: organization.slug,
+    name: `Dr. ${seed}`,
+    departmentId: department.id,
+  });
+
+  const plan = await api.treatment.create({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    item: { catalogItemId: service.id, qtyPlanned: 1 },
+  });
+
+  const advance = await api.billing.recordAdvance({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    treatmentPlanId: plan.id,
+    method: "cash",
+    amount: 20_00n,
+  });
+
+  return { advance, patient, plan };
+}
+
+test("treatment plans and advance receipts are invisible by row id and list across organizations", async () => {
+  const alice = await createTestUser("treatment-scope-alice");
+  const alpha = await createOrganization(alice, "treatment-scope-alpha");
+  const alphaRows = await createTreatmentScopeFixture(clientFor(alice), alpha, "Alpha Treatment");
+  const bob = await createTestUser("treatment-scope-bob");
+  const beta = await createOrganization(bob, "treatment-scope-beta");
+  const bobClient = clientFor(bob);
+
+  await expectORPCCode(
+    bobClient.treatment.listForPatient({
+      orgSlug: beta.slug,
+      patientId: alphaRows.patient.id,
+    }),
+    "NOT_FOUND",
+  );
+  // A foreign plan id matches no row of beta, so there is nothing for beta to close.
+  await expectORPCCode(
+    bobClient.treatment.close({
+      orgSlug: beta.slug,
+      planId: alphaRows.plan.id,
+      reason: "Intrusion",
+    }),
+    "CONFLICT",
+  );
+  await expectORPCCode(
+    bobClient.billing.patientCredit({ orgSlug: beta.slug, patientId: alphaRows.patient.id }),
+    "NOT_FOUND",
+  );
+  await expectORPCCode(
+    bobClient.billing.getAdvanceReceipt({
+      orgSlug: beta.slug,
+      advanceId: alphaRows.advance.id,
+    }),
+    "NOT_FOUND",
+  );
+  expect((await bobClient.treatment.followUps({ orgSlug: beta.slug })).items).toEqual([]);
+  expect((await bobClient.billing.advancesHeld({ orgSlug: beta.slug })).items).toEqual([]);
+});
+
+test("one client concurrently scopes treatment and advance calls to two organizations", async () => {
+  const owner = await createTestUser("treatment-scope-multi");
+  const one = await createOrganization(owner, "treatment-scope-one");
+  const two = await createOrganization(owner, "treatment-scope-two");
+  const api = clientFor(owner);
+
+  const [inOne, inTwo] = await Promise.all([
+    createTreatmentScopeFixture(api, one, "Treatment One"),
+    createTreatmentScopeFixture(api, two, "Treatment Two"),
+  ]);
+
+  const [planOne, planTwo, creditOne, creditTwo, accountOne, accountTwo, listOne, listTwo] =
+    await Promise.all([
+      api.treatment.listForPatient({ orgSlug: one.slug, patientId: inOne.patient.id }),
+      api.treatment.listForPatient({ orgSlug: two.slug, patientId: inTwo.patient.id }),
+      api.billing.patientCredit({ orgSlug: one.slug, patientId: inOne.patient.id }),
+      api.billing.patientCredit({ orgSlug: two.slug, patientId: inTwo.patient.id }),
+      api.patient.account({ orgSlug: one.slug, patientId: inOne.patient.id }),
+      api.patient.account({ orgSlug: two.slug, patientId: inTwo.patient.id }),
+      api.treatment.followUps({ orgSlug: one.slug }),
+      api.treatment.followUps({ orgSlug: two.slug }),
+    ]);
+
+  expect(planOne.map((row) => row.id)).toEqual([inOne.plan.id]);
+  expect(planTwo.map((row) => row.id)).toEqual([inTwo.plan.id]);
+  expect(creditOne.total).toBe(inOne.advance.amount);
+  expect(creditTwo.total).toBe(inTwo.advance.amount);
+  expect(accountOne.advanceReceipts.map((row) => row.id)).toEqual([inOne.advance.id]);
+  expect(accountTwo.advanceReceipts.map((row) => row.id)).toEqual([inTwo.advance.id]);
+  expect(listOne.items.map((row) => row.id)).toEqual([inOne.plan.id]);
+  expect(listTwo.items.map((row) => row.id)).toEqual([inTwo.plan.id]);
 });
 
 test("member mutations reject an id belonging to another tenant", async () => {
@@ -1151,6 +1336,7 @@ async function createScopedInvoice(
     mrnPrefix: "MRN",
     invoicePrefix: "INV",
     receiptPrefix: "RCT",
+    advanceReceiptPrefix: "ADV",
     creditNotePrefix: "CN",
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,

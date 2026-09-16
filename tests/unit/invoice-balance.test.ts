@@ -17,6 +17,7 @@ test("loads invoice movement totals in one database round trip", async () => {
             invoiceId: "invoice-1",
             creditTotal: "2500",
             paymentsTotal: "8000",
+            allocationsTotal: "0",
             refundsTotal: "500",
           },
         ],
@@ -34,6 +35,7 @@ test("loads invoice movement totals in one database round trip", async () => {
     grandTotal: parseDecimal("100.00"),
     creditTotal: parseDecimal("25.00"),
     paymentsTotal: parseDecimal("80.00"),
+    allocationsTotal: 0n,
     refundsTotal: parseDecimal("5.00"),
     outstanding: parseDecimal("0.00"),
   });

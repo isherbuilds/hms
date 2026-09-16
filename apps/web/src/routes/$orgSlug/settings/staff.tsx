@@ -7,16 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@hms/ui/components/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  RegisteredFormField,
-} from "@hms/ui/components/form";
-import { Input } from "@hms/ui/components/input";
+import { Form, FormControl } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
@@ -27,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
@@ -35,6 +26,7 @@ import { z } from "zod";
 
 import { optionalNumberText, optionalText } from "@/lib/form-schema";
 
+import { ControlledField, TextField } from "@/components/form-fields";
 import {
   ListState,
   ListToolbar,
@@ -47,7 +39,6 @@ import {
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
-import { errorMessage } from "@/lib/orpc-error";
 import { requireOrgPermission } from "@/lib/route-permission";
 import { practitionerDisplayName } from "@/lib/practitioner-name";
 
@@ -155,11 +146,13 @@ function StaffRoute() {
   const [query, setQuery] = useState("");
 
   const departments = useQuery(orpc.staff.listDepartments.queryOptions({ input: { orgSlug } }));
+
   const practitioners = useQuery(
     orpc.staff.listPractitioners.queryOptions({
       input: { orgSlug, query: query || undefined },
     }),
   );
+
   const members = useQuery(orpc.member.list.queryOptions({ input: { orgSlug } }));
   const catalog = useInfiniteQuery(feeItemsQuery(orgSlug));
   const catalogItems = catalog.data?.pages.flatMap((page) => page.items) ?? [];
@@ -167,9 +160,11 @@ function StaffRoute() {
   const departmentById = new Map(
     (departments.data ?? []).map((department) => [department.id, department]),
   );
+
   const memberByUserId = new Map(
     (members.data?.members ?? []).map((member) => [member.userId, member]),
   );
+
   const catalogById = new Map(catalogItems.map((item) => [item.id, item]));
   const catalogFooter = <LoadMore query={catalog} shown={catalogItems.length} />;
 
@@ -280,6 +275,7 @@ function StaffRoute() {
                     const linkedMember = practitioner.memberUserId
                       ? memberByUserId.get(practitioner.memberUserId)
                       : undefined;
+
                     return (
                       <TableRow key={practitioner.id}>
                         <TableCell className="font-medium capitalize">
@@ -374,8 +370,8 @@ function DepartmentDialog({
   catalogFooter: ReactNode;
   onClose: () => void;
 }) {
-  const queryClient = useQueryClient();
   const department = state.mode === "edit" ? state.department : null;
+
   const form = useZodForm(departmentSchema, {
     defaultValues: {
       name: department?.name ?? "",
@@ -384,25 +380,25 @@ function DepartmentDialog({
   });
 
   const mutationFeedback = (message: string) => ({
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: orpc.staff.listDepartments.key({ input: { orgSlug } }),
-      });
+    onSuccess: () => {
       toast.success(message);
       onClose();
     },
-    onError: (error: unknown) => toast.error(errorMessage(error)),
   });
 
   const createDepartment = useMutation(
     orpc.staff.createDepartment.mutationOptions(mutationFeedback("Department created")),
   );
+
   const updateDepartment = useMutation(
     orpc.staff.updateDepartment.mutationOptions(mutationFeedback("Department updated")),
   );
+
   const isSubmitting = createDepartment.isPending || updateDepartment.isPending;
+
   const submit = form.handleSubmit(({ name, defaultConsultFeeItemId }) => {
     const fields = { name, defaultConsultFeeItemId };
+
     if (department) {
       updateDepartment.mutate({ orgSlug, departmentId: department.id, ...fields });
     } else {
@@ -423,38 +419,23 @@ function DepartmentDialog({
         </DialogHeader>
         <Form {...form}>
           <form noValidate onSubmit={submit} className="flex flex-col gap-4">
-            <RegisteredFormField
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name</FormLabel>
-                  <FormControl>
-                    <Input {...field} autoFocus disabled={isSubmitting} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <TextField name="name" label="Name" autoFocus disabled={isSubmitting} />
             {/* Controlled, not registered: the catalog arrives from a query,
                 and a stored id with no matching <option> yet would be lost. */}
-            <FormField
-              control={form.control}
+            <ControlledField
               name="defaultConsultFeeItemId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Default consult fee (optional)</FormLabel>
-                  <FormControl>
-                    <NativeSelect {...field} disabled={isSubmitting || catalogPending}>
-                      <option value="">None</option>
-                      {catalogItems.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name} ({item.code})
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+              label="Default consult fee (optional)"
+              render={(field) => (
+                <FormControl>
+                  <NativeSelect {...field} disabled={isSubmitting || catalogPending}>
+                    <option value="">None</option>
+                    {catalogItems.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} ({item.code})
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </FormControl>
               )}
             />
             {catalogFooter}
@@ -494,8 +475,8 @@ function PractitionerDialog({
   catalogFooter: ReactNode;
   onClose: () => void;
 }) {
-  const queryClient = useQueryClient();
   const practitioner = state.mode === "edit" ? state.practitioner : null;
+
   const form = useZodForm(practitionerSchema, {
     defaultValues: {
       name: practitioner?.name ?? "",
@@ -513,23 +494,22 @@ function PractitionerDialog({
   });
 
   const mutationFeedback = (message: string) => ({
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: orpc.staff.listPractitioners.key({ input: { orgSlug } }),
-      });
+    onSuccess: () => {
       toast.success(message);
       onClose();
     },
-    onError: (error: unknown) => toast.error(errorMessage(error)),
   });
 
   const createPractitioner = useMutation(
     orpc.staff.createPractitioner.mutationOptions(mutationFeedback("Practitioner created")),
   );
+
   const updatePractitioner = useMutation(
     orpc.staff.updatePractitioner.mutationOptions(mutationFeedback("Practitioner updated")),
   );
+
   const isSubmitting = createPractitioner.isPending || updatePractitioner.isPending;
+
   const submit = form.handleSubmit((values) => {
     const fields = {
       name: values.name,
@@ -540,6 +520,7 @@ function PractitionerDialog({
       followUpFeeItemId: values.followUpFeeItemId,
       followUpValidityDays: values.followUpValidityDays,
     };
+
     if (practitioner) {
       updatePractitioner.mutate({ orgSlug, practitionerId: practitioner.id, ...fields });
     } else {
@@ -560,82 +541,71 @@ function PractitionerDialog({
         <Form {...form}>
           <form noValidate onSubmit={submit} className="flex flex-col gap-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              <RegisteredFormField
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Name</FormLabel>
-                    <FormControl>
-                      <Input {...field} autoFocus disabled={isSubmitting} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
+              <TextField name="name" label="Name" autoFocus disabled={isSubmitting} />
+              <ControlledField
                 name="departmentId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Department</FormLabel>
-                    <FormControl>
-                      <NativeSelect {...field} disabled={isSubmitting}>
-                        <option value="" disabled>
-                          Choose a department
-                        </option>
-                        {departments.map((department) => (
-                          <option key={department.id} value={department.id}>
-                            {department.name}
-                          </option>
-                        ))}
-                      </NativeSelect>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <RegisteredFormField
-              name="registrationNumber"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Registration no. (optional)</FormLabel>
+                label="Department"
+                render={(field) => (
                   <FormControl>
-                    <Input {...field} disabled={isSubmitting} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="memberUserId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Linked member (optional)</FormLabel>
-                  <FormControl>
-                    <NativeSelect {...field} disabled={isSubmitting || membersPending}>
-                      <option value="">None</option>
-                      {members.map((member) => (
-                        <option key={member.userId} value={member.userId}>
-                          {member.name} — {member.email}
+                    <NativeSelect {...field} disabled={isSubmitting}>
+                      <option value="" disabled>
+                        Choose a department
+                      </option>
+                      {departments.map((department) => (
+                        <option key={department.id} value={department.id}>
+                          {department.name}
                         </option>
                       ))}
                     </NativeSelect>
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
+                )}
+              />
+            </div>
+
+            <TextField
+              name="registrationNumber"
+              label="Registration no. (optional)"
+              disabled={isSubmitting}
+            />
+
+            <ControlledField
+              name="memberUserId"
+              label="Linked member (optional)"
+              render={(field) => (
+                <FormControl>
+                  <NativeSelect {...field} disabled={isSubmitting || membersPending}>
+                    <option value="">None</option>
+                    {members.map((member) => (
+                      <option key={member.userId} value={member.userId}>
+                        {member.name} — {member.email}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </FormControl>
               )}
             />
 
-            <FormField
-              control={form.control}
+            <ControlledField
               name="consultFeeItemId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Consult fee item (optional)</FormLabel>
+              label="Consult fee item (optional)"
+              render={(field) => (
+                <FormControl>
+                  <NativeSelect {...field} disabled={isSubmitting || catalogPending}>
+                    <option value="">None</option>
+                    {catalogItems.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} ({item.code})
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </FormControl>
+              )}
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ControlledField
+                name="followUpFeeItemId"
+                label="Follow-up fee (optional)"
+                render={(field) => (
                   <FormControl>
                     <NativeSelect {...field} disabled={isSubmitting || catalogPending}>
                       <option value="">None</option>
@@ -646,50 +616,17 @@ function PractitionerDialog({
                       ))}
                     </NativeSelect>
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="followUpFeeItemId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Follow-up fee (optional)</FormLabel>
-                    <FormControl>
-                      <NativeSelect {...field} disabled={isSubmitting || catalogPending}>
-                        <option value="">None</option>
-                        {catalogItems.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.name} ({item.code})
-                          </option>
-                        ))}
-                      </NativeSelect>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
                 )}
               />
-              <RegisteredFormField
+              <TextField
                 name="followUpValidityDays"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Follow-up window (days)</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="number"
-                        min={1}
-                        max={365}
-                        step={1}
-                        placeholder="Organization default"
-                        disabled={isSubmitting}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                label="Follow-up window (days)"
+                type="number"
+                min={1}
+                max={365}
+                step={1}
+                placeholder="Organization default"
+                disabled={isSubmitting}
               />
             </div>
             {catalogFooter}

@@ -19,7 +19,6 @@ import {
   FormMessage,
   RegisteredFormField,
 } from "@hms/ui/components/form";
-import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
@@ -30,17 +29,18 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { TextField } from "@/components/form-fields";
 import { ListState, PageBody, PageHeader, Panel } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
-import { applyOrpcFieldError, errorMessage } from "@/lib/orpc-error";
+import { applyOrpcFieldError } from "@/lib/orpc-error";
 import { PAYER_TYPE_LABELS, PAYER_TYPES, type PayerType } from "@/lib/payer";
 import { requireOrgPermission } from "@/lib/route-permission";
 
@@ -178,28 +178,23 @@ type PayerDialogProps =
 function PayerDialog(props: PayerDialogProps) {
   const { mode, orgSlug, open, onOpenChange } = props;
   const payer = mode === "edit" ? props.payer : null;
-  const queryClient = useQueryClient();
+
   const form = useZodForm(formSchema, {
     defaultValues: payer
       ? { name: payer.name, type: payer.type, active: payer.active }
       : EMPTY_VALUES,
   });
 
-  const closeAfterSuccess = async (message: string) => {
-    await queryClient.invalidateQueries({
-      queryKey: orpc.payer.list.key({ input: { orgSlug } }),
-    });
+  const closeAfterSuccess = (message: string) => {
     toast.success(message);
     onOpenChange(false);
     form.reset(payer ? undefined : EMPTY_VALUES);
   };
 
-  const handleError = (error: unknown) => {
-    const mapped = applyOrpcFieldError(form, error, {
+  const handleError = (error: Error) =>
+    applyOrpcFieldError(form, error, {
       duplicate: { field: "name", message: "Name already in use" },
     });
-    toast.error(mapped ?? errorMessage(error, "Could not save payer"));
-  };
 
   const create = useMutation(
     orpc.payer.create.mutationOptions({
@@ -207,12 +202,14 @@ function PayerDialog(props: PayerDialogProps) {
       onError: handleError,
     }),
   );
+
   const update = useMutation(
     orpc.payer.update.mutationOptions({
       onSuccess: () => closeAfterSuccess("Payer updated"),
       onError: handleError,
     }),
   );
+
   const isPending = create.isPending || update.isPending;
 
   const onSubmit = form.handleSubmit((values) => {
@@ -247,18 +244,7 @@ function PayerDialog(props: PayerDialogProps) {
           <Form {...form}>
             <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <RegisteredFormField
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Name</FormLabel>
-                      <FormControl>
-                        <Input {...field} disabled={isPending} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <TextField name="name" label="Name" disabled={isPending} />
                 <RegisteredFormField
                   name="type"
                   render={({ field }) => (

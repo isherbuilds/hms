@@ -9,23 +9,26 @@ import { RecordPaymentForm } from "@/components/record-payment-form";
 import type { WorklistRow } from "@/lib/billing-worklist-row";
 import { formatMoney } from "@/lib/money";
 
+/** The row as the list shows it, with the credit read when the desk opened it. */
+type OpenRow = { row: WorklistRow; credit: bigint };
+
 export function BillingWorklistSheet({
   orgSlug,
-  row,
+  open,
   onClose,
 }: {
   orgSlug: string;
-  row: WorklistRow | null;
+  open: OpenRow | null;
   onClose: () => void;
 }) {
   return (
     <ClientOnly fallback={null}>
-      <Sheet open={row !== null} onOpenChange={(next) => (next ? undefined : onClose())}>
+      <Sheet open={open !== null} onOpenChange={(next) => (next ? undefined : onClose())}>
         <SheetContent>
-          {row ? (
+          {open ? (
             // Keyed by the row, not by what it owes: a background refetch must not remount the
             // panel and wipe a half-typed amount.
-            <Body key={row.key} orgSlug={orgSlug} row={row} onClose={onClose} />
+            <Body key={open.row.key} orgSlug={orgSlug} open={open} onClose={onClose} />
           ) : null}
         </SheetContent>
       </Sheet>
@@ -35,11 +38,11 @@ export function BillingWorklistSheet({
 
 function Body({
   orgSlug,
-  row,
+  open: { row, credit },
   onClose,
 }: {
   orgSlug: string;
-  row: WorklistRow;
+  open: OpenRow;
   onClose: () => void;
 }) {
   return (
@@ -77,9 +80,9 @@ function Body({
         {row.invoiceId ? (
           <RecordPaymentForm
             orgSlug={orgSlug}
-            appointmentId={row.appointmentId}
             invoiceId={row.invoiceId}
             outstanding={row.owed}
+            availableCredit={credit}
             currency={row.currency}
             onClose={onClose}
             submitLabel="Collect"

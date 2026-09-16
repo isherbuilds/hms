@@ -7,7 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { DownloadIcon, FileIcon, Trash2, UploadIcon } from "lucide-react";
 import { useRef, useState } from "react";
@@ -39,6 +39,7 @@ const filesQuery = (orgSlug: string, query: string) =>
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
   });
 
 export const Route = createFileRoute("/$orgSlug/files")({
@@ -68,6 +69,7 @@ function FilesRoute() {
 
   const upload = async (file: File) => {
     setUploading(file.name);
+
     // Cleared after the catch, not in a `finally`: React Compiler cannot lower one, and
     // it would leave this whole component unmemoized.
     try {
@@ -77,6 +79,7 @@ function FilesRoute() {
     } catch (error) {
       toast.error(errorMessage(error, "Upload failed"));
     }
+
     setUploading(null);
   };
 
@@ -114,9 +117,11 @@ function FilesRoute() {
                 className="sr-only"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
+
                   if (file) {
                     upload(file);
                   }
+
                   event.target.value = "";
                 }}
               />

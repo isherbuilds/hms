@@ -63,6 +63,19 @@ export const Route = createFileRoute("/$orgSlug/opd/$appointmentId")({
         staleTime: "static",
       }),
     );
+
+    // The one place the patient's plans are warmed: the clinical panel and the billing
+    // tab's advance form both read this key out of the cache.
+    if (data.patient) {
+      await queryClient
+        .query(
+          orpc.treatment.listForPatient.queryOptions({
+            input: { orgSlug, patientId: data.patient.id },
+          }),
+        )
+        .catch(() => {});
+    }
+
     // A booked appointment has no patient yet — name it by the caller.
     return {
       tokenNumber: data.appointment.tokenNumber,
@@ -87,13 +100,16 @@ export const Route = createFileRoute("/$orgSlug/opd/$appointmentId")({
 // `member.me` observer stay mounted.
 function OpdRecordLayout() {
   const { orgSlug, appointmentId } = Route.useParams();
+
   const detail = useQuery({
     ...orpc.opd.get.queryOptions({ input: { orgSlug, appointmentId } }),
     ...OPERATIONAL_REFETCH,
   });
+
   const isClinical = useChildMatches({
     select: (matches) => matches[0]?.routeId === CLINICAL_ROUTE_ID,
   });
+
   // Cashiers and accountants read the record; the status controls need `opd:update`.
   const canUpdate = useCan(orgSlug, { opd: ["update"] });
 
@@ -115,6 +131,7 @@ function OpdRecordLayout() {
       </>
     );
   }
+
   if (!detail.data) {
     return (
       <>
@@ -126,6 +143,7 @@ function OpdRecordLayout() {
   }
 
   const record = detail.data;
+
   return (
     <OpdRecordContext.Provider value={{ record, refreshError: detail.error }}>
       {/* `contents` so the bands stay direct children of the page column. The
@@ -178,6 +196,7 @@ function RecordFreshness({ orgSlug, appointmentId }: { orgSlug: string; appointm
     ...orpc.opd.get.queryOptions({ input: { orgSlug, appointmentId } }),
     enabled: false,
   });
+
   return <StaleDataNotice dataUpdatedAt={dataUpdatedAt} />;
 }
 
@@ -195,7 +214,7 @@ function ClinicalStatusActions({
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [confirm, confirmDialog] = useConfirm();
-  const { checkIn, markNoShow } = useOpdStatusActions(orgSlug);
+  const { checkIn, markNoShow } = useOpdStatusActions();
   const changingStatus = checkIn.isPending || markNoShow.isPending;
 
   return (
@@ -362,6 +381,7 @@ function OpdRecordDescription({ orgSlug, record }: { orgSlug: string; record: Op
 function OpdRecordSummary({ record, action }: { record: OpdRecordIdentity; action?: ReactNode }) {
   const { timeZone } = useOrgDateTime();
   const { appointment } = record;
+
   const event = appointment.arrivedAt
     ? {
         label: "Arrived",
@@ -406,6 +426,7 @@ function OpdRecordFacts({ record }: { record: OpdRecordIdentity }) {
   const { today } = useOrgDateTime();
   const { appointment, patient, practitioner, department } = record;
   const guardian = patient && guardianLabel(patient);
+
   const age = patient
     ? `${patientAgeLabel(patient.dateOfBirth, patient.dobEstimated, today)} years`
     : null;

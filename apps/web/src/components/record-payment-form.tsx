@@ -3,6 +3,7 @@ import {
   Form,
   FormControl,
   FormItem,
+  FormLabel,
   FormMessage,
   RegisteredFormField,
 } from "@hms/ui/components/form";
@@ -13,15 +14,14 @@ import { useMutation } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useFieldArray, useFormState, Watch } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 
-import { useBillingInvalidation } from "@/components/opd-billing/use-billing-invalidation";
 import { PaymentBalance, PaymentLine, PaymentLines } from "@/components/payment-lines";
 import { useZodForm } from "@/hooks/use-zod-form";
-import { formatDecimal } from "@hms/api/core/money";
+import { DECIMAL_PATTERN, formatDecimal, parseDecimal } from "@hms/api/core/money";
 import { formatMoney, parseMoneyInput, ZERO } from "@/lib/money";
-import { useOpdErrorToast } from "@/lib/opd-error";
 import { orpc } from "@/lib/orpc";
-import { hasErrorCode } from "@/lib/orpc-error";
+import { closeOnConflict } from "@/lib/orpc-error";
 import {
   collectedPaise,
   MAX_PAYMENT_LINES,
@@ -32,6 +32,25 @@ import {
   PAYMENT_METHODS,
 } from "@/lib/settlement";
 
+const recordPaymentSchema = paymentFormSchema.extend({
+  applyCredit: z.string().regex(DECIMAL_PATTERN, "Amount like 150.00").transform(parseDecimal),
+});
+
+type RecordPaymentFormProps = {
+  orgSlug: string;
+  invoiceId: string;
+  /** The server's figure; the form never recomputes it. */
+  outstanding: bigint;
+  /** Read when the overlay opened, so nothing here waits on a credit query. */
+  availableCredit: bigint;
+  currency: string;
+  /** After a recorded payment, and on CONFLICT: the overlay holds a stale snapshot. */
+  onClose: () => void;
+  submitLabel: string;
+  /** Rendered beside the submit button. */
+  actions?: ReactNode;
+};
+
 /**
  * Records money against an issued invoice. The billing worklist sheet and the
  * visit's invoice card both render this one form, so the split-line rules, the
@@ -39,47 +58,38 @@ import {
  */
 export function RecordPaymentForm({
   orgSlug,
-  appointmentId,
   invoiceId,
   outstanding,
+  availableCredit,
   currency,
   onClose,
   submitLabel,
   actions,
-}: {
-  orgSlug: string;
-  appointmentId: string;
-  invoiceId: string;
-  /** The server's figure; the form never recomputes it. */
-  outstanding: bigint;
-  currency: string;
-  /** After a recorded payment, and on CONFLICT: the overlay holds a stale snapshot. */
-  onClose: () => void;
-  submitLabel: string;
-  /** Rendered beside the submit button. */
-  actions?: ReactNode;
-}) {
-  const invalidate = useBillingInvalidation(orgSlug, appointmentId);
-  const onOpdError = useOpdErrorToast(orgSlug);
+}: RecordPaymentFormProps) {
+  // Credit is applied unless the cashier says otherwise; the line covers what is left.
+  const seededCredit = availableCredit < outstanding ? availableCredit : outstanding;
 
-  const form = useZodForm(paymentFormSchema, {
+  const form = useZodForm(recordPaymentSchema, {
     defaultValues: {
-      payments: [{ id: 1, method: "cash", amount: formatDecimal(outstanding), reference: "" }],
+      payments: [
+        { id: 1, method: "cash", amount: formatDecimal(outstanding - seededCredit), reference: "" },
+      ],
+      applyCredit: formatDecimal(seededCredit),
     },
   });
 
-  // The ceiling is on the total, not on any one line, so it lives on the form root.
-  const overCollected = useFormState({ control: form.control }).errors.root?.message;
+  // Both rules are on the total rather than on any one line, so they live on the root.
+  const totalProblem = useFormState({ control: form.control }).errors.root?.message;
   const lines = useFieldArray({ control: form.control, name: "payments", keyName: "fieldKey" });
 
   // Reads on demand, so the amounts stay uncontrolled and typing re-renders nothing.
-  const fillLastLine = () => {
+  const fillLastLine = (effectiveDue: bigint) => {
     const payments = form.getValues("payments");
     const index = payments.length - 1;
     const line = payments[index];
 
     if (!line) return;
-    const remaining = outstanding - collectedPaise(payments);
+    const remaining = effectiveDue - collectedPaise(payments);
     form.setValue(
       `payments.${index}.amount`,
       formatDecimal((parseMoneyInput(line.amount) ?? ZERO) + remaining),
@@ -88,17 +98,17 @@ export function RecordPaymentForm({
 
   const record = useMutation(
     orpc.billing.recordPayments.mutationOptions({
-      onSuccess: async (_data, variables) => {
-        await invalidate(invoiceId);
+      onSuccess: (_data, variables) => {
         onClose();
         toast.success(
-          variables.payments.length === 1 ? "Payment recorded" : "Split payment recorded",
+          variables.payments?.length === 1
+            ? "Payment recorded"
+            : variables.payments?.length
+              ? "Split payment recorded"
+              : "Credit applied",
         );
       },
-      onError: (error) => {
-        if (hasErrorCode(error, "CONFLICT")) onClose();
-        void onOpdError(appointmentId, "billing", error);
-      },
+      onError: closeOnConflict(onClose),
     }),
   );
 
@@ -111,7 +121,25 @@ export function RecordPaymentForm({
         noValidate
         className="flex flex-col gap-3"
         onSubmit={form.handleSubmit((values) => {
-          if (values.payments.reduce((sum, payment) => sum + payment.amount, ZERO) > outstanding) {
+          if (values.applyCredit > availableCredit) {
+            form.setError("applyCredit", { message: "That credit is no longer available" });
+
+            return;
+          }
+
+          // An empty line is how a bill the credit covers submits; the server takes none.
+          const payments = values.payments.filter((payment) => payment.amount > ZERO);
+
+          const collected =
+            payments.reduce((sum, payment) => sum + payment.amount, ZERO) + values.applyCredit;
+
+          if (collected === ZERO) {
+            form.setError("root", { message: "Enter an amount, or apply credit" });
+
+            return;
+          }
+
+          if (collected > outstanding) {
             form.setError("root", {
               message: `More than the ${formatMoney(outstanding, currency)} outstanding`,
             });
@@ -122,13 +150,48 @@ export function RecordPaymentForm({
           record.mutate({
             orgSlug,
             invoiceId,
-            payments: values.payments.map(({ id: _id, ...payment }) => ({
+            payments: payments.map(({ id: _id, ...payment }) => ({
               ...payment,
               reference: payment.reference || undefined,
             })),
+            applyCredit: values.applyCredit,
           });
         })}
       >
+        {availableCredit > ZERO ? (
+          <RegisteredFormField
+            name="applyCredit"
+            render={({ field }) => (
+              <FormItem>
+                {/* `FormLabel` owns the association: `FormControl` overwrites a hand-written
+                    id on its child, which would leave the label pointing at nothing. */}
+                <FormLabel className="text-muted-foreground">
+                  Credit available {formatMoney(availableCredit, currency)}
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    inputMode="decimal"
+                    disabled={pending}
+                    className="text-right tabular-nums"
+                    onChange={(event) => {
+                      field.onChange(event);
+                      const applied = parseMoneyInput(event.target.value) ?? ZERO;
+
+                      if (lines.fields.length === 1) {
+                        form.setValue(
+                          "payments.0.amount",
+                          formatDecimal(outstanding > applied ? outstanding - applied : ZERO),
+                        );
+                      }
+                    }}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        ) : null}
         <PaymentLines removable={lines.fields.length > 1}>
           {lines.fields.map((line, index) => (
             <PaymentLine
@@ -209,43 +272,47 @@ export function RecordPaymentForm({
             />
           ))}
         </PaymentLines>
-        {overCollected ? (
+        {totalProblem ? (
           <p role="alert" className="text-destructive">
-            {overCollected}
+            {totalProblem}
           </p>
         ) : null}
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={pending || lines.fields.length >= MAX_PAYMENT_LINES}
-            onClick={() => {
-              const payments = form.getValues("payments");
-              lines.append(
-                nextPaymentLine(payments, outstanding - collectedPaise(payments)),
-                // Land in the amount: the method is already the one left unused.
-                { focusName: `payments.${payments.length}.amount` },
-              );
-            }}
-          >
-            Split payment
-          </Button>
-          {/* Only this readout watches every line, so typing an amount does not
-              re-render the form around it. */}
-          <Watch
-            control={form.control}
-            name="payments"
-            render={(payments) => (
-              <PaymentBalance
-                remaining={outstanding - collectedPaise(payments)}
-                currency={currency}
-                disabled={pending}
-                onFill={fillLastLine}
-              />
-            )}
-          />
-        </div>
+        {/* Only these controls watch the changing money fields. */}
+        <Watch
+          control={form.control}
+          name={["payments", "applyCredit"]}
+          render={([payments, applyCredit]) => {
+            const effectiveDue = outstanding - (parseMoneyInput(applyCredit) ?? ZERO);
+            const remaining = effectiveDue - collectedPaise(payments);
+
+            return (
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={pending || lines.fields.length >= MAX_PAYMENT_LINES}
+                  onClick={() => {
+                    const line = nextPaymentLine(payments, remaining);
+
+                    lines.append(line, {
+                      // Land in the amount: the method is already the one left unused.
+                      focusName: `payments.${payments.length}.amount`,
+                    });
+                  }}
+                >
+                  Split payment
+                </Button>
+                <PaymentBalance
+                  remaining={remaining}
+                  currency={currency}
+                  disabled={pending}
+                  onFill={() => fillLastLine(effectiveDue)}
+                />
+              </div>
+            );
+          }}
+        />
         <div className="flex justify-end gap-2">
           {actions}
           <SubmitButton isSubmitting={pending}>{submitLabel}</SubmitButton>

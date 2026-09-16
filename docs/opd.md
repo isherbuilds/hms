@@ -45,7 +45,7 @@ cancelled or no-show attendance is not follow-up evidence.
 
 Search is temporary client state and matches Patient name, MRN, phone, caller
 name, caller phone, or an exact numeric token. The selected date and
-`includeClosed` filter are validated URL state. The register polls every 10
+`status` filter are validated URL state. The register polls every 10
 seconds, refetches on focus, and includes cancelled and no-show rows only when
 requested.
 
@@ -79,6 +79,24 @@ waits for the current quote. For **Later**,
 the form lists the chosen services with their effective rate and no totals,
 because a booking collects nothing. The client sends the practitioner only; the
 server derives the department from the practitioner record.
+
+When the chosen Patient has an open Treatment plan, **Sitting for** links the new
+appointment to that plan, which is what drops the plan off the Follow-ups call
+sheet. Booking and walk-in creation re-read the plan under the verified
+Organization scope and require the same Patient and an open status. The Clinical
+tab's Treatment panel is where a plan is started and
+worked: **New plan** presets the visit's practitioner and makes this visit the
+plan's first sitting, **Link to plan** attaches the visit to an existing open
+plan, and both refuse a visit that is not booked or checked in, belongs to
+another patient, or already names a plan. `opd.get` does not carry the plan: the
+record layout loads the Patient's plans once, and the Clinical panel and the
+Billing tab's advance form both read that one query. For a
+checked-in sitting, **Post to this visit** creates a Charge from the plan
+item's immutable quote snapshot, refuses a quantity above the plan, and refuses
+an item this visit already carries as a Charge, so plan work is billed once
+wherever the desk bills it (D038). Work
+posted after the visit was settled becomes a second Invoice on that visit; the
+Billing tab lists each one.
 
 ### Now
 
@@ -160,7 +178,7 @@ items.
 The OPD Billing tab is the operational checkout for this care setting. It prices
 the Charges the appointment already carries: staff review the pending lines,
 void a wrong one, and settle. **There is no catalog picker at the desk.** Charges
-reach an appointment through intake or check-in only, because the desk must not
+reach an appointment through intake, check-in, or a Treatment plan posting, because the desk must not
 be the place that decides which revenue stream earned the money (D024).
 `settleCharges` takes no line input.
 

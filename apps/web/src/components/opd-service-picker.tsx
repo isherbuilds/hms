@@ -1,15 +1,12 @@
 import { Combobox } from "@hms/ui/components/combobox";
 import { Input } from "@hms/ui/components/input";
-import { useQuery } from "@tanstack/react-query";
 import { ClientOnly } from "@tanstack/react-router";
 import { SearchIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
-import { useDebouncedCallback } from "@/hooks/use-debounced-value";
+import { useCatalogSearch } from "@/hooks/use-catalog-search";
 import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
-import { orpc } from "@/lib/orpc";
-import { errorMessage } from "@/lib/orpc-error";
 
 export type ServiceLine = {
   catalogItemId: string;
@@ -35,24 +32,16 @@ export function ServicePicker({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const currency = useMembership(orgSlug, (membership) => membership.currency);
-  const [search, setSearch] = useState("");
-  const [open, setOpen] = useState(false);
+  // Remounts the combobox after a pick, which is what clears its input.
   const [box, setBox] = useState(0);
-  const settle = useDebouncedCallback(setSearch, 250);
-  const searching = search.length > 0;
 
-  const catalogSearch = useQuery({
-    ...orpc.catalog.searchServices.queryOptions({
-      input: {
-        orgSlug,
-        query: search || undefined,
-        includeConsultation: allowConsultation,
-      },
-    }),
-    enabled: searching,
+  const search = useCatalogSearch({
+    orgSlug,
+    includeConsultation: allowConsultation,
+    noMatch: "No unused service matches",
   });
 
-  const results = (catalogSearch.data ?? []).filter((item) => !chosen.has(item.id));
+  const results = search.items.filter((item) => !chosen.has(item.id));
 
   const renderMatch = (item: (typeof results)[number]) => (
     <>
@@ -66,7 +55,7 @@ export function ServicePicker({
     </>
   );
 
-  const typed = () => inputRef.current?.value.trim() ?? search;
+  const typed = () => inputRef.current?.value.trim() ?? "";
 
   return (
     <div className="flex flex-col gap-2">
@@ -89,7 +78,7 @@ export function ServicePicker({
             items={results}
             getItemKey={(item) => item.id}
             getItemLabel={(item) => item.name}
-            onInputValueChange={(value) => settle(value.trim())}
+            onInputValueChange={search.onInputValueChange}
             onSelect={(item) => {
               onAdd({
                 catalogItemId: item.id,
@@ -100,12 +89,11 @@ export function ServicePicker({
                 taxRatePercent: item.taxRatePercent,
                 qty: 1,
               });
-              setSearch("");
-              setOpen(false);
+              search.clear();
               setBox((mounted) => mounted + 1);
             }}
-            open={open && searching}
-            onOpenChange={setOpen}
+            open={search.open}
+            onOpenChange={search.setOpen}
             inputRef={inputRef}
             inputClassName="pl-8"
             inputProps={{
@@ -115,7 +103,7 @@ export function ServicePicker({
               placeholder: "Search service code, name or category",
               autoFocus: box > 0,
               onFocus: () => {
-                if (typed().length > 0) setOpen(true);
+                if (typed().length > 0) search.setOpen(true);
               },
               onKeyDown: (event) => {
                 if (event.key === "Enter" && typed().length > 0) event.preventDefault();
@@ -125,14 +113,8 @@ export function ServicePicker({
             itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-none border-b border-border px-3 py-2 last:border-b-0"
             renderItem={renderMatch}
             emptyContent={
-              searching ? (
-                <p className="px-3 py-2 text-muted-foreground">
-                  {catalogSearch.isError
-                    ? errorMessage(catalogSearch.error, "Could not search the catalog")
-                    : catalogSearch.isPending
-                      ? "Searching…"
-                      : "No unused service matches"}
-                </p>
+              search.emptyMessage ? (
+                <p className="px-3 py-2 text-muted-foreground">{search.emptyMessage}</p>
               ) : undefined
             }
           />

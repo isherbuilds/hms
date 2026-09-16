@@ -7,6 +7,8 @@ import type { AppRouterClient } from "@hms/api/routers/index";
 import { db } from "@hms/db";
 import { charges } from "@hms/db/schema/charges";
 import { invoices } from "@hms/db/schema/invoices";
+import { treatmentPlanItems } from "@hms/db/schema/treatment-plan-items";
+import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { and, eq } from "drizzle-orm";
 
 import { createOrganization, createTestUser, joinOrganization } from "../support/auth";
@@ -65,6 +67,7 @@ async function createBillingFixture(seed: string) {
     mrnPrefix: "MRN",
     invoicePrefix: "INV",
     receiptPrefix: "RCT",
+    advanceReceiptPrefix: "ADV",
     creditNotePrefix: "CN",
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
@@ -270,6 +273,7 @@ test("catalog charges issue an exact invoice and a full payment settles it", asy
     grandTotal: issued.invoice.grandTotal,
     creditTotal: 0n,
     paymentsTotal: issued.invoice.grandTotal,
+    allocationsTotal: 0n,
     refundsTotal: 0n,
     outstanding: 0n,
   });
@@ -1600,4 +1604,126 @@ test("a voided charge leaves the billing worklist", async () => {
   });
 
   expect((await api.billing.worklist({ orgSlug: organization.slug })).unbilled).toHaveLength(0);
+});
+
+test("advances held pages unspent receipts and drops one once its credit is applied", async () => {
+  const fixture = await createBillingFixture("billing-advances-held");
+  const { api, organization, owner, patient, practitioner } = fixture;
+
+  const [sitting, crown] = await Promise.all([
+    api.catalog.create({
+      orgSlug: organization.slug,
+      name: "Root canal treatment",
+      code: `PLAN-${uniqueSuffix()}`,
+      category: "procedure",
+      unitPrice: 150_00n,
+      taxRatePercent: "0",
+    }),
+    api.catalog.create({
+      orgSlug: organization.slug,
+      name: "Crown",
+      code: `PLAN-${uniqueSuffix()}`,
+      category: "procedure",
+      unitPrice: 100_00n,
+      taxRatePercent: "0",
+    }),
+  ]);
+
+  // Plan rows are fixtures: this test owns the advance, not the treatment API.
+  const planId = Bun.randomUUIDv7();
+  await db.insert(treatmentPlans).values({
+    id: planId,
+    orgId: organization.id,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    createdBy: owner.user.id,
+  });
+  await db.insert(treatmentPlanItems).values({
+    id: Bun.randomUUIDv7(),
+    orgId: organization.id,
+    treatmentPlanId: planId,
+    catalogItemId: sitting.id,
+    description: sitting.name,
+    unitPrice: sitting.unitPrice,
+    taxRatePercent: sitting.taxRatePercent,
+    revenueCategory: sitting.category,
+    qtyPlanned: 2,
+    createdBy: owner.user.id,
+  });
+
+  const planned = await api.billing.recordAdvance({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    treatmentPlanId: planId,
+    method: "cash",
+    amount: 300_00n,
+  });
+
+  const untagged = await api.billing.recordAdvance({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    method: "cash",
+    amount: 100_00n,
+  });
+
+  const spare = await api.billing.recordAdvance({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    method: "cash",
+    amount: 50_00n,
+  });
+
+  // A visit with no plan spends untagged credit first, so this consumes `untagged` whole.
+  const invoice = await createInvoice(fixture, 100_00n);
+  await api.billing.recordPayments({
+    orgSlug: organization.slug,
+    invoiceId: invoice.invoice.id,
+    payments: [],
+    applyCredit: 100_00n,
+  });
+
+  // The cap behind that guard reads the SQL balance, which must subtract the allocation.
+  await expectORPCCode(
+    api.billing.recordPayments({
+      orgSlug: organization.slug,
+      invoiceId: invoice.invoice.id,
+      payments: [{ method: "cash", amount: 1n }],
+    }),
+    "CONFLICT",
+  );
+
+  // A service added after the receipt was printed must not rewrite what it says.
+  await db.insert(treatmentPlanItems).values({
+    id: Bun.randomUUIDv7(),
+    orgId: organization.id,
+    treatmentPlanId: planId,
+    catalogItemId: crown.id,
+    description: crown.name,
+    unitPrice: crown.unitPrice,
+    taxRatePercent: crown.taxRatePercent,
+    revenueCategory: crown.category,
+    qtyPlanned: 1,
+    createdBy: owner.user.id,
+  });
+
+  const page = await api.billing.advancesHeld({ orgSlug: organization.slug, limit: 1 });
+
+  expect(page.items[0]).toMatchObject({
+    id: planned.id,
+    purpose: "Root canal treatment ×2",
+    planStatus: "open",
+    remaining: 300_00n,
+  });
+  expect(page.nextCursor?.id).toBe(planned.id);
+
+  const rest = await api.billing.advancesHeld({
+    orgSlug: organization.slug,
+    cursor: page.nextCursor ?? undefined,
+  });
+
+  expect(rest.nextCursor).toBeNull();
+
+  const held = [...page.items, ...rest.items].map((row) => row.id);
+  expect(held).toEqual([planned.id, spare.id]);
+  expect(held).not.toContain(untagged.id);
 });

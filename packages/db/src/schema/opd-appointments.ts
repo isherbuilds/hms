@@ -16,8 +16,10 @@ import { organization, user } from "./auth";
 import { departments } from "./departments";
 import { patients } from "./patients";
 import { practitioners } from "./practitioners";
+import { treatmentPlans } from "./treatment-plans";
 
 const OPD_ARRIVAL_MODES = ["scheduled", "walk_in"] as const;
+
 export const OPD_APPOINTMENT_STATUSES = ["booked", "checked_in", "cancelled", "no_show"] as const;
 
 // The row owns operational state only; money and files stay typed child records.
@@ -29,6 +31,7 @@ export const opdAppointments = pgTable(
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
     patientId: text("patient_id"),
+    treatmentPlanId: text("treatment_plan_id"),
     callerName: text("caller_name"),
     callerPhone: text("caller_phone"),
     practitionerId: text("practitioner_id").notNull(),
@@ -99,6 +102,10 @@ export const opdAppointments = pgTable(
       columns: [table.orgId, table.departmentId],
       foreignColumns: [departments.orgId, departments.id],
     }),
+    foreignKey({
+      columns: [table.orgId, table.treatmentPlanId],
+      foreignColumns: [treatmentPlans.orgId, treatmentPlans.id],
+    }),
     uniqueIndex("opd_appointments_org_practitioner_date_token_uq")
       .on(table.orgId, table.practitionerId, table.businessDate, table.tokenNumber)
       .where(sql`${table.tokenNumber} is not null`),
@@ -118,5 +125,9 @@ export const opdAppointments = pgTable(
     index("opd_appointments_org_patient_arrived_idx")
       .on(table.orgId, table.patientId, table.practitionerId, table.arrivedAt)
       .where(sql`${table.status} = 'checked_in'`),
+    // Only a sitting carries a plan id, so the partial index skips every other visit.
+    index("opd_appointments_org_treatment_date_idx")
+      .on(table.orgId, table.treatmentPlanId, table.businessDate)
+      .where(sql`${table.treatmentPlanId} is not null`),
   ],
 );

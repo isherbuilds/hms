@@ -7,17 +7,23 @@ import { hasErrorCode } from "@/lib/orpc-error";
 
 export const Route = createFileRoute("/$orgSlug")({
   ssr: true,
+  // Lists keep their previous rows while the next key loads, so the subtree must not
+  // survive a change of organization.
+  remountDeps: ({ params }) => ({ orgSlug: params.orgSlug }),
   loader: async ({ context: { queryClient }, location, params: { orgSlug } }) => {
     let membership;
+
     try {
       membership = await queryClient.query(orpc.member.me.queryOptions({ input: { orgSlug } }));
     } catch (error) {
       if (hasErrorCode(error, "UNAUTHORIZED")) {
         throw redirect({ to: "/login", search: { redirect: location.href } });
       }
+
       if (hasErrorCode(error, "FORBIDDEN")) {
         throw redirect({ to: "/join" });
       }
+
       throw error;
     }
 

@@ -4,6 +4,7 @@ export type InvoiceBalance = {
   grandTotal: bigint;
   creditTotal: bigint;
   paymentsTotal: bigint;
+  allocationsTotal: bigint;
   refundsTotal: bigint;
   outstanding: bigint;
 };
@@ -12,14 +13,16 @@ export function calculateInvoiceBalance({
   grandTotal,
   creditTotal,
   paymentsTotal,
+  allocationsTotal,
   refundsTotal,
 }: Omit<InvoiceBalance, "outstanding">): InvoiceBalance {
   return {
     grandTotal,
     creditTotal,
     paymentsTotal,
+    allocationsTotal,
     refundsTotal,
-    outstanding: grandTotal - creditTotal - paymentsTotal + refundsTotal,
+    outstanding: grandTotal - creditTotal - paymentsTotal - allocationsTotal + refundsTotal,
   };
 }
 

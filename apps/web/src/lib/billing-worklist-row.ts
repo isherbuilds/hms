@@ -11,6 +11,7 @@ export type WorklistRow = {
   /** Null while the charges are still uninvoiced: nothing is collectable yet. */
   invoiceId: string | null;
   appointmentId: string;
+  patientId: string;
   reference: string;
   patientName: string;
   patientMrn: string;
@@ -41,6 +42,7 @@ function stateForAge(at: Date, now: number): WorklistState {
 
 type UnbilledInput = {
   appointmentId: string;
+  patientId: string;
   tokenNumber: number | null;
   patientName: string;
   patientMrn: string;
@@ -55,6 +57,7 @@ type InvoiceInput = {
   id: string;
   invoiceNumber: string;
   appointmentId: string;
+  patientId: string;
   patientName: string;
   patientMrn: string;
   patientPhone: string | null;
@@ -78,6 +81,7 @@ export function toWorklistRows(
       key: `c-${row.appointmentId}`,
       invoiceId: null,
       appointmentId: row.appointmentId,
+      patientId: row.patientId,
       reference: row.tokenNumber === null ? "No token" : `Token ${row.tokenNumber}`,
       currency,
       patientName: row.patientName,
@@ -93,6 +97,7 @@ export function toWorklistRows(
       key: `i-${row.id}`,
       invoiceId: row.id,
       appointmentId: row.appointmentId,
+      patientId: row.patientId,
       reference: row.invoiceNumber,
       currency,
       patientName: row.patientName,

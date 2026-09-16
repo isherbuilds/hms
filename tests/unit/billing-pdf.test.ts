@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 
-import type { InvoiceBundle } from "../../apps/web/src/components/pdf/billing-documents";
-import { renderBillingPdf } from "../../apps/web/src/lib/billing-pdf";
+import type {
+  AdvanceBundle,
+  InvoiceBundle,
+} from "../../apps/web/src/components/pdf/billing-documents";
+import { renderAdvancePdf, renderBillingPdf } from "../../apps/web/src/lib/billing-pdf";
 import { billingPdfFixture } from "../support/billing-pdf-fixture";
 
 test("renders stored Devanagari text from application-owned fonts", async () => {
@@ -13,6 +16,60 @@ test("renders stored Devanagari text from application-owned fonts", async () => 
   });
 
   expect(new TextDecoder().decode(result.bytes.slice(0, 5))).toBe("%PDF-");
+});
+
+test("advance receipt and refund voucher render from the stored receipt snapshot", async () => {
+  const receipt: AdvanceBundle["receipt"] = {
+    id: "advance-1",
+    orgId: "org-1",
+    patientId: "patient-1",
+    treatmentPlanId: "plan-1",
+    method: "cash",
+    amount: 300_00n,
+    reference: null,
+    note: null,
+    purpose: "RCT 36",
+    receiptNumber: "ADV-2026-0001",
+    fiscalYear: "2026-27",
+    businessDate: "2026-08-27",
+    orgLegalName: "HMS Clinic",
+    orgAddress: "Pune, Maharashtra",
+    orgTaxId: "",
+    currency: "INR",
+    patientName: "Kavita Sharma",
+    patientMrn: "MRN-0001",
+    patientPhone: "+919876543210",
+    patientAddress: "Shivaji Nagar, Pune",
+    patientGuardian: null,
+    receivedBy: "user-1",
+    receivedByName: "Anita Desai",
+    createdAt: new Date("2026-08-27T10:30:00.000Z"),
+  };
+
+  const refund: AdvanceBundle["refunds"][number] = {
+    id: "refund-1",
+    orgId: "org-1",
+    invoiceId: null,
+    creditNoteId: null,
+    advanceReceiptId: receipt.id,
+    method: "cash",
+    amount: 100_00n,
+    reference: null,
+    refundNumber: "RF-2026-0001",
+    fiscalYear: "2026-27",
+    businessDate: "2026-08-28",
+    refundedBy: "user-1",
+    createdAt: new Date("2026-08-28T10:30:00.000Z"),
+  };
+
+  const data: AdvanceBundle = { receipt, refunds: [refund] };
+
+  const advancePdf = await renderAdvancePdf(data, null);
+  const refundPdf = await renderAdvancePdf(data, refund.id);
+
+  expect(new TextDecoder().decode(advancePdf.bytes.slice(0, 5))).toBe("%PDF-");
+  expect(new TextDecoder().decode(refundPdf.bytes.slice(0, 5))).toBe("%PDF-");
+  expect(refundPdf.fileName).toBe("RF-2026-0001.pdf");
 });
 
 test("invoice layouts preserve relation casing and capitalize only the guardian name", async () => {
@@ -63,6 +120,7 @@ test("an invoice PDF uses its business date and ignores later account activity",
     balance: {
       grandTotal: 118_00n,
       paymentsTotal: 118_00n,
+      allocationsTotal: 0n,
       creditTotal: 0n,
       refundsTotal: 0n,
       outstanding: 0n,

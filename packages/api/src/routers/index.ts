@@ -12,6 +12,7 @@ import { reportRouter } from "./report";
 import { settingsRouter } from "./settings";
 import { staffRouter } from "./staff";
 import { opdRouter } from "./opd";
+import { treatmentRouter } from "./treatment";
 
 export const appRouter = {
   audit: auditRouter,
@@ -26,6 +27,9 @@ export const appRouter = {
   settings: settingsRouter,
   staff: staffRouter,
   opd: opdRouter,
+  treatment: treatmentRouter,
 };
+
 export type AppRouter = typeof appRouter;
+
 export type AppRouterClient = RouterClient<typeof appRouter>;

@@ -11,8 +11,7 @@ import {
 import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
-import { Textarea } from "@hms/ui/components/textarea";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useFormContext, useFormState } from "react-hook-form";
@@ -20,10 +19,10 @@ import { z } from "zod";
 
 import { numberText } from "@/lib/form-schema";
 
+import { TextField } from "@/components/form-fields";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
-import { errorMessage } from "@/lib/orpc-error";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 import { SettingsTabs } from "./route";
@@ -50,6 +49,7 @@ const supportedTimeZones = Intl.supportedValuesOf("timeZone");
 function isSupportedTimeZone(value: string): boolean {
   try {
     new Intl.DateTimeFormat("en", { timeZone: value });
+
     return true;
   } catch {
     return false;
@@ -71,6 +71,7 @@ const formSchema = z.object({
   mrnPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
   invoicePrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
   receiptPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
+  advanceReceiptPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
   creditNotePrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
   fiscalYearStartMonth: numberText(z.number().int().min(1, "Pick a month").max(12, "Pick a month")),
   followUpValidityDays: numberText(
@@ -143,7 +144,6 @@ function SettingsRoute() {
 }
 
 function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: SettingsFields }) {
-  const queryClient = useQueryClient();
   const router = useRouter();
   const form = useZodForm(formSchema, { defaultValues: toFormValues(defaults) });
 
@@ -152,28 +152,9 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
       onSuccess: async (saved) => {
         form.reset(toFormValues(saved));
         toast.success("Settings saved");
-        // Awaited: `member.me` carries the time zone every page formats with, and the org
-        // layout loader holds it, so open pages would keep the old zone until staleTime lapses.
-        await Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: orpc.settings.get.key({ input: { orgSlug } }),
-          }),
-          queryClient.invalidateQueries({
-            queryKey: orpc.member.me.key({ input: { orgSlug } }),
-          }),
-          queryClient.invalidateQueries({
-            queryKey: orpc.billing.worklist.key({ input: { orgSlug } }),
-          }),
-          queryClient.invalidateQueries({
-            queryKey: orpc.dashboard.today.key({ input: { orgSlug } }),
-          }),
-          queryClient.invalidateQueries({
-            queryKey: orpc.dashboard.collections.key({ input: { orgSlug } }),
-          }),
-        ]);
+        // The org layout loader holds the time zone every page formats with.
         await router.invalidate();
       },
-      onError: (error) => toast.error(errorMessage(error, "Could not save the settings")),
     }),
   );
 
@@ -187,43 +168,22 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
         <fieldset disabled={update.isPending} className="contents">
           <section className="flex flex-col gap-3">
             <h2 className="text-xs font-medium text-muted-foreground">Organization</h2>
-            <RegisteredFormField
+            <TextField
               name="legalName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Legal name</FormLabel>
-                  <FormControl>
-                    <Input {...field} placeholder="As it should appear on invoices" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              label="Legal name"
+              placeholder="As it should appear on invoices"
             />
-            <RegisteredFormField
+            <TextField
               name="address"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Address</FormLabel>
-                  <FormControl>
-                    <Textarea {...field} rows={3} placeholder="Printed under the legal name" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              label="Address"
+              multiline
+              rows={3}
+              placeholder="Printed under the legal name"
             />
             <div className="grid gap-3 sm:grid-cols-2">
-              <RegisteredFormField
-                name="taxId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Tax id (GSTIN/PAN)</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <TextField name="taxId" label="Tax id (GSTIN/PAN)" />
+              {/* Hand-written: `TextField`'s `className` places the row, so it cannot also
+                  carry the control's own class. */}
               <RegisteredFormField
                 name="currency"
                 render={({ field }) => (
@@ -271,54 +231,11 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
           <section className="flex flex-col gap-3">
             <h2 className="text-xs font-medium text-muted-foreground">Document numbering</h2>
             <div className="grid gap-3 sm:grid-cols-2">
-              <RegisteredFormField
-                name="mrnPrefix"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>MRN prefix</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <RegisteredFormField
-                name="invoicePrefix"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Invoice prefix</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <RegisteredFormField
-                name="receiptPrefix"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Receipt prefix</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <RegisteredFormField
-                name="creditNotePrefix"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Credit note prefix</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <TextField name="mrnPrefix" label="MRN prefix" />
+              <TextField name="invoicePrefix" label="Invoice prefix" />
+              <TextField name="receiptPrefix" label="Receipt prefix" />
+              <TextField name="creditNotePrefix" label="Credit note prefix" />
+              <TextField name="advanceReceiptPrefix" label="Advance receipt prefix" />
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <RegisteredFormField
@@ -339,35 +256,23 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                   </FormItem>
                 )}
               />
-              <RegisteredFormField
+              <TextField
                 name="followUpValidityDays"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Follow-up validity (days)</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={1} max={365} step={1} {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      Consult within this many days of the last appointment bills the follow-up fee.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                label="Follow-up validity (days)"
+                type="number"
+                min={1}
+                max={365}
+                step={1}
+                description="Consult within this many days of the last appointment bills the follow-up fee."
               />
-              <RegisteredFormField
+              <TextField
                 name="unbilledAlertHours"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unbilled alert (hours)</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={1} max={168} step={1} {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      Checked-in visits with charges older than this appear as unbilled
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                label="Unbilled alert (hours)"
+                type="number"
+                min={1}
+                max={168}
+                step={1}
+                description="Checked-in visits with charges older than this appear as unbilled"
               />
             </div>
           </section>

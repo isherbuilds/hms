@@ -12,6 +12,7 @@ import { Monogram } from "@/components/monogram";
 import { PageBody, PageHeader, PageTab, PageTabs } from "@/components/page";
 import type { EditablePatient } from "@/components/patient-form";
 import { PatientBilling, type PatientAccount } from "@/components/patient-record/billing";
+import { PatientTreatment } from "@/components/patient-record/treatment";
 import { PatientVisits } from "@/components/patient-record/visits";
 import { PatientSheet } from "@/components/patient-sheet";
 import { useMembership } from "@/lib/membership";
@@ -26,6 +27,7 @@ const TABS = [
   { id: "record", label: "Record", permission: { patient: ["read"] } },
   { id: "visits", label: "Visits", permission: { opd: ["read"] } },
   { id: "billing", label: "Billing", permission: { billing: ["read"] } },
+  { id: "treatment", label: "Treatment", permission: { treatment: ["read"] } },
 ] as const satisfies readonly {
   id: string;
   label: string;
@@ -35,15 +37,27 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 export const Route = createFileRoute("/$orgSlug/patients/$patientId")({
-  remountDeps: ({ params }) => ({ patientId: params.patientId }),
-  loader: async ({ context: { queryClient }, params: { orgSlug, patientId } }) => {
-    await loadRouteQuery(
-      queryClient.query(orpc.patient.get.queryOptions({ input: { orgSlug, patientId } })),
-    );
-  },
   validateSearch: z.object({
-    tab: z.enum(["record", "visits", "billing"]).optional().catch(undefined),
+    tab: z.enum(["record", "visits", "billing", "treatment"]).optional().catch(undefined),
   }),
+  // No loaderDeps: a tab click must not wait on the loader. Each tab loads its own data.
+  loader: async ({ context: { queryClient }, params: { orgSlug, patientId } }) => {
+    const { roles } = await queryClient.query(orpc.member.me.queryOptions({ input: { orgSlug } }));
+
+    await Promise.all([
+      loadRouteQuery(
+        queryClient.query(orpc.patient.get.queryOptions({ input: { orgSlug, patientId } })),
+      ),
+      // The pinned Outstanding figure and the Billing tab both read the account.
+      // Permission-gated, so `orgProcedure` does not audit a denial on every load.
+      authorize(roles, { billing: ["read"] })
+        ? queryClient
+            .query(orpc.patient.account.queryOptions({ input: { orgSlug, patientId } }))
+            .catch(() => {})
+        : undefined,
+    ]);
+  },
+  remountDeps: ({ params }) => ({ patientId: params.patientId }),
   component: PatientDetailRoute,
 });
 
@@ -53,12 +67,14 @@ function PinnedFacts({
   canReadBilling,
   account,
   currency,
+  underTreatment,
 }: {
   record: EditablePatient;
   ageLabel: string;
   canReadBilling: boolean;
   account: PatientAccount | undefined;
   currency: string;
+  underTreatment: boolean;
 }) {
   const guardian = guardianLabel(record);
   const outstanding = account?.outstanding;
@@ -102,6 +118,12 @@ function PinnedFacts({
         >
           {record.allergies ?? "No known allergies"}
         </p>
+
+        {underTreatment ? (
+          <p className="rounded-md bg-clinical-note-surface px-1.5 py-0.5 text-xs font-medium text-clinical-note">
+            Under treatment
+          </p>
+        ) : null}
 
         {canReadBilling && outstanding !== undefined ? (
           <p className="ml-auto flex items-center gap-2 text-xs">
@@ -289,7 +311,6 @@ function PatientRecordSections({
   currency,
   visible,
   account,
-  accountPending,
   accountError,
 }: {
   orgSlug: string;
@@ -299,7 +320,6 @@ function PatientRecordSections({
   currency: string;
   visible: (typeof TABS)[number][];
   account: PatientAccount | undefined;
-  accountPending: boolean;
   accountError: Error | null;
 }) {
   const { tab } = Route.useSearch();
@@ -327,11 +347,15 @@ function PatientRecordSections({
             <RecordTab orgSlug={orgSlug} record={record} ageLabel={ageLabel} />
           ) : active === "visits" ? (
             <PatientVisits orgSlug={orgSlug} patientId={patientId} currency={currency} />
+          ) : active === "treatment" ? (
+            <PatientTreatment orgSlug={orgSlug} patientId={patientId} currency={currency} />
           ) : (
             <PatientBilling
               orgSlug={orgSlug}
+              patientId={patientId}
+              plans={record.openTreatmentPlans}
+              currency={currency}
               account={account}
-              isPending={accountPending}
               error={accountError}
             />
           )}
@@ -350,13 +374,9 @@ function PatientDetailRoute() {
   ).data;
 
   const { roles, currency } = useMembership(orgSlug);
-  const canReadPatient = authorize(roles, { patient: ["read"] });
-  const canReadVisits = authorize(roles, { opd: ["read"] });
   const canReadBilling = authorize(roles, { billing: ["read"] });
 
-  const visible = TABS.filter(({ id }) =>
-    id === "record" ? canReadPatient : id === "visits" ? canReadVisits : canReadBilling,
-  );
+  const visible = TABS.filter(({ permission }) => authorize(roles, permission));
 
   const account = useQuery({
     ...orpc.patient.account.queryOptions({ input: { orgSlug, patientId } }),
@@ -395,6 +415,7 @@ function PatientDetailRoute() {
         ageLabel={ageLabel}
         canReadBilling={canReadBilling}
         currency={currency}
+        underTreatment={record.openTreatmentPlans.length > 0}
       />
 
       <PatientRecordSections
@@ -405,7 +426,6 @@ function PatientDetailRoute() {
         currency={currency}
         visible={visible}
         account={account.data}
-        accountPending={account.isPending}
         accountError={account.error}
       />
     </>

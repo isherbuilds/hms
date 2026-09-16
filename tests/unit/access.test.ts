@@ -259,6 +259,30 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     accountant: false,
   },
   {
+    permission: { treatment: ["read"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: true,
+    accountant: true,
+  },
+  {
+    permission: { treatment: ["create"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: false,
+    accountant: false,
+  },
+  {
+    permission: { treatment: ["update"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: false,
+    accountant: false,
+  },
+  {
     permission: { billing: ["read"] },
     owner: true,
     admin: true,
@@ -282,9 +306,18 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     cashier: false,
     accountant: true,
   },
+  {
+    permission: { billing: ["advanceRefund"] },
+    owner: true,
+    admin: true,
+    reception: false,
+    cashier: true,
+    accountant: true,
+  },
 ];
 
 test("each role grants exactly the permissions the matrix declares", () => {
+  // SAFETY: `roles` is declared from the same closed `RoleKey` role registry.
   expect([...ORG_ROLES].sort()).toEqual(Object.keys(roles).sort() as RoleKey[]);
 
   const granted = MATRIX.map((row) => ({

@@ -204,7 +204,6 @@ function SwitchAccount({ email }: { email: string }) {
       >
         Switch account
       </Button>
-      {signOut.error && <ErrorNote title="Could not sign out" error={signOut.error} />}
     </div>
   );
 }

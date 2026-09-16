@@ -262,12 +262,15 @@ for fields only it has, because reading it needs a `settings:read` grant that a
 cashier does not have.
 
 A read that failed renders `<ErrorNote error={…} />` and lets `ErrorNote` word
-it. A mutation that failed toasts `errorMessage(error, "Could not …")`. Neither
-prints `error.message` raw: a dropped connection has no sentence of its own, and
-"Failed to fetch" is not one an operator can act on.
+it. Neither it nor the mutation toast prints `error.message` raw: a dropped
+connection has no sentence of its own, and "Failed to fetch" is not one an
+operator can act on.
 
-Writes invalidate through the shared helpers in `lib/domain-invalidation.ts`, so
-one transition touches the same key set wherever it is triggered.
+The `MutationCache` in `lib/query-client.ts` owns what every write shares (D036):
+it toasts the failure and, when the last pending write succeeds or fails,
+refreshes every mounted query without awaiting it. The refresh runs before that
+write's own callbacks, so a callback that navigates reads the fresh data once. A mutation adds only its own success copy, a
+field error, or `closeOnConflict(close)` for an overlay holding a refused snapshot.
 
 Remote type-ahead keeps raw text in the smallest child and debounces before the
 query key; the server matches and bounds the results. Local filtering is for a

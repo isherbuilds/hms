@@ -420,3 +420,68 @@ like a fresh database that applied the baseline once; later migrations apply in
 both paths. `dev:status` exact-history checks pass everywhere. The old SQL
 remains recoverable from Git history. Migration history is append-only again
 after this one repository-only squash.
+
+### D033 — A treatment plan item is a quote and may price below catalog
+
+**Accepted 2026-09-15; evidence: [research](./research/treatment-plans-and-advances.md).**
+A Treatment plan item snapshots the catalog description, tax facts, revenue
+category, planned quantity, and quoted unit price. The catalog price is the
+default. A different price requires the item's `note`, the same free-text field
+that records which tooth or site the work is for. A delivered Charge uses the
+plan price, while the catalog item stays unchanged.
+
+### D034 — Course fees post on delivery
+
+**Accepted 2026-09-15.** A Treatment plan and its items create no Charge,
+Invoice, receivable, or revenue. Staff post an item only to a checked-in OPD
+Appointment. That action creates the Charge for work delivered at that sitting.
+Money received before delivery uses an Advance Receipt and remains a liability.
+
+### D035 — Advance money is a separate document, not a Payment
+
+**Accepted 2026-09-15.** A Payment always belongs to an Invoice. Money received
+before an Invoice is an Advance Receipt with its own number and immutable print
+snapshot. Applying credit creates an Advance Allocation and moves the amount
+from Patient Advances to Patient Receivables. An unused balance is returned by
+a linked Refund. Advance refunds use their own procedure and
+`billing:advanceRefund` grant; they do not share the credit-note refund
+permission boundary. The printed document uses the neutral title **Advance Receipt**
+until the pilot chartered accountant approves GST Receipt Voucher particulars.
+
+### D036 — One invalidation: a write ages every query
+
+**Accepted 2026-09-16; supersedes the exact-domain-key rule. Amended 2026-09-16:**
+the query client's `MutationCache` invalidates every query when the last pending
+write succeeds or fails — before that write's own callbacks run, so a callback
+that navigates does not fetch the same record twice — and toasts every failure,
+so no mutation calls invalidation or toasts an error itself. Other organizations' cached queries are only marked
+stale; they are not mounted, so nothing refetches for them. The original rule
+had each mutation call `invalidateOrg(queryClient, orgSlug)`. The per-domain helpers it replaces
+(appointment, billing, patient, treatment, credit, advance, accounting) were a
+hand-kept map of which write ages which key, and it had already drifted: voiding
+a plan charge left "done" counts stale, and spending credit left the Follow-ups
+figure stale. Only mounted queries refetch, and a screen mounts a handful, so the
+request count is close to what the hand-written set produced. Correctness is now
+structural rather than remembered. A mutation that must not refetch a specific
+key is the exception that has to argue for itself.
+
+### D037 — A list keeps its previous rows while the next key loads
+
+**Accepted 2026-09-16; amends [Design](./design.md) §9.** Search- and
+filter-driven lists use `placeholderData: keepPreviousData`, so typing or
+toggling a filter never blanks rows that are about to be replaced. The first
+load of a list still renders nothing, and `/$orgSlug` carries
+`remountDeps: ({ params }) => ({ orgSlug })` so previous rows can never cross a
+tenant boundary. The rule that nothing stands in for data that has not arrived
+still holds for a region that has never had data.
+
+### D038 — A plan item is charged once, and the rule lives at posting
+
+**Accepted 2026-09-16.** `treatment.postToVisit` refuses when a non-voided charge
+for the same catalog item already exists on that visit. That single check
+replaced three coupled guards: a `excludePlanId` filter on catalog search, the
+intake service rejection inside `opd.book`/`createWalkIn`, and their plan lock.
+The desk may now bill a service directly or post it from the plan; whichever
+happens first wins, and the second attempt is refused where the Charge is
+created. A sitting still carries its plan link at intake, because a plan with a
+booked sitting must drop off the Follow-ups call sheet.

@@ -9,15 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@hms/ui/components/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  RegisteredFormField,
-} from "@hms/ui/components/form";
+import { Form } from "@hms/ui/components/form";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +19,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@hms/ui/components/dropdown-menu";
-import { Input } from "@hms/ui/components/input";
 import {
   Table,
   TableBody,
@@ -36,7 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
 import { CopyIcon, MoreHorizontalIcon, UsersIcon } from "lucide-react";
 import { useState } from "react";
@@ -44,6 +35,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { ControlledField, TextField } from "@/components/form-fields";
 import {
   ListState,
   ListToolbar,
@@ -54,7 +46,6 @@ import {
 } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
-import { errorMessage } from "@/lib/orpc-error";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
 import { useCan } from "@/lib/membership";
 
@@ -75,6 +66,7 @@ export const Route = createFileRoute("/$orgSlug/settings/members")({
 /** A role is a comma-joined union, so it renders as one badge per role. */
 function RoleBadge({ role }: { role: string }) {
   const roles = parseRoles(role);
+
   return (
     <span className="flex flex-wrap gap-1">
       {roles.map((one) => (
@@ -100,10 +92,10 @@ function InviteDialog({
   onOpenChange: (o: boolean) => void;
   orgSlug: string;
 }) {
-  const queryClient = useQueryClient();
   const form = useZodForm(inviteSchema, {
     defaultValues: { email: "" },
   });
+
   const [lastLink, setLastLink] = useState<string | null>(null);
 
   const invite = useMutation(
@@ -112,12 +104,7 @@ function InviteDialog({
         form.reset();
         setLastLink(result.url);
         toast.success(`Invitation created for ${result.email}`);
-        // Returned, so the form stays pending until the list shows the invitation.
-        return queryClient.invalidateQueries({
-          queryKey: orpc.member.list.key({ input: { orgSlug } }),
-        });
       },
-      onError: (error) => toast.error(errorMessage(error, "Could not create the invitation")),
     }),
   );
 
@@ -133,6 +120,7 @@ function InviteDialog({
       form.reset();
       setLastLink(null);
     }
+
     onOpenChange(next);
   };
 
@@ -150,46 +138,32 @@ function InviteDialog({
 
           <Form {...form}>
             <form noValidate onSubmit={submit} className="flex min-w-0 flex-col gap-3">
-              <RegisteredFormField
+              <TextField
                 name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email address</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="email"
-                        placeholder="person@example.com"
-                        disabled={invite.isPending}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                label="Email address"
+                type="email"
+                placeholder="person@example.com"
+                disabled={invite.isPending}
               />
 
-              <FormField
-                control={form.control}
+              <ControlledField
                 name="role"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Role</FormLabel>
-                    <div role="group" aria-label="Role" className="flex gap-1">
-                      {ORG_ROLES.map((option) => (
-                        <Button
-                          key={option}
-                          type="button"
-                          variant={field.value === option ? "secondary" : "ghost"}
-                          size="sm"
-                          aria-pressed={field.value === option}
-                          onClick={() => field.onChange(option)}
-                        >
-                          {ROLE_LABELS[option]}
-                        </Button>
-                      ))}
-                    </div>
-                    <FormMessage />
-                  </FormItem>
+                label="Role"
+                render={(field) => (
+                  <div role="group" aria-label="Role" className="flex gap-1">
+                    {ORG_ROLES.map((option) => (
+                      <Button
+                        key={option}
+                        type="button"
+                        variant={field.value === option ? "secondary" : "ghost"}
+                        size="sm"
+                        aria-pressed={field.value === option}
+                        onClick={() => field.onChange(option)}
+                      >
+                        {ROLE_LABELS[option]}
+                      </Button>
+                    ))}
+                  </div>
                 )}
               />
 
@@ -249,56 +223,33 @@ function InviteAction({ orgSlug, compact = false }: { orgSlug: string; compact?:
 
 function MemberResults({ orgSlug, q }: { orgSlug: string; q: string }) {
   const { timeZone } = useOrgDateTime();
-  const queryClient = useQueryClient();
   const [confirm, confirmDialog] = useConfirm();
+
   const members = useQuery(
     orpc.member.list.queryOptions({
       input: { orgSlug, limit: MEMBER_PAGE_LIMIT, ...(q ? { q } : {}) },
     }),
   );
 
-  const refresh = () =>
-    queryClient.invalidateQueries({ queryKey: orpc.member.list.key({ input: { orgSlug } }) });
-  const onError = (error: Error) => toast.error(errorMessage(error, "Could not update the roster"));
   // The roster is readable org-wide; only its actions need the grant.
   const canManage = useCan(orgSlug, { member: ["update", "delete"] });
   const canRevoke = useCan(orgSlug, { invitation: ["cancel"] });
 
   const updateRole = useMutation(
     orpc.member.updateRole.mutationOptions({
-      onSuccess: async () => {
-        await Promise.all([
-          refresh(),
-          queryClient.invalidateQueries({
-            queryKey: orpc.member.me.key({ input: { orgSlug } }),
-          }),
-        ]);
-        toast.success("Role updated");
-      },
-      onError,
+      onSuccess: () => toast.success("Role updated"),
     }),
   );
+
   const removeMember = useMutation(
     orpc.member.remove.mutationOptions({
-      onSuccess: async () => {
-        await Promise.all([
-          refresh(),
-          queryClient.invalidateQueries({
-            queryKey: orpc.member.me.key({ input: { orgSlug } }),
-          }),
-        ]);
-        toast.success("Member removed");
-      },
-      onError,
+      onSuccess: () => toast.success("Member removed"),
     }),
   );
+
   const revoke = useMutation(
     orpc.member.revokeInvitation.mutationOptions({
-      onSuccess: async () => {
-        await refresh();
-        toast.success("Invitation canceled");
-      },
-      onError,
+      onSuccess: () => toast.success("Invitation canceled"),
     }),
   );
 

@@ -9,6 +9,10 @@ import { methodLabel } from "@/lib/settlement";
 
 export type InvoiceBundle = Awaited<ReturnType<RouterClient<AppRouter>["billing"]["getInvoice"]>>;
 
+export type AdvanceBundle = Awaited<
+  ReturnType<RouterClient<AppRouter>["billing"]["getAdvanceReceipt"]>
+>;
+
 type Invoice = InvoiceBundle["invoice"];
 
 type Payment = InvoiceBundle["payments"][number];
@@ -16,6 +20,11 @@ type Payment = InvoiceBundle["payments"][number];
 type CreditNote = InvoiceBundle["creditNotes"][number];
 
 type Refund = InvoiceBundle["refunds"][number];
+
+type DocumentHeader = Pick<
+  Invoice,
+  "orgAddress" | "orgLegalName" | "orgTaxId" | "currency" | "patientName" | "patientMrn"
+>;
 
 const personName = { textTransform: "capitalize" } as const;
 
@@ -57,21 +66,21 @@ const cellStyle: CSSProperties = {
 };
 
 function DocumentShell({
-  invoice,
+  document,
   title,
   number,
   thermal = false,
   children,
 }: {
-  invoice: Invoice;
+  document: DocumentHeader;
   title: string;
   number: string;
   thermal?: boolean;
   children: ReactNode;
 }) {
   const letterhead = [
-    invoice.orgAddress.replace(/\n/g, ", ").trim(),
-    invoice.orgTaxId ? `Tax ID ${invoice.orgTaxId}` : "",
+    document.orgAddress.replace(/\n/g, ", ").trim(),
+    document.orgTaxId ? `Tax ID ${document.orgTaxId}` : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -92,7 +101,7 @@ function DocumentShell({
       >
         <div>
           <h1 style={{ fontSize: thermal ? 15 : 18, lineHeight: 1.2, margin: 0 }}>
-            {invoice.orgLegalName}
+            {document.orgLegalName}
           </h1>
           {letterhead ? (
             <p style={{ color: colors.muted, fontSize: 8, margin: "4px 0 0" }}>{letterhead}</p>
@@ -206,7 +215,7 @@ export function InvoiceDocument({
 
   if (layout === "thermal") {
     return (
-      <DocumentShell invoice={invoice} title="Invoice" number={invoice.invoiceNumber} thermal>
+      <DocumentShell document={invoice} title="Invoice" number={invoice.invoiceNumber} thermal>
         <Details
           rows={[
             { label: "Issued", value: formatBusinessDate(invoice.businessDate) },
@@ -272,7 +281,7 @@ export function InvoiceDocument({
   );
 
   return (
-    <DocumentShell invoice={invoice} title="Invoice" number={invoice.invoiceNumber}>
+    <DocumentShell document={invoice} title="Invoice" number={invoice.invoiceNumber}>
       <section style={{ display: "flex", gap: 28, marginBottom: 20 }}>
         <div style={{ flex: 1 }}>
           <SectionTitle>Invoice details</SectionTitle>
@@ -382,7 +391,7 @@ export function InvoiceDocument({
 
 export function ReceiptDocument({ invoice, payment }: { invoice: Invoice; payment: Payment }) {
   return (
-    <DocumentShell invoice={invoice} title="Payment receipt" number={payment.receiptNumber}>
+    <DocumentShell document={invoice} title="Payment receipt" number={payment.receiptNumber}>
       <SectionTitle>Receipt details</SectionTitle>
       <Details
         roomy
@@ -430,7 +439,7 @@ export function CreditNoteDocument({
   });
 
   return (
-    <DocumentShell invoice={invoice} title="Credit note" number={note.creditNoteNumber}>
+    <DocumentShell document={invoice} title="Credit note" number={note.creditNoteNumber}>
       <section style={{ display: "flex", gap: 28, marginBottom: 18 }}>
         <div style={{ flex: 1 }}>
           <SectionTitle>Credit note details</SectionTitle>
@@ -494,7 +503,7 @@ export function RefundDocument({
   creditNote: CreditNote;
 }) {
   return (
-    <DocumentShell invoice={invoice} title="Refund voucher" number={refund.refundNumber}>
+    <DocumentShell document={invoice} title="Refund voucher" number={refund.refundNumber}>
       <SectionTitle>Refund details</SectionTitle>
       <Details
         roomy
@@ -513,6 +522,72 @@ export function RefundDocument({
           { label: "Method", value: methodLabel(refund.method) },
           ...(refund.reference ? [{ label: "Reference", value: refund.reference }] : []),
           { label: "Amount refunded", value: formatMoney(refund.amount, invoice.currency) },
+        ]}
+      />
+    </DocumentShell>
+  );
+}
+
+export function AdvanceReceiptDocument({ data }: { data: AdvanceBundle }) {
+  const receipt = data.receipt;
+
+  return (
+    <DocumentShell document={receipt} title="Advance Receipt" number={receipt.receiptNumber}>
+      <SectionTitle>Receipt details</SectionTitle>
+      <Details
+        roomy
+        rows={[
+          { label: "Issued", value: formatBusinessDate(receipt.businessDate) },
+          {
+            label: "Received from",
+            value: (
+              <>
+                <span style={personName}>{receipt.patientName}</span> · MRN {receipt.patientMrn}
+              </>
+            ),
+          },
+          { label: "Purpose", value: receipt.purpose },
+          { label: "Method", value: methodLabel(receipt.method) },
+          ...(receipt.reference ? [{ label: "Reference", value: receipt.reference }] : []),
+          { label: "Received by", value: receipt.receivedByName },
+          { label: "Amount received", value: formatMoney(receipt.amount, receipt.currency) },
+        ]}
+      />
+      <p style={{ color: colors.muted, marginTop: 16 }}>
+        Received towards future services. This is not an invoice.
+      </p>
+    </DocumentShell>
+  );
+}
+
+export function AdvanceRefundDocument({
+  data,
+  refund,
+}: {
+  data: AdvanceBundle;
+  refund: AdvanceBundle["refunds"][number];
+}) {
+  const receipt = data.receipt;
+
+  return (
+    <DocumentShell document={receipt} title="Refund voucher" number={refund.refundNumber}>
+      <SectionTitle>Refund details</SectionTitle>
+      <Details
+        roomy
+        rows={[
+          { label: "Issued", value: formatBusinessDate(refund.businessDate) },
+          {
+            label: "Refunded to",
+            value: (
+              <>
+                <span style={personName}>{receipt.patientName}</span> · MRN {receipt.patientMrn}
+              </>
+            ),
+          },
+          { label: "Advance Receipt", value: receipt.receiptNumber },
+          { label: "Method", value: methodLabel(refund.method) },
+          ...(refund.reference ? [{ label: "Reference", value: refund.reference }] : []),
+          { label: "Amount refunded", value: formatMoney(refund.amount, receipt.currency) },
         ]}
       />
     </DocumentShell>

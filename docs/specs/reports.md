@@ -21,15 +21,20 @@ billing worklists below are the shipped exception lists.
   cap, oldest first, linked to the Invoice screen, and invalidated with the rest
   of billing state after any correction.
 
+- `billing.advancesHeld` returns Patients holding unused advance credit, oldest
+  receipt first, with the receipt's printed purpose and its plan's status.
+
 Invoice balances share one calculation over Invoice value, Credit Notes,
-Payments, and recorded Refunds.
+Payments, Advance Allocations, and recorded Refunds.
 
 ## Day-close reports
 
 **Daily collections** (`report.dailyCollections`, at most 92 days) aggregates
-Payments and Refunds by stored Business Date and method — never a date
-re-derived from `createdAt` — and returns per-day rows, per-method totals, and
-net collections. Invoice value is never presented as cash collected.
+Payments, Advance Receipts, Refunds, and advance Refunds by stored Business Date
+and method — never a date re-derived from `createdAt` — and returns per-day rows,
+per-method totals, and net collections: payments plus advances less both kinds of
+refund. Invoice value is never presented as cash collected, and advance money is
+shown as received, not as revenue.
 
 **OPD register** (`report.opdRegister`, at most 31 days) returns one row per OPD
 Appointment with token, Patient or caller, Practitioner, Department, arrival
@@ -55,7 +60,7 @@ OPD day was previously opened ([OPD](../opd.md)).
 
 ## Non-goals
 
-Payment gateway, Advance Receipt implementation, WebSockets, a cashier-shift
+Payment gateway, WebSockets, a cashier-shift
 entity, petty-cash expenses, filing-ready GST output, or a general analytics
 platform. Add a handover entity only if the pilot proves the report plus SOP
 insufficient.

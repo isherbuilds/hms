@@ -31,6 +31,13 @@ function dataString(error: unknown, key: string): string | undefined {
   return undefined;
 }
 
+/** A CONFLICT means the overlay holds a snapshot the server will keep refusing, so it closes. */
+export function closeOnConflict(close: () => void) {
+  return (error: Error) => {
+    if (hasErrorCode(error, "CONFLICT")) close();
+  };
+}
+
 export function hasErrorCode(error: unknown, code: string): boolean {
   for (const link of causes(error)) {
     if (link.code === code) return true;

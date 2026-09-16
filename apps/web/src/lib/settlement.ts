@@ -1,5 +1,5 @@
 import { DECIMAL_PATTERN, formatDecimal, parseDecimal } from "@hms/api/core/money";
-import { paymentMethod, type PaymentMethod } from "@hms/api/lib/schemas";
+import { paymentMethod, requirePaymentReference, type PaymentMethod } from "@hms/api/lib/schemas";
 import { z } from "zod";
 
 // Relative: the `@/` alias is an apps/web path, and the unit-test project that
@@ -35,10 +35,9 @@ export function needsReference(method: PaymentMethod): boolean {
   return method !== "cash";
 }
 
-// The zod shape behind every "record a payment" form. Split lines are the norm,
-// so the single-payment case is just an array of one.
+// The zod shape behind every "record a payment" form. A single-payment dialog uses
+// it as is; a split line adds its row id.
 export const paymentLineFields = z.object({
-  id: z.number(),
   method: paymentMethod,
   amount: z
     .string()
@@ -48,21 +47,6 @@ export const paymentLineFields = z.object({
   reference: z.string().trim().max(100).optional(),
 });
 
-export function requireTransactionReference(
-  value: { method: PaymentMethod; reference?: string },
-  context: z.RefinementCtx,
-) {
-  if (needsReference(value.method) && !value.reference) {
-    context.addIssue({
-      code: "custom",
-      path: ["reference"],
-      message: "Enter the transaction reference",
-    });
-  }
-}
-
-const paymentLineSchema = paymentLineFields.superRefine(requireTransactionReference);
-
 export const MAX_PAYMENT_LINES = 4;
 
 /** What the lines add up to. Every collect form weighs this against what is owed. */
@@ -70,8 +54,22 @@ export function collectedPaise(payments: { amount: string }[]): bigint {
   return payments.reduce((sum, payment) => sum + (parseMoneyInput(payment.amount) ?? 0n), 0n);
 }
 
+// The record-payment form seeds its cash line with whatever credit does not cover, so
+// an empty line is how "the credit settles it" submits. The floor is on the lines plus
+// the credit together, which only the form knows; a line of its own has none.
+const collectedAmount = z
+  .string()
+  .refine((value) => value.trim() === "" || DECIMAL_PATTERN.test(value), "Amount like 150.00")
+  .transform((value) => (value.trim() === "" ? 0n : parseDecimal(value)));
+
+const paymentLineSchema = paymentLineFields
+  .extend({ id: z.number(), amount: collectedAmount })
+  .superRefine((value, context) => {
+    if (value.amount > 0n) requirePaymentReference(value, context);
+  });
+
 export const paymentFormSchema = z.object({
-  payments: z.array(paymentLineSchema).min(1).max(MAX_PAYMENT_LINES),
+  payments: z.array(paymentLineSchema).max(MAX_PAYMENT_LINES),
 });
 
 /** The next split line: an unused method, pre-filled with whatever is still owed. */

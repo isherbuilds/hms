@@ -153,10 +153,9 @@ tenant-leading index before joining display data. Never use `OFFSET` for
 operational lists.
 
 The OPD operational surfaces poll every 10 seconds with a 5-second stale time
-and refetch on focus; background tabs pause. Mutations invalidate exact domain
-keys. A `CONFLICT` refreshes the relevant appointment, queue, charges, invoices,
-and worklists so the losing terminal sees the winning state. There is no
-WebSocket/SSE layer.
+and refetch on focus; background tabs pause. Every settled mutation refreshes all
+mounted queries through the query client's `MutationCache` (D036), so no write
+can miss a key, and a `CONFLICT` refreshes the losing terminal's screen too. There is no WebSocket/SSE layer.
 
 ## Data and migrations
 
@@ -207,6 +206,14 @@ One OPD Appointment is the parent for its Patient link, queue lifecycle,
 Charges, Invoices, and prescription attachments. Check-in enriches a booked row;
 it does not create a Visit/Encounter wrapper. Details live in [OPD](./opd.md).
 
+A Treatment plan groups a course of care for one Patient and Practitioner. Its
+items are quote snapshots, not earned work. Each Sitting is an ordinary
+plan-linked OPD Appointment. Posting a plan item to a checked-in Sitting creates
+the Charge; completed quantity and sitting counts are derived from those source
+rows. The plan stores no name of its own: its label is derived from the item
+descriptions on read, and the only free text it holds is the requested
+next-sitting note.
+
 Booking and walk-in creation share one appointment table and one intake UI. They
 remain separate server procedures because `createWalkIn` is an atomic financial
 transaction that requires `billing:write`, while `book` requires `opd:create`
@@ -249,9 +256,11 @@ missing object. No anonymous bucket policy or unsigned read path is allowed.
 
 ## Billing ledger
 
-Invoices, Payments, Credit Notes, and Refunds post balanced journals in the
+Invoices, Payments, Advance Receipts, Advance Allocations, Credit Notes, and Refunds post balanced journals in the
 same transaction. Stable `systemKey` accounts include Cash, Bank, Patient
-Receivables, GST Output, and category revenue accounts. A unique
+Receivables, Patient Advances, GST Output, and category revenue accounts. An
+Advance Receipt credits Patient Advances. Allocation debits that liability and
+credits Patient Receivables. An unused-credit Refund debits the liability. A unique
 `(orgId, sourceType, sourceId)` prevents duplicate posting; storage and all math use
 `bigint` paise, and the RPC link carries `bigint` end to end; decimal strings exist only
 where a person types or reads them (form inputs, PDF cells, audit meta).
@@ -274,16 +283,18 @@ reads immutable invoice/credit-note lines because document numbers, patients,
 rates, and HSN/SAC are document facts. The current GST surface is an intra-state
 outward register, not a filing-ready GSTR-1 export.
 
-Billing paper is rendered on the server from one guarded `billing.getInvoice`
-call. Preview, print, and download share that PDF endpoint; the document routes
-do not repeat the domain query. Templates read only the immutable source facts
-for the selected Invoice, Payment, Credit Note, or refund, so later balance
-activity cannot rewrite an issued document. The renderer and its WASM stay
+Billing paper is rendered on the server from one guarded domain call —
+`billing.getInvoice`, or `billing.getAdvanceReceipt` for an Advance Receipt.
+Preview, print, and download share that PDF endpoint, and both document routes
+share one response helper; neither repeats the domain query. Templates read only
+the immutable source facts for the selected Invoice, Payment, Advance Receipt,
+Credit Note, or refund, so later balance activity cannot rewrite an issued
+document. The renderer and its WASM stay
 behind a server-only dynamic import, and its Unicode fonts are application
 assets rather than network dependencies (D021).
 
 Business Date is the calendar date in the Organization timezone with a local
-midnight boundary. Invoice, Payment, Credit Note, and Refund rows snapshot it at
-issuance; paper renders that stored date rather than reinterpreting `createdAt`.
+midnight boundary. Invoice, Payment, Advance Receipt, Credit Note, and Refund
+rows snapshot it at issuance; paper renders that stored date rather than reinterpreting `createdAt`.
 Stored token/document/journal dates do not move when the timezone setting later
 changes.

@@ -9,7 +9,7 @@ import {
   TableRow,
 } from "@hms/ui/components/table";
 import { cn } from "@hms/ui/lib/utils";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ClientOnly } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -18,11 +18,9 @@ import { FinancialSummary } from "@/components/opd-financial-summary";
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
 import { formatMoney, ZERO } from "@/lib/money";
 import { servicePreview } from "@/lib/opd-service-preview";
-import { useOpdErrorToast } from "@/lib/opd-error";
-import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
 import { orpc } from "@/lib/orpc";
-
-import { useBillingInvalidation } from "./use-billing-invalidation";
+import { closeOnConflict } from "@/lib/orpc-error";
+import { openingCredit } from "@/lib/patient-credit";
 
 type PendingCharge = {
   id: string;
@@ -53,6 +51,7 @@ const CHARGES_MOVED = {
 export function ChargeCheckout({
   orgSlug,
   appointmentId,
+  patientId,
   pending,
   chargeRevision,
   currency,
@@ -62,16 +61,19 @@ export function ChargeCheckout({
 }: {
   orgSlug: string;
   appointmentId: string;
+  /** Absent only on a booked visit, which cannot be settled. */
+  patientId: string | undefined;
   pending: PendingCharge[];
   chargeRevision: number;
   currency: string;
   canSettle: boolean;
   onVoid: (charge: { id: string; description: string }) => void;
 }) {
-  const onOpdError = useOpdErrorToast(orgSlug);
-  const invalidate = useBillingInvalidation(orgSlug, appointmentId);
+  const queryClient = useQueryClient();
   const [reviewed, setReviewed] = useState(() => ({ pending, chargeRevision }));
-  const [collecting, setCollecting] = useState(false);
+  // The credit the overlay opens with, read on the click; null while it is closed.
+  const [collecting, setCollecting] = useState<bigint | null>(null);
+
   const chargesChanged = chargeRevision !== reviewed.chargeRevision;
   // Shown charges follow the reviewed snapshot, so a total cannot change mid-count.
   const shown = canSettle ? reviewed.pending : pending;
@@ -94,16 +96,12 @@ export function ChargeCheckout({
   const mutation = useMutation(
     orpc.billing.settleCharges.mutationOptions({
       onSuccess: ({ invoice, chargeRevision: settledRevision }) => {
-        setCollecting(false);
+        setCollecting(null);
         setReviewed({ pending: [], chargeRevision: settledRevision });
         toast.success(`Invoice ${invoice.invoiceNumber} issued`);
-        void invalidate(invoice.id);
       },
-      onError: (error) => {
-        if (hasErrorCode(error, "CONFLICT")) setCollecting(false);
-
-        return onOpdError(appointmentId, "billing", error);
-      },
+      // A CONFLICT means the reviewed snapshot is stale, so the overlay closes with it.
+      onError: closeOnConflict(() => setCollecting(null)),
     }),
   );
 
@@ -115,7 +113,7 @@ export function ChargeCheckout({
       ...draft,
     });
 
-  const issue = () => {
+  const issue = async () => {
     if (reason) {
       document.getElementById(reason.fieldId)?.focus();
 
@@ -124,12 +122,21 @@ export function ChargeCheckout({
 
     // Nothing to collect, so there is nothing for the overlay to ask.
     if (quote.grandTotal === ZERO) {
-      settle({ discountAmount: ZERO, expectedGrandTotal: quote.grandTotal, payments: [] });
+      settle({
+        discountAmount: ZERO,
+        expectedGrandTotal: quote.grandTotal,
+        payments: [],
+        applyCredit: ZERO,
+      });
 
       return;
     }
 
-    setCollecting(true);
+    if (!patientId) throw new Error("A settleable appointment has no patient");
+    const credit = await openingCredit(queryClient, orgSlug, patientId);
+
+    if (credit === null) return;
+    setCollecting(credit);
   };
 
   return (
@@ -208,7 +215,7 @@ export function ChargeCheckout({
               isSubmitting={mutation.isPending}
               aria-disabled={reason ? true : undefined}
               aria-describedby={reason ? "charge-checkout-issue" : undefined}
-              onClick={issue}
+              onClick={() => void issue()}
             >
               {quote.grandTotal === ZERO ? "Issue invoice" : "Review and collect"}
             </SubmitButton>
@@ -221,23 +228,18 @@ export function ChargeCheckout({
         </aside>
       ) : null}
 
-      {collecting ? (
+      {collecting !== null ? (
         <ClientOnly fallback={null}>
           <SettlementOverlay
             quote={quote}
+            availableCredit={collecting}
             description={`${quote.lines.length} charge${quote.lines.length === 1 ? "" : "s"} on this appointment`}
             label="Issue invoice"
             pending={mutation.isPending}
-            error={
-              mutation.error
-                ? errorMessage(mutation.error, "Could not settle the charges")
-                : undefined
-            }
             blockedReason={chargesChanged ? CHARGES_MOVED.message : undefined}
             onOpenChange={(open) => {
               if (open) return;
-              setCollecting(false);
-              mutation.reset();
+              setCollecting(null);
             }}
             onConfirm={settle}
           />

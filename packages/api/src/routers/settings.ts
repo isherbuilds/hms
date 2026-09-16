@@ -14,6 +14,7 @@ import { invalidateOrgSettings } from "../lib/settings-cache";
 function isSupportedTimeZone(value: string): boolean {
   try {
     new Intl.DateTimeFormat("en", { timeZone: value });
+
     return true;
   } catch {
     return false;
@@ -35,6 +36,7 @@ const settingsFields = z.object({
   mrnPrefix: z.string().trim().max(10),
   invoicePrefix: z.string().trim().max(10),
   receiptPrefix: z.string().trim().max(10),
+  advanceReceiptPrefix: z.string().trim().max(10),
   creditNotePrefix: z.string().trim().max(10),
   fiscalYearStartMonth: z.number().int().min(1).max(12),
   followUpValidityDays: z.number().int().min(1).max(365),
@@ -55,7 +57,9 @@ export const settingsRouter = {
       if (!row) {
         return { ...SETTINGS_DEFAULTS };
       }
+
       const { orgId: _orgId, createdAt: _c, updatedAt: _u, ...fields } = row;
+
       return fields;
     },
   ),
@@ -65,6 +69,7 @@ export const settingsRouter = {
       const { scope } = context;
       const { orgSlug: _claim, ...fields } = input;
       const { currency, ...mutableFields } = fields;
+
       const [current] = await db
         .select({ currency: organizationSettings.currency })
         .from(organizationSettings)
@@ -105,6 +110,7 @@ export const settingsRouter = {
       });
 
       const { orgId: _orgId, createdAt: _c, updatedAt: _u, ...saved } = row;
+
       return saved;
     },
   ),

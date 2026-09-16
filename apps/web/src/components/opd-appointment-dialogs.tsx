@@ -17,7 +17,7 @@ import {
 } from "@hms/ui/components/form";
 import { Input } from "@hms/ui/components/input";
 import { SubmitButton } from "@hms/ui/components/submit-button";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -25,11 +25,9 @@ import { z } from "zod";
 import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
 import { useOpdCheckIn } from "@/components/opd-appointment";
 import { useZodForm } from "@/hooks/use-zod-form";
-import { invalidateOpdAppointmentState } from "@/lib/domain-invalidation";
-import { useOpdErrorToast } from "@/lib/opd-error";
 import { localInputValue, nextHalfHour, useOrgDateTime } from "@/lib/org-datetime";
-import { hasErrorCode } from "@/lib/orpc-error";
 import { orpc } from "@/lib/orpc";
+import { closeOnConflict } from "@/lib/orpc-error";
 
 export function CheckInOpdAppointmentDialog({
   orgSlug,
@@ -44,7 +42,7 @@ export function CheckInOpdAppointmentDialog({
   callerPhone?: string | null;
   onClose: () => void;
 }) {
-  const checkIn = useOpdCheckIn(orgSlug);
+  const checkIn = useOpdCheckIn();
   const [selected, setSelected] = useState<SelectedPatient>();
   const caller = [callerName, callerPhone].filter(Boolean).join(" · ");
 
@@ -82,9 +80,7 @@ export function CheckInOpdAppointmentDialog({
                       patientId: selected.id,
                     })
                     .then(onClose)
-                    .catch((error) => {
-                      if (hasErrorCode(error, "CONFLICT")) onClose();
-                    });
+                    .catch(closeOnConflict(onClose));
                 }}
               >
                 Check in
@@ -118,9 +114,8 @@ export function RescheduleOpdAppointmentDialog({
   scheduledFor?: Date | string | null;
   onClose: () => void;
 }) {
-  const queryClient = useQueryClient();
-  const onOpdError = useOpdErrorToast(orgSlug);
   const { timeZone } = useOrgDateTime();
+
   const form = useZodForm(rescheduleSchema, {
     defaultValues: {
       scheduledFor: scheduledFor
@@ -128,19 +123,17 @@ export function RescheduleOpdAppointmentDialog({
         : nextHalfHour(timeZone),
     },
   });
+
   const reschedule = useMutation(
     orpc.opd.reschedule.mutationOptions({
-      onSuccess: async () => {
-        await invalidateOpdAppointmentState(queryClient, orgSlug, appointmentId, "reschedule");
-        toast.success("Appointment rescheduled");
+      onSuccess: () => {
         onClose();
+        toast.success("Appointment rescheduled");
       },
-      onError: (error) => {
-        if (hasErrorCode(error, "CONFLICT")) onClose();
-        return onOpdError(appointmentId, "reschedule", error);
-      },
+      onError: closeOnConflict(onClose),
     }),
   );
+
   const submit = form.handleSubmit((values) =>
     reschedule.mutate({
       orgSlug,

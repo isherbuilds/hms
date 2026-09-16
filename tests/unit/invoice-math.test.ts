@@ -149,6 +149,7 @@ test("invoice balance accounts for credits, payments, and returned refunds", () 
     grandTotal: parseDecimal("500.00"),
     creditTotal: parseDecimal("150.00"),
     paymentsTotal: parseDecimal("400.00"),
+    allocationsTotal: 0n,
     refundsTotal: parseDecimal("25.00"),
   });
 
@@ -156,6 +157,7 @@ test("invoice balance accounts for credits, payments, and returned refunds", () 
     grandTotal: 50_000n,
     creditTotal: 15_000n,
     paymentsTotal: 40_000n,
+    allocationsTotal: 0n,
     refundsTotal: 2_500n,
     outstanding: -2_500n,
   });

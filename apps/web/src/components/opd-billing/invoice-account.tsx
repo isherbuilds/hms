@@ -4,22 +4,18 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@hms/ui/components/dialog";
 import {
-  Form,
   FormControl,
   FormField,
   RegisteredFormField,
   FormItem,
-  FormLabel,
   FormMessage,
 } from "@hms/ui/components/form";
 import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
-import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
   Table,
   TableBody,
@@ -28,33 +24,26 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { Textarea } from "@hms/ui/components/textarea";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { requirePaymentReference } from "@hms/api/lib/schemas";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClientOnly, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { useFormState, Watch } from "react-hook-form";
-import { toast } from "sonner";
+import { useFormContext, useFormState, Watch } from "react-hook-form";
 import { z } from "zod";
 
+import { FormDialog } from "@/components/form-dialog";
+import { ControlledField, TextField } from "@/components/form-fields";
+import { ErrorNote } from "@/components/page";
+import { PaymentLineFields } from "@/components/payment-lines";
 import { RecordPaymentForm } from "@/components/record-payment-form";
-import { useZodForm } from "@/hooks/use-zod-form";
 import { formatMoney, parseMoneyInput, ZERO } from "@/lib/money";
-import { useOpdErrorToast } from "@/lib/opd-error";
-import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
 import { orpc } from "@/lib/orpc";
-import {
-  methodLabel,
-  paymentLineFields,
-  PAYMENT_METHODS,
-  requireTransactionReference,
-} from "@/lib/settlement";
-
-import { useBillingInvalidation } from "./use-billing-invalidation";
+import { openingCredit } from "@/lib/patient-credit";
+import { paymentLineFields } from "@/lib/settlement";
 
 const refundSchema = paymentLineFields
-  .omit({ id: true })
   .extend({ creditNoteId: z.string().min(1, "Choose a credit note") })
-  .superRefine(requireTransactionReference);
+  .superRefine(requirePaymentReference);
 
 type CreditLineInput =
   | { invoiceLineId: string; full: true }
@@ -91,34 +80,45 @@ const creditSchema = z
 
 type InvoiceHeader = {
   id: string;
+  patientId: string;
   invoiceNumber: string;
   currency: string;
   grandTotal: bigint;
   paymentsTotal: bigint;
+  allocationsTotal: bigint;
   outstanding: bigint;
 };
 
+// The payment form takes the credit as a snapshot, so opening it carries the figure.
+type Action = { kind: "payment"; credit: bigint } | { kind: "credit" } | { kind: "refund" };
+
 export function InvoiceAccount({
   orgSlug,
-  appointmentId,
   invoice,
   canCredit,
   canPay,
 }: {
   orgSlug: string;
-  appointmentId: string;
   invoice: InvoiceHeader;
   canCredit: boolean;
   canPay: boolean;
 }) {
-  const [action, setAction] = useState<"payment" | "credit" | "refund" | null>(null);
+  const queryClient = useQueryClient();
+  const [action, setAction] = useState<Action | null>(null);
   const [documentsOpen, setDocumentsOpen] = useState(false);
-  const needsDetail = documentsOpen || action === "credit" || action === "refund";
+  const needsDetail = documentsOpen || action?.kind === "credit" || action?.kind === "refund";
 
   const detail = useQuery({
     ...orpc.billing.getInvoice.queryOptions({ input: { orgSlug, invoiceId: invoice.id } }),
     enabled: needsDetail,
   });
+
+  const openPayment = async () => {
+    const credit = await openingCredit(queryClient, orgSlug, invoice.patientId);
+
+    if (credit === null) return;
+    setAction({ kind: "payment", credit });
+  };
 
   const isRefundDue = invoice.outstanding < ZERO;
 
@@ -134,8 +134,8 @@ export function InvoiceAccount({
             {invoice.invoiceNumber}
           </Link>
           <p className="text-muted-foreground">
-            Total {formatMoney(invoice.grandTotal, invoice.currency)} · Paid{" "}
-            {formatMoney(invoice.paymentsTotal, invoice.currency)}
+            Total {formatMoney(invoice.grandTotal, invoice.currency)} · Paid / credit{" "}
+            {formatMoney(invoice.paymentsTotal + invoice.allocationsTotal, invoice.currency)}
           </p>
           <p className={isRefundDue ? "font-medium text-destructive" : "font-medium"}>
             {isRefundDue
@@ -149,21 +149,21 @@ export function InvoiceAccount({
               size="xs"
               variant="outline"
               disabled={invoice.outstanding <= ZERO}
-              onClick={() => setAction("payment")}
+              onClick={() => void openPayment()}
             >
               Record payment
             </Button>
           ) : null}
           {canCredit ? (
             <>
-              <Button size="xs" variant="outline" onClick={() => setAction("credit")}>
+              <Button size="xs" variant="outline" onClick={() => setAction({ kind: "credit" })}>
                 Credit note
               </Button>
               <Button
                 size="xs"
                 variant="outline"
                 disabled={!isRefundDue}
-                onClick={() => setAction("refund")}
+                onClick={() => setAction({ kind: "refund" })}
               >
                 Record refund
               </Button>
@@ -224,42 +224,38 @@ export function InvoiceAccount({
           Loading invoice details…
         </p>
       ) : needsDetail && detail.isError ? (
-        <div role="alert" className="border-l-2 border-destructive pl-3">
-          <p className="font-medium">Could not load invoice details</p>
-          <p className="text-muted-foreground">{errorMessage(detail.error)}</p>
+        <div className="flex flex-col items-start gap-2">
+          <ErrorNote title="Could not load invoice details" error={detail.error} />
           <Button size="xs" variant="ghost" onClick={() => void detail.refetch()}>
             Retry
           </Button>
         </div>
       ) : null}
       <ClientOnly fallback={null}>
-        {action === "payment" ? (
+        {action?.kind === "payment" ? (
           <PaymentDialog
             onClose={() => setAction(null)}
             orgSlug={orgSlug}
-            appointmentId={appointmentId}
             invoiceId={invoice.id}
             outstanding={invoice.outstanding}
+            availableCredit={action.credit}
             currency={invoice.currency}
-            onIssueCreditNote={canCredit ? () => setAction("credit") : undefined}
+            onIssueCreditNote={canCredit ? () => setAction({ kind: "credit" }) : undefined}
           />
         ) : null}
-        {action === "credit" && detail.data ? (
+        {action?.kind === "credit" && detail.data ? (
           <CreditDialog
             onClose={() => setAction(null)}
             orgSlug={orgSlug}
-            appointmentId={appointmentId}
             invoiceId={invoice.id}
             lines={detail.data.lines}
             currency={invoice.currency}
           />
         ) : null}
-        {action === "refund" && detail.data ? (
+        {action?.kind === "refund" && detail.data ? (
           <RefundDialog
             onClose={() => setAction(null)}
             orgSlug={orgSlug}
-            appointmentId={appointmentId}
-            invoiceId={invoice.id}
             creditNotes={detail.data.creditNotes}
             currency={invoice.currency}
           />
@@ -272,17 +268,17 @@ export function InvoiceAccount({
 function PaymentDialog({
   onClose,
   orgSlug,
-  appointmentId,
   invoiceId,
   outstanding,
+  availableCredit,
   currency,
   onIssueCreditNote,
 }: {
   onClose: () => void;
   orgSlug: string;
-  appointmentId: string;
   invoiceId: string;
   outstanding: bigint;
+  availableCredit: bigint;
   currency: string;
   onIssueCreditNote?: () => void;
 }) {
@@ -297,9 +293,9 @@ function PaymentDialog({
         </DialogHeader>
         <RecordPaymentForm
           orgSlug={orgSlug}
-          appointmentId={appointmentId}
           invoiceId={invoiceId}
           outstanding={outstanding}
+          availableCredit={availableCredit}
           currency={currency}
           onClose={onClose}
           submitLabel="Record payment"
@@ -319,282 +315,177 @@ function PaymentDialog({
 function CreditDialog({
   onClose,
   orgSlug,
-  appointmentId,
   invoiceId,
   lines,
   currency,
 }: {
   onClose: () => void;
   orgSlug: string;
-  appointmentId: string;
   invoiceId: string;
   lines: Array<{ id: string; description: string; gross: bigint }>;
   currency: string;
 }) {
-  const invalidate = useBillingInvalidation(orgSlug, appointmentId);
-  const onOpdError = useOpdErrorToast(orgSlug);
+  return (
+    <FormDialog
+      title="Issue credit note"
+      description="Select full lines or enter a partial gross amount."
+      submitLabel="Issue credit note"
+      schema={creditSchema}
+      defaultValues={{
+        reason: "",
+        lines: lines.map((line) => ({ invoiceLineId: line.id, full: false, gross: "" })),
+      }}
+      success="Credit note issued"
+      onClose={onClose}
+      contentClassName="max-w-2xl"
+      run={(value) =>
+        orpc.billing.issueCreditNote.call({
+          orgSlug,
+          invoiceId,
+          reason: value.reason,
+          lines: value.lines.flatMap((line): CreditLineInput[] => {
+            if (line.full) return [{ invoiceLineId: line.invoiceLineId, full: true as const }];
+            const gross = parseMoneyInput(line.gross ?? "");
 
-  const form = useZodForm(creditSchema, {
-    defaultValues: {
-      reason: "",
-      lines: lines.map((line) => ({ invoiceLineId: line.id, full: false, gross: "" })),
-    },
-  });
-
-  const creditLinesError = useFormState({
-    control: form.control,
-    name: "lines",
-  }).errors.lines?.root?.message;
-
-  const mutation = useMutation(
-    orpc.billing.issueCreditNote.mutationOptions({
-      onSuccess: async () => {
-        await invalidate(invoiceId);
-        onClose();
-        toast.success("Credit note issued");
-      },
-      onError: (error) => {
-        if (hasErrorCode(error, "CONFLICT")) onClose();
-        void onOpdError(appointmentId, "billing", error);
-      },
-    }),
+            return gross === null || gross === ZERO
+              ? []
+              : [{ invoiceLineId: line.invoiceLineId, gross }];
+          }),
+        })
+      }
+    >
+      <TextField name="reason" label="Reason" multiline />
+      <CreditLines lines={lines} currency={currency} />
+    </FormDialog>
   );
+}
 
-  const submit = form.handleSubmit((value) =>
-    mutation.mutate({
-      orgSlug,
-      invoiceId,
-      reason: value.reason,
-      lines: value.lines.flatMap((line): CreditLineInput[] => {
-        if (line.full) return [{ invoiceLineId: line.invoiceLineId, full: true as const }];
-        const gross = parseMoneyInput(line.gross ?? "");
-
-        return gross === null || gross === ZERO
-          ? []
-          : [{ invoiceLineId: line.invoiceLineId, gross }];
-      }),
-    }),
-  );
+function CreditLines({
+  lines,
+  currency,
+}: {
+  lines: Array<{ id: string; description: string; gross: bigint }>;
+  currency: string;
+}) {
+  const { control } = useFormContext<z.input<typeof creditSchema>>();
+  const linesError = useFormState({ control, name: "lines" }).errors.lines?.root?.message;
 
   return (
-    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Issue credit note</DialogTitle>
-          <DialogDescription>Select full lines or enter a partial gross amount.</DialogDescription>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={submit} className="flex flex-col gap-3">
-            <RegisteredFormField
-              name="reason"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Reason</FormLabel>
-                  <FormControl>
-                    <Textarea {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <div className="overflow-x-auto ring-1 ring-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Line</TableHead>
-                    <TableHead>Gross</TableHead>
-                    <TableHead>Full</TableHead>
-                    <TableHead>Partial gross</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {lines.map((line, index) => (
-                    <TableRow key={line.id}>
-                      <TableCell>{line.description}</TableCell>
-                      <TableCell>{formatMoney(line.gross, currency)}</TableCell>
-                      <TableCell>
-                        <FormField
-                          control={form.control}
-                          name={`lines.${index}.full`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl>
-                                <Checkbox
-                                  aria-label={`Credit full amount for ${line.description}`}
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Watch
-                          control={form.control}
-                          name={`lines.${index}.full`}
-                          exact
-                          render={(full) => (
-                            <RegisteredFormField
-                              name={`lines.${index}.gross`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormControl>
-                                    <Input
-                                      {...field}
-                                      aria-label={`Partial gross credit for ${line.description}`}
-                                      inputMode="decimal"
-                                      disabled={full}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          )}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            {creditLinesError ? (
-              <p className="text-xs text-destructive">{creditLinesError}</p>
-            ) : null}
-            <DialogFooter>
-              <SubmitButton isSubmitting={mutation.isPending}>Issue credit note</SubmitButton>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+    <>
+      <div className="overflow-x-auto ring-1 ring-border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Line</TableHead>
+              <TableHead>Gross</TableHead>
+              <TableHead>Full</TableHead>
+              <TableHead>Partial gross</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {lines.map((line, index) => (
+              <TableRow key={line.id}>
+                <TableCell>{line.description}</TableCell>
+                <TableCell>{formatMoney(line.gross, currency)}</TableCell>
+                <TableCell>
+                  <FormField
+                    control={control}
+                    name={`lines.${index}.full`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <Checkbox
+                            aria-label={`Credit full amount for ${line.description}`}
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Watch
+                    control={control}
+                    name={`lines.${index}.full`}
+                    exact
+                    render={(full) => (
+                      <RegisteredFormField
+                        name={`lines.${index}.gross`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                aria-label={`Partial gross credit for ${line.description}`}
+                                inputMode="decimal"
+                                disabled={full}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                  />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      {linesError ? <p className="text-xs text-destructive">{linesError}</p> : null}
+    </>
   );
 }
 
 function RefundDialog({
   onClose,
   orgSlug,
-  appointmentId,
-  invoiceId,
   creditNotes,
   currency,
 }: {
   onClose: () => void;
   orgSlug: string;
-  appointmentId: string;
-  invoiceId: string;
   creditNotes: Array<{ id: string; creditNoteNumber: string; total: bigint }>;
   currency: string;
 }) {
-  const invalidate = useBillingInvalidation(orgSlug, appointmentId);
-  const onOpdError = useOpdErrorToast(orgSlug);
-
-  const form = useZodForm(refundSchema, {
-    defaultValues: { creditNoteId: "", method: "cash", amount: "", reference: "" },
-  });
-
-  const mutation = useMutation(
-    orpc.billing.recordRefund.mutationOptions({
-      onSuccess: async () => {
-        await invalidate(invoiceId);
-        onClose();
-        toast.success("Refund recorded");
-      },
-      onError: (error) => {
-        if (hasErrorCode(error, "CONFLICT")) onClose();
-        void onOpdError(appointmentId, "billing", error);
-      },
-    }),
-  );
-
   return (
-    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Record refund</DialogTitle>
-          <DialogDescription>Return an available credit-note amount.</DialogDescription>
-        </DialogHeader>
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit((value) =>
-              mutation.mutate({
-                orgSlug,
-                creditNoteId: value.creditNoteId,
-                method: value.method,
-                amount: value.amount,
-                reference: value.reference || undefined,
-              }),
-            )}
-            className="flex flex-col gap-3"
-          >
-            <RegisteredFormField
-              name="creditNoteId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Credit note</FormLabel>
-                  <FormControl>
-                    <NativeSelect {...field}>
-                      <option value="">Choose a credit note</option>
-                      {creditNotes.map((note) => (
-                        <option key={note.id} value={note.id}>
-                          {note.creditNoteNumber} · {formatMoney(note.total, currency)}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <RegisteredFormField
-              name="method"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Method</FormLabel>
-                  <FormControl>
-                    <NativeSelect {...field} disabled={mutation.isPending}>
-                      {PAYMENT_METHODS.map((method) => (
-                        <option key={method} value={method}>
-                          {methodLabel(method)}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <RegisteredFormField
-              name="amount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Amount</FormLabel>
-                  <FormControl>
-                    <Input {...field} inputMode="decimal" disabled={mutation.isPending} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <RegisteredFormField
-              name="reference"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Reference</FormLabel>
-                  <FormControl>
-                    <Input {...field} disabled={mutation.isPending} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <DialogFooter>
-              <SubmitButton isSubmitting={mutation.isPending}>Record refund</SubmitButton>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+    <FormDialog
+      title="Record refund"
+      description="Return an available credit-note amount."
+      submitLabel="Record refund"
+      schema={refundSchema}
+      defaultValues={{ creditNoteId: "", method: "cash", amount: "", reference: "" }}
+      success="Refund recorded"
+      onClose={onClose}
+      run={(value) =>
+        orpc.billing.recordRefund.call({
+          orgSlug,
+          creditNoteId: value.creditNoteId,
+          method: value.method,
+          amount: value.amount,
+          reference: value.reference || undefined,
+        })
+      }
+    >
+      <ControlledField
+        name="creditNoteId"
+        label="Credit note"
+        render={(field) => (
+          <FormControl>
+            <NativeSelect {...field}>
+              <option value="">Choose a credit note</option>
+              {creditNotes.map((note) => (
+                <option key={note.id} value={note.id}>
+                  {note.creditNoteNumber} · {formatMoney(note.total, currency)}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormControl>
+        )}
+      />
+      <PaymentLineFields />
+    </FormDialog>
   );
 }

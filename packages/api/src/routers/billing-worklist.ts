@@ -1,4 +1,6 @@
 import { db } from "@hms/db";
+import { advanceAllocations } from "@hms/db/schema/advance-allocations";
+import { advanceReceipts } from "@hms/db/schema/advance-receipts";
 import { charges } from "@hms/db/schema/charges";
 import { creditNotes } from "@hms/db/schema/credit-notes";
 import { invoices } from "@hms/db/schema/invoices";
@@ -7,12 +9,14 @@ import { patients } from "@hms/db/schema/patients";
 import { payments } from "@hms/db/schema/payments";
 import { practitioners } from "@hms/db/schema/practitioners";
 import { refunds } from "@hms/db/schema/refunds";
+import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { and, asc, eq, gt, ilike, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
+import { advanceRemaining } from "../lib/advance-credit";
 import { businessDate } from "../lib/business-date";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
-import { likePattern, searchQuery } from "../lib/schemas";
+import { likePattern, pageLimit, searchQuery } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
 
 // `worklist` polls pending charges for checked-in visits, all open invoice totals,
@@ -22,9 +26,13 @@ const OVERDUE_DAYS = 7;
 
 const STALE_DAYS = 30;
 
+// Credit applied from an advance settles an invoice exactly as cash does, so it counts
+// as received here too; `opdRegister` sums the same two movements.
 function paidExpression(orgId: string) {
-  return sql`coalesce((select sum(${payments.amount}) from ${payments}
-        where ${payments.orgId} = ${orgId} and ${payments.invoiceId} = ${invoices.id}), 0)::bigint`;
+  return sql`(coalesce((select sum(${payments.amount}) from ${payments}
+        where ${payments.orgId} = ${orgId} and ${payments.invoiceId} = ${invoices.id}), 0)
+    + coalesce((select sum(${advanceAllocations.amount}) from ${advanceAllocations}
+        where ${advanceAllocations.orgId} = ${orgId} and ${advanceAllocations.invoiceId} = ${invoices.id}), 0))::bigint`;
 }
 
 function settledExpression(orgId: string) {
@@ -59,6 +67,7 @@ export const billingWorklistRouter = {
       db
         .select({
           appointmentId: opdAppointments.id,
+          patientId: patients.id,
           tokenNumber: opdAppointments.tokenNumber,
           patientName: patients.name,
           patientMrn: patients.mrn,
@@ -102,6 +111,7 @@ export const billingWorklistRouter = {
         .groupBy(
           opdAppointments.id,
           opdAppointments.tokenNumber,
+          patients.id,
           patients.name,
           patients.mrn,
           patients.phone,
@@ -128,16 +138,23 @@ export const billingWorklistRouter = {
         .from(invoices)
         .where(eq(invoices.orgId, scope.orgId)),
       db
-        .select({
-          total:
-            sql`(coalesce(sum(${payments.amount}), 0) - coalesce((select sum(${refunds.amount}) from ${refunds}
-              where ${refunds.orgId} = ${scope.orgId} and ${refunds.businessDate} = ${today}), 0))::bigint`.mapWith(
-              BigInt,
-            ),
-          receiptCount: sql<number>`count(*)::integer`,
-        })
-        .from(payments)
-        .where(and(eq(payments.orgId, scope.orgId), eq(payments.businessDate, today))),
+        .execute<{ total: string; receiptCount: number }>(sql`
+        select (
+          coalesce((select sum(${payments.amount}) from ${payments}
+            where ${payments.orgId} = ${scope.orgId} and ${payments.businessDate} = ${today}), 0)
+          + coalesce((select sum(${advanceReceipts.amount}) from ${advanceReceipts}
+            where ${advanceReceipts.orgId} = ${scope.orgId} and ${advanceReceipts.businessDate} = ${today}), 0)
+          - coalesce((select sum(${refunds.amount}) from ${refunds}
+            where ${refunds.orgId} = ${scope.orgId} and ${refunds.businessDate} = ${today}), 0)
+        )::bigint as total,
+        (
+          (select count(*) from ${payments}
+            where ${payments.orgId} = ${scope.orgId} and ${payments.businessDate} = ${today})
+          + (select count(*) from ${advanceReceipts}
+            where ${advanceReceipts.orgId} = ${scope.orgId} and ${advanceReceipts.businessDate} = ${today})
+        )::int as "receiptCount"
+      `)
+        .then((result) => result.rows),
     ]);
 
     const match = unbilledMatches[0];
@@ -153,13 +170,74 @@ export const billingWorklistRouter = {
       summary: {
         toBillTotal: match?.matchValue ?? 0n,
         toBillCount: match?.matchCount ?? 0,
-        collectedToday: collected?.total ?? 0n,
+        collectedToday: BigInt(collected?.total ?? "0"),
         receiptCount: collected?.receiptCount ?? 0,
         outstanding: openMoney?.outstanding ?? 0n,
         openCount: openMoney?.openCount ?? 0,
         staleTotal: openMoney?.staleTotal ?? 0n,
         staleCount: openMoney?.staleCount ?? 0,
       },
+    };
+  }),
+
+  advancesHeld: orgProcedure(
+    { billing: ["read"] },
+    orgInput.extend({
+      query: searchQuery,
+      cursor: z.object({ createdAt: z.coerce.date(), id: z.string() }).optional(),
+      limit: pageLimit,
+    }),
+  ).handler(async ({ context, input }) => {
+    const { orgId } = context.scope;
+    const pattern = input.query ? likePattern(input.query) : undefined;
+    const remaining = advanceRemaining(orgId);
+
+    const rows = await db
+      .select({
+        id: advanceReceipts.id,
+        patientId: advanceReceipts.patientId,
+        patientName: advanceReceipts.patientName,
+        patientMrn: advanceReceipts.patientMrn,
+        purpose: advanceReceipts.purpose,
+        planStatus: treatmentPlans.status,
+        receiptNumber: advanceReceipts.receiptNumber,
+        businessDate: advanceReceipts.businessDate,
+        createdAt: advanceReceipts.createdAt,
+        remaining,
+      })
+      .from(advanceReceipts)
+      .leftJoin(
+        treatmentPlans,
+        and(
+          eq(treatmentPlans.orgId, orgId),
+          eq(treatmentPlans.id, advanceReceipts.treatmentPlanId),
+        ),
+      )
+      .where(
+        and(
+          eq(advanceReceipts.orgId, orgId),
+          sql`${remaining} > 0`,
+          pattern
+            ? or(
+                ilike(advanceReceipts.patientName, pattern),
+                ilike(advanceReceipts.patientMrn, pattern),
+              )
+            : undefined,
+          input.cursor
+            ? sql`(${advanceReceipts.createdAt}, ${advanceReceipts.id}) > (${input.cursor.createdAt}, ${input.cursor.id})`
+            : undefined,
+        ),
+      )
+      .orderBy(asc(advanceReceipts.createdAt), asc(advanceReceipts.id))
+      .limit(input.limit + 1);
+
+    const items = rows.slice(0, input.limit);
+    const last = items.at(-1);
+
+    return {
+      items,
+      nextCursor:
+        rows.length > input.limit && last ? { createdAt: last.createdAt, id: last.id } : null,
     };
   }),
 
@@ -185,6 +263,7 @@ export const billingWorklistRouter = {
         invoiceNumber: invoices.invoiceNumber,
         appointmentId: invoices.opdAppointmentId,
         patientName: invoices.patientName,
+        patientId: invoices.patientId,
         patientMrn: invoices.patientMrn,
         patientPhone: invoices.patientPhone,
         grandTotal: invoices.grandTotal,
