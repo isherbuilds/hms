@@ -40,7 +40,7 @@ export const auditRouter = {
 
     return {
       items,
-      nextCursor: hasNextPage ? items[items.length - 1]!.id : null,
+      nextCursor: hasNextPage ? items.at(-1)!.id : null,
     };
   }),
 };

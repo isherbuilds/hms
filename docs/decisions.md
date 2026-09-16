@@ -451,9 +451,9 @@ until the pilot chartered accountant approves GST Receipt Voucher particulars.
 ### D036 — One invalidation: a write ages every query
 
 **Accepted 2026-09-16; supersedes the exact-domain-key rule. Amended 2026-09-16:**
-the query client's `MutationCache` invalidates every query when the last pending
-write succeeds or fails — before that write's own callbacks run, so a callback
-that navigates does not fetch the same record twice — and toasts every failure,
+the query client's `MutationCache` invalidates every query when any write
+succeeds or fails — before that write's own callbacks run, so a callback that
+navigates does not fetch the same record twice — and toasts every failure,
 so no mutation calls invalidation or toasts an error itself. Other organizations' cached queries are only marked
 stale; they are not mounted, so nothing refetches for them. The original rule
 had each mutation call `invalidateOrg(queryClient, orgSlug)`. The per-domain helpers it replaces
@@ -463,7 +463,9 @@ a plan charge left "done" counts stale, and spending credit left the Follow-ups
 figure stale. Only mounted queries refetch, and a screen mounts a handful, so the
 request count is close to what the hand-written set produced. Correctness is now
 structural rather than remembered. A mutation that must not refetch a specific
-key is the exception that has to argue for itself.
+key is the exception that has to argue for itself. The refresh is not gated on
+`isMutating() === 1`: a mutation stays pending until its own callbacks finish, so
+two overlapping writes each counted the other and both skipped the refresh.
 
 ### D037 — A list keeps its previous rows while the next key loads
 
@@ -481,7 +483,36 @@ still holds for a region that has never had data.
 for the same catalog item already exists on that visit. That single check
 replaced three coupled guards: a `excludePlanId` filter on catalog search, the
 intake service rejection inside `opd.book`/`createWalkIn`, and their plan lock.
-The desk may now bill a service directly or post it from the plan; whichever
-happens first wins, and the second attempt is refused where the Charge is
-created. A sitting still carries its plan link at intake, because a plan with a
+A sitting still carries its plan link at intake, because a plan with a
 booked sitting must drop off the Follow-ups call sheet.
+
+**Amended 2026-09-16:** identity is the plan item, not the catalog item. The
+first rule refused a plan post after the desk had billed the same service at
+intake, so the course never counted that delivery, and it refused two plan
+items for one procedure on different teeth. Now a post refuses only the same
+plan item twice on one visit. A pending intake Charge for the same service is
+claimed instead: it becomes the item's delivery at the quoted price and
+quantity, so the patient pays once and progress still counts it. An intake
+Charge already invoiced, or billing more units than the post, is refused.
+
+Completion counts pending Charges, so voiding one could leave a completed plan
+short with no way to post again. Every void goes through `voidPendingCharges`,
+which locks the delivering plans first and reopens a completed plan that loses
+a non-dropped item's delivery. Lock order is appointment, item, plan, charge.
+
+### D039 — A money command carries a request key
+
+**Accepted 2026-09-16.** A lost response left the desk unable to tell whether
+an advance, payment, credit note, refund, or settled walk-in had been saved, and
+a retry recorded it twice. Receipt numbers and balanced journals cannot catch
+that: the second attempt gets its own number and balances too. Those commands
+now take a `requestKey` UUID minted once per open form (`FormDialog` passes one
+to `run`) and resent on retry. The first statement of the transaction inserts
+it into `request_keys` under `(orgId, id)`; a key that already exists is a
+`CONFLICT`. A concurrent retry waits on that insert and is refused once the
+first commits, or proceeds if it rolled back, so a failed attempt never burns
+its key. The replay is refused rather than returning the original result:
+invalidation (D036) shows the saved record, and storing results would add a
+second copy of every document. `settleCharges` needs no key because its
+`chargeRevision` check already refuses a replay (D020). Matching on patient,
+amount, or time was rejected: two genuine receipts can share all of them.

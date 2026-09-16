@@ -60,6 +60,9 @@ export function requirePaymentReference(
   }
 }
 
+/** Minted once per form submission and resent on retry; see `claimRequestKey`. */
+export const requestKey = z.uuid();
+
 export const paymentLine = z
   .object({
     method: paymentMethod,

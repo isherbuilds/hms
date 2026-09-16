@@ -31,10 +31,12 @@ import {
   paymentLine,
   phone,
   reason,
+  requestKey,
   likePattern,
   searchQuery,
   personName,
 } from "../lib/schemas";
+import { claimRequestKey } from "../lib/request-key";
 import { billingDocumentContext, settleInvoiceTx } from "./billing";
 
 const appointmentIdInput = orgInput.extend({ appointmentId: z.string() });
@@ -104,6 +106,7 @@ async function transitionAppointment(options: {
 
 /** A sitting belongs to an open plan of the same patient. Double-charging is `treatment.postToVisit`'s rule. */
 async function requireOpenTreatmentPlan(
+  tx: DbTransaction,
   orgId: string,
   treatmentPlanId: string | undefined,
   patientId: string | null | undefined,
@@ -114,7 +117,7 @@ async function requireOpenTreatmentPlan(
     throw new ORPCError("BAD_REQUEST", { message: "Choose a patient for this sitting." });
   }
 
-  const [plan] = await db
+  const [plan] = await tx
     .select({ id: treatmentPlans.id })
     .from(treatmentPlans)
     .where(
@@ -125,7 +128,8 @@ async function requireOpenTreatmentPlan(
         eq(treatmentPlans.status, "open"),
       ),
     )
-    .limit(1);
+    .limit(1)
+    .for("update");
 
   if (!plan) {
     throw new ORPCError("CONFLICT", { message: "That treatment plan is no longer available." });
@@ -161,18 +165,15 @@ export const opdRouter = {
     const now = new Date();
     const scheduledFor = futureLocalDateTime(input.scheduledLocal, settings.timeZone, now);
 
-    const [pricing, plan] = await Promise.all([
-      resolveOpdPricing({
-        orgId: scope.orgId,
-        practitionerId: input.practitionerId,
-        patientId: input.patientId ?? null,
-        services: input.services,
-        consultation: "none",
-        followUpValidityDays: settings.followUpValidityDays,
-        now,
-      }),
-      requireOpenTreatmentPlan(scope.orgId, input.treatmentPlanId, input.patientId),
-    ]);
+    const pricing = await resolveOpdPricing({
+      orgId: scope.orgId,
+      practitionerId: input.practitionerId,
+      patientId: input.patientId ?? null,
+      services: input.services,
+      consultation: "none",
+      followUpValidityDays: settings.followUpValidityDays,
+      now,
+    });
 
     const appointmentId = Bun.randomUUIDv7();
 
@@ -188,6 +189,13 @@ export const opdRouter = {
     );
 
     return db.transaction(async (tx) => {
+      const plan = await requireOpenTreatmentPlan(
+        tx,
+        scope.orgId,
+        input.treatmentPlanId,
+        input.patientId,
+      );
+
       const [appointment] = await tx
         .insert(opdAppointments)
         .values({
@@ -291,6 +299,7 @@ export const opdRouter = {
   createWalkIn: orgProcedure(
     { opd: ["create"], patient: ["read"], billing: ["write"] },
     orgInput.extend({
+      requestKey,
       patientId: z.string(),
       practitionerId: z.string(),
       treatmentPlanId: z.string().optional(),
@@ -311,18 +320,15 @@ export const opdRouter = {
     const appointmentId = Bun.randomUUIDv7();
     const settlement = input.settlement;
 
-    const [pricing, plan] = await Promise.all([
-      resolveOpdPricing({
-        orgId: scope.orgId,
-        practitionerId: input.practitionerId,
-        patientId: input.patientId,
-        services: settlement.services,
-        consultation: settlement.omitConsultFee ? "omit" : "auto",
-        followUpValidityDays: billing.settings.followUpValidityDays,
-        now: billing.now,
-      }),
-      requireOpenTreatmentPlan(scope.orgId, input.treatmentPlanId, input.patientId),
-    ]);
+    const pricing = await resolveOpdPricing({
+      orgId: scope.orgId,
+      practitionerId: input.practitionerId,
+      patientId: input.patientId,
+      services: settlement.services,
+      consultation: settlement.omitConsultFee ? "omit" : "auto",
+      followUpValidityDays: billing.settings.followUpValidityDays,
+      now: billing.now,
+    });
 
     const chargeRows = [
       ...(pricing.fee
@@ -350,6 +356,15 @@ export const opdRouter = {
     ];
 
     const result = await db.transaction(async (tx) => {
+      await claimRequestKey(tx, scope.orgId, input.requestKey);
+
+      const plan = await requireOpenTreatmentPlan(
+        tx,
+        scope.orgId,
+        input.treatmentPlanId,
+        input.patientId,
+      );
+
       const tokenNumber = await nextCounter(
         tx,
         scope.orgId,
@@ -635,7 +650,7 @@ export const opdRouter = {
         const voided = await voidPendingCharges({
           tx,
           orgId: scope.orgId,
-          appointmentIds: [appointment.id],
+          where: eq(charges.opdAppointmentId, appointment.id),
           reason: input.reason,
           now,
         });
@@ -674,7 +689,7 @@ export const opdRouter = {
         const voided = await voidPendingCharges({
           tx,
           orgId: scope.orgId,
-          appointmentIds: [appointment.id],
+          where: eq(charges.opdAppointmentId, appointment.id),
           reason: "No-show",
           now,
         });
@@ -845,7 +860,7 @@ export const opdRouter = {
       balanceDue: dueByAppointment.get(row.id) ?? 0n,
     }));
 
-    const last = items[items.length - 1];
+    const last = items.at(-1);
 
     return {
       items,

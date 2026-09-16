@@ -211,8 +211,8 @@ items are quote snapshots, not earned work. Each Sitting is an ordinary
 plan-linked OPD Appointment. Posting a plan item to a checked-in Sitting creates
 the Charge; completed quantity and sitting counts are derived from those source
 rows. The plan stores no name of its own: its label is derived from the item
-descriptions on read, and the only free text it holds is the requested
-next-sitting note.
+descriptions on read. Its free text is the requested next-sitting note and,
+once closed, the close reason.
 
 Booking and walk-in creation share one appointment table and one intake UI. They
 remain separate server procedures because `createWalkIn` is an atomic financial
@@ -271,6 +271,13 @@ Payments. Every line gets its own Receipt and journal source; UPI and card lines
 fail before insertion when their reconciliation reference is absent. Catalog
 charges selected together are likewise verified under the same organization
 and inserted in one transaction rather than one request per item.
+
+A command that creates money without a revision to check — an Advance Receipt,
+Payments, a Credit Note, a Refund, or a settled walk-in — carries a client
+`requestKey`, claimed first in its transaction through `claimRequestKey`, so a
+retry after a lost response is refused instead of recording twice (D039). A
+command's journals post through one `postJournalEntries` call: one account read
+and two inserts however many entries it writes.
 
 A care record owns a monotonically increasing `chargeRevision` for its Charge
 set. Voids and Invoice issuance advance it in the same transaction; settlement

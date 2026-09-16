@@ -24,10 +24,8 @@ function recoverFromExpiredSession(error: unknown): void {
 }
 
 export function createQueryClient() {
-  // The last pending write refreshes every mounted query, before its own callbacks (D036).
-  const refreshAll = () => {
-    if (queryClient.isMutating() === 1) void queryClient.invalidateQueries();
-  };
+  // Every settled write refreshes every mounted query, before its own callbacks (D036).
+  const refreshAll = () => void queryClient.invalidateQueries();
 
   const queryClient: QueryClient = new QueryClient({
     queryCache: new QueryCache({ onError: recoverFromExpiredSession }),

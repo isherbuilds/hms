@@ -21,7 +21,10 @@ type FieldRow = {
 };
 
 // Both controls' attributes, so one props object spreads into either without a cast.
-type ControlProps = ComponentProps<"input"> & ComponentProps<"textarea">;
+type ControlProps = Omit<
+  ComponentProps<"input"> & ComponentProps<"textarea">,
+  "onChange" | "onBlur" | "ref"
+>;
 
 /** A native control registered by name; use `ControlledField` for a controlled widget. */
 export function TextField({

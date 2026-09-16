@@ -266,7 +266,7 @@ export const patientRouter = {
       items.pop();
     }
 
-    const last = items[items.length - 1];
+    const last = items.at(-1);
 
     return {
       items,
@@ -378,7 +378,7 @@ export const patientRouter = {
       outstanding: outstandingByVisit.get(row.id) ?? 0n,
     }));
 
-    const last = rows[rows.length - 1];
+    const last = rows.at(-1);
 
     return {
       items,

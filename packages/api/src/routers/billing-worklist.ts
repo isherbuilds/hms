@@ -10,7 +10,7 @@ import { payments } from "@hms/db/schema/payments";
 import { practitioners } from "@hms/db/schema/practitioners";
 import { refunds } from "@hms/db/schema/refunds";
 import { treatmentPlans } from "@hms/db/schema/treatment-plans";
-import { and, asc, eq, gt, ilike, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, ilike, lt, or, sql, type SQLWrapper } from "drizzle-orm";
 import { z } from "zod";
 
 import { advanceRemaining } from "../lib/advance-credit";
@@ -26,23 +26,35 @@ const OVERDUE_DAYS = 7;
 
 const STALE_DAYS = 30;
 
-// Credit applied from an advance settles an invoice exactly as cash does, so it counts
-// as received here too; `opdRegister` sums the same two movements.
-function paidExpression(orgId: string) {
-  return sql`(coalesce((select sum(${payments.amount}) from ${payments}
-        where ${payments.orgId} = ${orgId} and ${payments.invoiceId} = ${invoices.id}), 0)
-    + coalesce((select sum(${advanceAllocations.amount}) from ${advanceAllocations}
-        where ${advanceAllocations.orgId} = ${orgId} and ${advanceAllocations.invoiceId} = ${invoices.id}), 0))::bigint`;
-}
+// Each money table is summed once per invoice and hash-joined, instead of correlated
+// sums re-run per invoice for every reference to the balance: 5.7 s became 0.25 s for
+// 95k invoices. One `union all` aggregate looked simpler but hides its row count from
+// the planner, which then rescans it per invoice. Credit applied from an advance settles
+// an invoice as cash does, so it counts as paid, as in `opdRegister`.
+function invoiceBalances(orgId: string) {
+  const sumByInvoice = (
+    table: typeof payments | typeof advanceAllocations | typeof creditNotes | typeof refunds,
+    amount: SQLWrapper,
+  ) => sql`(select ${table.invoiceId} as invoice_id, sum(${amount}) as amount
+    from ${table} where ${table.orgId} = ${orgId} group by ${table.invoiceId})`;
 
-function settledExpression(orgId: string) {
-  return sql`
-    ${invoices.grandTotal}
-    - coalesce((select sum(${creditNotes.total}) from ${creditNotes}
-        where ${creditNotes.orgId} = ${orgId} and ${creditNotes.invoiceId} = ${invoices.id}), 0)::bigint
-    - ${paidExpression(orgId)}
-    + coalesce((select sum(${refunds.amount}) from ${refunds}
-        where ${refunds.orgId} = ${orgId} and ${refunds.invoiceId} = ${invoices.id}), 0)::bigint`;
+  return {
+    movements: sql`(select ${invoices.id} as invoice_id,
+        (coalesce(paid.amount, 0) + coalesce(allocated.amount, 0))::bigint as paid,
+        (coalesce(paid.amount, 0) + coalesce(allocated.amount, 0) + coalesce(credited.amount, 0)
+          - coalesce(refunded.amount, 0))::bigint as settles
+      from ${invoices}
+      left join ${sumByInvoice(payments, payments.amount)} paid on paid.invoice_id = ${invoices.id}
+      left join ${sumByInvoice(advanceAllocations, advanceAllocations.amount)} allocated
+        on allocated.invoice_id = ${invoices.id}
+      left join ${sumByInvoice(creditNotes, creditNotes.total)} credited
+        on credited.invoice_id = ${invoices.id}
+      left join ${sumByInvoice(refunds, refunds.amount)} refunded on refunded.invoice_id = ${invoices.id}
+      where ${invoices.orgId} = ${orgId}) movements`,
+    joinOn: sql`movements.invoice_id = ${invoices.id}`,
+    paid: sql<bigint>`coalesce(movements.paid, 0)::bigint`,
+    settled: sql<bigint>`(${invoices.grandTotal} - coalesce(movements.settles, 0))::bigint`,
+  };
 }
 
 const daysAgo = (count: number) => new Date(Date.now() - count * 86_400_000);
@@ -58,7 +70,7 @@ export const billingWorklistRouter = {
     const { scope } = context;
     const settings = await readOrgSettings(scope.orgId);
     const today = businessDate(new Date(), settings.timeZone);
-    const settled = settledExpression(scope.orgId);
+    const { movements, joinOn, settled } = invoiceBalances(scope.orgId);
     const staleBefore = daysAgo(STALE_DAYS);
     const search = input.query ? likePattern(input.query) : undefined;
     const threshold = new Date(Date.now() - settings.unbilledAlertHours * 3_600_000);
@@ -136,6 +148,7 @@ export const billingWorklistRouter = {
           staleCount: sql<number>`count(*) filter (where (${settled}) > 0 and ${invoices.createdAt} < ${staleBefore})::integer`,
         })
         .from(invoices)
+        .leftJoin(movements, joinOn)
         .where(eq(invoices.orgId, scope.orgId)),
       db
         .execute<{ total: string; receiptCount: number }>(sql`
@@ -254,8 +267,7 @@ export const billingWorklistRouter = {
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const search = input.query ? likePattern(input.query) : undefined;
-    const settled = settledExpression(scope.orgId);
-    const paid = paidExpression(scope.orgId);
+    const { movements, joinOn, settled, paid } = invoiceBalances(scope.orgId);
 
     const rows = await db
       .select({
@@ -267,11 +279,12 @@ export const billingWorklistRouter = {
         patientMrn: invoices.patientMrn,
         patientPhone: invoices.patientPhone,
         grandTotal: invoices.grandTotal,
-        paid: sql`(${paid})::bigint`.mapWith(BigInt),
-        outstanding: sql`(${settled})::bigint`.mapWith(BigInt),
+        paid: sql`${paid}`.mapWith(BigInt),
+        outstanding: sql`${settled}`.mapWith(BigInt),
         createdAt: invoices.createdAt,
       })
       .from(invoices)
+      .leftJoin(movements, joinOn)
       .where(
         and(
           eq(invoices.orgId, scope.orgId),
@@ -294,7 +307,7 @@ export const billingWorklistRouter = {
 
     if (hasNextPage) rows.pop();
 
-    const last = rows[rows.length - 1];
+    const last = rows.at(-1);
 
     return {
       items: rows,
@@ -311,7 +324,7 @@ export const billingWorklistRouter = {
   ).handler(async ({ context, input }) => {
     const { orgId } = context.scope;
     const search = input.query ? likePattern(input.query) : undefined;
-    const settled = settledExpression(orgId);
+    const { movements, joinOn, settled } = invoiceBalances(orgId);
 
     const rows = await db
       .select({
@@ -323,6 +336,7 @@ export const billingWorklistRouter = {
         refundDue: sql`(-(${settled}))::bigint`.mapWith(BigInt),
       })
       .from(invoices)
+      .leftJoin(movements, joinOn)
       .where(
         and(
           eq(invoices.orgId, orgId),

@@ -84,7 +84,7 @@ export function BarChart({
 
       <div className="flex justify-between text-muted-foreground">
         <span>{data[0]?.label}</span>
-        <span>{data[data.length - 1]?.label}</span>
+        <span>{data.at(-1)?.label}</span>
       </div>
     </div>
   );

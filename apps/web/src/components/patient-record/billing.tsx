@@ -76,20 +76,23 @@ export function PatientBilling({
   const [firstInvoice] = account?.invoices ?? [];
   const isRefundDue = account !== undefined && account.outstanding < ZERO;
 
+  const refundsByReceipt = Map.groupBy(
+    account?.advanceRefunds ?? [],
+    (refund) => refund.advanceReceiptId,
+  );
+
   const refundLinks = (receipt: { id: string; currency: string }) =>
-    account?.advanceRefunds
-      .filter((refund) => refund.advanceReceiptId === receipt.id)
-      .map((voucher) => (
-        <p key={voucher.id} className="text-muted-foreground">
-          <AdvanceReceiptLink
-            orgSlug={orgSlug}
-            id={receipt.id}
-            refundId={voucher.id}
-            label={`Refunded ${formatMoney(voucher.amount, receipt.currency)}`}
-          />
-          {` · ${formatBusinessDate(voucher.businessDate)}`}
-        </p>
-      ));
+    refundsByReceipt.get(receipt.id)?.map((voucher) => (
+      <p key={voucher.id} className="text-muted-foreground">
+        <AdvanceReceiptLink
+          orgSlug={orgSlug}
+          id={receipt.id}
+          refundId={voucher.id}
+          label={`Refunded ${formatMoney(voucher.amount, receipt.currency)}`}
+        />
+        {` · ${formatBusinessDate(voucher.businessDate)}`}
+      </p>
+    ));
 
   return (
     <div className="flex flex-col gap-4">

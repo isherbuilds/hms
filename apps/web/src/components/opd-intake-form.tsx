@@ -760,6 +760,9 @@ export function OpdIntakeForm({
     }),
   );
 
+  // One key per intake, resent if the desk retries after a lost response (D039).
+  const [requestKey] = useState(() => crypto.randomUUID());
+
   const createWalkIn = useMutation(
     orpc.opd.createWalkIn.mutationOptions({
       onSuccess: async ({ appointment }) => {
@@ -780,6 +783,7 @@ export function OpdIntakeForm({
     if (!current.patient || !canSettleWalkIn) return;
     createWalkIn.mutate({
       orgSlug,
+      requestKey,
       patientId: current.patient.id,
       practitionerId: current.practitionerId,
       treatmentPlanId: current.treatmentPlanId || undefined,

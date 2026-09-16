@@ -156,19 +156,17 @@ type JournalLineInput = {
   credit?: bigint;
 };
 
-export async function postJournalEntry(
-  tx: DbTransaction,
-  args: {
-    orgId: string;
-    sourceType: string;
-    sourceId: string;
-    narration: string;
-    createdBy: string;
-    lines: JournalLineInput[];
-    now: Date;
-    timeZone: string;
-  },
-): Promise<void> {
+type JournalEntryInput = {
+  sourceType: string;
+  sourceId: string;
+  narration: string;
+  createdBy: string;
+  lines: JournalLineInput[];
+  now: Date;
+  timeZone: string;
+};
+
+function prepareLines(entry: JournalEntryInput) {
   const preparedLines: Array<{
     account: SystemAccountKey;
     debit: bigint;
@@ -178,7 +176,7 @@ export async function postJournalEntry(
   let debitTotal = 0n;
   let creditTotal = 0n;
 
-  for (const line of args.lines) {
+  for (const line of entry.lines) {
     const hasDebit = line.debit !== undefined;
     const hasCredit = line.credit !== undefined;
 
@@ -208,25 +206,46 @@ export async function postJournalEntry(
     );
   }
 
-  const accountIds = await ensureChartOfAccounts(tx, args.orgId);
-  const entryId = Bun.randomUUIDv7();
-  await tx.insert(journalEntries).values({
-    id: entryId,
-    orgId: args.orgId,
-    entryDate: businessDate(args.now, args.timeZone),
-    sourceType: args.sourceType,
-    sourceId: args.sourceId,
-    narration: args.narration,
-    createdBy: args.createdBy,
-  });
-  await tx.insert(journalLines).values(
-    preparedLines.map((line) => ({
-      id: Bun.randomUUIDv7(),
-      orgId: args.orgId,
-      entryId,
-      accountId: accountIds[line.account],
-      debit: line.debit,
-      credit: line.credit,
+  return preparedLines;
+}
+
+/** Each entry balances on its own; all of them cost one account read and two inserts. */
+export async function postJournalEntries(
+  tx: DbTransaction,
+  orgId: string,
+  entries: JournalEntryInput[],
+): Promise<void> {
+  if (entries.length === 0) return;
+
+  const prepared = entries.map((entry) => ({
+    entry,
+    entryId: Bun.randomUUIDv7(),
+    lines: prepareLines(entry),
+  }));
+
+  const accountIds = await ensureChartOfAccounts(tx, orgId);
+
+  await tx.insert(journalEntries).values(
+    prepared.map(({ entry, entryId }) => ({
+      id: entryId,
+      orgId,
+      entryDate: businessDate(entry.now, entry.timeZone),
+      sourceType: entry.sourceType,
+      sourceId: entry.sourceId,
+      narration: entry.narration,
+      createdBy: entry.createdBy,
     })),
+  );
+  await tx.insert(journalLines).values(
+    prepared.flatMap(({ entryId, lines }) =>
+      lines.map((line) => ({
+        id: Bun.randomUUIDv7(),
+        orgId,
+        entryId,
+        accountId: accountIds[line.account],
+        debit: line.debit,
+        credit: line.credit,
+      })),
+    ),
   );
 }

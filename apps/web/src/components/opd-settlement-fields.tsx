@@ -69,7 +69,7 @@ export function SettlementFields({
     remaining > ZERO || (parseMoneyInput(discount.trim() || "0") ?? ZERO) > ZERO;
 
   const allocateRest = () => {
-    const last = payments[payments.length - 1];
+    const last = payments.at(-1);
 
     if (!last) return onPaymentsChange([nextPaymentLine(payments, remaining)]);
     onPaymentsChange(

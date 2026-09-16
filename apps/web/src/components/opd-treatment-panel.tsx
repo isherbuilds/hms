@@ -11,6 +11,8 @@ import {
   AddItemDialog,
   NewPlanDialog,
   NextSittingDialog,
+  PostItemDialog,
+  type PostTarget,
   ReasonDialog,
   type TreatmentAction,
 } from "@/components/treatment-dialogs";
@@ -42,6 +44,7 @@ export function OpdTreatmentPanel({
   const [action, setAction] = useState<TreatmentAction | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [dropping, setDropping] = useState<string | null>(null);
+  const [posting, setPosting] = useState<PostTarget | null>(null);
 
   const plans = useQuery(
     orpc.treatment.listForPatient.queryOptions({
@@ -175,9 +178,19 @@ export function OpdTreatmentPanel({
                           size="xs"
                           variant="outline"
                           disabled={post.isPending}
-                          onClick={() =>
-                            post.mutate({ orgSlug, appointmentId, itemId: item.id, qty: 1 })
-                          }
+                          onClick={() => {
+                            const remaining = item.qtyPlanned - item.postedQty;
+
+                            if (remaining > 1) {
+                              setPosting({
+                                itemId: item.id,
+                                description: item.description,
+                                remaining,
+                              });
+                            } else {
+                              post.mutate({ orgSlug, appointmentId, itemId: item.id, qty: 1 });
+                            }
+                          }}
                         >
                           Post to this visit
                         </Button>
@@ -212,6 +225,14 @@ export function OpdTreatmentPanel({
       ) : null}
       {editable && action === "next" ? (
         <NextSittingDialog orgSlug={orgSlug} plan={openPlan} onClose={() => setAction(null)} />
+      ) : null}
+      {posting ? (
+        <PostItemDialog
+          orgSlug={orgSlug}
+          appointmentId={appointmentId}
+          target={posting}
+          onClose={() => setPosting(null)}
+        />
       ) : null}
       {editable && dropping ? (
         <ReasonDialog

@@ -26,7 +26,10 @@ export async function pdfResponse(
       },
     });
   } catch (error) {
-    if (error instanceof ORPCError) return new Response(error.message, { status: error.status });
+    if (error instanceof ORPCError && error.status < 500) {
+      return new Response(error.message, { status: error.status });
+    }
+
     console.error(error);
 
     return new Response("Could not render the document", { status: 500 });

@@ -107,9 +107,10 @@ function TakeAdvanceDialog({
       }}
       success="Advance receipt recorded"
       onClose={onClose}
-      run={(values) =>
+      run={(values, requestKey) =>
         orpc.billing.recordAdvance.call({
           orgSlug,
+          requestKey,
           patientId,
           treatmentPlanId: values.treatmentPlanId || undefined,
           method: values.method,
@@ -165,9 +166,10 @@ export function AdvanceRefundDialog({
       defaultValues={{ method: "cash", amount: formatDecimal(receipt.remaining), reference: "" }}
       success="Refund recorded"
       onClose={onClose}
-      run={(value) =>
+      run={(value, requestKey) =>
         orpc.billing.recordAdvanceRefund.call({
           orgSlug,
+          requestKey,
           advanceReceiptId: receipt.id,
           method: value.method,
           amount: value.amount,

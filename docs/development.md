@@ -267,7 +267,7 @@ connection has no sentence of its own, and "Failed to fetch" is not one an
 operator can act on.
 
 The `MutationCache` in `lib/query-client.ts` owns what every write shares (D036):
-it toasts the failure and, when the last pending write succeeds or fails,
+it toasts the failure and, when any write succeeds or fails,
 refreshes every mounted query without awaiting it. The refresh runs before that
 write's own callbacks, so a callback that navigates reads the fresh data once. A mutation adds only its own success copy, a
 field error, or `closeOnConflict(close)` for an overlay holding a refused snapshot.

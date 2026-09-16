@@ -2,29 +2,69 @@ import { db } from "@hms/db";
 import type { DbTransaction } from "@hms/db/counter";
 import { charges } from "@hms/db/schema/charges";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { treatmentPlanItems } from "@hms/db/schema/treatment-plan-items";
+import { treatmentPlans } from "@hms/db/schema/treatment-plans";
+import { and, asc, eq, inArray, lt, type SQL } from "drizzle-orm";
 
 import { audit } from "../audit";
 
+/**
+ * Voids the pending charges `where` selects. A plan counts pending charges as delivered,
+ * so the plans those charges deliver lock first, the order `complete` and `postToVisit`
+ * take them in, and a completed plan that loses delivery reopens. The caller must already
+ * lock the charges' appointments, which queues a concurrent `postToVisit` claim.
+ */
 export async function voidPendingCharges(options: {
   tx: DbTransaction;
   orgId: string;
-  appointmentIds: string[];
+  where: SQL;
   reason: string;
   now: Date;
 }) {
-  if (options.appointmentIds.length === 0) return [];
-  return options.tx
-    .update(charges)
-    .set({ status: "voided", voidReason: options.reason, updatedAt: options.now })
-    .where(
+  const { tx, orgId } = options;
+  const pending = and(eq(charges.orgId, orgId), eq(charges.status, "pending"), options.where);
+
+  const plans = await tx
+    .select({
+      id: treatmentPlans.id,
+      status: treatmentPlans.status,
+      itemStatus: treatmentPlanItems.status,
+    })
+    .from(charges)
+    .innerJoin(
+      treatmentPlanItems,
+      and(eq(treatmentPlanItems.orgId, orgId), eq(treatmentPlanItems.id, charges.sourceId)),
+    )
+    .innerJoin(
+      treatmentPlans,
       and(
-        eq(charges.orgId, options.orgId),
-        inArray(charges.opdAppointmentId, options.appointmentIds),
-        eq(charges.status, "pending"),
+        eq(treatmentPlans.orgId, orgId),
+        eq(treatmentPlans.id, treatmentPlanItems.treatmentPlanId),
       ),
     )
-    .returning({ appointmentId: charges.opdAppointmentId });
+    .where(and(pending, eq(charges.sourceType, "treatment_plan")))
+    .orderBy(asc(treatmentPlans.id))
+    .for("update", { of: treatmentPlans });
+
+  const voided = await tx
+    .update(charges)
+    .set({ status: "voided", voidReason: options.reason, updatedAt: options.now })
+    .where(pending)
+    .returning();
+
+  // A dropped item never counted toward completion, so voiding its delivery changes nothing.
+  const completed = plans
+    .filter((plan) => plan.status === "completed" && plan.itemStatus !== "dropped")
+    .map((plan) => plan.id);
+
+  if (completed.length > 0) {
+    await tx
+      .update(treatmentPlans)
+      .set({ status: "open", completedAt: null, updatedAt: options.now })
+      .where(and(eq(treatmentPlans.orgId, orgId), inArray(treatmentPlans.id, completed)));
+  }
+
+  return voided;
 }
 
 export async function closeExpiredBookings(options: {
@@ -45,20 +85,30 @@ export async function closeExpiredBookings(options: {
         ),
       )
       .returning({ id: opdAppointments.id });
-    const voided = await voidPendingCharges({
-      tx,
-      orgId: options.orgId,
-      appointmentIds: closed.map((appointment) => appointment.id),
-      reason: "No-show",
-      now: options.now,
-    });
+
+    const voided =
+      closed.length === 0
+        ? []
+        : await voidPendingCharges({
+            tx,
+            orgId: options.orgId,
+            where: inArray(
+              charges.opdAppointmentId,
+              closed.map((appointment) => appointment.id),
+            ),
+            reason: "No-show",
+            now: options.now,
+          });
+
     const voidedByAppointment = new Map<string, number>();
+
     for (const charge of voided) {
       voidedByAppointment.set(
-        charge.appointmentId,
-        (voidedByAppointment.get(charge.appointmentId) ?? 0) + 1,
+        charge.opdAppointmentId,
+        (voidedByAppointment.get(charge.opdAppointmentId) ?? 0) + 1,
       );
     }
+
     return closed.map((appointment) => ({
       id: appointment.id,
       voidedCharges: voidedByAppointment.get(appointment.id) ?? 0,

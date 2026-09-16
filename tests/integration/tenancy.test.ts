@@ -496,6 +496,7 @@ const GUARDED_CALLS = {
     }),
   "opd.createWalkIn": (api, claim) =>
     api.opd.createWalkIn({
+      requestKey: crypto.randomUUID(),
       ...claim,
       patientId: Bun.randomUUIDv7(),
       practitionerId: Bun.randomUUIDv7(),
@@ -554,12 +555,14 @@ const GUARDED_CALLS = {
     }),
   "billing.recordPayments": (api, claim) =>
     api.billing.recordPayments({
+      requestKey: crypto.randomUUID(),
       ...claim,
       invoiceId: Bun.randomUUIDv7(),
       payments: [{ method: "cash", amount: 1_00n }],
     }),
   "billing.recordAdvance": (api, claim) =>
     api.billing.recordAdvance({
+      requestKey: crypto.randomUUID(),
       ...claim,
       patientId: Bun.randomUUIDv7(),
       method: "cash",
@@ -567,6 +570,7 @@ const GUARDED_CALLS = {
     }),
   "billing.recordAdvanceRefund": (api, claim) =>
     api.billing.recordAdvanceRefund({
+      requestKey: crypto.randomUUID(),
       ...claim,
       advanceReceiptId: Bun.randomUUIDv7(),
       method: "cash",
@@ -578,6 +582,7 @@ const GUARDED_CALLS = {
     api.billing.getAdvanceReceipt({ ...claim, advanceId: Bun.randomUUIDv7() }),
   "billing.issueCreditNote": (api, claim) =>
     api.billing.issueCreditNote({
+      requestKey: crypto.randomUUID(),
       ...claim,
       invoiceId: Bun.randomUUIDv7(),
       reason: "Intrusion",
@@ -585,6 +590,7 @@ const GUARDED_CALLS = {
     }),
   "billing.recordRefund": (api, claim) =>
     api.billing.recordRefund({
+      requestKey: crypto.randomUUID(),
       ...claim,
       creditNoteId: Bun.randomUUIDv7(),
       method: "cash",
@@ -758,6 +764,7 @@ async function createTreatmentScopeFixture(
   });
 
   const advance = await api.billing.recordAdvance({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     treatmentPlanId: plan.id,
@@ -1175,6 +1182,7 @@ test("OPD appointment rows are invisible from another org through queue or get",
   );
 
   const created = await aliceClient.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: alpha.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -1281,6 +1289,7 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
 
   const [inOne, inTwo] = await Promise.all([
     api.opd.createWalkIn({
+      requestKey: crypto.randomUUID(),
       orgSlug: one.slug,
       patientId: patientOne.id,
       practitionerId: practitionerOne.id,
@@ -1290,6 +1299,7 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
       },
     }),
     api.opd.createWalkIn({
+      requestKey: crypto.randomUUID(),
       orgSlug: two.slug,
       patientId: patientTwo.id,
       practitionerId: practitionerTwo.id,
@@ -1375,6 +1385,7 @@ async function createScopedInvoice(
   });
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -1531,6 +1542,7 @@ test("one client concurrently scopes report calls to two organizations", async (
   ]);
 
   await api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: one.slug,
     invoiceId: inOne.invoice.id,
     payments: [{ method: "cash", amount: 40_00n }],
