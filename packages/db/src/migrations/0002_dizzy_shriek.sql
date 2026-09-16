@@ -39,6 +39,13 @@ CREATE TABLE "advance_receipts" (
 	CONSTRAINT "advance_receipts_amount_check" CHECK ("advance_receipts"."amount" > 0)
 );
 --> statement-breakpoint
+CREATE TABLE "request_keys" (
+	"org_id" text NOT NULL,
+	"id" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "request_keys_org_id_id_pk" PRIMARY KEY("org_id","id")
+);
+--> statement-breakpoint
 CREATE TABLE "treatment_plans" (
 	"id" text PRIMARY KEY NOT NULL,
 	"org_id" text NOT NULL,
@@ -98,6 +105,7 @@ ALTER TABLE "advance_receipts" ADD CONSTRAINT "advance_receipts_org_id_organizat
 ALTER TABLE "advance_receipts" ADD CONSTRAINT "advance_receipts_received_by_user_id_fk" FOREIGN KEY ("received_by") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "advance_receipts" ADD CONSTRAINT "advance_receipts_org_id_patient_id_patients_org_id_id_fk" FOREIGN KEY ("org_id","patient_id") REFERENCES "public"."patients"("org_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "advance_receipts" ADD CONSTRAINT "advance_receipts_org_id_treatment_plan_id_treatment_plans_org_id_id_fk" FOREIGN KEY ("org_id","treatment_plan_id") REFERENCES "public"."treatment_plans"("org_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "request_keys" ADD CONSTRAINT "request_keys_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "treatment_plans" ADD CONSTRAINT "treatment_plans_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "treatment_plans" ADD CONSTRAINT "treatment_plans_created_by_user_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "treatment_plans" ADD CONSTRAINT "treatment_plans_org_id_patient_id_patients_org_id_id_fk" FOREIGN KEY ("org_id","patient_id") REFERENCES "public"."patients"("org_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

@@ -116,7 +116,7 @@ export function PaymentBalance({
  * Registers `method`, `amount` and `reference` on the surrounding form.
  */
 export function PaymentLineFields() {
-  const { control } = useFormContext<{ method: PaymentMethod }>();
+  const { control, setValue } = useFormContext<{ method: PaymentMethod; reference: string }>();
 
   return (
     <>
@@ -125,7 +125,13 @@ export function PaymentLineFields() {
         label="Method"
         render={(field) => (
           <FormControl>
-            <NativeSelect {...field}>
+            <NativeSelect
+              {...field}
+              onChange={(event) => {
+                field.onChange(event);
+                setValue("reference", "");
+              }}
+            >
               {PAYMENT_METHODS.map((method) => (
                 <option key={method} value={method}>
                   {methodLabel(method)}

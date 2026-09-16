@@ -24,6 +24,7 @@ import { businessDate, businessDateAnchor } from "../lib/business-date";
 import { advanceRemaining } from "../lib/advance-credit";
 import { impossible } from "../lib/conflict";
 import { invoiceBalanceFor, invoiceBalancesFor } from "../lib/invoice-balance";
+import { voidPendingCharges } from "../lib/opd-close";
 import { planLabel } from "../lib/treatment-label";
 import {
   calculateInvoiceBalance,
@@ -33,7 +34,7 @@ import {
   fiscalYearLabel,
 } from "../lib/invoice-math";
 import {
-  postJournalEntry,
+  postJournalEntries,
   revenueAccountFor,
   settlementAccountFor,
   type SystemAccountKey,
@@ -44,9 +45,11 @@ import {
   paymentLine,
   positiveMoney,
   reason,
+  requestKey,
   requirePaymentReference,
   type PaymentMethod,
 } from "../lib/schemas";
+import { claimRequestKey } from "../lib/request-key";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
 import { billingWorklistRouter } from "./billing-worklist";
@@ -109,11 +112,16 @@ async function applyPatientCreditTx(
 
   // Lock in one stable order, then read balances in a new statement: under READ COMMITTED
   // only a statement that starts after the lock sees allocations committed while it waited.
+  // Credit only shrinks, so a receipt already spent in this snapshot is never locked.
   const locked = await tx
     .select({ id: advanceReceipts.id })
     .from(advanceReceipts)
     .where(
-      and(eq(advanceReceipts.orgId, scope.orgId), eq(advanceReceipts.patientId, invoice.patientId)),
+      and(
+        eq(advanceReceipts.orgId, scope.orgId),
+        eq(advanceReceipts.patientId, invoice.patientId),
+        sql`${advanceRemaining(scope.orgId)} > 0`,
+      ),
     )
     .orderBy(asc(advanceReceipts.createdAt), asc(advanceReceipts.id))
     .for("update");
@@ -173,9 +181,10 @@ async function applyPatientCreditTx(
 
   const inserted = await tx.insert(advanceAllocations).values(rows).returning();
 
-  for (const allocation of inserted) {
-    await postJournalEntry(tx, {
-      orgId: scope.orgId,
+  await postJournalEntries(
+    tx,
+    scope.orgId,
+    inserted.map((allocation) => ({
       sourceType: "advance_allocation",
       sourceId: allocation.id,
       narration: `Advance allocation · Invoice ${invoice.invoiceNumber}`,
@@ -186,8 +195,8 @@ async function applyPatientCreditTx(
         { account: "patient_advances", debit: allocation.amount },
         { account: "patient_receivables", credit: allocation.amount },
       ],
-    });
-  }
+    })),
+  );
 }
 
 async function issueInvoiceTx(
@@ -383,25 +392,26 @@ async function issueInvoiceTx(
   }
 
   if (computed.grandTotal > 0n) {
-    await postJournalEntry(tx, {
-      orgId: scope.orgId,
-      sourceType: "invoice",
-      sourceId: invoiceId,
-      narration: `Invoice ${invoiceNumber}`,
-      createdBy: scope.userId,
-      now,
-      timeZone: settings.timeZone,
-      lines: [
-        { account: "patient_receivables", debit: computed.grandTotal },
-        ...[...revenueByAccount].map(([account, amount]) => ({
-          account,
-          credit: amount,
-        })),
-        ...(computed.taxTotal > 0n
-          ? [{ account: "gst_output" as const, credit: computed.taxTotal }]
-          : []),
-      ],
-    });
+    await postJournalEntries(tx, scope.orgId, [
+      {
+        sourceType: "invoice",
+        sourceId: invoiceId,
+        narration: `Invoice ${invoiceNumber}`,
+        createdBy: scope.userId,
+        now,
+        timeZone: settings.timeZone,
+        lines: [
+          { account: "patient_receivables", debit: computed.grandTotal },
+          ...[...revenueByAccount].map(([account, amount]) => ({
+            account,
+            credit: amount,
+          })),
+          ...(computed.taxTotal > 0n
+            ? [{ account: "gst_output" as const, credit: computed.taxTotal }]
+            : []),
+        ],
+      },
+    ]);
   }
 
   const [versionedAppointment] = await tx
@@ -459,46 +469,50 @@ async function recordPaymentsTx(
     timeZone: settings.timeZone,
   });
 
-  const recorded = [];
+  if (args.payments.length === 0) return [];
 
-  for (const payment of args.payments) {
-    const paymentId = Bun.randomUUIDv7();
-    const sequence = await nextCounter(tx, scope.orgId, `receipt:${fiscalYear}`);
-    const receiptNumber = documentNumber(settings.receiptPrefix, fiscalYear, sequence);
+  const firstSequence = await nextCounter(
+    tx,
+    scope.orgId,
+    `receipt:${fiscalYear}`,
+    args.payments.length,
+  );
 
-    const [inserted] = await tx
-      .insert(payments)
-      .values({
-        id: paymentId,
+  const recorded = await tx
+    .insert(payments)
+    .values(
+      args.payments.map((payment, index) => ({
+        id: Bun.randomUUIDv7(),
         orgId: scope.orgId,
         invoiceId: args.invoiceId,
         method: payment.method,
         amount: payment.amount,
         reference: payment.reference ?? null,
-        receiptNumber,
+        receiptNumber: documentNumber(settings.receiptPrefix, fiscalYear, firstSequence + index),
         fiscalYear,
         businessDate: businessDate(now, settings.timeZone),
         receivedBy: scope.userId,
         createdAt: now,
-      })
-      .returning();
+      })),
+    )
+    .returning();
 
-    if (!inserted) throw impossible("payment insert returned no row");
-    await postJournalEntry(tx, {
-      orgId: scope.orgId,
+  await postJournalEntries(
+    tx,
+    scope.orgId,
+    recorded.map((payment) => ({
       sourceType: "payment",
-      sourceId: paymentId,
-      narration: `Receipt ${receiptNumber} · Invoice ${invoice.invoiceNumber}`,
+      sourceId: payment.id,
+      narration: `Receipt ${payment.receiptNumber} · Invoice ${invoice.invoiceNumber}`,
       createdBy: scope.userId,
       now,
       timeZone: settings.timeZone,
       lines: [
-        { account: settlementAccountFor(payment.method), debit: inserted.amount },
-        { account: "patient_receivables", credit: inserted.amount },
+        { account: settlementAccountFor(payment.method), debit: payment.amount },
+        { account: "patient_receivables", credit: payment.amount },
       ],
-    });
-    recorded.push(inserted);
-  }
+    })),
+  );
 
   return recorded;
 }
@@ -609,19 +623,20 @@ async function insertRefundTx(
 
   if (!inserted) throw impossible("refund insert returned no row");
 
-  await postJournalEntry(tx, {
-    orgId: scope.orgId,
-    sourceType: "refund",
-    sourceId: args.refundId,
-    narration: `Refund ${refundNumber} · ${args.narration}`,
-    createdBy: scope.userId,
-    now,
-    timeZone: args.settings.timeZone,
-    lines: [
-      { account: args.debit, debit: inserted.amount },
-      { account: settlementAccountFor(args.line.method), credit: inserted.amount },
-    ],
-  });
+  await postJournalEntries(tx, scope.orgId, [
+    {
+      sourceType: "refund",
+      sourceId: args.refundId,
+      narration: `Refund ${refundNumber} · ${args.narration}`,
+      createdBy: scope.userId,
+      now,
+      timeZone: args.settings.timeZone,
+      lines: [
+        { account: args.debit, debit: inserted.amount },
+        { account: settlementAccountFor(args.line.method), credit: inserted.amount },
+      ],
+    },
+  ]);
 
   return inserted;
 }
@@ -653,17 +668,13 @@ export const billingRouter = {
         throw new ORPCError("NOT_FOUND", { message: "That charge no longer exists." });
       }
 
-      const [voided] = await tx
-        .update(charges)
-        .set({ status: "voided", voidReason: input.reason, updatedAt: new Date() })
-        .where(
-          and(
-            eq(charges.orgId, scope.orgId),
-            eq(charges.id, input.chargeId),
-            eq(charges.status, "pending"),
-          ),
-        )
-        .returning();
+      const [voided] = await voidPendingCharges({
+        tx,
+        orgId: scope.orgId,
+        where: eq(charges.id, input.chargeId),
+        reason: input.reason,
+        now: new Date(),
+      });
 
       if (!voided) {
         throw new ORPCError("CONFLICT", {
@@ -699,6 +710,7 @@ export const billingRouter = {
     { billing: ["write"] },
     orgInput
       .extend({
+        requestKey,
         patientId: z.string(),
         treatmentPlanId: z.string().optional(),
         method: paymentLine.shape.method,
@@ -736,6 +748,8 @@ export const billingRouter = {
     });
 
     const advance = await db.transaction(async (tx) => {
+      await claimRequestKey(tx, scope.orgId, input.requestKey);
+
       const plan = input.treatmentPlanId
         ? await tx
             .select({ id: treatmentPlans.id, label: planLabel(scope.orgId) })
@@ -749,6 +763,7 @@ export const billingRouter = {
               ),
             )
             .limit(1)
+            .for("update")
             .then((rows) => rows[0])
         : undefined;
 
@@ -790,19 +805,20 @@ export const billingRouter = {
 
       if (!inserted) throw impossible("advance receipt insert returned no row");
 
-      await postJournalEntry(tx, {
-        orgId: scope.orgId,
-        sourceType: "advance_receipt",
-        sourceId: advanceId,
-        narration: `Advance receipt ${receiptNumber}`,
-        createdBy: scope.userId,
-        now,
-        timeZone: settings.timeZone,
-        lines: [
-          { account: settlementAccountFor(input.method), debit: input.amount },
-          { account: "patient_advances", credit: input.amount },
-        ],
-      });
+      await postJournalEntries(tx, scope.orgId, [
+        {
+          sourceType: "advance_receipt",
+          sourceId: advanceId,
+          narration: `Advance receipt ${receiptNumber}`,
+          createdBy: scope.userId,
+          now,
+          timeZone: settings.timeZone,
+          lines: [
+            { account: settlementAccountFor(input.method), debit: input.amount },
+            { account: "patient_advances", credit: input.amount },
+          ],
+        },
+      ]);
 
       return inserted;
     });
@@ -934,6 +950,7 @@ export const billingRouter = {
     { billing: ["write"] },
     orgInput
       .extend({
+        requestKey,
         invoiceId: z.string(),
         payments: z.array(paymentLine).max(4).default([]),
         applyCredit: money.default(0n),
@@ -945,8 +962,10 @@ export const billingRouter = {
     const { scope } = context;
     const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
 
-    const recorded = await db.transaction((tx) =>
-      recordPaymentsTx(tx, {
+    const recorded = await db.transaction(async (tx) => {
+      await claimRequestKey(tx, scope.orgId, input.requestKey);
+
+      return recordPaymentsTx(tx, {
         scope,
         invoiceId: input.invoiceId,
         payments: input.payments,
@@ -954,8 +973,8 @@ export const billingRouter = {
         settings,
         now,
         fiscalYear,
-      }),
-    );
+      });
+    });
 
     for (const payment of recorded) {
       audit({
@@ -973,6 +992,7 @@ export const billingRouter = {
   issueCreditNote: orgProcedure(
     { billing: ["creditNote"] },
     orgInput.extend({
+      requestKey,
       invoiceId: z.string(),
       reason,
       lines: z.array(creditLineInput).min(1),
@@ -989,6 +1009,8 @@ export const billingRouter = {
     const creditNoteId = Bun.randomUUIDv7();
 
     const result = await db.transaction(async (tx) => {
+      await claimRequestKey(tx, scope.orgId, input.requestKey);
+
       const invoice = await lockInvoice(tx, scope.orgId, input.invoiceId);
 
       const [sourceLines, [priorCredit], priorLines] = await Promise.all([
@@ -1156,23 +1178,26 @@ export const billingRouter = {
         revenueByAccount.set(account, (revenueByAccount.get(account) ?? 0n) + line.taxableValue);
       }
 
-      await postJournalEntry(tx, {
-        orgId: scope.orgId,
-        sourceType: "credit_note",
-        sourceId: creditNoteId,
-        narration: `Credit note ${creditNoteNumber} · Invoice ${invoice.invoiceNumber}`,
-        createdBy: scope.userId,
-        now,
-        timeZone: settings.timeZone,
-        lines: [
-          ...[...revenueByAccount].map(([account, amount]) => ({
-            account,
-            debit: amount,
-          })),
-          ...(taxTotalPaise > 0n ? [{ account: "gst_output" as const, debit: taxTotalPaise }] : []),
-          { account: "patient_receivables", credit: totalPaise },
-        ],
-      });
+      await postJournalEntries(tx, scope.orgId, [
+        {
+          sourceType: "credit_note",
+          sourceId: creditNoteId,
+          narration: `Credit note ${creditNoteNumber} · Invoice ${invoice.invoiceNumber}`,
+          createdBy: scope.userId,
+          now,
+          timeZone: settings.timeZone,
+          lines: [
+            ...[...revenueByAccount].map(([account, amount]) => ({
+              account,
+              debit: amount,
+            })),
+            ...(taxTotalPaise > 0n
+              ? [{ account: "gst_output" as const, debit: taxTotalPaise }]
+              : []),
+            { account: "patient_receivables", credit: totalPaise },
+          ],
+        },
+      ]);
 
       return { creditNote, lines: insertedLines };
     });
@@ -1195,6 +1220,7 @@ export const billingRouter = {
     { billing: ["advanceRefund"] },
     orgInput
       .extend({
+        requestKey,
         advanceReceiptId: z.string(),
         ...paymentLine.shape,
       })
@@ -1205,6 +1231,8 @@ export const billingRouter = {
     const refundId = Bun.randomUUIDv7();
 
     const refund = await db.transaction(async (tx) => {
+      await claimRequestKey(tx, scope.orgId, input.requestKey);
+
       const [advance] = await tx
         .select({ id: advanceReceipts.id, receiptNumber: advanceReceipts.receiptNumber })
         .from(advanceReceipts)
@@ -1265,6 +1293,7 @@ export const billingRouter = {
     { billing: ["creditNote"] },
     orgInput
       .extend({
+        requestKey,
         creditNoteId: z.string(),
         ...paymentLine.shape,
       })
@@ -1275,6 +1304,8 @@ export const billingRouter = {
     const refundId = Bun.randomUUIDv7();
 
     const refund = await db.transaction(async (tx) => {
+      await claimRequestKey(tx, scope.orgId, input.requestKey);
+
       const [creditNote] = await tx
         .select({
           invoiceId: creditNotes.invoiceId,

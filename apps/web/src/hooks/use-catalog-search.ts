@@ -35,6 +35,7 @@ export function useCatalogSearch({
     setOpen,
     onInputValueChange: (value: string) => settle(value.trim()),
     clear: () => {
+      settle("");
       setQuery("");
       setOpen(false);
     },

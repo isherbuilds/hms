@@ -1,5 +1,5 @@
 {
-  "id": "32af27f3-83e1-4130-8e78-3c0c2d6734d2",
+  "id": "f42084c4-f02a-4569-b963-147448480591",
   "prevId": "a8578d9d-4f82-49a2-a0b0-164cccc4ec01",
   "version": "7",
   "dialect": "postgresql",
@@ -2772,6 +2772,60 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.request_keys": {
+      "name": "request_keys",
+      "schema": "",
+      "columns": {
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "request_keys_org_id_organization_id_fk": {
+          "name": "request_keys_org_id_organization_id_fk",
+          "tableFrom": "request_keys",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "request_keys_org_id_id_pk": {
+          "name": "request_keys_org_id_id_pk",
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

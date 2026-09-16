@@ -256,6 +256,7 @@ test("catalog charges issue an exact invoice and a full payment settles it", asy
   );
 
   const [payment] = await api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     invoiceId: issued.invoice.id,
     payments: [{ method: "card", amount: issued.invoice.grandTotal, reference: "CARD-HAPPY" }],
@@ -749,6 +750,7 @@ test("cancelling a paid appointment does not issue credit or refund", async () =
   const fixture = await createBillingFixture("billing-cancel-paid");
   const issued = await createInvoice(fixture);
   await fixture.api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     payments: [{ amount: issued.invoice.grandTotal, method: "cash" }],
@@ -826,12 +828,14 @@ test("partial payments follow outstanding and credit-adjusted caps", async () =>
   const first = await createInvoice(fixture);
 
   const [paymentOne] = await fixture.api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: first.invoice.id,
     payments: [{ method: "cash", amount: 40_00n }],
   });
 
   const [paymentTwo] = await fixture.api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: first.invoice.id,
     payments: [{ method: "upi", amount: 60_00n, reference: "UPI-PARTIAL" }],
@@ -844,6 +848,7 @@ test("partial payments follow outstanding and credit-adjusted caps", async () =>
   ]);
   await expectORPCCode(
     fixture.api.billing.recordPayments({
+      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       invoiceId: first.invoice.id,
       payments: [{ method: "cash", amount: 1_00n }],
@@ -854,6 +859,7 @@ test("partial payments follow outstanding and credit-adjusted caps", async () =>
   const second = await createInvoice(fixture);
   await expectORPCCode(
     fixture.api.billing.recordPayments({
+      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       invoiceId: second.invoice.id,
       payments: [{ method: "cash", amount: 101_00n }],
@@ -861,6 +867,7 @@ test("partial payments follow outstanding and credit-adjusted caps", async () =>
     "CONFLICT",
   );
   await fixture.api.billing.issueCreditNote({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: second.invoice.id,
     reason: "Price adjustment",
@@ -868,6 +875,7 @@ test("partial payments follow outstanding and credit-adjusted caps", async () =>
   });
   await expectORPCCode(
     fixture.api.billing.recordPayments({
+      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       invoiceId: second.invoice.id,
       payments: [{ method: "cash", amount: 30_00n }],
@@ -875,6 +883,7 @@ test("partial payments follow outstanding and credit-adjusted caps", async () =>
     "CONFLICT",
   );
   await fixture.api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: second.invoice.id,
     payments: [{ method: "cash", amount: 20_00n }],
@@ -895,6 +904,7 @@ test("split payments settle atomically and require reconciliation references", a
 
   await expectORPCCode(
     fixture.api.billing.recordPayments({
+      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       invoiceId: issued.invoice.id,
       payments: [
@@ -914,6 +924,7 @@ test("split payments settle atomically and require reconciliation references", a
   ).toBe(0n);
 
   const recorded = await fixture.api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     payments: [
@@ -977,6 +988,7 @@ test("discount allocation, multi-rate totals, and partial credit tax extraction 
   }
 
   const credited = await fixture.api.billing.issueCreditNote({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     reason: "Partial service reversal",
@@ -1021,6 +1033,7 @@ test("credit notes enforce duplicate, full-line, partial-line, and invoice caps"
   const full = await createInvoice(fixture);
   await expectORPCCode(
     fixture.api.billing.issueCreditNote({
+      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       invoiceId: full.invoice.id,
       reason: "Unknown line",
@@ -1029,6 +1042,7 @@ test("credit notes enforce duplicate, full-line, partial-line, and invoice caps"
     "NOT_FOUND",
   );
   await fixture.api.billing.issueCreditNote({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: full.invoice.id,
     reason: "Full reversal",
@@ -1036,6 +1050,7 @@ test("credit notes enforce duplicate, full-line, partial-line, and invoice caps"
   });
   await expectORPCCode(
     fixture.api.billing.issueCreditNote({
+      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       invoiceId: full.invoice.id,
       reason: "Second reversal",
@@ -1047,6 +1062,7 @@ test("credit notes enforce duplicate, full-line, partial-line, and invoice caps"
   const partial = await createInvoice(fixture);
   await expectORPCCode(
     fixture.api.billing.issueCreditNote({
+      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       invoiceId: partial.invoice.id,
       reason: "Duplicate input",
@@ -1058,6 +1074,7 @@ test("credit notes enforce duplicate, full-line, partial-line, and invoice caps"
     "BAD_REQUEST",
   );
   await fixture.api.billing.issueCreditNote({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: partial.invoice.id,
     reason: "First partial",
@@ -1065,6 +1082,7 @@ test("credit notes enforce duplicate, full-line, partial-line, and invoice caps"
   });
   await expectORPCCode(
     fixture.api.billing.issueCreditNote({
+      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       invoiceId: partial.invoice.id,
       reason: "Over cap",
@@ -1083,6 +1101,7 @@ test("credit notes enforce duplicate, full-line, partial-line, and invoice caps"
   });
 
   const allCredit = await fixture.api.billing.issueCreditNote({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: all.invoice.id,
     reason: "Entire invoice reversed",
@@ -1105,12 +1124,14 @@ test("refunds are bounded by refund due and by the selected credit note", async 
   const fixture = await createBillingFixture("billing-refunds");
   const first = await createInvoice(fixture);
   await fixture.api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: first.invoice.id,
     payments: [{ method: "cash", amount: 50_00n }],
   });
 
   const credit = await fixture.api.billing.issueCreditNote({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: first.invoice.id,
     reason: "Large adjustment",
@@ -1127,6 +1148,7 @@ test("refunds are bounded by refund due and by the selected credit note", async 
   ).toBe(-3_000n);
   await expectORPCCode(
     fixture.api.billing.recordRefund({
+      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       creditNoteId: credit.creditNote.id,
       method: "cash",
@@ -1136,6 +1158,7 @@ test("refunds are bounded by refund due and by the selected credit note", async 
   );
   await expectORPCCode(
     fixture.api.billing.recordRefund({
+      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       creditNoteId: credit.creditNote.id,
       method: "upi",
@@ -1145,6 +1168,7 @@ test("refunds are bounded by refund due and by the selected credit note", async 
   );
 
   const refund = await fixture.api.billing.recordRefund({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     creditNoteId: credit.creditNote.id,
     method: "upi",
@@ -1181,12 +1205,14 @@ test("refunds are bounded by refund due and by the selected credit note", async 
 
   const second = await createInvoice(fixture);
   await fixture.api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: second.invoice.id,
     payments: [{ method: "card", amount: 100_00n, reference: "CARD-REFUND-FIXTURE" }],
   });
 
   const smallNote = await fixture.api.billing.issueCreditNote({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: second.invoice.id,
     reason: "Small adjustment",
@@ -1194,6 +1220,7 @@ test("refunds are bounded by refund due and by the selected credit note", async 
   });
 
   await fixture.api.billing.issueCreditNote({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: second.invoice.id,
     reason: "Large adjustment",
@@ -1201,6 +1228,7 @@ test("refunds are bounded by refund due and by the selected credit note", async 
   });
   await expectORPCCode(
     fixture.api.billing.recordRefund({
+      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       creditNoteId: smallNote.creditNote.id,
       method: "cash",
@@ -1209,6 +1237,7 @@ test("refunds are bounded by refund due and by the selected credit note", async 
     "BAD_REQUEST",
   );
   await fixture.api.billing.recordRefund({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     creditNoteId: smallNote.creditNote.id,
     method: "cash",
@@ -1220,12 +1249,14 @@ test("refund due lists overpaid invoices until the refund is recorded", async ()
   const fixture = await createBillingFixture("billing-refund-due");
   const issued = await createInvoice(fixture);
   await fixture.api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     payments: [{ method: "cash", amount: 100_00n }],
   });
 
   const credit = await fixture.api.billing.issueCreditNote({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     reason: "Partial reversal",
@@ -1248,6 +1279,7 @@ test("refund due lists overpaid invoices until the refund is recorded", async ()
   });
 
   await fixture.api.billing.recordRefund({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     creditNoteId: credit.creditNote.id,
     method: "cash",
@@ -1432,6 +1464,7 @@ test("members can charge, invoice, and pay but cannot issue credits or refunds",
 
   await expectORPCCode(
     memberClient.billing.issueCreditNote({
+      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       invoiceId: issued.invoice.id,
       reason: "Unauthorized adjustment",
@@ -1441,6 +1474,7 @@ test("members can charge, invoice, and pay but cannot issue credits or refunds",
   );
 
   const note = await fixture.api.billing.issueCreditNote({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     reason: "Owner adjustment",
@@ -1449,6 +1483,7 @@ test("members can charge, invoice, and pay but cannot issue credits or refunds",
 
   await expectORPCCode(
     memberClient.billing.recordRefund({
+      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       creditNoteId: note.creditNote.id,
       method: "cash",
@@ -1471,6 +1506,7 @@ test("the billing worklist reports what is unbilled and sums what is open", asyn
 
   const partPaid = await createInvoice(fixture, 400_00n);
   await api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     invoiceId: partPaid.invoice.id,
     payments: [{ method: "cash", amount: 100_00n }],
@@ -1478,6 +1514,7 @@ test("the billing worklist reports what is unbilled and sums what is open", asyn
 
   const settled = await createInvoice(fixture, 250_00n);
   await api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     invoiceId: settled.invoice.id,
     payments: [{ method: "cash", amount: 250_00n }],
@@ -1539,6 +1576,7 @@ test("open invoices page on a cursor and can be narrowed to the overdue ones", a
   const third = await createInvoice(fixture, 300_00n);
   const paid = await createInvoice(fixture, 50_00n);
   await api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     invoiceId: paid.invoice.id,
     payments: [{ method: "cash", amount: 50_00n }],
@@ -1652,6 +1690,7 @@ test("advances held pages unspent receipts and drops one once its credit is appl
   });
 
   const planned = await api.billing.recordAdvance({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     treatmentPlanId: planId,
@@ -1660,6 +1699,7 @@ test("advances held pages unspent receipts and drops one once its credit is appl
   });
 
   const untagged = await api.billing.recordAdvance({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     method: "cash",
@@ -1667,6 +1707,7 @@ test("advances held pages unspent receipts and drops one once its credit is appl
   });
 
   const spare = await api.billing.recordAdvance({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     method: "cash",
@@ -1676,6 +1717,7 @@ test("advances held pages unspent receipts and drops one once its credit is appl
   // A visit with no plan spends untagged credit first, so this consumes `untagged` whole.
   const invoice = await createInvoice(fixture, 100_00n);
   await api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     invoiceId: invoice.invoice.id,
     payments: [],
@@ -1685,6 +1727,7 @@ test("advances held pages unspent receipts and drops one once its credit is appl
   // The cap behind that guard reads the SQL balance, which must subtract the allocation.
   await expectORPCCode(
     api.billing.recordPayments({
+      requestKey: crypto.randomUUID(),
       orgSlug: organization.slug,
       invoiceId: invoice.invoice.id,
       payments: [{ method: "cash", amount: 1n }],
@@ -1726,4 +1769,27 @@ test("advances held pages unspent receipts and drops one once its credit is appl
   const held = [...page.items, ...rest.items].map((row) => row.id);
   expect(held).toEqual([planned.id, spare.id]);
   expect(held).not.toContain(untagged.id);
+});
+
+test("a retried advance with the same request key records one receipt", async () => {
+  const { api, organization, patient } = await createBillingFixture("billing-request-key");
+
+  const input = {
+    orgSlug: organization.slug,
+    requestKey: crypto.randomUUID(),
+    patientId: patient.id,
+    method: "cash" as const,
+    amount: 50_00n,
+  };
+
+  const outcomes = await Promise.allSettled([
+    api.billing.recordAdvance(input),
+    api.billing.recordAdvance(input),
+  ]);
+
+  expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(["fulfilled", "rejected"]);
+  await expectORPCCode(api.billing.recordAdvance(input), "CONFLICT");
+  expect(
+    (await api.billing.patientCredit({ orgSlug: organization.slug, patientId: patient.id })).total,
+  ).toBe(50_00n);
 });

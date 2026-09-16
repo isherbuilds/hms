@@ -74,7 +74,7 @@ function BillingOpdAppointmentRoute() {
         />
       ) : null}
 
-      {patientId && openPlans ? (
+      {canWrite && patientId && openPlans ? (
         <div className="flex justify-end">
           <AdvanceForm
             orgSlug={orgSlug}

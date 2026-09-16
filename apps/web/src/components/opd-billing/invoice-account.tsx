@@ -338,9 +338,10 @@ function CreditDialog({
       success="Credit note issued"
       onClose={onClose}
       contentClassName="max-w-2xl"
-      run={(value) =>
+      run={(value, requestKey) =>
         orpc.billing.issueCreditNote.call({
           orgSlug,
+          requestKey,
           invoiceId,
           reason: value.reason,
           lines: value.lines.flatMap((line): CreditLineInput[] => {
@@ -459,9 +460,10 @@ function RefundDialog({
       defaultValues={{ creditNoteId: "", method: "cash", amount: "", reference: "" }}
       success="Refund recorded"
       onClose={onClose}
-      run={(value) =>
+      run={(value, requestKey) =>
         orpc.billing.recordRefund.call({
           orgSlug,
+          requestKey,
           creditNoteId: value.creditNoteId,
           method: value.method,
           amount: value.amount,

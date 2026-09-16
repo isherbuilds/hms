@@ -14,9 +14,10 @@ export async function openingCredit(
   patientId: string,
 ): Promise<bigint | null> {
   try {
-    const { total } = await queryClient.query(
-      orpc.billing.patientCredit.queryOptions({ input: { orgSlug, patientId } }),
-    );
+    const { total } = await queryClient.query({
+      ...orpc.billing.patientCredit.queryOptions({ input: { orgSlug, patientId } }),
+      staleTime: 0,
+    });
 
     return total;
   } catch (error) {

@@ -9,8 +9,7 @@ import { practitioners } from "@hms/db/schema/practitioners";
 import { treatmentPlanItems } from "@hms/db/schema/treatment-plan-items";
 import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { ORPCError } from "@orpc/server";
-import { and, asc, desc, eq, exists, inArray, isNull, ne, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
@@ -32,9 +31,6 @@ const planItemInput = z.object({
 const planIdInput = orgInput.extend({ planId: z.string() });
 
 const postedQty = sql<number>`coalesce(sum(${charges.qty}) filter (where ${charges.status} <> 'voided'), 0)::int`;
-
-// The same visit, seen as the charges it already carries.
-const visitCharges = alias(charges, "visit_charges");
 
 function planItemCharges(orgId: string) {
   return and(
@@ -232,7 +228,8 @@ export const treatmentRouter = {
     const { orgId, userId } = context.scope;
 
     const item = await db.transaction(async (tx) => {
-      // The plan lock queues this drop behind a concurrent close or completion.
+      // The plan lock queues this drop behind a concurrent close or completion. Items lock
+      // before plans, the order `postToVisit` takes them in, so the two cannot deadlock.
       const [open] = await tx
         .select({ id: treatmentPlanItems.id })
         .from(treatmentPlanItems)
@@ -246,7 +243,7 @@ export const treatmentRouter = {
         )
         .where(and(eq(treatmentPlanItems.orgId, orgId), eq(treatmentPlanItems.id, input.itemId)))
         .limit(1)
-        .for("update", { of: [treatmentPlans] });
+        .for("update", { of: [treatmentPlanItems, treatmentPlans] });
 
       if (!open) return undefined;
 
@@ -316,23 +313,26 @@ export const treatmentRouter = {
   ).handler(async ({ context, input }) => {
     const { orgId } = context.scope;
 
-    const [plan] = await db
-      .select({ id: treatmentPlans.id, patientId: treatmentPlans.patientId })
-      .from(treatmentPlans)
-      .where(
-        and(
-          eq(treatmentPlans.orgId, orgId),
-          eq(treatmentPlans.id, input.planId),
-          eq(treatmentPlans.status, "open"),
-        ),
-      )
-      .limit(1);
+    return db.transaction(async (tx) => {
+      const [plan] = await tx
+        .select({ id: treatmentPlans.id, patientId: treatmentPlans.patientId })
+        .from(treatmentPlans)
+        .where(
+          and(
+            eq(treatmentPlans.orgId, orgId),
+            eq(treatmentPlans.id, input.planId),
+            eq(treatmentPlans.status, "open"),
+          ),
+        )
+        .limit(1)
+        .for("update");
 
-    if (!plan) {
-      throw new ORPCError("CONFLICT", { message: "That treatment plan is no longer open." });
-    }
+      if (!plan) {
+        throw new ORPCError("CONFLICT", { message: "That treatment plan is no longer open." });
+      }
 
-    return linkSitting(db, orgId, input.appointmentId, plan);
+      return linkSitting(tx, orgId, input.appointmentId, plan);
+    });
   }),
 
   postToVisit: orgProcedure(
@@ -340,7 +340,7 @@ export const treatmentRouter = {
     orgInput.extend({
       itemId: z.string(),
       appointmentId: z.string(),
-      // One charge per service per sitting, so a sitting that delivers two units says so here.
+      // One charge per item per sitting, so a sitting that delivers two units says so here.
       qty: z.number().int().min(1).max(999).default(1),
     }),
   ).handler(async ({ context, input }) => {
@@ -392,25 +392,51 @@ export const treatmentRouter = {
         throw new ORPCError("CONFLICT", { message: "This visit is linked to another plan." });
       }
 
-      const [posted] = await tx
+      // Charges for this service already on the visit: the item's own, or one the desk
+      // billed at intake before posting from the plan.
+      const onVisit = await tx
         .select({
-          qty: postedQty,
-          // The service may already be on the visit as a walk-in charge; posting it again
-          // would bill the patient twice for one delivery.
-          onVisit: exists(
-            tx
-              .select({ id: visitCharges.id })
-              .from(visitCharges)
-              .where(
-                and(
-                  eq(visitCharges.orgId, scope.orgId),
-                  eq(visitCharges.opdAppointmentId, row.appointment.id),
-                  eq(visitCharges.catalogItemId, row.item.catalogItemId),
-                  ne(visitCharges.status, "voided"),
-                ),
-              ),
-          ).mapWith(Boolean),
+          id: charges.id,
+          qty: charges.qty,
+          status: charges.status,
+          sourceType: charges.sourceType,
+          sourceId: charges.sourceId,
         })
+        .from(charges)
+        .where(
+          and(
+            eq(charges.orgId, scope.orgId),
+            eq(charges.opdAppointmentId, row.appointment.id),
+            eq(charges.catalogItemId, row.item.catalogItemId),
+            ne(charges.status, "voided"),
+          ),
+        )
+        .orderBy(asc(charges.createdAt), asc(charges.id))
+        .for("update");
+
+      if (onVisit.some((charge) => charge.sourceId === row.item.id)) {
+        throw new ORPCError("CONFLICT", {
+          message: `${row.item.description} is already posted to this visit.`,
+        });
+      }
+
+      const direct = onVisit.filter((charge) => charge.sourceType === "catalog");
+      const claimed = direct.find((charge) => charge.status === "pending");
+
+      if (!claimed && direct.length > 0) {
+        throw new ORPCError("CONFLICT", {
+          message: `${row.item.description} is already invoiced on this visit.`,
+        });
+      }
+
+      if (claimed && claimed.qty > input.qty) {
+        throw new ORPCError("CONFLICT", {
+          message: `This visit already bills ${claimed.qty} × ${row.item.description}. Post ${claimed.qty} or void that charge first.`,
+        });
+      }
+
+      const [posted] = await tx
+        .select({ qty: postedQty })
         .from(charges)
         .where(
           and(
@@ -420,36 +446,42 @@ export const treatmentRouter = {
           ),
         );
 
-      if (posted?.onVisit) {
-        throw new ORPCError("CONFLICT", {
-          message: `${row.item.description} is already charged on this visit.`,
-        });
-      }
-
       if ((posted?.qty ?? 0) + input.qty > row.item.qtyPlanned) {
         throw new ORPCError("CONFLICT", { message: "That would exceed the planned quantity." });
       }
 
-      const [inserted] = await tx
-        .insert(charges)
-        .values({
-          id: chargeId,
-          orgId: scope.orgId,
-          opdAppointmentId: row.appointment.id,
-          catalogItemId: row.item.catalogItemId,
-          description: row.item.description,
-          unitPrice: row.item.unitPrice,
-          taxRatePercent: row.item.taxRatePercent,
-          taxCode: row.item.taxCode,
-          revenueCategory: row.item.revenueCategory,
-          qty: input.qty,
-          sourceType: "treatment_plan",
-          sourceId: row.item.id,
-          createdBy: scope.userId,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning();
+      const delivery = {
+        description: row.item.description,
+        unitPrice: row.item.unitPrice,
+        taxRatePercent: row.item.taxRatePercent,
+        taxCode: row.item.taxCode,
+        revenueCategory: row.item.revenueCategory,
+        qty: input.qty,
+        sourceType: "treatment_plan",
+        sourceId: row.item.id,
+        updatedAt: now,
+      };
+
+      // A service the desk billed directly becomes this item's delivery at the quoted
+      // price, so the patient is charged once and the course still counts it (D038).
+      const [inserted] = claimed
+        ? await tx
+            .update(charges)
+            .set(delivery)
+            .where(and(eq(charges.orgId, scope.orgId), eq(charges.id, claimed.id)))
+            .returning()
+        : await tx
+            .insert(charges)
+            .values({
+              ...delivery,
+              id: chargeId,
+              orgId: scope.orgId,
+              opdAppointmentId: row.appointment.id,
+              catalogItemId: row.item.catalogItemId,
+              createdBy: scope.userId,
+              createdAt: now,
+            })
+            .returning();
 
       if (!inserted) throw impossible("treatment charge insert returned no row");
 
@@ -473,7 +505,7 @@ export const treatmentRouter = {
       action: "treatment.post",
       actorId: scope.userId,
       orgId: scope.orgId,
-      target: `charge:${chargeId}`,
+      target: `charge:${result.charge.id}`,
       meta: { treatmentItemId: input.itemId, appointmentId: input.appointmentId },
     });
 
@@ -658,21 +690,22 @@ export const treatmentRouter = {
         .orderBy(asc(opdAppointments.arrivedAt), asc(opdAppointments.id)),
     ]);
 
+    const itemsByPlan = Map.groupBy(itemRows, (row) => row.planId);
+    const sittingsByPlan = Map.groupBy(sittingRows, (row) => row.planId);
+
     return plans.map(({ plan, label, practitionerName }) => {
-      const items = itemRows
-        .filter((row) => row.planId === plan.id)
-        .map((row) => ({
-          ...row.item,
-          postedQty: row.postedQty,
-          done: row.postedQty >= row.item.qtyPlanned,
-        }));
+      const items = (itemsByPlan.get(plan.id) ?? []).map((row) => ({
+        ...row.item,
+        postedQty: row.postedQty,
+        done: row.postedQty >= row.item.qtyPlanned,
+      }));
 
       return {
         ...plan,
         label,
         practitionerName,
         items,
-        sittings: sittingRows.filter((row) => row.planId === plan.id).map(({ id }) => ({ id })),
+        sittings: (sittingsByPlan.get(plan.id) ?? []).map(({ id }) => ({ id })),
         quotedTotal: items
           .filter((item) => item.status !== "dropped")
           .reduce((sum, item) => sum + BigInt(item.qtyPlanned) * item.unitPrice, 0n),

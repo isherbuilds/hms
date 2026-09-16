@@ -15,7 +15,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { z } from "zod";
 
 import { BillingWorklistSheet } from "@/components/billing-worklist-sheet";
@@ -144,10 +144,14 @@ function BillingIndexRoute() {
   const openRow = rows.find((row) => row.key === open?.key);
   const sheet = open && openRow ? { row: openRow, credit: open.credit } : null;
 
-  const openSheet = async (row: WorklistRow) => {
-    const credit = await openingCredit(queryClient, orgSlug, row.patientId);
+  const latestClick = useRef<string | null>(null);
 
-    if (credit === null) return;
+  const openSheet = async (row: WorklistRow) => {
+    latestClick.current = row.key;
+
+    const credit = row.invoiceId ? await openingCredit(queryClient, orgSlug, row.patientId) : ZERO;
+
+    if (credit === null || latestClick.current !== row.key) return;
     setOpen({ key: row.key, credit });
   };
 

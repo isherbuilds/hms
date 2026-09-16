@@ -192,7 +192,19 @@ export function SettlementOverlay({
                 disabled={pending}
                 aria-invalid={creditInvalid}
                 className="text-right tabular-nums"
-                onChange={(event) => setCredit(event.currentTarget.value)}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  const applied = parseMoneyInput(value.trim() || "0") ?? ZERO;
+                  const [line] = payments;
+
+                  setCredit(value);
+
+                  if (line && payments.length === 1) {
+                    const rest = discounted.grandTotal - applied;
+
+                    setPayments([{ ...line, amount: formatDecimal(rest > ZERO ? rest : ZERO) }]);
+                  }
+                }}
               />
               {creditInvalid ? (
                 <span className="text-destructive">

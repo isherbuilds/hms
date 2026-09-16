@@ -216,6 +216,7 @@ test("walk-in creation uses the fresh server time without a client time claim", 
 
   const input = {
     orgSlug: organization.slug,
+    requestKey: crypto.randomUUID(),
     patientId: patient.id,
     practitionerId: practitioner.id,
     settlement: unpaidSettlement(),
@@ -252,6 +253,7 @@ test("walk-in creation requires patient read and denial writes nothing", async (
   try {
     await expectORPCCode(
       operatorApi.opd.createWalkIn({
+        requestKey: crypto.randomUUID(),
         orgSlug: organization.slug,
         patientId: patient.id,
         practitionerId: practitioner.id,
@@ -295,6 +297,7 @@ test("OPD appointment tokens increment per practitioner and reset for another pr
   );
 
   const first = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: firstPractitioner.id,
@@ -302,6 +305,7 @@ test("OPD appointment tokens increment per practitioner and reset for another pr
   });
 
   const second = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: firstPractitioner.id,
@@ -309,6 +313,7 @@ test("OPD appointment tokens increment per practitioner and reset for another pr
   });
 
   const other = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: secondPractitioner.id,
@@ -337,6 +342,7 @@ test("a practitioner consult fee creates an immutable snapshot charge", async ()
   );
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -405,6 +411,7 @@ test("a walk-in creates the configured consultation charge", async () => {
   );
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -443,6 +450,7 @@ test("the department default fee is used when the practitioner has no consult fe
   );
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -481,7 +489,12 @@ test("a practitioner without a configured fee creates a zero-value walk-in", asy
   const quote = await api.opd.quoteWalkIn(input);
   expect(quote).toMatchObject({ lines: [], subtotal: 0n, grandTotal: 0n });
 
-  const created = await api.opd.createWalkIn({ ...input, settlement: unpaidSettlement(0n) });
+  const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
+    ...input,
+    settlement: unpaidSettlement(0n),
+  });
+
   expect(created).toMatchObject({ invoice: null, payments: [] });
 });
 
@@ -511,6 +524,7 @@ test("follow-up pricing excludes a cancelled prior attendance", async () => {
   );
 
   const first = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -524,6 +538,7 @@ test("follow-up pricing excludes a cancelled prior attendance", async () => {
   });
 
   const duplicate = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -571,6 +586,7 @@ test("follow-up fees honor the organization window and a practitioner override",
   );
 
   const first = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -580,6 +596,7 @@ test("follow-up fees honor the organization window and a practitioner override",
   expect(first.appointment.status).toBe("checked_in");
 
   const second = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -610,6 +627,7 @@ test("follow-up fees honor the organization window and a practitioner override",
   );
 
   const prior = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: overridePatient.id,
     practitionerId: overridePractitioner.id,
@@ -624,6 +642,7 @@ test("follow-up fees honor the organization window and a practitioner override",
     );
 
   const outsideOverride = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: overridePatient.id,
     practitionerId: overridePractitioner.id,
@@ -664,6 +683,7 @@ test("an inactive practitioner fee falls through to the active department fee", 
   );
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -687,6 +707,7 @@ test("OPD appointment commands enforce the four-status state machine", async () 
   );
 
   const checkedIn = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -747,6 +768,7 @@ test("staff attach and detach the doctor's paper prescription from an OPD appoin
   );
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -882,6 +904,7 @@ test("prescription attachment rechecks cancellation after waiting on the OPD row
   );
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -1041,6 +1064,7 @@ test("OPD appointment creation rejects patient and practitioner ids from another
 
   await expectORPCCode(
     alphaApi.opd.createWalkIn({
+      requestKey: crypto.randomUUID(),
       orgSlug: alpha.slug,
       patientId: betaPatient.id,
       practitionerId: alphaPractitioner.id,
@@ -1050,6 +1074,7 @@ test("OPD appointment creation rejects patient and practitioner ids from another
   );
   await expectORPCCode(
     alphaApi.opd.createWalkIn({
+      requestKey: crypto.randomUUID(),
       orgSlug: alpha.slug,
       patientId: alphaPatient.id,
       practitionerId: betaPractitioner.id,
@@ -1066,6 +1091,7 @@ test("sensitive OPD creation is audited while routine care transitions are not",
   const practitioner = await createPractitioner(api, organization.slug, department.id, "Dr. Audit");
 
   const walkIn = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -1124,6 +1150,7 @@ test("clinical cancellation preserves an already-issued invoice", async () => {
   );
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -1448,6 +1475,7 @@ test("procedure rates flow through booking, walk-in quotes and stored charges", 
   ]);
 
   const walkIn = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -1607,6 +1635,7 @@ test("day keyset pagination traverses checked-in arrivals once", async () => {
   );
 
   const first = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -1733,6 +1762,7 @@ test("day interleaves visits, searches patient keys, returns balances, and close
   });
 
   const arrived = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -2132,6 +2162,7 @@ test("a walk-in settled at the desk creates the token, invoice and receipt in on
 
   await expectORPCCode(
     api.opd.createWalkIn({
+      requestKey: crypto.randomUUID(),
       orgSlug: organization.slug,
       patientId: patient.id,
       practitionerId: practitioner.id,
@@ -2144,6 +2175,7 @@ test("a walk-in settled at the desk creates the token, invoice and receipt in on
   );
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -2265,6 +2297,7 @@ test("leaving a walk-in unpaid needs a note, and so does a discount", async () =
 
   await expectORPCCode(
     api.opd.createWalkIn({
+      requestKey: crypto.randomUUID(),
       ...walkIn,
       settlement: { expectedGrandTotal: 105_00n, payments: [] },
     }),
@@ -2272,6 +2305,7 @@ test("leaving a walk-in unpaid needs a note, and so does a discount", async () =
   );
   await expectORPCCode(
     api.opd.createWalkIn({
+      requestKey: crypto.randomUUID(),
       ...walkIn,
       settlement: {
         discountAmount: 10_00n,
@@ -2283,6 +2317,7 @@ test("leaving a walk-in unpaid needs a note, and so does a discount", async () =
   );
 
   const credited = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     ...walkIn,
     settlement: {
       expectedGrandTotal: 105_00n,
@@ -2331,6 +2366,7 @@ test("a discounted walk-in persists its reason and settles the discounted total"
   const note = "Approved staff discount";
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -2380,6 +2416,7 @@ test("a walk-in that fails to settle leaves no token behind", async () => {
 
   await expectORPCCode(
     api.opd.createWalkIn({
+      requestKey: crypto.randomUUID(),
       orgSlug: organization.slug,
       patientId: patient.id,
       practitionerId: practitioner.id,
@@ -2413,6 +2450,7 @@ test("a walk-in that fails to settle leaves no token behind", async () => {
   ).toHaveLength(0);
 
   const valid = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -2465,6 +2503,7 @@ test("services chosen at the desk are charged in the same commit as the token", 
   expect(quote.lines.map((line) => line.description)).toEqual(["Service Consultation", "Dressing"]);
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -2541,6 +2580,7 @@ test("a walk-in can omit the consultation fee while settling selected services",
   ]);
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -2606,6 +2646,7 @@ test("a walk-in without billable services creates no financial document", async 
   });
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     ...walkIn,
     settlement: { ...unpaidSettlement(0n), omitConsultFee: true },
   });
@@ -2614,6 +2655,7 @@ test("a walk-in without billable services creates no financial document", async 
   expect(created.appointment.status).toBe("checked_in");
   await expectORPCCode(
     api.opd.createWalkIn({
+      requestKey: crypto.randomUUID(),
       ...walkIn,
       settlement: {
         ...unpaidSettlement(0n),
@@ -2680,6 +2722,7 @@ test("a walk-in reprices selected services after a stale quote", async () => {
   });
   await expect(
     api.opd.createWalkIn({
+      requestKey: crypto.randomUUID(),
       orgSlug: organization.slug,
       patientId: patient.id,
       practitionerId: practitioner.id,
@@ -2692,6 +2735,7 @@ test("a walk-in reprices selected services after a stale quote", async () => {
   ).rejects.toMatchObject({ code: "CONFLICT" });
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -2786,6 +2830,7 @@ test("a discounted walk-in keeps fee-first quote ordering through settlement", a
   expect(quote.grandTotal).toBe(862_96n);
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -2865,6 +2910,7 @@ test("a walk-in can bill a selected consultation instead of the ladder fee", asy
   ]);
 
   const created = await api.opd.createWalkIn({
+    requestKey: crypto.randomUUID(),
     ...walkIn,
     settlement: {
       services,
@@ -2982,6 +3028,7 @@ test("an unknown service leaves no token behind", async () => {
 
   await expectORPCCode(
     api.opd.createWalkIn({
+      requestKey: crypto.randomUUID(),
       orgSlug: organization.slug,
       patientId: patient.id,
       practitionerId: practitioner.id,

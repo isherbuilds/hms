@@ -174,6 +174,43 @@ export function NextSittingDialog({
   );
 }
 
+export type PostTarget = { itemId: string; description: string; remaining: number };
+
+export function PostItemDialog({
+  orgSlug,
+  appointmentId,
+  target,
+  onClose,
+}: {
+  orgSlug: string;
+  appointmentId: string;
+  target: PostTarget;
+  onClose: () => void;
+}) {
+  return (
+    <FormDialog
+      title="Post to this visit"
+      description={`${target.description}: ${target.remaining} left in the plan.`}
+      submitLabel="Post to this visit"
+      schema={z.object({ qty: z.coerce.number().int().min(1).max(target.remaining) })}
+      defaultValues={{ qty: 1 }}
+      success="Work posted to this visit"
+      onClose={onClose}
+      run={({ qty }) =>
+        orpc.treatment.postToVisit.call({ orgSlug, appointmentId, itemId: target.itemId, qty })
+      }
+    >
+      <TextField
+        name="qty"
+        label="Quantity delivered"
+        type="number"
+        min={1}
+        max={target.remaining}
+      />
+    </FormDialog>
+  );
+}
+
 export type ReasonTarget = { kind: "close"; planId: string } | { kind: "drop"; itemId: string };
 
 /** Closing a plan and dropping an item differ only in copy and the call behind them. */

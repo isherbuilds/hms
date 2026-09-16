@@ -69,6 +69,7 @@ test("advance receipt and refund voucher render from the stored receipt snapshot
 
   expect(new TextDecoder().decode(advancePdf.bytes.slice(0, 5))).toBe("%PDF-");
   expect(new TextDecoder().decode(refundPdf.bytes.slice(0, 5))).toBe("%PDF-");
+  expect(advancePdf.fileName).toBe("ADV-2026-0001.pdf");
   expect(refundPdf.fileName).toBe("RF-2026-0001.pdf");
 });
 

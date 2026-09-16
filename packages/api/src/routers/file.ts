@@ -106,7 +106,7 @@ export const fileRouter = {
     if (hasNextPage) {
       items.pop();
     }
-    const last = items[items.length - 1];
+    const last = items.at(-1);
     return {
       items: items.map(({ createdAtCursor: _cursor, ...item }) => item),
       nextCursor: hasNextPage && last ? { createdAt: last.createdAtCursor, id: last.id } : null,

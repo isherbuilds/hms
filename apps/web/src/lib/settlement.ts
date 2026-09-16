@@ -184,7 +184,7 @@ export function settlementProblems({
   const collecting = collectedPaise(payments);
 
   if (collecting > due) {
-    const last = payments[payments.length - 1];
+    const last = payments.at(-1);
     problems.push({
       key: "over-collected",
       fieldId: last ? `payment-amount-${last.id}` : "settlement-discount",

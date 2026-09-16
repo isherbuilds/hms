@@ -2,7 +2,7 @@ import { beforeAll, expect, test } from "bun:test";
 
 import { businessDate } from "@hms/api/lib/business-date";
 import { invoiceBalanceFor } from "@hms/api/lib/invoice-balance";
-import { postJournalEntry } from "@hms/api/lib/ledger";
+import { postJournalEntries } from "@hms/api/lib/ledger";
 import type { AppRouterClient } from "@hms/api/routers/index";
 
 import { db } from "@hms/db";
@@ -447,6 +447,7 @@ test("payments, credits, and refunds post exactly and reconcile in the OPD regis
   const issued = await issueConsultationInvoice(fixture, "Settlement");
   await expectORPCCode(
     fixture.api.billing.recordPayments({
+      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       invoiceId: issued.invoice.id,
       payments: [{ method: "bank", amount: 18_00n }],
@@ -455,12 +456,14 @@ test("payments, credits, and refunds post exactly and reconcile in the OPD regis
   );
 
   const [cash] = await fixture.api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     payments: [{ method: "cash", amount: 100_00n }],
   });
 
   const [bank] = await fixture.api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     payments: [{ method: "bank", amount: 18_00n, reference: "BANK-LEDGER" }],
@@ -497,6 +500,7 @@ test("payments, credits, and refunds post exactly and reconcile in the OPD regis
   }
 
   const credited = await fixture.api.billing.issueCreditNote({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     reason: "Partial reversal",
@@ -511,6 +515,7 @@ test("payments, credits, and refunds post exactly and reconcile in the OPD regis
   expectBalanced(creditJournal.lines);
 
   const refund = await fixture.api.billing.recordRefund({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     creditNoteId: credited.creditNote.id,
     method: "upi",
@@ -567,6 +572,7 @@ test("daily collections nets payments and refunds by Business Date and method", 
   const fixture = await createAccountingFixture("accounting-daily-collections");
   const issued = await issueConsultationInvoice(fixture, "Daily Collections");
   await fixture.api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     payments: [
@@ -579,6 +585,7 @@ test("daily collections nets payments and refunds by Business Date and method", 
   if (!invoiceLine) throw new Error("expected an invoice line");
 
   const credited = await fixture.api.billing.issueCreditNote({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     reason: "Partial collection reversal",
@@ -586,6 +593,7 @@ test("daily collections nets payments and refunds by Business Date and method", 
   });
 
   await fixture.api.billing.recordRefund({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     creditNoteId: credited.creditNote.id,
     method: "cash",
@@ -593,6 +601,7 @@ test("daily collections nets payments and refunds by Business Date and method", 
   });
 
   const advance = await fixture.api.billing.recordAdvance({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     patientId: fixture.patient.id,
     method: "bank",
@@ -601,6 +610,7 @@ test("daily collections nets payments and refunds by Business Date and method", 
   });
 
   await fixture.api.billing.recordAdvanceRefund({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     advanceReceiptId: advance.id,
     method: "bank",
@@ -735,6 +745,7 @@ test("balance sheet balances GST output and current surplus against assets", asy
   const issued = await issueConsultationInvoice(fixture, "Balance Sheet");
 
   const advance = await fixture.api.billing.recordAdvance({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     patientId: fixture.patient.id,
     method: "cash",
@@ -744,6 +755,7 @@ test("balance sheet balances GST output and current surplus against assets", asy
   // An allocation and an advance refund both balance whichever accounts they name, so
   // the only proof they named the right ones is the account balances they leave behind.
   await fixture.api.billing.recordPayments({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     payments: [],
@@ -751,6 +763,7 @@ test("balance sheet balances GST output and current surplus against assets", asy
   });
 
   await fixture.api.billing.recordAdvanceRefund({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     advanceReceiptId: advance.id,
     method: "cash",
@@ -817,6 +830,7 @@ test("GST register reconciles invoice and credit-note documents, rates, HSN, and
   }
 
   const credited = await fixture.api.billing.issueCreditNote({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     reason: "Consultation reversal",
@@ -945,6 +959,7 @@ test("invoice and credit note keep the revenue category captured when the charge
   }
 
   const credited = await fixture.api.billing.issueCreditNote({
+    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     reason: "Category changed after charge creation",
@@ -1077,19 +1092,20 @@ test("duplicate source posting is rejected", async () => {
 
   await expect(
     db.transaction((tx) =>
-      postJournalEntry(tx, {
-        orgId: fixture.organization.id,
-        sourceType: "invoice",
-        sourceId: issued.invoice.id,
-        narration: "Duplicate",
-        createdBy: fixture.owner.user.id,
-        now: new Date(),
-        timeZone: "Asia/Kolkata",
-        lines: [
-          { account: "patient_receivables", debit: 100n },
-          { account: "revenue_other", credit: 100n },
-        ],
-      }),
+      postJournalEntries(tx, fixture.organization.id, [
+        {
+          sourceType: "invoice",
+          sourceId: issued.invoice.id,
+          narration: "Duplicate",
+          createdBy: fixture.owner.user.id,
+          now: new Date(),
+          timeZone: "Asia/Kolkata",
+          lines: [
+            { account: "patient_receivables", debit: 100n },
+            { account: "revenue_other", credit: 100n },
+          ],
+        },
+      ]),
     ),
   ).rejects.toThrow();
   expect((await journalFor(fixture, "invoice", issued.invoice.id)).entries).toHaveLength(1);

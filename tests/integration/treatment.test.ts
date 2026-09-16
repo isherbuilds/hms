@@ -105,6 +105,7 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
   });
 
   const advance = await setup.api.billing.recordAdvance({
+    requestKey: crypto.randomUUID(),
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     treatmentPlanId: plan.id,
@@ -202,15 +203,30 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
   const detail = await planDetail(setup, plan.id);
 
   expect(detail.items[0]).toMatchObject({ postedQty: 0, done: false });
-  // D038: one charge per service per sitting, whichever way that charge arrived.
-  await expectORPCCode(
-    setup.api.treatment.postToVisit({
-      orgSlug: setup.organization.slug,
-      appointmentId: second.appointment.id,
-      itemId: detail.items[0]!.id,
-    }),
-    "CONFLICT",
+
+  // D038: posting claims the service billed at intake, so the patient pays once and the
+  // course still counts the delivery.
+  const posted = await setup.api.treatment.postToVisit({
+    orgSlug: setup.organization.slug,
+    appointmentId: second.appointment.id,
+    itemId: detail.items[0]!.id,
+  });
+
+  const secondVisit = await setup.api.opd.get({
+    orgSlug: setup.organization.slug,
+    appointmentId: second.appointment.id,
+  });
+
+  expect(secondVisit.charges.filter((charge) => charge.catalogItemId === setup.service.id)).toEqual(
+    [
+      expect.objectContaining({
+        id: posted.charge.id,
+        sourceType: "treatment_plan",
+        sourceId: detail.items[0]!.id,
+      }),
+    ],
   );
+  expect((await planDetail(setup, plan.id)).items[0]).toMatchObject({ postedQty: 1, done: true });
   expect(detail.sittings.map((sitting) => sitting.id)).toEqual([
     first.appointment.id,
     second.appointment.id,
@@ -238,6 +254,7 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
   ).toEqual([bookedPlan.id, future.id, noDate.id, plan.id]);
 
   const refund = await setup.api.billing.recordAdvanceRefund({
+    requestKey: crypto.randomUUID(),
     orgSlug: setup.organization.slug,
     advanceReceiptId: advance.id,
     method: "cash",
@@ -421,6 +438,69 @@ test("a crown added mid-course remains on the RCT plan and each charge names its
   ]);
 });
 
+test("two teeth of one procedure post to one sitting, and voiding delivery reopens the plan", async () => {
+  const setup = await fixture("treatment-reopen");
+
+  const plan = await setup.api.treatment.create({
+    orgSlug: setup.organization.slug,
+    patientId: setup.patient.id,
+    practitionerId: setup.practitioner.id,
+    item: { catalogItemId: setup.service.id, qtyPlanned: 1, note: "Tooth 36" },
+  });
+
+  const second = await setup.api.treatment.addItem({
+    orgSlug: setup.organization.slug,
+    planId: plan.id,
+    item: { catalogItemId: setup.service.id, qtyPlanned: 1, note: "Tooth 46" },
+  });
+
+  const sitting = await createCheckedInSitting(setup, plan.id, 10);
+  const [first] = (await planDetail(setup, plan.id)).items;
+
+  if (!first) throw new Error("Expected the plan's first item");
+
+  const firstPost = await setup.api.treatment.postToVisit({
+    orgSlug: setup.organization.slug,
+    appointmentId: sitting.appointment.id,
+    itemId: first.id,
+  });
+
+  await setup.api.treatment.postToVisit({
+    orgSlug: setup.organization.slug,
+    appointmentId: sitting.appointment.id,
+    itemId: second.id,
+  });
+
+  await expectORPCCode(
+    setup.api.treatment.postToVisit({
+      orgSlug: setup.organization.slug,
+      appointmentId: sitting.appointment.id,
+      itemId: first.id,
+    }),
+    "CONFLICT",
+  );
+
+  await setup.api.treatment.complete({ orgSlug: setup.organization.slug, planId: plan.id });
+
+  await setup.api.billing.voidCharge({
+    orgSlug: setup.organization.slug,
+    chargeId: firstPost.charge.id,
+    reason: "Posted to the wrong tooth",
+  });
+
+  expect(await planDetail(setup, plan.id)).toMatchObject({ status: "open" });
+
+  await setup.api.treatment.postToVisit({
+    orgSlug: setup.organization.slug,
+    appointmentId: sitting.appointment.id,
+    itemId: first.id,
+  });
+
+  expect(
+    await setup.api.treatment.complete({ orgSlug: setup.organization.slug, planId: plan.id }),
+  ).toMatchObject({ status: "completed" });
+});
+
 test("closing a plan ahead of queued item writes leaves no dependent change behind", async () => {
   const setup = await fixture("treatment-close-race");
 
@@ -520,6 +600,7 @@ test("closing a plan ahead of queued item writes leaves no dependent change behi
 
     await expectORPCCode(
       setup.api.billing.recordAdvance({
+        requestKey: crypto.randomUUID(),
         orgSlug: setup.organization.slug,
         patientId: setup.patient.id,
         treatmentPlanId: plan.id,
@@ -546,6 +627,7 @@ test("three irregular plan advances settle three physiotherapy sittings before u
 
   await expectORPCCode(
     setup.api.billing.recordAdvance({
+      requestKey: crypto.randomUUID(),
       orgSlug: setup.organization.slug,
       patientId: setup.patient.id,
       treatmentPlanId: plan.id,
@@ -557,6 +639,7 @@ test("three irregular plan advances settle three physiotherapy sittings before u
 
   // Older and untagged: plan sittings spend the plan's own credit first.
   await setup.api.billing.recordAdvance({
+    requestKey: crypto.randomUUID(),
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     method: "cash",
@@ -564,6 +647,7 @@ test("three irregular plan advances settle three physiotherapy sittings before u
   });
 
   const first = await setup.api.billing.recordAdvance({
+    requestKey: crypto.randomUUID(),
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     method: "cash",
@@ -572,6 +656,7 @@ test("three irregular plan advances settle three physiotherapy sittings before u
   });
 
   const second = await setup.api.billing.recordAdvance({
+    requestKey: crypto.randomUUID(),
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     method: "upi",
@@ -581,6 +666,7 @@ test("three irregular plan advances settle three physiotherapy sittings before u
   });
 
   const third = await setup.api.billing.recordAdvance({
+    requestKey: crypto.randomUUID(),
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     treatmentPlanId: plan.id,
@@ -665,6 +751,7 @@ test("three irregular plan advances settle three physiotherapy sittings before u
   expect(credit.total).toBe(10_00n);
   await expectORPCCode(
     setup.api.billing.recordAdvanceRefund({
+      requestKey: crypto.randomUUID(),
       orgSlug: setup.organization.slug,
       advanceReceiptId: third.id,
       method: "cash",
@@ -792,6 +879,7 @@ test("credit allocation does not spend receipts created after its lock statement
   });
 
   const first = await setup.api.billing.recordAdvance({
+    requestKey: crypto.randomUUID(),
     orgSlug,
     patientId: setup.patient.id,
     method: "cash",
@@ -809,6 +897,7 @@ test("credit allocation does not spend receipts created after its lock statement
     ]);
 
     const allocation = setup.api.billing.recordPayments({
+      requestKey: crypto.randomUUID(),
       orgSlug,
       invoiceId: settled.invoice.id,
       applyCredit: 50_00n,
@@ -823,6 +912,7 @@ test("credit allocation does not spend receipts created after its lock statement
       return waiting.rows[0];
     });
     await setup.api.billing.recordAdvance({
+      requestKey: crypto.randomUUID(),
       orgSlug,
       patientId: setup.patient.id,
       method: "cash",
@@ -838,6 +928,7 @@ test("credit allocation does not spend receipts created after its lock statement
         .outstanding,
     ).toBe(50_00n);
     await setup.api.billing.recordPayments({
+      requestKey: crypto.randomUUID(),
       orgSlug,
       invoiceId: settled.invoice.id,
       applyCredit: 50_00n,
