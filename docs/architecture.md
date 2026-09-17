@@ -52,9 +52,9 @@ session state and never falls back:
 - A missing claim fails validation, a missing session is `UNAUTHORIZED`, and a
   missing membership or grant is `FORBIDDEN`. Foreign/nonexistent slugs are
   intentionally indistinguishable.
-- HMS recognizes `owner`, `admin`, `reception`, `cashier`, and `accountant`. Legacy
-  stored `member` roles are rejected by `parseRoles`/`authorize` and fail closed
-  until they are reset per D022.
+- HMS recognizes `owner`, `admin`, `reception`, `cashier`, and `accountant`. Any
+  other stored role, including Better Auth's default `member`, is rejected by
+  `parseRoles`/`authorize` and fails closed.
 - Better Auth's own organization endpoints remain mounted at `/api/auth/*` and
   may consult active-organization state when their input omits an id. They
   enforce Better Auth permissions but bypass the application's membership audit;
@@ -153,9 +153,12 @@ tenant-leading index before joining display data. Never use `OFFSET` for
 operational lists.
 
 The OPD operational surfaces poll every 10 seconds with a 5-second stale time
-and refetch on focus; background tabs pause. Every settled mutation refreshes all
-mounted queries through the query client's `MutationCache` (D036), so no write
-can miss a key, and a `CONFLICT` refreshes the losing terminal's screen too. There is no WebSocket/SSE layer.
+and refetch on focus; background tabs pause, and a paged list stops polling once
+it holds more than one page. Every settled mutation refreshes all mounted queries
+through the query client's `MutationCache` (D036), so no write can miss a key,
+and a `CONFLICT` refreshes the losing terminal's screen too. A search-driven list
+keeps its previous rows only while the search term changes (D037). There is no
+WebSocket/SSE layer.
 
 ## Data and migrations
 
@@ -168,10 +171,13 @@ can miss a key, and a `CONFLICT` refreshes the losing terminal's screen too. The
 - Sponsor data lives in the organization-scoped `payers` master and `patient_payers` links; it is measurement data, not billing state.
 - Tenant-leading indexes follow the actual filter/order/keyset shape. Descending
   nullable cursor columns specify matching null ordering explicitly.
-- Use scoped `UPDATE/DELETE ... RETURNING` instead of select-then-write.
+- Use scoped `UPDATE/DELETE ... RETURNING` instead of select-then-write; see
+  [Writes and concurrency](#writes-and-concurrency).
 - Never hand-edit generated Drizzle migrations. Schema changes use
   `bun run db:generate`; intentionally hand-authored SQL gets a separate
   migration.
+- History is append-only once a retained database applied it; an unapplied
+  migration is a draft to regenerate, never to stack a fix on (D022).
 - Development and production apply migrations before app startup. Production
   startup retains the advisory lock; deployment migrations must remain
   compatible with an old instance that may still be draining.
@@ -226,6 +232,48 @@ shared finance domain: immutable documents, collection, corrections, accounting,
 and authorization (D019). Shared care-setting UI is extracted only after a
 second shipped desk proves the same interaction and state model.
 
+## Writes and concurrency
+
+The database serializes concurrent writes; the application neither retries nor
+keeps its own locks (D040).
+
+- **One row decides:** a tenant-scoped conditional `UPDATE … RETURNING` whose
+  predicate states the allowed prior state. Zero rows is one `CONFLICT` (D026).
+- **A check spans rows:** `SELECT … FOR UPDATE` on every row the check reads,
+  then re-read balances in a new statement, because under READ COMMITTED only a
+  statement that starts after the lock sees what committed while it waited.
+- **Lock order.** A transaction takes locks in this order and skips what it
+  does not need: request key → OPD Appointment → Treatment plan item → Treatment
+  plan → Charges → Invoice → Advance Receipts (by `createdAt`, `id`). A new
+  record type is placed in this list in the same change that first locks it.
+- **Counters are locks.** A counter row stays locked until commit, which keeps a
+  series gapless. One transaction takes series in the order token → invoice →
+  receipt; every other command takes a single series.
+- **Money commands without a revision** (Advance Receipt, Payments, Credit Note,
+  Refund, settled walk-in) claim a client `requestKey` as their first statement,
+  so a retry after a lost response is refused instead of recording twice (D039).
+  A form holding a pending money write cannot be dismissed.
+- **A care record's Charge set** carries `chargeRevision`. Every post-check-in
+  change to it (plan posting, void, Invoice issuance) advances it in the same
+  transaction; settlement locks the record and must match both the reviewed
+  revision and the reviewed grand total after trusted repricing (D020). See
+  [OPD](./opd.md#billing-workspace-and-concurrency).
+- **One path per effect.** Every void of pending Charges goes through
+  `voidPendingCharges`, which also reopens a completed Treatment plan that loses
+  delivery (D038). Its caller already holds the Appointment lock.
+
+## Public site
+
+The signed-out site is TanStack routes under `apps/web/src/routes/` rendered
+through `PublicPage`. Changelog entries are MDX files in
+`src/content/changelog/` whose filename is the slug. `PUBLIC_ROUTES`
+(`config/site.ts`) lists indexable pages; `PUBLIC_PATHS`
+(`config/public-paths.ts`) adds changelog entries and is the only input to the
+sitemap and the `X-Robots-Tag` middleware (D030). Contact is WhatsApp and
+`mailto:` from required `VITE_WHATSAPP_NUMBER`/`VITE_CONTACT_EMAIL`; there is no
+form or server route. Open Graph images are generated by a script a person runs,
+not per request. Public slugs are reserved in `@hms/auth/organization-slug`.
+
 ## Audit
 
 `audit()` is fire-and-forget. It records verified role denials centrally and
@@ -267,23 +315,15 @@ where a person types or reads them (form inputs, PDF cells, audit meta).
 Payments use four methods: Cash, UPI, Card, and Bank transfer.
 
 Split collection is one tenant-scoped transaction containing up to four
-Payments. Every line gets its own Receipt and journal source; UPI and card lines
-fail before insertion when their reconciliation reference is absent. Catalog
+Payments. Every line gets its own Receipt and journal source; lines
+fail before insertion when a non-cash line lacks its reconciliation reference. Catalog
 charges selected together are likewise verified under the same organization
 and inserted in one transaction rather than one request per item.
 
-A command that creates money without a revision to check — an Advance Receipt,
-Payments, a Credit Note, a Refund, or a settled walk-in — carries a client
-`requestKey`, claimed first in its transaction through `claimRequestKey`, so a
-retry after a lost response is refused instead of recording twice (D039). A
-command's journals post through one `postJournalEntries` call: one account read
-and two inserts however many entries it writes.
-
-A care record owns a monotonically increasing `chargeRevision` for its Charge
-set. Voids and Invoice issuance advance it in the same transaction; settlement
-locks the record and must match both the revision the desk reviewed and the
-reviewed grand total after trusted repricing (D020). It is an
-optimistic-concurrency token and nothing else — see [OPD](./opd.md#billing-workspace-and-concurrency).
+A command's journals post through one `postJournalEntries` call: one account
+read and two inserts however many entries it writes, each entry still balanced
+on its own. Consecutive document numbers for one command come from one counter
+upsert (`nextCounter(tx, orgId, key, count)`).
 
 Trial balance and billing-ledger balance sheet read journals. GST reporting
 reads immutable invoice/credit-note lines because document numbers, patients,

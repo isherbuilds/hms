@@ -95,9 +95,21 @@ checked-in sitting, **Post to this visit** creates a Charge from the plan
 item's immutable quote snapshot and refuses a quantity above the plan or an item
 this visit already carries. An ordinary Charge for the same service stays
 separate; the panel warns before posting, and the desk voids or credits it if it
-was the same work (D038). Voiding delivered work reopens a completed plan. Work
-posted after the visit was settled becomes a second Invoice on that visit; the
-Billing tab lists each one.
+was the same work (D038). An item is done when its non-voided posted quantity
+reaches the planned quantity; voiding delivered work reopens a completed plan.
+Work posted after the visit was settled becomes a second Invoice on that visit;
+the Billing tab lists each one.
+
+**Follow-ups** is a Status filter of the day desk. It lists open plans with no
+booked sitting today or later whose requested next-sitting date is due or unset,
+ordered by that date (unset last), then by the oldest last sitting.
+
+**Credit** is applied at settlement or payment. Receipts taken for the Invoice's
+own plan are spent first (untagged credit first when the visit has no plan), and
+each group is spent oldest first. Unused credit is returned only by an advance
+Refund. The pilot's chartered accountant still owes two answers: the GST Receipt
+Voucher particulars for an Advance Receipt, and the earning milestone for a
+one-fee multi-sitting procedure (post at completion, or add a partial-work item).
 
 ### Now
 

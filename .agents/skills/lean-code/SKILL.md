@@ -55,7 +55,9 @@ proves the session, resolves membership, checks the permission, and exposes
   (`money`, `phone`, `reason`, `paymentLine`, `serviceLines`, …) are in
   `packages/api/src/lib/schemas.ts`. Do not re-declare a regex.
 - **Locks are for writes that race.** `FOR UPDATE` on a row you only read to insert
-  a child with a unique index is not a lock, it is a comment.
+  a child with a unique index is not a lock, it is a comment. A lock that is needed
+  follows the order in `docs/architecture.md#writes-and-concurrency` (D040); a money
+  command without a revision claims its `requestKey` first (D039). No retry loops.
 - Keep: the tenant predicate on every query, `audit()` for sensitive mutations,
   the settings TTL cache (D009), request-local membership memo (D008), DST-correct
   business-date code (any IANA zone is accepted; `tests/unit/business-date.test.ts`
@@ -72,9 +74,10 @@ proves the session, resolves membership, checks the permission, and exposes
   (a booking collects nothing) or for a local draft over a trusted quote (live
   discount). Never show a client-computed total beside a server one.
 - **`keepPreviousData` is one line; the machinery around it is not.** Keep the
-  line, gate submit on `isSuccess && !isFetching`, and delete `isPlaceholderData`
-  bookkeeping, `current`/`data`/`waiting` projections, and hide-when-placeholder
-  branches.
+  line for search changes only, gate submit on `isSuccess && !isFetching`, and
+  delete `isPlaceholderData` bookkeeping, `current`/`data`/`waiting` projections,
+  and hide-when-placeholder branches. A list with row actions is keyed by its day
+  and filter instead (D037).
 - **Copy does not change with state.** One stable empty state ("No services
   selected"), one control when the operator needs an action (Restore fee). No
   paragraph that rewrites itself when a doctor is picked.
@@ -94,15 +97,14 @@ proves the session, resolves membership, checks the permission, and exposes
   record is opened by a search param (`?patientId=`, `?action=payment`) via
   `validateSearch` + `navigate({ search })`, not `useState`. Back closes it; the link
   is shareable. Transient confirmations stay in state.
-- **CONFLICT closes the overlay.** Any billing or OPD mutation `onError` on CONFLICT:
-  close the dialog/overlay first (it holds a stale snapshot the server will keep
-  rejecting), then invalidate, then toast the server message. One handler
-  (`useOpdErrorToast`) does all three; a dialog that only toasts is a dual path.
+- **The query client owns refresh and error toasts (D036).** A mutation never calls
+  `invalidateQueries` or toasts its own failure. An overlay holding a snapshot the
+  server refused passes `onError: closeOnConflict(close)`; nothing else.
 - **A mutation hook is written once.** If a dialog and a row action both check in an
   appointment, they call the same `useOpdCheckIn`.
-- **CONFLICT means stale.** OPD and billing mutations treat any `CONFLICT` as
-  "invalidate, close any overlay holding a snapshot, toast the server message". Only
-  the patient form and catalog settings read `data.reason` (field mapping).
+- **CONFLICT means stale.** Only the patient form and catalog settings read
+  `data.reason` (field mapping); every other screen lets the refresh show the
+  winning state.
 - Props that are always the same literal (`open={true}`), callbacks with no caller,
   re-exports with no importer, and components split solely to isolate a render are
   deleted.

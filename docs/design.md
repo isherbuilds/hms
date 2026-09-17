@@ -302,10 +302,11 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
   chrome it can build from route params: its header band. The data region stays
   empty until the data lands. The panel's `min-h-*` makes that blank region read
   as an empty panel, not a collapsed page.
-- **Rows already on screen stay while the next key loads.** That applies to a
-  search term, a filter or a day change, never to a first load (D037): a list
-  that blanks between keystrokes reads as "nothing found", which is a different
-  statement from "still loading". A route loader fetches what its screen paints,
+- **Rows already on screen stay while the search term changes.** A list that
+  blanks between keystrokes reads as "nothing found", a different statement
+  from "still loading". A day or filter change remounts a list whose rows carry
+  actions, so another queue's rows never stand in with live controls, and a
+  first load never shows placeholder rows (D037). A route loader fetches what its screen paints,
   so a panel that the page owns arrives with the page instead of after it.
 
 ## 10. Task overlays
@@ -324,6 +325,8 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
   `DialogHeader`/`DialogFooter` rather than recreating their borders and padding.
 - Forms compose `FieldGroup`, `Field`, `FieldSet` and `FieldError`. Sets of two
   to five choices use `ToggleGroup`, and section boundaries use `Separator`.
+- An overlay holding a pending money write ignores Escape, backdrop, and close
+  until the write settles (D039).
 - Sheet motion is limited to the existing 150 ms opacity and directional
   transform transition. It communicates where the occasional overlay came from;
   frequent list and keyboard interactions remain static.

@@ -123,16 +123,16 @@ adapter is evidence-gated.
 
 ## Delivery rules
 
-- Pre-production schema and API changes are clean cutovers. Remove obsolete
-  shapes; do not add aliases, dual reads/writes, or compatibility columns.
-- Migration history becomes append-only at the first live financial document.
+- Schema and API changes are clean cutovers. Remove obsolete shapes; do not add
+  aliases, dual reads/writes, or compatibility columns. A release that the
+  previous version cannot run beside is a stop-the-world deploy, not a
+  compatibility layer.
+- Applied migration history is append-only (D022).
 - A pilot cutover may import agreed demographics and master data. It does not
   recreate historic invoices or use dual entry; the old HMS becomes read-only.
 - New domains ship vertically: schema, permission, guarded API, UI, audit,
-  tests, docs, and a real owner together.
-- The current broad `member` grant is development-only. Reception, cashier, and
-  accountant permissions split before pilot staff onboarding; clinical roles
-  ship with their owned workflows.
+  tests, docs, and a real owner together. Clinical roles ship with their owned
+  workflows.
 
 ## Roadmap gates
 
@@ -162,6 +162,8 @@ single-shift cutover ([operations](./operations.md#pilot-readiness)).
 - Issued financial documents are immutable; corrections are linked documents.
 - Money, tax, quantities, numbering, configuration, and cross-domain references
   fail loudly.
+- A retried money command never records twice (D039), and a correction never
+  guesses which record the staff meant (D038).
 - Derived balances and future stock come from source transactions, not editable
   summary fields.
 - AI never bypasses tenancy, authorization, provenance, consent, or review.

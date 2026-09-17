@@ -1,4 +1,4 @@
-# Operational reports and billing worklists
+# Reports and billing worklists
 
 Reports are Organization-scoped read models over source records. They never
 become a second write model, and clinical notes are excluded. GST, Trial
@@ -18,11 +18,11 @@ billing worklists below are the shipped exception lists.
   balance, filtered in SQL before keyset pagination (25 default, 100 maximum).
 - `billing.refundDue` returns issued Invoices whose shared balance is negative
   after Credit Notes, Payments, and recorded Refunds, filtered in SQL before the
-  cap, oldest first, linked to the Invoice screen, and invalidated with the rest
-  of billing state after any correction.
+  cap, oldest first, and linked to the Invoice screen.
 
-- `billing.advancesHeld` returns Patients holding unused advance credit, oldest
-  receipt first, with the receipt's printed purpose and its plan's status.
+- `billing.advancesHeld` returns one row per Advance Receipt with unused credit,
+  keyset-paged by `(createdAt, id)`, with the receipt's printed purpose and its
+  plan's status.
 
 Invoice balances share one calculation over Invoice value, Credit Notes,
 Payments, Advance Allocations, and recorded Refunds.
@@ -56,7 +56,7 @@ runs the same `closeExpiredBookings` reconciliation as `opd.day`: every `booked`
 row older than the current Business Date becomes `no_show`, its pending Charges
 are voided, and each closure is audited after commit. The helper is idempotent
 and tenant-scoped, so the register reports the same statuses whether or not any
-OPD day was previously opened ([OPD](../opd.md)).
+OPD day was previously opened ([OPD](./opd.md)).
 
 ## Non-goals
 

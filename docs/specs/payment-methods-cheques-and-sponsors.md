@@ -3,7 +3,7 @@
 Status: ready
 Authority: user request, 2026-09-04 — add bank transfer and capture a patient's
 sponsor so payer volume can be measured.
-Evidence: [reference payment methods and payers](../research/reference-payment-methods-and-payers.md).
+Evidence: [research ledger](../research/README.md#adopted-findings) (Payer model).
 Supersedes: none
 
 ## Problem

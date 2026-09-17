@@ -8,71 +8,30 @@ the first documentation consolidation is commit `35550b9`.
 
 Active temporary memos:
 
-- [Treatment plans and advances](./treatment-plans-and-advances.md) — Marley,
-  Open Dental, Jane, Cliniko, Odoo, Ind AS 115 and CGST Rules 50–51 read
-  2026-09-14; supports a course parent, delivery-based Charges on ordinary OPD
-  sittings, and unearned money as a liability; does not settle GST voucher
-  particulars or the RCT earning milestone (CA questions). Evidence for the
-  [active spec](../specs/treatment-plans-and-advances.md).
 - [Invitation account onboarding](./invitation-account-onboarding.md) — proposal
-  from 2026-09-07, checked against Better Auth 1.7.2; recommends invitation-gated
-  email verification before account setup. Deferred on 2026-09-08: no email
-  provider exists, so the shipped MVP uses the invitation id as proof (D006).
+  checked against Better Auth 1.7.2; recommends invitation-gated email
+  verification before account setup. Deferred until an email provider exists;
+  the shipped MVP uses the invitation id as proof (D006).
 - [Frontend patterns](./frontend-patterns.md) — Midday and OpenStatus pinned;
-  establishes that Midday runs _without_ React Compiler while HMS runs with it,
-  keeps the one unbuilt item (oRPC batching) and the unmeasured `useSearch`
-  selector sites, and records what is rejected and why. Consolidates five
-  2026-08-31/09-01 memos.
+  Midday runs _without_ React Compiler while HMS runs with it. Holds the one
+  unbuilt item (oRPC batching), the unmeasured `useSearch` selector sites, and
+  what is rejected and why.
 - [OPD reference flows](./opd-reference-flows.md) — Marley and OpenMRS pinned;
   what OPD means as a care setting, the unbuilt direct-service hypothesis, and
-  the IPD territory map. Consolidates two 2026-08-24/25 memos.
-- [Reference financial integrity and catalog](./reference-financial-integrity-and-catalog.md)
-  — Bahmni, Danphe, and Marley pinned 2026-09-03; establishes that no reference
-  has a request key for financial retries (D023 is ahead of peers), that both
-  peers with a real design keep one thin billable item and link domain masters
-  to it, and what that means for pharmacy/lab/IPD masters, roles, no-show, and
-  day-close shapes.
-- [Landing page composition](./landing-page-composition.md) — Cursor, Slack,
-  Midday, Ramp and six practice/hospital-management sites observed 2026-09-04;
-  establishes that a trust strip sits directly under the hero in 4 of 4
-  design-led references, that the healthcare tier fills that slot with volume
-  numbers and regulatory badges rather than customer logos, that four of six
-  healthcare references barely show the product at all, and that pricing stays
-  off the landing page. Composition only — it proves norms, not conversion.
-- [Landing header anatomy](./landing-header-anatomy.md) — Cursor, Midday, Tebra
-  and Jane read 2026-09-04; establishes that both tiers ship wordmark + one to
-  four doors + two or three right-hand actions, that the design-led tier ends on
-  a self-serve primary while every healthcare reference books a demo from the
-  bar itself, that healthcare product menus segment by who is buying and not
-  only by feature, and that nobody ships a four-item door. Norms only.
-- [Public site: search and AI visibility, performance, pages, contact](./public-site-seo-ai-and-pages.md)
-  — Google, OpenAI, Anthropic, Perplexity, Apple, MeitY, MCA and web.dev read
-  2026-09-05; establishes that Google Search does not read `llms.txt`, that the
-  only AI-specific lever is a per-purpose robots policy, that every product
-  screenshot is an unindexable CSS background, that DPDP notice/contact duties
-  commence 2027-05-13 while SPDI r4 applies now, and that Incorporation Rules
-  r26 already requires name/CIN/registered office/contact on the home page.
-  Recommends WhatsApp-first contact. Lists the five owner decisions it cannot
-  make.
-
-- [Reference payment methods and payers](./reference-payment-methods-and-payers.md)
-  — Bahmni, Danphe, and Marley pinned 2026-09-03; establishes that modelling an
-  insurer or scheme as a payment-method value makes an unpaid bill read as
-  settled (Bahmni seeds RSBY as a cash journal), that both peers with a payer
-  model post the payer's share to a separate receivable at invoice time and split
-  it per line by percentage, and that no reference ships a cheque clearing
-  account. Records why HMS keeps a fixed method enum and a bounded, sum-checked
-  split. It produces D029 only.
+  the IPD territory map.
+- [Landing page composition](./landing-page-composition.md) and
+  [landing header anatomy](./landing-header-anatomy.md) — design-led and
+  healthcare sites observed 2026-09-04; composition and header norms cited by the
+  landing components. Norms only, not conversion evidence.
 
 ## Adopted findings
 
-| Catalog                | A flat item master plus immutable Charge snapshots is sufficient for OPD. Satellite pricing/packages are additive later. New/follow-up Practitioner prices are first-class. Domain masters link to `catalog_items` rather than extending it (D027; reference evidence in the memo above).                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Catalog                | A flat item master plus immutable Charge snapshots is sufficient for OPD. New/follow-up Practitioner prices are first-class. Bahmni, Danphe, and Marley converge on one thin billable item that domain masters link to (D027).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Reference architecture | Keep HMS's explicit multi-tenancy and guarded router. Use Marley/FHIR-shaped typed records as donors when a workflow earns them; use Danphe/incumbent breadth as a checklist, not as architecture. Reject dynamic metadata and god-controller coupling.                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| Catalog                | A flat item master plus immutable Charge snapshots is sufficient for OPD. Satellite pricing/packages are additive later. New/follow-up Practitioner prices are first-class.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Paper consultation     | The signed paper scan remains the clinical source. Any AI extraction is a separate unverified draft/index requiring provenance and clinician review.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Care boundary          | One OPD Appointment handles booked and walk-in outpatient work. IPD and Emergency remain separate destinations/tables; no shared care wrapper exists yet.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| Queue performance      | Operational lists use tenant-leading indexes, page-first joins, stable keysets, and explicit invalidation/polling. Synthetic plans do not replace production p50/p95 measurement.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Queue performance      | Operational lists use tenant-leading indexes, page-first joins, stable keysets, polling, and global write invalidation (D036). Synthetic plans do not replace production p50/p95 measurement.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Intake UX              | Use one quiet flow: Patient, care team, explicit **When**, future date/time only for **Later**, and the same optional Services picker in both modes. Selected rows are local form intent and update immediately; quotes own only server pricing and the consultation line. Search is server-bounded to six display rows.                                                                                                                                                                                                                                                                                                                                                                                        |
 | Billing documents      | The itemized supply document and Payment Receipt are different. Exempt care, taxable supply, and advance receipts require different printed treatment.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | Accounting             | Atomic double-entry posting gives a defensible handover boundary without building an ERP. GST outward register is not a filing export.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -83,6 +42,10 @@ Active temporary memos:
 | Frontend adoption      | Measured 2026-08-24 on 40k seeded patients: Base UI combobox pickers, previous-data patient results, and one optimistic catalog toggle (7 ms median flip at Slow 4G versus an ≥800 ms round trip; rows needed memoization at 1,000 items) landed with a +68 B route script. The final capture narrowly missed three 110% server bounds in a noisy window; the retained evidence reports those misses separately from its ambient-drift analysis. The earlier TanStack Query 5.101 hold is resolved: HMS now typechecks on 5.102.8, and the oRPC adapter forwards Query's `AbortSignal`. Evidence: [`data/perf-midday-adoption/`](./data/perf-midday-adoption/) and [frontend patterns](./frontend-patterns.md). |
 | Core-screen UX         | Keep one **New appointment** entry, explicit **Now/Later**, server-owned Now time, and one optional service-selection surface. A zero Now bill is valid and creates no financial document. Later persists selected services as dormant Charge snapshots until check-in. Leave guards, patient conflict checks, phone normalization, explicit sex, keyboard focus, bounded popups, local list search, and URL-backed closed-row filtering remain. Evidence: [OPD reference flows](./opd-reference-flows.md).                                                                                                                                                                                                     |
 | Billing concurrency    | Protect the reviewed Charge set with one explicit revision on the exact care record. Row locks serialize settlement; the revision rejects the stale contender. Do not infer a version from the latest Invoice, and do not add a generic Billing Account wrapper. Evidence: [FHIR version-aware updates](https://hl7.org/fhir/R4/http.html#concurrency) and [PostgreSQL row locks](https://www.postgresql.org/docs/17/explicit-locking.html#LOCKING-ROWS).                                                                                                                                                                                                                                                       |
+| Treatment plans        | Open Dental, Cliniko, and dental coding post a multi-sitting fee on delivery and hold earlier money as a liability; Ind AS 115 agrees but leaves the earning milestone for a one-fee RCT to the accountant (D033–D035). Only Frappe Health's derived session count was copied.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Financial retries      | Bahmni, Danphe, and Marley carry no client operation key; their guards are numbering locks and journal uniqueness, which cannot catch a retried receipt. HMS added a refused-on-replay request key (D039).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Payer model            | Modelling an insurer as a payment method makes an unpaid bill read as settled (Bahmni seeds RSBY as cash). Peers with a payer model post the payer share to a separate receivable at Invoice time; none ships a cheque clearing account (D029).                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Public site            | Google Search ignores `llms.txt`; the only AI lever is a per-purpose robots policy. Screenshots as CSS backgrounds are unindexable. DPDP notice duties commence 2027-05-13, SPDI r4 applies now, and Incorporation Rules r26 require an identity block on the home page. WhatsApp-first contact.                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ## Evidence anchors
 

@@ -57,11 +57,11 @@ two procedures, three when it opens with a `patientId`
 (`routes/$orgSlug/opd/new.tsx`). Measure client-navigation request count before
 and after; the existing browser benchmark asserts on hard opens only.
 
-**3. `Route.useSearch({ select })` — partially landed, unmeasured.** `OpdHeader`
-selects `date`. Six single-field consumers still take the whole object
+**3. `Route.useSearch({ select })` — partially landed, unmeasured.** `OpdRoute`
+selects `status`. Six single-field consumers still take the whole object
 (`join.tsx`, `login.tsx`, `billing/index.tsx`, `billing/invoices.$invoiceId.tsx`,
 `patients/$patientId.tsx`, `patients/index.tsx`); the two OPD day consumers and
-catalog settings legitimately read two fields. Measure the `includeClosed` toggle
+catalog settings legitimately read two fields. Measure the Open/All status toggle
 before touching the rest; without a render reduction this stays unbuilt.
 
 **Gated, not scheduled.** Per-widget dashboard streaming is a whole-route
@@ -82,23 +82,23 @@ before and after items 1–3:
    reach zero physical-typing renders, matching the `OpdSearchInput` correction.
 2. Navigate to `/opd/new` from the day list with the network panel open. Item 2
    should collapse the loader's three requests into one.
-3. Toggle **Include closed** on the OPD day. Item 3 should take the
-   `date`-only readers to zero renders.
+3. Toggle the OPD day's Open/All status. Item 3 should take the single-field
+   readers to zero renders.
 
 If an item shows no change, drop it rather than keep it for tidiness.
 
 ## Rejected, with reasons
 
 - **Midday's memoization density as a default.** See above. HMS's one `memo`
-  (`settings/catalog.tsx:302`) earned its place against a measured 150 ms → 7 ms
+  (`settings/catalog.tsx`) earned its place against a measured 150 ms → 7 ms
   flip at 1,000 rows; each future one must cite its own measurement.
 - **Midday's totals loop.** Watching a field array, recomputing in floating
   point, then writing back through `setValue` in an effect is a cascade and a
   money bug at once. HMS's server-owned `opd.quoteWalkIn` with the shared
   integer-paise `computeInvoiceLines` preview is correct.
 - **`Controller` on plain inputs**, **offset pagination named "cursor"**, and
-  **client-side float money** — HMS's `register`, keyset tuples, and `numeric`
-  strings all beat them.
+  **client-side float money** — HMS's `register`, keyset tuples, and `bigint`
+  paise all beat them.
 - **Zustand, nuqs, a global client store.** Router search params and React Query
   already own what Midday splits across three libraries.
 - **`useDeferredValue` to suppress requests**, **manual query cancellation**

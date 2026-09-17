@@ -77,11 +77,11 @@ Rolling releases require migrations compatible with the previous application
 until old instances drain. Use expand-and-contract for destructive production
 changes.
 
-The D020 `chargeRevision` release is a coordinated cutover, not a rolling
-release: `settleCharges` changes shape and old writers do not advance the
-revision. Pause financial writes, drain the old web and API instances, apply the
-migration, deploy both applications together, and then resume traffic. Do not
-add a second compatibility contract for this one-time transition.
+A release whose migration the previous application cannot run beside (a changed
+money unit, a writer that must advance a new revision) is a coordinated cutover:
+pause financial writes, stop the old web and API instances, apply the migration,
+deploy both applications together, then resume traffic. Do not add a
+compatibility contract for a one-time transition (D031).
 
 ## Production hardening
 
@@ -89,8 +89,8 @@ Current behaviour, with the release evidence still to be recorded:
 
 1. Organization roles are `owner`, `admin` (Administrator), `reception`,
    `cashier`, and `accountant`, each with explicit grants in
-   `packages/auth/src/access.ts`; the legacy `member` key authorizes nothing and
-   fails closed, so reset pre-pilot databases (D022) before deploying. Walking
+   `packages/auth/src/access.ts`; any other stored role authorizes nothing and
+   fails closed. Walking
    the role map with the shift lead is a [pilot readiness](#pilot-readiness) gate.
 2. Each public application host sets `nosniff`, referrer, and camera,
    microphone, geolocation, and payment denial headers itself. In production
@@ -145,7 +145,7 @@ allows same-origin framing only, which the billing PDF viewer requires.
 Do not schedule the first live shift until one named pilot owner has recorded
 all of these as complete:
 
-1. The shipped [operational reports and worklists](./specs/reports.md) have been
+1. The shipped [reports and worklists](./reports.md) have been
    exercised by the pilot cashier and shift lead on representative data, or a
    time-bounded manual handover procedure and owner covers any remaining gap.
 2. Every pilot staff member has an operator-created account and the least
@@ -165,6 +165,9 @@ all of these as complete:
 7. Qualified advisers have recorded the state-specific clinical-establishment,
    GST, DPDP, retention, and other duties applicable to the pilot's live scope,
    including the owner and evidence for each required control.
+8. Before incorporation is public, the home page carries the Companies
+   (Incorporation) Rules r26 identity block: legal name, CIN, registered office,
+   phone, email, and grievance contact. `/about` and `/privacy` state it is owed.
 
 Record evidence and exceptions with the release, not in a permanent parallel
 checklist. Re-run only the affected gate after a configuration or workflow

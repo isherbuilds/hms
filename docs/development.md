@@ -189,7 +189,14 @@ range; a passing TypeScript build cannot prove an auth database is migratable.
 - Use keyset pagination and tenant-leading indexes. Scope writes with one
   `UPDATE/DELETE ... RETURNING` where possible.
 - Never hand-edit generated migrations or `apps/web/src/routeTree.gen.ts`.
-- Migration history is append-only once any environment retains data. A baseline squash requires a recorded decision-log disposition first (D022). After the 2026-09-11 baseline reset, recreate any pre-existing local database with `bun run db:seed -- --reset`; production follows D032 and keeps its applied journal.
+- Applied migration history is append-only; an unapplied migration is a draft
+  to regenerate, and a squash needs its own decision entry (D022). A local
+  database whose journal no longer matches is recreated with
+  `bun run db:seed -- --reset`.
+- A write that checks more than one row, creates money, or changes a Charge set
+  follows [Writes and concurrency](./architecture.md#writes-and-concurrency):
+  conditional updates, the documented lock order, a request key for money
+  without a revision, and the shared void path.
 
 - No secret or server-only value import may reach client assets.
 
@@ -267,10 +274,16 @@ connection has no sentence of its own, and "Failed to fetch" is not one an
 operator can act on.
 
 The `MutationCache` in `lib/query-client.ts` owns what every write shares (D036):
-it toasts the failure and, when any write succeeds or fails,
-refreshes every mounted query without awaiting it. The refresh runs before that
-write's own callbacks, so a callback that navigates reads the fresh data once. A mutation adds only its own success copy, a
-field error, or `closeOnConflict(close)` for an overlay holding a refused snapshot.
+it toasts the failure and, when any write succeeds or fails, refreshes every
+mounted query without awaiting it. The refresh runs before that write's own
+callbacks, so a callback that navigates reads the fresh data once. A mutation
+adds only its own success copy, a field error, or `closeOnConflict(close)` for an
+overlay holding a refused snapshot.
+
+A money form mints its `requestKey` once per open form (`FormDialog` passes it to
+`run`) and blocks dismissal while its write is pending (D039). A payment amount
+is filled only by an explicit action; changing credit or discount never
+overwrites what the cashier typed.
 
 Remote type-ahead keeps raw text in the smallest child and debounces before the
 query key; the server matches and bounds the results. Local filtering is for a
