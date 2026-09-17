@@ -69,8 +69,8 @@ check-in.
 Both paths use the same optional, server-searched Services picker. The picker
 returns at most six active tenant-scoped catalog matches. Selected rows are local
 editable state. An item marked for intake pricing starts at its catalog rate, and
-the operator may raise that rate but never lower it; any reduction is a discount,
-which needs a note. Clearing the field returns to the catalog rate.
+the operator may raise or lower that rate. Clearing the field returns to the
+catalog rate.
 For **Now**, every amount on screen comes from one server
 quote (`opd.quoteWalkIn`) that re-reads each id, category, and tax fact. It uses
 the supplied intake rate only after that validation. The financial
@@ -165,7 +165,7 @@ is ordered, once those domains ship.
 Any catalog category may opt into an intake rate. The rate applies where the
 operator picks the item as a service; the automatic attendance fee always bills
 its catalog rate. OPD still accepts only its billable categories. The API rejects a supplied rate
-unless the item opted in, rejects a rate below the catalog price, and always
+unless the item opted in, accepts any non-negative rate, and always
 reuses the catalog tax fields. The immutable Charge records the applied
 rate and actor. An issued Invoice records the same financial value, so the
 ordinary intake rate does not create a separate audit event. The printed Invoice

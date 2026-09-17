@@ -1506,7 +1506,7 @@ test("procedure rates flow through booking, walk-in quotes and stored charges", 
   ).toMatchObject({ id: procedure.id, unitPrice: 30_00n, customRate: true });
 });
 
-test("a custom rate needs the catalog flag and cannot go below the catalog rate", async () => {
+test("a custom rate needs the catalog flag and may go below the catalog rate", async () => {
   const { organization, api, patient, department } = await createOpdAppointmentSetup(
     "opd-custom-rate-validation",
     false,
@@ -1544,13 +1544,13 @@ test("a custom rate needs the catalog flag and cannot go below the catalog rate"
     }),
     "BAD_REQUEST",
   );
-  await expectORPCCode(
-    api.opd.quoteWalkIn({
-      ...base,
-      services: [{ catalogItemId: variable.id, qty: 1, unitPrice: variable.unitPrice - 1n }],
-    }),
-    "BAD_REQUEST",
-  );
+
+  const lower = await api.opd.quoteWalkIn({
+    ...base,
+    services: [{ catalogItemId: variable.id, qty: 1, unitPrice: variable.unitPrice - 1n }],
+  });
+
+  expect(lower.lines[0]?.unitPrice).toBe(variable.unitPrice - 1n);
 });
 
 test("a scheduled appointment keeps selected services until check-in", async () => {

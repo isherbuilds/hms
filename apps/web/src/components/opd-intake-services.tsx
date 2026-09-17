@@ -39,7 +39,7 @@ function RateInput({
   const commit = (input: HTMLInputElement) => {
     const text = input.value.trim();
     const paise = text === "" ? line.unitPrice : parseMoneyInput(text);
-    const next = paise !== null && paise >= line.unitPrice ? paise : committed;
+    const next = paise ?? committed;
 
     input.value = formatDecimal(next);
     onCommit(next === line.unitPrice ? undefined : next);

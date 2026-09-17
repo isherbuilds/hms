@@ -144,12 +144,6 @@ export async function resolveOpdPricing(options: {
       });
     }
 
-    if (service.unitPrice !== undefined && service.unitPrice < item.unitPrice) {
-      throw new ORPCError("BAD_REQUEST", {
-        message: `${item.name} cannot be billed below its catalog rate.`,
-      });
-    }
-
     return { item, qty: service.qty, unitPrice: service.unitPrice ?? item.unitPrice };
   });
 

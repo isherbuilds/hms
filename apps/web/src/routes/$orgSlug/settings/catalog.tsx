@@ -538,7 +538,7 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
                         disabled={isPending}
                       />
                     </FormControl>
-                    <FormLabel>Rate set at intake (unit price is the minimum)</FormLabel>
+                    <FormLabel>Rate set at intake (unit price is the default)</FormLabel>
                     <FormMessage />
                   </FormItem>
                 )}
