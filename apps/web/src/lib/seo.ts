@@ -54,6 +54,7 @@ function head(
    profile actually exists. */
 function siteGraph(): JsonLd[] {
   const origin = env.VITE_WEB_URL;
+
   return [
     {
       "@context": "https://schema.org",
@@ -79,6 +80,7 @@ function siteGraph(): JsonLd[] {
    stated because none is public; `offers` stays out until one is. */
 function homeGraph(): JsonLd[] {
   const origin = env.VITE_WEB_URL;
+
   return [
     ...siteGraph(),
     {
@@ -114,7 +116,9 @@ function homeGraph(): JsonLd[] {
    silently missing meta. The title is bare on `/` and templated everywhere else. */
 export function pageHead({ path }: { path: string }) {
   const route = PUBLIC_ROUTES.find((entry) => entry.path === path);
+
   if (!route) throw new Error(`${path} is not in PUBLIC_ROUTES`);
+
   return head(path, { ...route, type: "website", jsonLd: path === "/" ? homeGraph() : undefined });
 }
 
@@ -129,8 +133,10 @@ export function changelogEntryHead(entry: {
   date: string;
 }) {
   const changelog = PUBLIC_ROUTES.find((route) => route.path === "/changelog");
+
   if (!changelog) throw new Error("/changelog is not in PUBLIC_ROUTES");
   const origin = env.VITE_WEB_URL;
+
   return head(`/changelog/${entry.slug}`, {
     title: entry.title,
     description: entry.summary,

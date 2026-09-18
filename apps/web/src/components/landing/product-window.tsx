@@ -35,6 +35,7 @@ const SHOTS = {
 } as const;
 
 export type ShotName = keyof typeof SHOTS;
+
 export type Region = { x: number; y: number; w: number; h: number };
 
 /* `background-position: P%` aligns point P of the image with point P of the box,
@@ -69,6 +70,7 @@ export function ProductWindow({
   className?: string;
 }) {
   const shot = SHOTS[name];
+
   return (
     <div
       aria-hidden={alt ? undefined : true}

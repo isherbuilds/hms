@@ -40,9 +40,6 @@ export const account = pgTable(
     id: text("id").primaryKey(),
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
-    // Better Auth 1.7 signs accounts in by `issuer`; local credential accounts carry
-    // the synthetic `local:credential`. The default backfills pre-column rows.
-    issuer: text("issuer").notNull().default("local:credential"),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -60,7 +57,9 @@ export const account = pgTable(
   },
   (table) => [
     index("account_userId_idx").on(table.userId),
-    uniqueIndex("account_issuer_accountId_uidx").on(table.issuer, table.accountId),
+    // Better Auth recognises an account by (providerId, accountId); 1.7.3 reverted
+    // the short-lived `issuer` key back to this pair.
+    uniqueIndex("account_provider_accountId_uidx").on(table.providerId, table.accountId),
   ],
 );
 

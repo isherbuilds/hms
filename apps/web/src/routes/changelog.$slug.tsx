@@ -8,7 +8,9 @@ export const Route = createFileRoute("/changelog/$slug")({
   loader: async ({ params }) => {
     const { CHANGELOG } = await import("@/content/changelog");
     const entry = CHANGELOG.find((candidate) => candidate.slug === params.slug);
+
     if (!entry) throw notFound();
+
     // Components do not serialize; the page re-resolves the entry by slug.
     return { slug: entry.slug, title: entry.title, summary: entry.summary, date: entry.date };
   },
@@ -19,7 +21,9 @@ export const Route = createFileRoute("/changelog/$slug")({
 function ChangelogEntryRoute() {
   const { slug } = Route.useLoaderData();
   const entry = CHANGELOG.find((candidate) => candidate.slug === slug);
+
   if (!entry) throw notFound();
+
   return (
     <PublicPage
       eyebrow={`${formatDate(entry.date)} · Changelog`}

@@ -13,6 +13,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 // public files also exposes every tenant's private ones (hard rule 7).
 
 const DEFAULT_MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
 const DEFAULT_EXPIRES_IN = 15 * 60;
 
 let cached: { bucket: string; client: S3Client } | null = null;
@@ -21,14 +22,17 @@ function storage() {
   if (cached) {
     return cached;
   }
+
   const { SEAWEEDFS_ENDPOINT, SEAWEEDFS_BUCKET, SEAWEEDFS_ACCESS_KEY_ID } = env;
   const secretAccessKey = env.SEAWEEDFS_SECRET_ACCESS_KEY;
+
   if (!SEAWEEDFS_ENDPOINT || !SEAWEEDFS_BUCKET || !SEAWEEDFS_ACCESS_KEY_ID || !secretAccessKey) {
     throw new Error(
       "SeaweedFS is not configured. Set SEAWEEDFS_ENDPOINT, SEAWEEDFS_BUCKET, " +
         "SEAWEEDFS_ACCESS_KEY_ID and SEAWEEDFS_SECRET_ACCESS_KEY.",
     );
   }
+
   cached = {
     bucket: SEAWEEDFS_BUCKET,
     client: new S3Client({
@@ -42,6 +46,7 @@ function storage() {
       responseChecksumValidation: "WHEN_REQUIRED",
     }),
   };
+
   return cached;
 }
 
@@ -54,6 +59,7 @@ export function createUploadUrl(
   options: { contentType?: string; size: number },
 ): Promise<string> {
   const { bucket, client } = storage();
+
   return getSignedUrl(
     client,
     new PutObjectCommand({
@@ -68,10 +74,12 @@ export function createUploadUrl(
 
 export function createReadUrl(key: string): Promise<string> {
   const { bucket, client } = storage();
+
   return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), {
     expiresIn: DEFAULT_EXPIRES_IN,
   });
 }
+
 export async function* listObjects(
   prefix: string,
 ): AsyncGenerator<{ key: string; lastModified: Date }> {
@@ -86,12 +94,15 @@ export async function* listObjects(
         ContinuationToken: continuationToken,
       }),
     );
+
     for (const object of page.Contents ?? []) {
       if (!object.Key || !object.LastModified) {
         throw new Error("Storage returned an object without a key or modification time.");
       }
+
       yield { key: object.Key, lastModified: object.LastModified };
     }
+
     continuationToken = page.NextContinuationToken;
   } while (continuationToken);
 }

@@ -55,8 +55,8 @@ import { readOrgSettings } from "../lib/settings-cache";
 import { billingWorklistRouter } from "./billing-worklist";
 
 const creditLineInput = z.union([
-  z.object({ invoiceLineId: z.string(), full: z.literal(true) }).strict(),
-  z.object({ invoiceLineId: z.string(), gross: positiveMoney }).strict(),
+  z.strictObject({ invoiceLineId: z.string(), full: z.literal(true) }),
+  z.strictObject({ invoiceLineId: z.string(), gross: positiveMoney }),
 ]);
 
 export async function billingDocumentContext(orgId: string) {

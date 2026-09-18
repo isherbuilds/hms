@@ -26,6 +26,7 @@ const HAS_LETTERS = /\p{L}/u;
 function phoneQuery(value: string) {
   const digits = normalizePhone(value);
   const hasLetters = HAS_LETTERS.test(value);
+
   return {
     isPhone: !hasLetters && digits.length >= 4,
     incomplete: !hasLetters && digits.length < 4,
@@ -34,8 +35,11 @@ function phoneQuery(value: string) {
 
 function callerSeed(value: string): { name?: string; phone?: string } {
   const classification = phoneQuery(value);
+
   if (classification.isPhone) return { phone: value };
+
   if (classification.incomplete) return {};
+
   return { name: value };
 }
 
@@ -68,6 +72,7 @@ function PatientSearchInput({
     }),
     enabled: search.length > 0 && !incomplete,
   });
+
   const matches = results.data?.items ?? [];
   const searched = !incomplete && search.length > 0 && results.isSuccess;
   const error = results.isError ? results.error : null;
@@ -81,6 +86,7 @@ function PatientSearchInput({
 
   const renderMatch = (match: (typeof matches)[number]) => {
     const age = patientAgeLabel(match.dateOfBirth, match.dobEstimated, today);
+
     return (
       <>
         <span className="min-w-0">

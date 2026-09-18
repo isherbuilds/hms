@@ -5,7 +5,9 @@ import pg from "pg";
 import "../packages/env/src/load.ts";
 
 const TIMEOUT_MS = 3_000;
+
 const COMPOSE_FILE = "packages/db/docker-compose.dev.yaml";
+
 const MIGRATIONS_FOLDER = fileURLToPath(new URL("../packages/db/src/migrations", import.meta.url));
 
 type Check = { ok: boolean; label: string; detail: string };
@@ -16,11 +18,13 @@ function result(ok: boolean, label: string, detail: string): Check {
 
 function errorCode(error: unknown): string {
   if (typeof error !== "object" || error === null || !("code" in error)) return "unavailable";
+
   return String(error.code);
 }
 
 async function dockerChecks(): Promise<Check[]> {
   let process: Bun.Subprocess<"ignore", "pipe", "pipe">;
+
   try {
     process = Bun.spawn(["docker", "compose", "-f", COMPOSE_FILE, "ps", "--format", "json"], {
       stdin: "ignore",
@@ -32,11 +36,14 @@ async function dockerChecks(): Promise<Check[]> {
   }
 
   const timer = setTimeout(() => process.kill(), TIMEOUT_MS);
+
   const [exitCode, stdout] = await Promise.all([
     process.exited,
     new Response(process.stdout).text(),
   ]);
+
   clearTimeout(timer);
+
   if (exitCode !== 0) {
     return [result(false, "Docker", "Compose unavailable; start Docker and run bun run db:up")];
   }
@@ -47,15 +54,20 @@ async function dockerChecks(): Promise<Check[]> {
     .filter(Boolean)
     .map(
       (line) =>
+        // SAFETY: each line is one `docker compose ps --format json` record, which always
+        // carries these four fields; a compose change surfaces as an undefined below.
         JSON.parse(line) as { Health: string; Ports: string; Service: string; State: string },
     );
 
   return ["postgres", "seaweedfs"].map((name) => {
     const service = services.find(({ Service }) => Service === name);
+
     if (!service) {
       return result(false, `Docker ${name}`, `not running; run bun run db:up`);
     }
+
     const ready = service.State === "running" && service.Health === "healthy";
+
     return result(
       ready,
       `Docker ${name}`,
@@ -66,7 +78,9 @@ async function dockerChecks(): Promise<Check[]> {
 
 function configuredOrigin(name: string): URL | null {
   const value = process.env[name];
+
   if (!value) return null;
+
   try {
     return new URL(new URL(value).origin);
   } catch {
@@ -76,8 +90,10 @@ function configuredOrigin(name: string): URL | null {
 
 async function urlCheck(label: string, url: URL | null): Promise<Check> {
   if (!url) return result(false, label, "URL is missing or invalid in packages/env/.env");
+
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+
     return result(response.ok, label, `${url.href} responded ${response.status}`);
   } catch {
     return result(false, label, `${url.href} did not respond; run bun run dev`);
@@ -86,6 +102,7 @@ async function urlCheck(label: string, url: URL | null): Promise<Check> {
 
 async function databaseChecks(): Promise<Check[]> {
   const connectionString = process.env.DATABASE_URL;
+
   if (!connectionString) {
     return [
       result(false, "Database", "DATABASE_URL is missing in packages/env/.env"),
@@ -98,11 +115,13 @@ async function databaseChecks(): Promise<Check[]> {
     connectionTimeoutMillis: TIMEOUT_MS,
     query_timeout: TIMEOUT_MS,
   });
+
   try {
     await client.connect();
     await client.query("select 1");
   } catch (error) {
     await client.end().catch(() => undefined);
+
     return [
       result(
         false,
@@ -114,11 +133,14 @@ async function databaseChecks(): Promise<Check[]> {
   }
 
   let migration: Check;
+
   try {
     const local = readMigrationFiles({ migrationsFolder: MIGRATIONS_FOLDER });
+
     const applied = await client.query<{ created_at: string; hash: string }>(
       "select hash, created_at from drizzle.__drizzle_migrations order by id",
     );
+
     const current =
       local.length === applied.rows.length &&
       local.every(
@@ -126,6 +148,7 @@ async function databaseChecks(): Promise<Check[]> {
           applied.rows[index]?.created_at === String(folderMillis) &&
           applied.rows[index]?.hash === hash,
       );
+
     migration = result(
       current,
       "Migrations",

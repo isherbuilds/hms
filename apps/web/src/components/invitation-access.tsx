@@ -18,19 +18,24 @@ export function InvitationAccess({
   accountEmail?: string;
 }) {
   const navigate = useNavigate();
+
   const invitation = useQuery({
     queryKey: ["auth", "invitation", invitationId],
     queryFn: async () => {
       const { data, error } = await authClient.invitation.claimStatus({ query: { invitationId } });
+
       if (error)
         throw new Error(authErrorMessage(error, "Could not load the invitation. Try again."));
+
       return data;
     },
     retry: false,
   });
+
   const joining = useMutation({
     mutationFn: async (organizationSlug: string) => {
       const { error } = await authClient.organization.acceptInvitation({ invitationId });
+
       if (error)
         throw new Error(authErrorMessage(error, "Could not join the organization. Try again."));
       await navigate({ to: "/$orgSlug/onboarding", params: { orgSlug: organizationSlug } });
@@ -43,6 +48,7 @@ export function InvitationAccess({
         Loading invitation…
       </p>
     );
+
   return (
     <div className="flex flex-col gap-6">
       {invitation.error ? (
@@ -95,19 +101,24 @@ const signUpSchema = z.object({
 function SignUpForm({ invitationId, email }: { invitationId: string; email: string }) {
   const queryClient = useQueryClient();
   const form = useZodForm(signUpSchema, { defaultValues: { name: "", password: "" } });
+
   const submit = form.handleSubmit(async (values) => {
     form.clearErrors("root.server");
+
     const { error } = await authClient.signUp.email({
       email,
       ...values,
       fetchOptions: { body: { invitationId } },
     });
+
     if (error) {
       form.setError("root.server", {
         message: authErrorMessage(error, "Could not create your account. Try again."),
       });
+
       return;
     }
+
     queryClient.clear();
   });
 

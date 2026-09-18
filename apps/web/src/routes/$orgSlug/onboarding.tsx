@@ -15,9 +15,11 @@ export const Route = createFileRoute("/$orgSlug/onboarding")({
 function OrganizationOnboardingRoute() {
   const { orgSlug } = Route.useParams();
   const membership = useMembership(orgSlug);
+
   const visibleSetup = SETUP_STEPS.filter(({ permission }) =>
     authorize(membership.roles, permission),
   );
+
   const organizationName =
     membership.organizations.find(({ slug }) => slug === orgSlug)?.name ?? orgSlug;
 

@@ -12,7 +12,9 @@
    This is a documented deviation from docs/design.md §5 and lives on `/` only. */
 
 const LIGHT_NOTE = "oklch(0.965 0.03 80)";
+
 const LIGHT_INFO = "oklch(0.962 0.025 253)";
+
 const LIGHT_CLEAR = "oklch(0.958 0.03 155)";
 
 export const WASH_BACKGROUND = [
@@ -41,8 +43,11 @@ export function Wash({ className = "" }: { className?: string }) {
 
    If you are adding an element on top of `<Wash />`, it uses one of these. */
 export const ON_WASH = "text-[oklch(0.145_0_0)]";
+
 export const ON_WASH_MUTED = "text-[oklch(0.145_0_0)]/65";
+
 export const ON_WASH_BUTTON =
   "bg-[oklch(0.205_0_0)] text-[oklch(0.985_0_0)] hover:bg-[oklch(0.205_0_0)]/85";
+
 export const ON_WASH_GHOST =
   "text-[oklch(0.145_0_0)] hover:bg-[oklch(0.145_0_0)]/8 hover:text-[oklch(0.145_0_0)]";

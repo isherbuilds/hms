@@ -68,6 +68,7 @@ const QUOTES: Quote[] = [
    not a claim. */
 export function LandingTestimonials() {
   const [lead, ...rest] = QUOTES;
+
   if (!lead) return null;
 
   return (

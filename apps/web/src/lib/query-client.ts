@@ -7,16 +7,20 @@ import { errorMessage } from "./orpc-error";
 // TanStack's default JSON.stringify hash throws on bigint query keys.
 const keySerializer = new StandardRPCJsonSerializer();
 
-function statusOf(error: unknown): unknown {
-  return typeof error === "object" && error !== null && "status" in error
-    ? (error as { status?: unknown }).status
-    : undefined;
+/** The HTTP status an oRPC or fetch error carries, when it carries one. */
+function statusOf(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null || !("status" in error)) return undefined;
+
+  const status = error.status;
+
+  return typeof status === "number" ? status : undefined;
 }
 
 function recoverFromExpiredSession(error: unknown): void {
   if (environmentManager.isServer() || statusOf(error) !== 401) {
     return;
   }
+
   if (window.location.pathname !== "/login") {
     const here = window.location.pathname + window.location.search;
     window.location.href = `/login?redirect=${encodeURIComponent(here)}`;
@@ -51,6 +55,7 @@ export function createQueryClient() {
           }
 
           const status = statusOf(error);
+
           if (status === 401 || status === 403) {
             return false;
           }

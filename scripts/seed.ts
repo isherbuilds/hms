@@ -28,6 +28,7 @@ const RESETTABLE_DATABASE = /^(postgres|.*_dev|.*_test)$/;
 
 function assertResettableDatabase(): void {
   const name = new URL(env.DATABASE_URL).pathname.slice(1);
+
   if (!RESETTABLE_DATABASE.test(name)) {
     throw new Error(
       `Refusing to drop the schema of database "${name}". ` +
@@ -40,6 +41,7 @@ async function resetSchema(): Promise<void> {
   assertResettableDatabase();
   const client = new pg.Client({ connectionString: env.DATABASE_URL });
   await client.connect();
+
   try {
     await client.query(
       "drop schema public cascade; create schema public; drop schema if exists drizzle cascade;",
@@ -47,19 +49,24 @@ async function resetSchema(): Promise<void> {
   } finally {
     await client.end();
   }
+
   await runMigrations();
 }
 
 async function createUser(email: string, name: string): Promise<Person> {
   const { id } = await createUserWithPassword({ email, name, password: PASSWORD });
+
   const { headers } = await auth.api.signInEmail({
     body: { email, password: PASSWORD },
     returnHeaders: true,
   });
+
   const cookie = headers.get("set-cookie")?.split(";")[0];
+
   if (!cookie) {
     throw new Error(`Sign-in for ${email} returned no session cookie`);
   }
+
   return { email, name, id, headers: new Headers({ cookie }) };
 }
 
@@ -79,9 +86,11 @@ async function createOrg(owner: Person, name: string, slug: string): Promise<str
   const org = await auth.api.createOrganization({
     body: { name, slug, userId: owner.id },
   });
+
   if (!org) {
     throw new Error(`Could not create organization "${name}"`);
   }
+
   return org.id;
 }
 
@@ -101,17 +110,20 @@ async function main(): Promise<void> {
   }
 
   const reset = process.argv.includes("--reset");
+
   if (reset) {
     console.info("Dropping and re-migrating the schema…");
     await resetSchema();
   }
 
   const [existing] = await db.select({ value: count() }).from(user);
+
   if (existing && existing.value > 0) {
     console.info(
       `Database already has ${existing.value} user(s); leaving it alone.\n` +
         "Re-run with `bun run db:seed -- --reset` to wipe and reseed.",
     );
+
     return;
   }
 
@@ -165,4 +177,5 @@ async function main(): Promise<void> {
 }
 
 await main();
+
 process.exit(0);

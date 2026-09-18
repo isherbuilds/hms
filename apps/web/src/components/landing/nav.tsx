@@ -31,6 +31,7 @@ import { FEATURES } from "./features";
    is always after mount. */
 export function ThemeSwitch() {
   const { resolvedTheme, setTheme } = useTheme();
+
   return (
     <button
       type="button"
@@ -106,6 +107,7 @@ export function LandingNav() {
                 // Hover already opened it for a mouse; taps and keyboard toggle.
                 const mouse =
                   "pointerType" in event.nativeEvent && event.nativeEvent.pointerType === "mouse";
+
                 setOpen((value) => (mouse ? true : !value));
               }}
               className={`flex items-center gap-1 ${LINK}`}

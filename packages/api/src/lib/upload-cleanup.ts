@@ -8,6 +8,7 @@ const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 
 function isKeyInOrg(key: string, orgId: string): boolean {
   const segments = key.split("/");
+
   return (
     segments.length === 3 &&
     segments[0] === orgId &&
@@ -35,6 +36,7 @@ export async function cleanupUploads(opts: {
     failed: 0,
     skipped: 0,
   };
+
   const organizations = await db.select({ id: organization.id }).from(organization);
 
   for (const { id: orgId } of organizations) {
@@ -48,13 +50,16 @@ export async function cleanupUploads(opts: {
     // A stale row's object is deleted right here; the orphan pass below must not see
     // it again and count the same object twice.
     const handled = new Set<string>();
+
     for (const { id: key } of staleRows) {
       result.staleRows++;
+
       if (!isKeyInOrg(key, orgId)) {
         result.skipped++;
         console.info(`[skipped invalid key] ${key}`);
         continue;
       }
+
       if (!opts.execute) {
         console.info(`[dry-run stale] ${key}`);
         continue;
@@ -64,12 +69,15 @@ export async function cleanupUploads(opts: {
         .delete(file)
         .where(and(eq(file.id, key), eq(file.orgId, orgId), eq(file.status, "pending")))
         .returning({ id: file.id });
+
       if (!deletedRow) {
         result.skipped++;
         console.info(`[skipped finalized] ${key}`);
         continue;
       }
+
       handled.add(key);
+
       try {
         await deleteObject(key);
         result.deleted++;
@@ -93,11 +101,13 @@ export async function cleanupUploads(opts: {
         console.info(`[skipped invalid key] ${object.key}`);
         continue;
       }
+
       if (existingKeys.has(object.key) || handled.has(object.key)) {
         continue;
       }
 
       result.orphanObjects++;
+
       if (!opts.execute) {
         console.info(`[dry-run orphan] ${object.key}`);
         continue;

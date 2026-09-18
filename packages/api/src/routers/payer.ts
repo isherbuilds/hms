@@ -43,11 +43,13 @@ export const payerRouter = {
       if (!payer) {
         throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Failed to create payer" });
       }
+
       return payer;
     } catch (error) {
       if (uniqueViolationConstraint(error) === "payers_org_name_idx") {
         throw conflict("duplicate", "A payer with this name already exists.");
       }
+
       throw error;
     }
   }),
@@ -66,11 +68,13 @@ export const payerRouter = {
       if (!payer) {
         throw new ORPCError("NOT_FOUND", { message: "That payer no longer exists." });
       }
+
       return payer;
     } catch (error) {
       if (uniqueViolationConstraint(error) === "payers_org_name_idx") {
         throw conflict("duplicate", "A payer with this name already exists.");
       }
+
       throw error;
     }
   }),

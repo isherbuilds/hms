@@ -14,31 +14,24 @@ One tenant seeing another's row is a different class of bug from everything else
 in this repository. This is the checklist for catching it before it ships.
 Invariants: [tenancy and authorization](../../../docs/architecture.md#tenancy-and-authorization)
 and decisions D001, D002, D005, and D008 in the
-[decision log](../../../docs/decisions.md).
+[decision log](../../../docs/decisions.md). Check the diff against every hard
+rule in `AGENTS.md` first; the sections below list only the failure modes those
+rules do not name.
 
 Review the diff, not the whole codebase. Report findings ranked by blast radius:
 a leak first, a denial-path gap second, a convention slip last.
 
 ## 1. The tenant predicate
 
-For every query added or changed:
-
-- Does the `where` contain `eq(table.orgId, context.scope.orgId)`?
-- **Including** queries that already filter by primary key. `eq(t.id, input.id)`
-  alone is the leak — it returns another tenant's row instead of `NOT_FOUND`.
-- Infrastructure tables count. `audit_log` and `file` are org-scoped too.
-- Is a `userId` filter being used _as_ scope? `userId` is attribution. A query
-  scoped only by `userId` is unscoped.
+- Queries that already filter by primary key need the predicate too.
+  `eq(t.id, input.id)` alone is the leak — it returns another tenant's row
+  instead of `NOT_FOUND`.
+- A query scoped only by `userId` is unscoped.
 
 ## 2. The source of scope
 
-- Handlers must read `context.scope.orgId` for authorization and SQL scope.
-- `input.orgSlug` is only a claim; no handler should authorize or predicate a query
-  from the URL, session, or input.
 - The claim is a slug, the proven value is an id. A handler predicating on a slug
   — or a `Scope` carrying one — is a defect.
-- Is every org procedure declared with
-  `orgProcedure(permission, orgInput.extend(...))`?
 
 ## 3. Context and guard
 
@@ -52,23 +45,15 @@ Changes to `packages/api/src/lib/context.ts` or
 - Is `beforeUpdateOrganization` in `packages/auth` still rejecting slug changes?
   A mutable slug would let a rename re-point existing links at another tenant
   (D001 in the [decision log](../../../docs/decisions.md)).
-- Is membership resolved for every org procedure and uncached across requests?
-- Is the permission a required `orgProcedure` constructor argument, with the raw
-  builder unavailable to routers?
 - Is foreign membership still `FORBIDDEN`, with no fallback to the user's only
-  org, last org, or `session.activeOrganizationId`?
+  org or last org?
 - Are role denials audited only after membership is verified?
 - Does a foreign membership claim avoid writing into the claimed tenant's audit
   trail, with no audit side effect during context construction?
 
 ## 4. Roles and permissions
 
-- Permissions defined anywhere other than `packages/auth/src/access.ts`?
-- Did `access.ts` gain a database or environment import? It must stay
-  dependency-free — the client imports it.
-- Any `role.split(",")` outside `parseRoles`? Roles are a **union**; reading the
-  first entry silently drops privileges.
-- Does a role inherit from another instead of stating its grants explicitly?
+- Did `access.ts` gain a database or environment import? The client imports it.
 - Is a client-side permission check being treated as enforcement? Hiding a
   button is cosmetic; the server must re-check.
 
@@ -76,8 +61,7 @@ Changes to `packages/api/src/lib/context.ts` or
 
 - Any new path that serves file bytes through the app server? Bytes go browser
   ↔ SeaweedFS directly.
-- Any unsigned read path, `visibility` flag, or bucket-policy change? Every
-  object is private; presigned URLs only.
+- Any unsigned read path, `visibility` flag, or bucket-policy change?
 - Do new key operations call `assertKeyInScope` before touching the database?
 - Is a presigned URL being logged, or put in an audit `meta` payload? It is a
   bearer credential.
@@ -85,18 +69,15 @@ Changes to `packages/api/src/lib/context.ts` or
 
 ## 6. Web routes
 
-- Do org pages live under `apps/web/src/routes/$orgSlug/`?
-- Do they import the singleton `orpc` and include the route `orgSlug` in every org
-  query, mutation, direct call, and tenant-specific invalidation key?
-- Does the layout keep `ssr: true`, fetch `member.me` in its loader, and isolate
-  every Base UI popup behind `ClientOnly`? The client may reuse a ≤60 s-fresh
+- Does a direct `orpc` call, not only queries and mutations, pass the route
+  `orgSlug`?
+- Does the layout keep `ssr: true`? The client may reuse a ≤60 s-fresh
   membership result for the shell; that is accepted by D008 in the
   [decision log](../../../docs/decisions.md). What is never
   acceptable is a procedure trusting cached membership instead of proving it.
 
 ## 7. Auth surface
 
-- A re-opened sign-up path, or any public path that creates an account?
 - Cookie attributes still `httpOnly` / `secure` / `sameSite: "lax"`?
 - Is the OpenAPI reference still gated off in production?
 

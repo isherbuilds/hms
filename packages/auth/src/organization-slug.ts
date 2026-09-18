@@ -81,11 +81,14 @@ export function organizationSlugIssue(slug: string | undefined): string | null {
   if (!slug || slug.length < ORGANIZATION_SLUG_MIN_LENGTH) {
     return `Organization URL must be at least ${ORGANIZATION_SLUG_MIN_LENGTH} characters.`;
   }
+
   if (RESERVED_ROOT_SLUGS.has(slug.toLowerCase())) {
     return "That organization URL is reserved.";
   }
+
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
     return "Use lowercase letters, numbers, and single hyphens only.";
   }
+
   return null;
 }

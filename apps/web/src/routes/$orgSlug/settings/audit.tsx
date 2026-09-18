@@ -38,6 +38,7 @@ function describeMeta(meta: Record<string, unknown> | null | undefined): string 
         : typeof value === "number" || typeof value === "boolean"
           ? String(value)
           : JSON.stringify(value);
+
     return `${key}=${formatted}`;
   });
 

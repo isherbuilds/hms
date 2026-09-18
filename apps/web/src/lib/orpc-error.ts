@@ -7,28 +7,23 @@ import type { FieldPath, FieldValues, UseFormReturn } from "react-hook-form";
  * code, data code and reason a handler threw are never on the outermost error.
  * The `seen` set stops a self-referential cause from looping forever.
  */
-function* causes(error: unknown): Generator<Record<string, unknown>> {
+function* causes(error: unknown) {
   const seen = new Set<unknown>();
   let current = error;
 
   while (current && typeof current === "object" && !seen.has(current)) {
     seen.add(current);
-    yield current as Record<string, unknown>;
+    yield current;
     current = "cause" in current ? current.cause : undefined;
   }
 }
 
-/** The first `data.<key>` string found on the chain. */
-function dataString(error: unknown, key: string): string | undefined {
+export function hasErrorCode(error: unknown, code: string): boolean {
   for (const link of causes(error)) {
-    const data = link.data;
-    if (data && typeof data === "object" && key in data) {
-      const value = (data as Record<string, unknown>)[key];
-      if (typeof value === "string") return value;
-    }
+    if ("code" in link && link.code === code) return true;
   }
 
-  return undefined;
+  return false;
 }
 
 /** A CONFLICT means the overlay holds a snapshot the server will keep refusing, so it closes. */
@@ -38,23 +33,24 @@ export function closeOnConflict(close: () => void) {
   };
 }
 
-export function hasErrorCode(error: unknown, code: string): boolean {
+/** The first reason supplied by the server; callers match only reasons they handle. */
+export function errorReason(error: unknown): string | undefined {
   for (const link of causes(error)) {
-    if (link.code === code) return true;
+    if (!("data" in link)) continue;
+
+    const data = link.data;
+
+    if (data && typeof data === "object" && "reason" in data && typeof data.reason === "string") {
+      return data.reason;
+    }
   }
 
-  return false;
-}
-
-// Conflict reasons identify field errors that the web client can handle.
-// `ConflictReason` is the server's own union, so a stale name fails to compile.
-export function errorReason(error: unknown): ConflictReason | undefined {
-  return dataString(error, "reason") as ConflictReason | undefined;
+  return undefined;
 }
 
 function isServerFault(error: unknown): boolean {
   for (const link of causes(error)) {
-    if (typeof link.status === "number" && link.status >= 500) return true;
+    if ("status" in link && typeof link.status === "number" && link.status >= 500) return true;
   }
 
   return false;
@@ -69,7 +65,10 @@ function isServerFault(error: unknown): boolean {
  * record the payment" beats the generic default at the moment it actually shows.
  */
 export function errorMessage(error: unknown, fallback = "Something went wrong"): string {
-  if (isServerFault(error)) return fallback;
+  // fetch rejects a dropped connection with a TypeError ("Failed to fetch", "Load
+  // failed"): a browser sentence, not one an operator can act on.
+  if (isServerFault(error) || error instanceof TypeError) return fallback;
+
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
@@ -78,12 +77,15 @@ export function errorMessage(error: unknown, fallback = "Something went wrong"):
 export function applyOrpcFieldError<TFieldValues extends FieldValues, TContext, TTransformedValues>(
   form: UseFormReturn<TFieldValues, TContext, TTransformedValues>,
   error: unknown,
-  map: Partial<Record<ConflictReason, { field: string; message: string }>>,
+  map: Partial<Record<ConflictReason, { field: FieldPath<TFieldValues>; message: string }>>,
 ): string | undefined {
-  const fieldError = map[errorReason(error) as ConflictReason];
+  const reason = errorReason(error);
+  const fieldError = Object.entries(map).find(([key]) => key === reason)?.[1];
+
   if (!fieldError) return undefined;
 
-  form.setError(fieldError.field as FieldPath<TFieldValues>, { message: fieldError.message });
+  form.setError(fieldError.field, { message: fieldError.message });
+
   return fieldError.message;
 }
 

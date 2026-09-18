@@ -20,6 +20,7 @@ const getORPCClient = createIsomorphicFn()
       context: () => {
         const request = getRequest();
         const cached = contextByRequest.get(request);
+
         if (cached) return cached;
 
         const context = createRequestContext(new Headers(request.headers));
@@ -39,4 +40,5 @@ const getORPCClient = createIsomorphicFn()
   });
 
 const client = getORPCClient();
+
 export const orpc = createTanstackQueryUtils(client);

@@ -1,9 +1,3 @@
-type DatabaseError = {
-  cause?: unknown;
-  code?: unknown;
-  constraint?: unknown;
-};
-
 /**
  * Walks an error and its `cause` chain. The driver wraps the Postgres error, so
  * `code` is never on the outermost one. The `seen` set stops a self-referential
@@ -15,11 +9,14 @@ export function uniqueViolationConstraint(error: unknown): string | null | undef
 
   while (current && typeof current === "object" && !seen.has(current)) {
     seen.add(current);
-    const databaseError = current as DatabaseError;
-    if (databaseError.code === "23505") {
-      return typeof databaseError.constraint === "string" ? databaseError.constraint : null;
+
+    if ("code" in current && current.code === "23505") {
+      const constraint = "constraint" in current ? current.constraint : undefined;
+
+      return typeof constraint === "string" ? constraint : null;
     }
-    current = databaseError.cause;
+
+    current = "cause" in current ? current.cause : undefined;
   }
 
   return undefined;

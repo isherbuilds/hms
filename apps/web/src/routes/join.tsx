@@ -28,6 +28,7 @@ function JoinOrganizationRoute() {
       Loading your account…
     </p>
   );
+
   if (error) {
     content = <ErrorNote title="Could not load your account" error={error} />;
   } else if (!isPending && !session) {
@@ -73,14 +74,17 @@ function OrganizationPicker({ userId }: { userId: string }) {
         authClient.organization.list(),
         authClient.organization.listUserInvitations(),
       ]);
+
       if (organizations.error)
         throw new Error(
           authErrorMessage(organizations.error, "Could not load organizations. Try again."),
         );
+
       if (invitations.error)
         throw new Error(
           authErrorMessage(invitations.error, "Could not load invitations. Try again."),
         );
+
       return { organizations: organizations.data, invitations: invitations.data };
     },
   });
@@ -91,11 +95,13 @@ function OrganizationPicker({ userId }: { userId: string }) {
         Loading organizations…
       </p>
     );
+
   if (destinations.error)
     return (
       <ErrorNote title="Could not load organizations and invitations" error={destinations.error} />
     );
   const { organizations, invitations } = destinations.data;
+
   const pending = invitations.filter(
     (invitation) => new Date(invitation.expiresAt).getTime() > Date.now(),
   );
@@ -186,13 +192,16 @@ function OrganizationPicker({ userId }: { userId: string }) {
 
 function SwitchAccount({ email }: { email: string }) {
   const queryClient = useQueryClient();
+
   const signOut = useMutation({
     mutationFn: async () => {
       const { error } = await authClient.signOut();
+
       if (error) throw new Error(authErrorMessage(error, "Could not sign out. Try again."));
       queryClient.clear();
     },
   });
+
   return (
     <div className="flex flex-col gap-2 border-t border-border pt-4">
       <p className="break-all text-xs text-muted-foreground">Signed in as {email}.</p>

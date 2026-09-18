@@ -225,11 +225,12 @@ function MemberResults({ orgSlug, q }: { orgSlug: string; q: string }) {
   const { timeZone } = useOrgDateTime();
   const [confirm, confirmDialog] = useConfirm();
 
-  const members = useQuery(
-    orpc.member.list.queryOptions({
-      input: { orgSlug, limit: MEMBER_PAGE_LIMIT, ...(q ? { q } : {}) },
-    }),
-  );
+  // `q` stays off the input when empty, so the query key matches the unfiltered roster.
+  const listInput = q
+    ? { orgSlug, limit: MEMBER_PAGE_LIMIT, q }
+    : { orgSlug, limit: MEMBER_PAGE_LIMIT };
+
+  const members = useQuery(orpc.member.list.queryOptions({ input: listInput }));
 
   // The roster is readable org-wide; only its actions need the grant.
   const canManage = useCan(orgSlug, { member: ["update", "delete"] });

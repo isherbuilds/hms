@@ -2,6 +2,7 @@ import { auth } from "@hms/auth";
 import type { RoleKey } from "@hms/auth/access";
 import { createUserWithPassword } from "@hms/auth/manual-user";
 import { uniqueSuffix } from "./unique";
+
 export type TestUser = {
   cookie: string;
   headers: Headers;
@@ -22,6 +23,7 @@ export async function createTestUser(prefix: string): Promise<TestUser> {
 
   const setCookie = responseHeaders.get("set-cookie");
   const cookie = setCookie?.split(";")[0];
+
   if (!cookie) {
     throw new Error("Better Auth sign-in did not return a session cookie");
   }
@@ -42,9 +44,11 @@ export async function createOrganization(
   const organization = await auth.api.createOrganization({
     body: { name, slug: `${name}-${uniqueSuffix()}`, userId: owner.user.id },
   });
+
   if (!organization) {
     throw new Error(`Failed to create organization "${name}"`);
   }
+
   return { id: organization.id, slug: organization.slug };
 }
 

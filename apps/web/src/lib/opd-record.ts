@@ -14,6 +14,7 @@ export const OpdRecordContext = createContext<{
 
 export function useOpdRecord() {
   const value = useContext(OpdRecordContext);
+
   if (!value) {
     throw new Error("useOpdRecord is only available under the outpatient appointment layout");
   }

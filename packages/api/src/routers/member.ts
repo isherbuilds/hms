@@ -77,6 +77,7 @@ export const memberRouter = {
     // An invitation id creates the invited account (D006), so only members who
     // could have issued it get the rows and their links.
     const canInvite = authorize(roles, { invitation: ["create"] });
+
     const [members, invited] = await Promise.all([
       db
         .select({

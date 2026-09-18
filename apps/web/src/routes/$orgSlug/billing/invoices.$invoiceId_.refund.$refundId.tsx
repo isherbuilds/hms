@@ -9,6 +9,7 @@ export const Route = createFileRoute("/$orgSlug/billing/invoices/$invoiceId_/ref
 
 function RefundDocumentRoute() {
   const { orgSlug, invoiceId, refundId } = Route.useParams();
+
   return (
     <BillingDocumentRoute
       orgSlug={orgSlug}

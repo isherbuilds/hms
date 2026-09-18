@@ -12,6 +12,7 @@ import type { ShotName } from "./product-window";
 
 export function LandingFaq({ feature }: { feature?: ShotName }) {
   const items = feature ? FAQS.filter((item) => item.features.includes(feature)) : FAQS;
+
   return (
     /* `scroll-mt` clears the sticky bar the header's "Questions" link lands under. */
     <section

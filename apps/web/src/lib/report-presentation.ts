@@ -4,11 +4,13 @@ export function validateReportPeriod(
   maximumDays?: number,
 ): string | null {
   if (!from || !to) return "Choose both dates";
+
   if (from > to) return "From must be on or before To";
 
   if (maximumDays !== undefined) {
     const inclusiveDays =
       (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000 + 1;
+
     if (inclusiveDays > maximumDays) return `Choose a range of ${maximumDays} days or less`;
   }
 
@@ -48,4 +50,5 @@ function printCss(page: "A4 portrait" | "A4 landscape", margin: string): string 
 }
 
 export const REPORT_PRINT_PORTRAIT_CSS = printCss("A4 portrait", "10mm");
+
 export const REPORT_PRINT_LANDSCAPE_CSS = printCss("A4 landscape", "8mm");

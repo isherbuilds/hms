@@ -35,8 +35,10 @@ export function PatientSheet({
   // screen, and re-keying then resets the form under the operator mid-exit.
   const [opens, setOpens] = useState(0);
   const [wasOpen, setWasOpen] = useState(open);
+
   if (wasOpen !== open) {
     setWasOpen(open);
+
     if (open) setOpens(opens + 1);
   }
 
@@ -48,6 +50,7 @@ export function PatientSheet({
   // `data-dirty` is still set while the panel animates out, so this tells an
   // in-flight close from a real attempt to leave with unsaved work.
   const leaving = useRef(false);
+
   const blocker = useBlocker({
     shouldBlockFn: () => isDirty() && !leaving.current,
     enableBeforeUnload: () => isDirty() && !leaving.current,

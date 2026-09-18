@@ -38,10 +38,12 @@ export const Route = createFileRoute("/$orgSlug/reports/balance-sheet")({
       { report: ["readFinancial"] },
       "/$orgSlug/dashboard",
     );
+
     const asOf = deps.asOf ?? today(timeZone);
     await loadRouteQuery(
       queryClient.query(orpc.report.balanceSheet.queryOptions({ input: { orgSlug, asOf } })),
     );
+
     return { asOf };
   },
   component: BalanceSheetRoute,
@@ -60,6 +62,7 @@ function BalanceSheetRoute() {
     if (!next) return;
     void navigate({ search: (current) => ({ ...current, asOf: next }), replace: true });
   };
+
   // Both are canonical two-decimal strings from the server, so compare them as such.
   const mismatched =
     report.data !== undefined &&

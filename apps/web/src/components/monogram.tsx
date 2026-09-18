@@ -2,6 +2,7 @@ import { cn } from "@hms/ui/lib/utils";
 
 export function Monogram({ label, tone = "muted" }: { label: string; tone?: "muted" | "accent" }) {
   const words = label.split(/[\s@._-]+/).filter(Boolean);
+
   return (
     <span
       aria-hidden

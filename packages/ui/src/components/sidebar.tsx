@@ -19,10 +19,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@hms/ui/components/tool
 import { PanelLeftIcon } from "lucide-react";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
+
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+
 const SIDEBAR_WIDTH = "16rem";
+
 const SIDEBAR_WIDTH_MOBILE = "18rem";
+
 const SIDEBAR_WIDTH_ICON = "3rem";
+
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 type SidebarContextProps = {
@@ -39,6 +44,7 @@ const SidebarContext = React.createContext<SidebarContextProps | null>(null);
 
 function useSidebar() {
   const context = React.useContext(SidebarContext);
+
   if (!context) {
     throw new Error("useSidebar must be used within a SidebarProvider.");
   }
@@ -64,9 +70,11 @@ function SidebarProvider({
 
   const [_open, _setOpen] = React.useState(defaultOpen);
   const open = openProp ?? _open;
+
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
       const openState = typeof value === "function" ? value(open) : value;
+
       if (setOpenProp) {
         setOpenProp(openState);
       } else {
@@ -81,8 +89,10 @@ function SidebarProvider({
   const toggleSidebar = React.useCallback(() => {
     if (isMobile) {
       setOpenMobile((open) => !open);
+
       return;
     }
+
     setOpen((open) => !open);
   }, [isMobile, setOpen]);
 
@@ -95,10 +105,12 @@ function SidebarProvider({
     };
 
     window.addEventListener("keydown", handleKeyDown);
+
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [toggleSidebar]);
 
   const state = open ? "expanded" : "collapsed";
+
   // Memoised: this provider wraps every org page, so an unstable value would
   // re-render every `useSidebar` consumer on each render of the tree above it.
   const contextValue = React.useMemo<SidebarContextProps>(
@@ -111,6 +123,7 @@ function SidebarProvider({
       <div
         data-slot="sidebar-wrapper"
         style={
+          // SAFETY: CSS custom properties accept these string values; CSSProperties omits custom keys.
           {
             "--sidebar-width": SIDEBAR_WIDTH,
             "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
@@ -169,6 +182,7 @@ function Sidebar({
           data-mobile="true"
           className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
           style={
+            // SAFETY: This CSS custom property accepts a string width.
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
             } as React.CSSProperties
@@ -430,6 +444,7 @@ function SidebarMenuButton({
     tooltip?: string | React.ComponentProps<typeof TooltipContent>;
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const { isMobile, state } = useSidebar();
+
   const comp = useRender({
     defaultTagName: "button",
     props: mergeProps<"button">(

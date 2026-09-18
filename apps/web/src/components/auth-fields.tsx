@@ -73,6 +73,7 @@ export function AuthFormFooter({ children }: { children: ReactNode }) {
   const { control } = useFormContext();
   const { errors, isSubmitting } = useFormState({ control });
   const message = errors.root?.server?.message;
+
   return (
     <>
       {message && <ErrorNote title={message} />}

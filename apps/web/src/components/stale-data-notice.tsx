@@ -11,11 +11,13 @@ export function StaleDataNotice({ dataUpdatedAt }: { dataUpdatedAt: number }) {
   useEffect(() => {
     setNow(Date.now());
     const tick = window.setInterval(() => setNow(Date.now()), 5_000);
+
     return () => window.clearInterval(tick);
   }, []);
 
   if (now === null || dataUpdatedAt === 0) return null;
   const ageMs = now - dataUpdatedAt;
+
   if (ageMs < STALE_AFTER_MS) return null;
 
   const minutes = Math.floor(ageMs / 60_000);

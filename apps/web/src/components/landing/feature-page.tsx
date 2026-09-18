@@ -81,6 +81,7 @@ export function FeaturePage({
         <section className="mx-auto flex w-full max-w-[84rem] flex-col gap-8 px-5 pt-16 sm:gap-16 sm:px-6">
           {crops.map((crop, i) => {
             const textRight = i % 2 === 1;
+
             return (
               <div
                 key={crop.claim}

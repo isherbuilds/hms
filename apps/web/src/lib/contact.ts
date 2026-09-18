@@ -9,4 +9,5 @@ export const WHATSAPP_URL = `https://wa.me/${env.VITE_WHATSAPP_NUMBER}?text=${en
 )}`;
 
 export const CONTACT_EMAIL = env.VITE_CONTACT_EMAIL;
+
 export const CONTACT_MAILTO = `mailto:${env.VITE_CONTACT_EMAIL}`;

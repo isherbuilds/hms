@@ -28,6 +28,7 @@ test("a file is uploaded, finalized, read only via a signature, and deleted", as
   const api = clientFor(owner);
 
   const body = "the quick brown fox";
+
   const upload = await api.file.createUpload({
     orgSlug: org.slug,
     name: "notes.txt",
@@ -47,6 +48,7 @@ test("a file is uploaded, finalized, read only via a signature, and deleted", as
     orgSlug: org.slug,
     key: upload.key,
   });
+
   expect(finalized.status).toBe("ready");
 
   await expectORPCCode(
@@ -87,6 +89,7 @@ test("another org's file key is FORBIDDEN, not merely missing", async () => {
     name: "chart.txt",
     size: 5,
   });
+
   await putBytes(upload.uploadUrl, "chart", "text/plain");
   await aliceApi.file.finalizeUpload({ orgSlug: alpha.slug, key: upload.key });
 
@@ -120,6 +123,7 @@ test("a plain member cannot delete a file, an admin in the same org can", async 
     name: "policy.txt",
     size: 6,
   });
+
   await putBytes(upload.uploadUrl, "policy", "text/plain");
   await ownerApi.file.finalizeUpload({ orgSlug: org.slug, key: upload.key });
 
@@ -146,6 +150,7 @@ test("upload cleanup preserves dry runs and ready files while deleting stale upl
     name: "abandoned.txt",
     size: 1,
   });
+
   await db
     .update(file)
     .set({ createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000) })
@@ -156,6 +161,7 @@ test("upload cleanup preserves dry runs and ready files while deleting stale upl
     name: "ready.txt",
     size: 5,
   });
+
   await putBytes(ready.uploadUrl, "ready", "text/plain");
   await api.file.finalizeUpload({ orgSlug: org.slug, key: ready.key });
 
@@ -164,6 +170,7 @@ test("upload cleanup preserves dry runs and ready files while deleting stale upl
     name: "orphan.txt",
     size: 6,
   });
+
   await putBytes(orphan.uploadUrl, "orphan", "text/plain");
   await db.delete(file).where(and(eq(file.id, orphan.key), eq(file.orgId, org.id)));
 
@@ -177,9 +184,11 @@ test("upload cleanup preserves dry runs and ready files while deleting stale upl
   });
 
   const keysAfterDryRun: string[] = [];
+
   for await (const object of listObjects(`${org.id}/`)) {
     keysAfterDryRun.push(object.key);
   }
+
   expect(keysAfterDryRun).toContain(orphan.key);
 
   expect(await cleanupUploads({ olderThan, execute: true })).toEqual({
@@ -198,8 +207,10 @@ test("upload cleanup preserves dry runs and ready files while deleting stale upl
   ).toEqual([{ id: ready.key, status: "ready" }]);
 
   const keysAfterCleanup: string[] = [];
+
   for await (const object of listObjects(`${org.id}/`)) {
     keysAfterCleanup.push(object.key);
   }
+
   expect(keysAfterCleanup).not.toContain(orphan.key);
 });

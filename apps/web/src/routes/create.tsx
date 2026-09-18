@@ -25,6 +25,7 @@ export const Route = createFileRoute("/create")({
   ssr: false,
   beforeLoad: async ({ location }) => {
     const session = await authClient.getSession();
+
     if (!session.data) {
       throw redirect({ to: "/login", search: { redirect: location.href } });
     }
@@ -46,6 +47,7 @@ const createOrganizationSchema = z.object({
     .transform(slugFrom)
     .superRefine((slug, context) => {
       const message = organizationSlugIssue(slug);
+
       if (message) context.addIssue({ code: "custom", message });
     }),
 });
@@ -73,6 +75,7 @@ function CreateOrganizationRoute() {
 function CreateOrganizationForm() {
   const navigate = useNavigate();
   const slugEdited = useRef(false);
+
   const form = useZodForm(createOrganizationSchema, {
     defaultValues: { organizationName: "", organizationSlug: "" },
   });
@@ -89,11 +92,13 @@ function CreateOrganizationForm() {
       const taken =
         error.code === "ORGANIZATION_SLUG_ALREADY_TAKEN" ||
         error.code === "ORGANIZATION_ALREADY_EXISTS";
+
       form.setError("root.server", {
         message: taken
           ? `The address "${organizationSlug}" is already taken. Try another.`
           : error.message || "This organization could not be created.",
       });
+
       return;
     }
 

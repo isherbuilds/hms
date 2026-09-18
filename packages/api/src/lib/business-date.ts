@@ -28,6 +28,7 @@ function localMinuteKey(instant: number, formatter: Intl.DateTimeFormat): string
       .filter((part) => part.type !== "literal")
       .map((part) => [part.type, part.value]),
   );
+
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 }
 
@@ -43,6 +44,7 @@ export function localDateTime(value: string, timeZone: string): Date {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
     throw new Error(`Invalid local date and time ${value}`);
   }
+
   const formatter = dateTimeFormatter(timeZone);
   const nominal = Date.parse(`${value}:00Z`);
   let before = nominal - SEARCH_RADIUS_MS;
@@ -54,6 +56,7 @@ export function localDateTime(value: string, timeZone: string): Date {
 
   while (atOrAfter - before > 1) {
     const candidate = before + Math.floor((atOrAfter - before) / 2);
+
     if (localMinuteKey(candidate, formatter) < value) before = candidate;
     else atOrAfter = candidate;
   }
@@ -61,6 +64,7 @@ export function localDateTime(value: string, timeZone: string): Date {
   if (localMinuteKey(atOrAfter, formatter) !== value) {
     throw new Error(`Local date and time ${value} does not exist in ${timeZone}`);
   }
+
   return new Date(atOrAfter);
 }
 

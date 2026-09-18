@@ -1,7 +1,7 @@
 import { db } from "@hms/db";
 import { account, user } from "@hms/db/schema/auth";
-import { createLocalAccountIssuer } from "better-auth/db";
 import { hashPassword } from "better-auth/crypto";
+
 // Mirrors what Better Auth's sign-up endpoint does internally — one `user` row and
 // one credential `account` row — so `signIn.email` accepts the account unchanged.
 // `emailVerified` is set so a future Google sign-in links instead of being rejected.
@@ -24,19 +24,19 @@ export async function createUserWithPassword(input: {
         emailVerified: true,
       })
       .returning({ id: user.id });
+
     if (!row) {
       throw new Error(`Failed to create user ${input.email}`);
     }
+
     await tx.insert(account).values({
       id: Bun.randomUUIDv7(),
       userId: id,
       accountId: id,
       providerId: "credential",
-      // The synthetic issuer Better Auth 1.7's sign-in filters credential
-      // accounts by; without it the account cannot authenticate.
-      issuer: createLocalAccountIssuer("credential"),
       password,
     });
+
     return row;
   });
 

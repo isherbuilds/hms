@@ -12,12 +12,13 @@ import { and, eq, sql } from "drizzle-orm";
 import { createOrganization, createTestUser, joinOrganization } from "../support/auth";
 import { clientFor, eventually, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
+
 beforeAll(async () => {
   await resetTestDatabase();
 });
 
 function registration(orgSlug: string, name: string, phone: string, uid?: string) {
-  return {
+  const fields = {
     orgSlug,
     name,
     phone,
@@ -25,8 +26,9 @@ function registration(orgSlug: string, name: string, phone: string, uid?: string
     dateOfBirth: "1996-08-27",
     dobEstimated: true,
     address: "",
-    ...(uid ? { uid } : {}),
   };
+
+  return uid ? { ...fields, uid } : fields;
 }
 
 test("MRNs increment within an organization and start independently per organization", async () => {
@@ -63,6 +65,7 @@ test("registration uses the organization's configured MRN prefix", async () => {
   const patient = await api.patient.register(
     registration(organization.slug, "Prefixed Patient", "5550100"),
   );
+
   expect(patient.mrn).toBe("HMS-000001");
 });
 
@@ -85,6 +88,7 @@ test("register allows family members with the same phone and different names", a
   const parent = await api.patient.register(
     registration(organization.slug, "Family Parent", "5550151"),
   );
+
   const child = await api.patient.register(
     registration(organization.slug, "Family Child", "5550151"),
   );
@@ -113,9 +117,11 @@ test("register permits case-only name differences with the same phone", async ()
   const first = await api.patient.register(
     registration(organization.slug, "Case Patient", "5550153"),
   );
+
   const second = await api.patient.register(
     registration(organization.slug, "case patient", "5550153"),
   );
+
   expect(second.id).not.toBe(first.id);
 });
 
@@ -144,6 +150,7 @@ test("search matches name and MRN substrings and keyset pagination has no duplic
   const alice = await api.patient.register(
     registration(organization.slug, "Alice Wonderland", "5550300"),
   );
+
   const byName = await api.patient.search({ orgSlug: organization.slug, query: "liCe" });
   expect(byName.items.map((patient) => patient.id)).toContain(alice.id);
 
@@ -151,21 +158,25 @@ test("search matches name and MRN substrings and keyset pagination has no duplic
   expect(byMrn.items.map((patient) => patient.id)).toContain(alice.id);
 
   const registeredIds = [alice.id];
+
   for (let index = 1; index < 5; index++) {
     const patient = await api.patient.register(
       registration(organization.slug, `Paged Patient ${index}`, `55503${index}`),
     );
+
     registeredIds.push(patient.id);
   }
 
   const seenIds: string[] = [];
   let cursor: string | undefined;
+
   do {
-    const page = await api.patient.search({
-      orgSlug: organization.slug,
-      limit: 2,
-      ...(cursor ? { cursor } : {}),
-    });
+    const page = await api.patient.search(
+      cursor
+        ? { orgSlug: organization.slug, limit: 2, cursor }
+        : { orgSlug: organization.slug, limit: 2 },
+    );
+
     expect(page.items.length).toBeLessThanOrEqual(2);
     seenIds.push(...page.items.map((patient) => patient.id));
     cursor = page.nextCursor ?? undefined;
@@ -179,11 +190,13 @@ test("update changes demographics without changing identity or consuming an MRN"
   const owner = await createTestUser("patient-update");
   const organization = await createOrganization(owner, "patient-update");
   const api = clientFor(owner);
+
   const original = await api.patient.register(
     registration(organization.slug, "Before Update", "5550400"),
   );
 
   await Bun.sleep(2);
+
   const updated = await api.patient.update({
     orgSlug: organization.slug,
     patientId: original.id,
@@ -214,6 +227,7 @@ test("update changes demographics without changing identity or consuming an MRN"
   const next = await api.patient.register(
     registration(organization.slug, "After Counter Check", "5550402"),
   );
+
   expect(next.mrn).toBe("000002");
 
   const missingId = Bun.randomUUIDv7();
@@ -242,11 +256,13 @@ test("patient sponsor round-trips, can be removed, and rejects a foreign payer",
   const organization = await createOrganization(owner, "patient-sponsor");
   const otherOrganization = await createOrganization(owner, "patient-sponsor-foreign");
   const api = clientFor(owner);
+
   const sponsor = await api.payer.create({
     orgSlug: organization.slug,
     name: "Acme Health",
     type: "insurer",
   });
+
   const foreignSponsor = await api.payer.create({
     orgSlug: otherOrganization.slug,
     name: "Foreign Employer",
@@ -261,10 +277,12 @@ test("patient sponsor round-trips, can be removed, and rejects a foreign payer",
       employeeNumber: "EMP-7",
     },
   });
+
   const loaded = await api.patient.get({
     orgSlug: organization.slug,
     patientId: registered.id,
   });
+
   expect(loaded.sponsor).toEqual({
     payerId: sponsor.id,
     payerName: "Acme Health",
@@ -281,6 +299,7 @@ test("patient sponsor round-trips, can be removed, and rejects a foreign payer",
       employeeNumber: "EMP-8",
     },
   });
+
   expect(
     await api.patient.get({ orgSlug: organization.slug, patientId: registered.id }),
   ).toMatchObject({
@@ -295,6 +314,7 @@ test("patient sponsor round-trips, can be removed, and rejects a foreign payer",
     ...updateInput(organization.slug, registered.id, updated.updatedAt, "Sponsored Patient"),
     sponsor: null,
   });
+
   expect(
     await api.patient.get({ orgSlug: organization.slug, patientId: registered.id }),
   ).toMatchObject({ sponsor: null });
@@ -342,6 +362,7 @@ test("new patient fields round-trip and unknown sex is accepted", async () => {
     guardian: { relation: "W/o", name: "gurmeet SINGH", phone: "5550554" },
     emergencyContact: { name: "harpreet kaur", phone: "5550551" },
   });
+
   const patient = await api.patient.get({
     orgSlug: organization.slug,
     patientId: registered.id,
@@ -404,6 +425,7 @@ test("UID is unique within an organization but reusable in another organization"
     ...registration(two.slug, "UID Other Org", "5550562"),
     uid: "SHARED-UID",
   });
+
   expect(otherOrgPatient.orgId).toBe(two.id);
   expect(otherOrgPatient.uid).toBe("SHARED-UID");
 });
@@ -412,16 +434,19 @@ test("register and update successes are written to the audit trail", async () =>
   const owner = await createTestUser("patient-audit");
   const organization = await createOrganization(owner, "patient-audit");
   const api = clientFor(owner);
+
   const patient = await api.patient.register(
     registration(organization.slug, "Audited Patient", "5550600"),
   );
 
   const registered = await eventually(async () => {
     const audit = await api.audit.list({ orgSlug: organization.slug });
+
     return audit.items.find(
       (entry) => entry.action === "patient.register" && entry.target === `patient:${patient.id}`,
     );
   });
+
   expect(registered.actorId).toBe(owner.user.id);
   expect(registered.orgId).toBe(organization.id);
 
@@ -439,10 +464,12 @@ test("register and update successes are written to the audit trail", async () =>
 
   const updated = await eventually(async () => {
     const audit = await api.audit.list({ orgSlug: organization.slug });
+
     return audit.items.find(
       (entry) => entry.action === "patient.update" && entry.target === `patient:${patient.id}`,
     );
   });
+
   expect(updated.actorId).toBe(owner.user.id);
   expect(updated.orgId).toBe(organization.id);
 });
@@ -452,6 +479,7 @@ test("phone lookup ignores formatting and preserves stored display text", async 
   const organization = await createOrganization(owner, "patient-phone-format");
   const api = clientFor(owner);
   const storedPhone = "98765-43210";
+
   const patient = await api.patient.register(
     registration(organization.slug, "Formatted Phone", storedPhone),
   );
@@ -466,6 +494,7 @@ test("phone lookup ignores formatting and preserves stored display text", async 
     orgSlug: organization.slug,
     query: "98765 43210",
   });
+
   expect(generic.items.map((item) => item.id)).toContain(patient.id);
 
   const loaded = await api.patient.get({ orgSlug: organization.slug, patientId: patient.id });
@@ -519,12 +548,14 @@ test("patient registration persists one birth model and exposes no legacy age", 
     .from(patients)
     .where(and(eq(patients.orgId, organization.id), eq(patients.id, registered.id)))
     .limit(1);
+
   expect(stored).toEqual({ dateOfBirth: "1992-08-27", dobEstimated: true });
 
   const loaded = await api.patient.get({
     orgSlug: organization.slug,
     patientId: registered.id,
   });
+
   expect(loaded).toMatchObject({ dateOfBirth: "1992-08-27", dobEstimated: true });
   expect("ageYears" in loaded).toBe(false);
 });
@@ -553,6 +584,7 @@ test("patient search only returns a cursor when another matching row exists", as
     query: "Exact Boundary",
     limit,
   });
+
   expect(exactPage.items).toHaveLength(limit);
   expect(exactPage.items.every((patient) => patient.name.startsWith("exact boundary"))).toBe(true);
   expect(exactPage.nextCursor).toBeNull();
@@ -562,6 +594,7 @@ test("patient search only returns a cursor when another matching row exists", as
     query: "Overflow Boundary",
     limit,
   });
+
   expect(firstOverflowPage.items).toHaveLength(limit);
   expect(
     firstOverflowPage.items.every((patient) => patient.name.startsWith("overflow boundary")),
@@ -569,6 +602,7 @@ test("patient search only returns a cursor when another matching row exists", as
   expect(firstOverflowPage.nextCursor).not.toBeNull();
 
   const nextCursor = firstOverflowPage.nextCursor;
+
   if (!nextCursor) {
     throw new Error("Expected another page for limit + 1 matching patients");
   }
@@ -579,6 +613,7 @@ test("patient search only returns a cursor when another matching row exists", as
     limit,
     cursor: nextCursor,
   });
+
   expect(secondOverflowPage.items).toHaveLength(1);
   expect(secondOverflowPage.items[0]?.name).toMatch(/^overflow boundary/);
   expect(secondOverflowPage.nextCursor).toBeNull();
@@ -592,6 +627,7 @@ test("pagination keeps rows that share a creation millisecond", async () => {
   // `defaultNow()` stores microseconds; the id-only keyset never compares
   // timestamps, so same-millisecond rows can neither vanish nor repeat.
   const ids = [1, 2, 3].map(() => Bun.randomUUIDv7());
+
   const rows = ids.map((id, index) => ({
     id,
     orgId: organization.id,
@@ -604,17 +640,16 @@ test("pagination keeps rows that share a creation millisecond", async () => {
     address: "",
     createdAt: sql`${`2026-08-24T05:00:00.500${String(index + 1).padStart(3, "0")}Z`}::timestamptz`,
   }));
+
   await db.insert(patients).values(rows);
 
   const seen: string[] = [];
   let cursor: string | null = null;
+
   do {
-    const page = await api.patient.search({
-      orgSlug: organization.slug,
-      query: "Micro Boundary",
-      limit: 1,
-      ...(cursor ? { cursor } : {}),
-    });
+    const search = { orgSlug: organization.slug, query: "Micro Boundary", limit: 1 };
+    const page = await api.patient.search(cursor ? { ...search, cursor } : search);
+
     seen.push(...page.items.map((patient) => patient.id));
     cursor = page.nextCursor;
   } while (cursor);
@@ -642,12 +677,11 @@ test("file list only returns a cursor when another row exists and keeps same-mil
 
   const seen: string[] = [];
   let cursor: { createdAt: string; id: string } | null = null;
+
   do {
-    const page = await api.file.list({
-      orgSlug: organization.slug,
-      limit: 1,
-      ...(cursor ? { cursor } : {}),
-    });
+    const list = { orgSlug: organization.slug, limit: 1 };
+    const page = await api.file.list(cursor ? { ...list, cursor } : list);
+
     seen.push(...page.items.map((item) => item.name));
     cursor = page.nextCursor;
   } while (cursor);
@@ -666,7 +700,7 @@ function updateInput(
   name: string,
   uid?: string,
 ) {
-  return {
+  const fields = {
     orgSlug,
     patientId,
     updatedAt,
@@ -676,8 +710,9 @@ function updateInput(
     dateOfBirth: "1991-02-03",
     dobEstimated: false,
     address: "Updated address",
-    ...(uid ? { uid } : {}),
   };
+
+  return uid ? { ...fields, uid } : fields;
 }
 
 type RejectedCall = {
@@ -690,8 +725,11 @@ async function rejected(call: Promise<unknown>): Promise<RejectedCall> {
   try {
     await call;
   } catch (error) {
+    // SAFETY: the caller awaits a patient procedure, whose rejection is always an
+    // ORPCError carrying the RejectedCall fields; the throw below covers a resolve.
     return error as RejectedCall;
   }
+
   throw new Error("Expected patient call to reject");
 }
 
@@ -699,9 +737,11 @@ test("fresh CAS succeeds while stale and missing updates emit no success audit",
   const owner = await createTestUser("patient-cas");
   const organization = await createOrganization(owner, "patient-cas");
   const api = clientFor(owner);
+
   const registered = await api.patient.register(
     registration(organization.slug, "Before CAS", "555-2100"),
   );
+
   const loaded = await api.patient.get({
     orgSlug: organization.slug,
     patientId: registered.id,
@@ -710,6 +750,7 @@ test("fresh CAS succeeds while stale and missing updates emit no success audit",
   const updated = await api.patient.update(
     updateInput(organization.slug, registered.id, loaded.updatedAt, "Winning Update"),
   );
+
   expect(updated.name).toBe("winning update");
   expect(updated.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   expect(updated.updatedAt).not.toBe(loaded.updatedAt);
@@ -719,6 +760,7 @@ test("fresh CAS succeeds while stale and missing updates emit no success audit",
       updateInput(organization.slug, registered.id, loaded.updatedAt, "Stale Update"),
     ),
   );
+
   expect(stale.code).toBe("CONFLICT");
   expect(stale.message).toBe("This patient changed after you opened it.");
   expect(stale.data?.reason).toBe("stale_record");
@@ -733,6 +775,7 @@ test("fresh CAS succeeds while stale and missing updates emit no success audit",
       ),
     ),
   );
+
   expect(missing.code).toBe("CONFLICT");
   expect(missing.data?.reason).toBe("stale_record");
 
@@ -740,9 +783,11 @@ test("fresh CAS succeeds while stale and missing updates emit no success audit",
     orgSlug: organization.slug,
     patientId: registered.id,
   });
+
   expect(winner.name).toBe("winning update");
 
   await drainAuditWrites();
+
   const updateAudits = await db
     .select({ action: auditLog.action })
     .from(auditLog)
@@ -753,6 +798,7 @@ test("fresh CAS succeeds while stale and missing updates emit no success audit",
         eq(auditLog.target, `patient:${registered.id}`),
       ),
     );
+
   expect(updateAudits).toHaveLength(1);
 });
 
@@ -760,6 +806,7 @@ test("the millisecond floor gives consecutive successful writes distinct tokens"
   const owner = await createTestUser("patient-cas-floor");
   const organization = await createOrganization(owner, "patient-cas-floor");
   const api = clientFor(owner);
+
   const registered = await api.patient.register(
     registration(organization.slug, "Token Floor", "555-2300"),
   );
@@ -773,6 +820,7 @@ test("the millisecond floor gives consecutive successful writes distinct tokens"
   const first = await api.patient.update(
     updateInput(organization.slug, registered.id, futureToken, "First Floor Update"),
   );
+
   const second = await api.patient.update(
     updateInput(organization.slug, registered.id, first.updatedAt, "Second Floor Update"),
   );
@@ -785,6 +833,7 @@ test("a legacy microsecond timestamp is exposed and compared as a millisecond to
   const owner = await createTestUser("patient-cas-legacy-token");
   const organization = await createOrganization(owner, "patient-cas-legacy-token");
   const api = clientFor(owner);
+
   const registered = await api.patient.register(
     registration(organization.slug, "Legacy Token", "555-2400"),
   );
@@ -794,15 +843,18 @@ test("a legacy microsecond timestamp is exposed and compared as a millisecond to
     set updated_at = '2026-08-27T10:11:12.123456Z'::timestamptz
     where ${patients.orgId} = ${organization.id} and ${patients.id} = ${registered.id}
   `);
+
   const loaded = await api.patient.get({
     orgSlug: organization.slug,
     patientId: registered.id,
   });
+
   expect(loaded.updatedAt).toBe("2026-08-27T10:11:12.123Z");
 
   const updated = await api.patient.update(
     updateInput(organization.slug, registered.id, loaded.updatedAt, "Normalized Token Update"),
   );
+
   expect(updated.name).toBe("normalized token update");
   expect(updated.updatedAt).toMatch(/\.\d{3}Z$/);
 });
@@ -811,6 +863,7 @@ test("only the patient UID constraint receives the uid_taken discriminator", asy
   const owner = await createTestUser("patient-uid-conflict");
   const organization = await createOrganization(owner, "patient-uid-conflict");
   const api = clientFor(owner);
+
   const first = await api.patient.register(
     registration(organization.slug, "First UID", "555-2500", "SHARED-UID"),
   );
@@ -818,6 +871,7 @@ test("only the patient UID constraint receives the uid_taken discriminator", asy
   const createConflict = await rejected(
     api.patient.register(registration(organization.slug, "Second UID", "555-2501", "SHARED-UID")),
   );
+
   expect(createConflict.code).toBe("CONFLICT");
   expect(createConflict.message).toBe("A patient with this UID already exists.");
   expect(createConflict.data?.reason).toBe("uid_taken");
@@ -826,11 +880,13 @@ test("only the patient UID constraint receives the uid_taken discriminator", asy
     .update(counter)
     .set({ value: 0 })
     .where(and(eq(counter.orgId, organization.id), eq(counter.key, "mrn")));
+
   const otherConstraint = await rejected(
     api.patient.register(
       registration(organization.slug, "MRN Collision", "555-2503", "UNIQUE-UID"),
     ),
   );
+
   expect(otherConstraint.code).toBe("CONFLICT");
   expect(otherConstraint.data?.reason).toBeUndefined();
   await db
@@ -841,15 +897,18 @@ test("only the patient UID constraint receives the uid_taken discriminator", asy
   const second = await api.patient.register(
     registration(organization.slug, "Update UID", "555-2502", "OTHER-UID"),
   );
+
   const loaded = await api.patient.get({
     orgSlug: organization.slug,
     patientId: second.id,
   });
+
   const updateConflict = await rejected(
     api.patient.update(
       updateInput(organization.slug, second.id, loaded.updatedAt, "Update UID", "SHARED-UID"),
     ),
   );
+
   expect(updateConflict.code).toBe("CONFLICT");
   expect(updateConflict.message).toBe("A patient with this UID already exists.");
   expect(updateConflict.data?.reason).toBe("uid_taken");
@@ -858,5 +917,6 @@ test("only the patient UID constraint receives the uid_taken discriminator", asy
     orgSlug: organization.slug,
     patientId: first.id,
   });
+
   expect(unchanged.uid).toBe("SHARED-UID");
 });

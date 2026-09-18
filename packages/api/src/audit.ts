@@ -15,6 +15,7 @@ export function audit(entry: AuditEntry): void {
       () => undefined,
       (error: unknown) => console.error(`audit write failed: ${entry.action}`, error),
     );
+
   pendingWrites.add(write);
   void write.finally(() => pendingWrites.delete(write));
 }

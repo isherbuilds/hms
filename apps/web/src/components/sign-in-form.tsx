@@ -18,12 +18,15 @@ export function SignInForm({ email, onSuccess }: { email?: string; onSuccess?: (
   const submit = form.handleSubmit(async (values) => {
     form.clearErrors("root.server");
     const { error } = await authClient.signIn.email(values);
+
     if (error) {
       form.setError("root.server", {
         message: authErrorMessage(error, "Could not sign in. Try again."),
       });
+
       return;
     }
+
     // A previous account's responses must not survive into this session.
     queryClient.clear();
     onSuccess?.();

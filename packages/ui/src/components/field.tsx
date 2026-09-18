@@ -99,11 +99,13 @@ function renderFieldErrors(
   if (children) {
     return children;
   }
+
   if (!errors?.length) {
     return null;
   }
 
   const unique = [...new Map(errors.map((error) => [error?.message, error])).values()];
+
   if (unique.length === 1) {
     return unique[0]?.message;
   }

@@ -31,6 +31,7 @@ async function resolveMembership(
   orgSlug: string,
 ): Promise<OrgMembership | null> {
   const memoized = context.memberships.get(orgSlug);
+
   if (memoized) {
     return memoized;
   }
@@ -46,6 +47,7 @@ async function resolveMembership(
     .then(([row]) => (row ? { orgId: row.orgId, roles: parseRoles(row.role) } : null));
 
   context.memberships.set(orgSlug, pending);
+
   return pending;
 }
 
@@ -75,6 +77,7 @@ async function authorizeOrg(
   }
 
   const { orgId, roles } = membership;
+
   if (!authorize(roles, permission)) {
     audit({
       action: "rbac.permission",
@@ -95,5 +98,6 @@ export const orgProcedure = <TSchema extends z.ZodType<{ orgSlug: string }, unkn
 ) =>
   base.input(input).use(async ({ context, next }, { orgSlug }: { orgSlug: string }) => {
     const scope = await authorizeOrg(context, orgSlug, permission);
+
     return next({ context: { scope } });
   });

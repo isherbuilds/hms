@@ -32,6 +32,7 @@ export const auditRouter = {
       .limit(input.limit + 1);
 
     const hasNextPage = rows.length > input.limit;
+
     const items = rows.slice(0, input.limit).map(({ entry, actorName, actorEmail }) => ({
       ...entry,
       actorName,

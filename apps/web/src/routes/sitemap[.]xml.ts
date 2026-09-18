@@ -9,6 +9,7 @@ import { renderSitemap } from "@/lib/public-crawl";
    `lastmod` rather than claim a build time that means nothing. */
 function lastmod(path: string): string | undefined {
   const slug = path.startsWith("/changelog/") ? path.slice("/changelog/".length) : undefined;
+
   return slug ? CHANGELOG.find((entry) => entry.slug === slug)?.date : undefined;
 }
 

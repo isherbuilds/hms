@@ -11,6 +11,7 @@ export const Route = createFileRoute(
 
 function CreditNoteDocumentRoute() {
   const { orgSlug, invoiceId, creditNoteId } = Route.useParams();
+
   return (
     <BillingDocumentRoute
       orgSlug={orgSlug}

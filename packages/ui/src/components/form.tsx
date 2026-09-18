@@ -88,9 +88,11 @@ const FormItemContext = React.createContext<string | null>(null);
 function useFormField() {
   const field = React.useContext(FormFieldContext);
   const id = React.useContext(FormItemContext);
+
   if (!field) {
     throw new Error("useFormField must be used within <FormField> or <RegisteredFormField>");
   }
+
   if (!id) {
     throw new Error("useFormField must be used within <FormItem>");
   }
@@ -134,10 +136,14 @@ function FormLabel({ className, ...props }: React.ComponentProps<typeof Label>) 
 }
 
 // Attaches the field's id and aria state to its single child control.
-function FormControl({ children }: { children: React.ReactElement }) {
+function FormControl({
+  children,
+}: {
+  children: React.ReactElement<React.HTMLAttributes<HTMLElement>>;
+}) {
   const { error, formItemId, formDescriptionId, formMessageId } = useFormField();
 
-  return React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
+  return React.cloneElement(children, {
     id: formItemId,
     "aria-describedby": error ? `${formDescriptionId} ${formMessageId}` : formDescriptionId,
     "aria-invalid": !!error,
@@ -164,6 +170,7 @@ function FormMessage({ className, children, ...props }: React.ComponentProps<"p"
   if (!body) {
     return null;
   }
+
   return (
     <p
       data-slot="form-message"

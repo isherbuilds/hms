@@ -7,10 +7,6 @@
     "shadcn": {
       "command": "npx",
       "args": ["-y", "shadcn@latest", "mcp"]
-    },
-    "better-auth": {
-      "type": "http",
-      "url": "https://mcp.inkeep.com/better-auth/mcp"
     }
   }
 }

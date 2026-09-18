@@ -18,10 +18,12 @@ function formatter(
   options: Intl.DateTimeFormatOptions,
 ): Intl.DateTimeFormat {
   const cached = formatters.get(key);
+
   if (cached) return cached;
 
   const created = new Intl.DateTimeFormat(locale, options);
   formatters.set(key, created);
+
   return created;
 }
 
@@ -39,12 +41,14 @@ export function localInputValue(date: Date, timeZone: string): string {
       .formatToParts(date)
       .map((part) => [part.type, part.value]),
   );
+
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 }
 
 export function nextHalfHour(timeZone: string): string {
   const date = new Date();
   date.setMinutes(date.getMinutes() + (30 - (date.getMinutes() % 30)), 0, 0);
+
   return localInputValue(date, timeZone);
 }
 
@@ -95,6 +99,7 @@ export function orgToday(timeZone: string, now = new Date()): string {
 
 export function orgMonthToDate(timeZone: string): { from: string; to: string } {
   const to = orgToday(timeZone);
+
   return { from: `${to.slice(0, 8)}01`, to };
 }
 

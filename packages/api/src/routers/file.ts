@@ -25,6 +25,7 @@ function assertKeyInScope(key: string, scope: Scope, action: string): void {
   if (key.startsWith(`${scope.orgId}/`)) {
     return;
   }
+
   audit({
     action,
     denied: true,
@@ -47,6 +48,7 @@ export function sanitizeKeyName(name: string): string {
     .replace(/^\.+/, "")
     .replace(/[.-]+$/g, "")
     .slice(0, 255);
+
   return sanitized || "file";
 }
 
@@ -71,6 +73,7 @@ export const fileRouter = {
     }),
   ).handler(async ({ context, input }) => {
     const search = input.query ? likePattern(input.query) : undefined;
+
     const scoped = and(
       eq(fileTable.orgId, context.scope.orgId),
       eq(fileTable.status, "ready"),
@@ -78,6 +81,7 @@ export const fileRouter = {
     );
 
     const cursorTimestamp = input.cursor ? sql`${input.cursor.createdAt}::timestamptz` : undefined;
+
     const items = await db
       .select({
         id: fileTable.id,
@@ -103,10 +107,13 @@ export const fileRouter = {
       .limit(input.limit + 1);
 
     const hasNextPage = items.length > input.limit;
+
     if (hasNextPage) {
       items.pop();
     }
+
     const last = items.at(-1);
+
     return {
       items: items.map(({ createdAtCursor: _cursor, ...item }) => item),
       nextCursor: hasNextPage && last ? { createdAt: last.createdAtCursor, id: last.id } : null,
@@ -126,6 +133,7 @@ export const fileRouter = {
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const max = maxUploadBytes();
+
     if (input.size > max) {
       throw new ORPCError("BAD_REQUEST", {
         message: `File too large. Maximum allowed size is ${max} bytes.`,
@@ -133,6 +141,7 @@ export const fileRouter = {
     }
 
     const key = `${scope.orgId}/${Bun.randomUUIDv7()}/${sanitizeKeyName(input.name)}`;
+
     const uploadUrl = await createUploadUrl(key, {
       contentType: input.mimeType,
       size: input.size,
@@ -173,6 +182,7 @@ export const fileRouter = {
           message: "No pending upload found for this key",
         });
       }
+
       return row;
     },
   ),

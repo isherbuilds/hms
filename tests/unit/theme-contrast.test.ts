@@ -6,9 +6,11 @@ function parseNeutralTokens(block: string): Map<string, number> {
   const out = new Map<string, number>();
   const pattern = /(--[a-z-]+):\s*oklch\(([0-9.]+)\s+0\s+0\)\s*;/g;
   let match: RegExpExecArray | null;
+
   while ((match = pattern.exec(block)) !== null) {
     out.set(match[1]!, Number(match[2]!));
   }
+
   return out;
 }
 
@@ -19,6 +21,7 @@ const luminance = (lightness: number) => lightness ** 3;
 const contrast = (a: number, b: number) => {
   const hi = Math.max(luminance(a), luminance(b));
   const lo = Math.min(luminance(a), luminance(b));
+
   return (hi + 0.05) / (lo + 0.05);
 };
 
@@ -28,6 +31,7 @@ function blockFor(css: string, selector: string): string {
   const open = css.indexOf(`\n${selector} {`);
   expect(open, `no top-level "${selector} {" rule in globals.css`).toBeGreaterThanOrEqual(0);
   const close = css.indexOf("}", open);
+
   return css.slice(open, close);
 }
 

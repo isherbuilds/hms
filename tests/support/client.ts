@@ -9,6 +9,7 @@ import type { TestUser } from "./auth";
 // must be re-proven per request, such as revocation.
 export function clientFor(identity: TestUser): AppRouterClient {
   const headers = new Headers({ cookie: identity.cookie });
+
   return createRouterClient(appRouter, {
     context: () => createRequestContext(headers),
   });
@@ -19,17 +20,21 @@ export function clientFor(identity: TestUser): AppRouterClient {
 export function requestScopedClientFor(identity: TestUser): AppRouterClient {
   const headers = new Headers({ cookie: identity.cookie });
   const context = createRequestContext(headers);
+
   return createRouterClient(appRouter, { context: () => context });
 }
 
 async function rejection(promise: Promise<unknown>, what: string): Promise<unknown> {
   let error: unknown;
+
   try {
     await promise;
   } catch (caught) {
     error = caught;
   }
+
   expect(error, `expected ${what} to reject`).toBeDefined();
+
   return error;
 }
 
@@ -39,6 +44,9 @@ export async function expectORPCCode(
   label = "the call",
 ): Promise<void> {
   const error = await rejection(promise, `${label} with ${code}`);
+
+  // SAFETY: `rejection` returns what the oRPC client threw, which carries `code`; the
+  // assertion below is what proves it, and reports the mismatch when it does not.
   expect((error as { code?: string }).code, `${label} should be ${code}`).toBe(code);
 }
 
@@ -48,8 +56,13 @@ export async function expectAuthStatus(
   bodyCode?: string,
 ): Promise<void> {
   const error = await rejection(promise, `the Better Auth call with ${status}`);
+
+  // SAFETY: Better Fetch rejects with a plain object carrying `status` and `body`, not an
+  // Error; the assertions below are what prove the shape and fail loudly otherwise.
   expect((error as { status?: string }).status).toBe(status);
+
   if (bodyCode !== undefined) {
+    // SAFETY: same rejection object as above; `body` is the parsed JSON error payload.
     expect((error as { body?: { code?: string } }).body?.code).toBe(bodyCode);
   }
 }
@@ -57,10 +70,13 @@ export async function expectAuthStatus(
 export async function eventually<T>(probe: () => Promise<T | undefined>): Promise<T> {
   for (let attempt = 0; attempt < 50; attempt++) {
     const result = await probe();
+
     if (result !== undefined) {
       return result;
     }
+
     await Bun.sleep(20);
   }
+
   throw new Error("condition not reached within 1s");
 }

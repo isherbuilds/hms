@@ -22,13 +22,16 @@ const inter = resolve(
   import.meta.dirname,
   "../apps/web/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2",
 );
+
 const renderer = new Renderer();
+
 await renderer.registerFont({ name: "Inter", data: await Bun.file(inter).bytes() });
 
 // The ink pinned for anything drawn on the wash (`ON_WASH` in wash.tsx).
 const INK = "oklch(0.145 0 0)";
 
 const outDir = resolve(import.meta.dirname, "../apps/web/public/og");
+
 await mkdir(outDir, { recursive: true });
 
 for (const route of PUBLIC_ROUTES) {
@@ -54,6 +57,7 @@ for (const route of PUBLIC_ROUTES) {
       }),
     ],
   });
+
   const response = new ImageResponse(card, { renderer, ...OG_IMAGE, format: "png" });
   await Bun.write(
     resolve(outDir, route.ogImage.replace(/^\/og\//, "")),

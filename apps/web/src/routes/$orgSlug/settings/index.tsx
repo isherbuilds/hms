@@ -11,6 +11,7 @@ export const Route = createFileRoute("/$orgSlug/settings/")({
       ...orpc.member.me.queryOptions({ input: { orgSlug } }),
       staleTime: 0,
     });
+
     const first = SETTINGS_TABS.find(({ permission }) => authorize(membership.roles, permission));
     throw redirect({
       to: first?.to ?? "/$orgSlug/dashboard",

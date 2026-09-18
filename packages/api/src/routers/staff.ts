@@ -75,6 +75,7 @@ async function assertPractitionerReferences(
   const feeItemIds = [...new Set([fields.consultFeeItemId, fields.followUpFeeItemId])].filter(
     (id): id is string => id != null,
   );
+
   const [, feeItems] = await Promise.all([
     assertDepartmentInScope(fields.departmentId, orgId),
     feeItemIds.length
@@ -113,6 +114,7 @@ export const staffRouter = {
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const id = Bun.randomUUIDv7();
+
     if (input.defaultConsultFeeItemId != null) {
       await assertCatalogItemInScope(input.defaultConsultFeeItemId, scope.orgId);
     }
@@ -148,6 +150,7 @@ export const staffRouter = {
           message: "A department with this name already exists.",
         });
       }
+
       throw error;
     }
   }),
@@ -157,9 +160,11 @@ export const staffRouter = {
     orgInput.extend({ departmentId: z.string(), ...departmentFields.shape }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
+
     if (input.defaultConsultFeeItemId != null) {
       await assertCatalogItemInScope(input.defaultConsultFeeItemId, scope.orgId);
     }
+
     let department;
 
     try {
@@ -178,6 +183,7 @@ export const staffRouter = {
           message: "A department with this name already exists.",
         });
       }
+
       throw error;
     }
 
@@ -237,6 +243,7 @@ export const staffRouter = {
     await assertPractitionerReferences(fields, scope.orgId);
 
     const id = Bun.randomUUIDv7();
+
     const [practitioner] = await db
       .insert(practitioners)
       .values({

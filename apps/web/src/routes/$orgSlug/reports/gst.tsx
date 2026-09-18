@@ -37,11 +37,13 @@ export const Route = createFileRoute("/$orgSlug/reports/gst")({
       { report: ["readFinancial"] },
       "/$orgSlug/dashboard",
     );
+
     const fallback = defaultRange(timeZone);
     const range = { from: deps.from ?? fallback.from, to: deps.to ?? fallback.to };
     await loadRouteQuery(
       queryClient.query(orpc.report.gst.queryOptions({ input: { orgSlug, ...range } })),
     );
+
     return range;
   },
   component: GstReportRoute,

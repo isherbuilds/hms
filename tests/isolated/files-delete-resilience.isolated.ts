@@ -12,14 +12,19 @@ mock.module("@hms/storage", () => ({
 }));
 
 const { drainAuditWrites } = await import("@hms/api/audit");
+
 const { db } = await import("@hms/db");
+
 const { auditLog } = await import("@hms/db/schema/audit");
+
 const { file } = await import("@hms/db/schema/file");
+
 const { eq } = await import("drizzle-orm");
 
 import { createOrganization, createTestUser } from "../support/auth";
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
+
 // The audit row commits with the row delete, not after object cleanup.
 beforeAll(async () => {
   await resetTestDatabase();
@@ -47,10 +52,12 @@ test("a delete still audits and succeeds when object cleanup fails", async () =>
   expect(remaining).toBeUndefined();
 
   await drainAuditWrites();
+
   const [record] = await db
     .select({ target: auditLog.target, denied: auditLog.denied, action: auditLog.action })
     .from(auditLog)
     .where(eq(auditLog.orgId, org.id));
+
   expect(record?.action).toBe("file.delete");
   expect(record?.denied).toBe(false);
   expect(record?.target).toBe(`file:${key}`);
@@ -66,10 +73,12 @@ test("an out-of-scope key is denied and recorded as a digest, not the raw key", 
   await expectORPCCode(api.file.delete({ orgSlug: org.slug, key: hostile }), "FORBIDDEN");
 
   await drainAuditWrites();
+
   const [record] = await db
     .select({ target: auditLog.target, denied: auditLog.denied, action: auditLog.action })
     .from(auditLog)
     .where(eq(auditLog.orgId, org.id));
+
   expect(record?.action).toBe("file.delete");
   expect(record?.denied).toBe(true);
   expect(record?.target).toMatch(/^file:[0-9a-f]{16}$/);

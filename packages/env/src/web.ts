@@ -1,6 +1,7 @@
 import { createEnv } from "@t3-oss/env-core";
 import { z } from "zod";
 
+// SAFETY: Vite supplies import.meta.env; createEnv below validates each public setting.
 const runtimeEnv = (
   import.meta as ImportMeta & {
     readonly env: Record<string, string | boolean | undefined>;

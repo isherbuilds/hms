@@ -58,8 +58,7 @@ proves the session, resolves membership, checks the permission, and exposes
   a child with a unique index is not a lock, it is a comment. A lock that is needed
   follows the order in `docs/architecture.md#writes-and-concurrency` (D040); a money
   command without a revision claims its `requestKey` first (D039). No retry loops.
-- Keep: the tenant predicate on every query, `audit()` for sensitive mutations,
-  the settings TTL cache (D009), request-local membership memo (D008), DST-correct
+- Keep (hard rules aside): the settings TTL cache (D009), request-local membership memo (D008), DST-correct
   business-date code (any IANA zone is accepted; `tests/unit/business-date.test.ts`
   pins it).
 
@@ -129,14 +128,7 @@ For a router, a component, or a diff:
 
 ## 5. Before calling it done
 
-- [ ] No handler re-checks session, membership, or role.
-- [ ] No input field the server can derive; no result key the client does not read.
-- [ ] Independent reads are parallel; transactions hold only writes and their locks.
-- [ ] No second SELECT after a failed conditional UPDATE.
-- [ ] Every helper has ≥2 callers or is on the exception list.
-- [ ] Every zod fragment used twice is imported from `lib/schemas.ts`.
-- [ ] Frontend: one query per fact, props not contexts, static copy, blocker in the form.
+Sections 2–4 are the checklist. In addition:
+
 - [ ] Tenancy assertions in `tests/integration/tenancy.test.ts` are unchanged or stronger.
-- [ ] Every deleted test is justified in the change description.
-- [ ] No mutation `onError` toasts without closing a stale overlay on CONFLICT.
 - [ ] Checks per [Development: Commands](../../../docs/development.md#commands): the smallest existing checks that cover the change; the full gates only when the task or the command policy requires them. A read-only review runs only read-only checks.

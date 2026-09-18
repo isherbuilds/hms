@@ -52,8 +52,10 @@ test("procedure endpoints reject an oversized body before resolving authenticati
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ json: { orgSlug: "x".repeat(1_100_000) } }),
       });
+
       expect(response.status).toBe(413);
     }
+
     expect(getSession).toHaveBeenCalledTimes(0);
   } finally {
     getSession.mockRestore();

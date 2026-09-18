@@ -25,6 +25,7 @@ export function renderSitemap(
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ...paths.map((path) => {
       const modified = lastmod?.(path);
+
       return `  <url><loc>${origin}${path}</loc>${modified ? `<lastmod>${modified}</lastmod>` : ""}</url>`;
     }),
     "</urlset>",

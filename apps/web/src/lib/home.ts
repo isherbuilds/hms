@@ -10,12 +10,15 @@ import { redirect } from "@tanstack/react-router";
 const homeFor = createServerFn({ method: "GET" }).handler(async () => {
   const { headers } = getRequest();
   const session = await auth.api.getSession({ headers });
+
   if (!session) return null;
 
   const organizations = await auth.api.listOrganizations({ headers });
+
   const [first] = organizations.sort(
     (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
   );
+
   return first?.slug ?? "";
 });
 
@@ -24,8 +27,11 @@ const homeFor = createServerFn({ method: "GET" }).handler(async () => {
 // that bounced through sign-in still lands where it was going.
 export async function redirectSignedInHome(href?: string): Promise<void> {
   const orgSlug = await homeFor();
+
   if (orgSlug === null) return;
+
   if (href) throw redirect({ href });
+
   if (orgSlug) throw redirect({ to: "/$orgSlug/dashboard", params: { orgSlug } });
   throw redirect({ to: "/join" });
 }

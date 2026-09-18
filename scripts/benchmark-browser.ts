@@ -1,8 +1,13 @@
 const BASE_URL = process.env.PERF_BASE_URL ?? "http://127.0.0.1:3101";
+
 const PROFILE_DIR = process.env.PERF_CHROME_PROFILE ?? "/tmp/hms-perf-chrome-profile";
+
 const SESSION = process.env.PERF_CHROME_SESSION ?? "hms-perf-cold";
+
 const SAMPLE_COUNT = Number(process.env.PERF_SAMPLES ?? 5);
+
 const NETWORK = process.env.PERF_NETWORK;
+
 const BROWSER_LABEL = process.env.PERF_BROWSER_LABEL ?? "Headless Chrome via chrome-devtools-axi";
 
 const defaultRoutes = [
@@ -11,7 +16,9 @@ const defaultRoutes = [
   "/mercy-general/settings/members",
   "/mercy-general/billing",
 ] as const;
+
 const routes = process.env.PERF_ROUTES?.split(",").filter(Boolean) ?? defaultRoutes;
+
 const expectedHeadings: Record<string, string> = {
   "/mercy-general/dashboard": "Dashboard",
   "/mercy-general/opd": "OPD",
@@ -71,37 +78,47 @@ async function axi(args: string[], tolerateFailure = false): Promise<string> {
     stdout: "pipe",
     stderr: "pipe",
   });
+
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(process.stdout).text(),
     new Response(process.stderr).text(),
     process.exited,
   ]);
+
   if (exitCode !== 0 && !tolerateFailure) {
     throw new Error(`chrome-devtools-axi ${args[0]} failed: ${stderr || stdout}`);
   }
+
   return stdout;
 }
 
 function assertMeasurement(route: string, measurement: Record<string, unknown>): void {
   const expectedPath = new URL(route, BASE_URL).pathname;
+
   if (measurement.path !== expectedPath) {
     throw new Error(`Expected ${expectedPath}, reached ${String(measurement.path)}`);
   }
+
   const expectedHeading = expectedHeadings[expectedPath];
+
   if (expectedHeading && measurement.heading !== expectedHeading) {
     throw new Error(
       `${expectedPath} rendered ${String(measurement.heading)} instead of ${expectedHeading}`,
     );
   }
+
   if (measurement.recoveryMarker !== false) {
     throw new Error(`${expectedPath} contains an SSR recovery marker`);
   }
+
   if (measurement.rpcCount !== 0) {
     throw new Error(`${expectedPath} made ${String(measurement.rpcCount)} hydration RPC requests`);
   }
+
   if (typeof measurement.cls !== "number" || measurement.cls > 0.05) {
     throw new Error(`${expectedPath} exceeded the 0.05 CLS budget: ${String(measurement.cls)}`);
   }
+
   for (const metric of ["ttfbMs", "fcpMs", "lcpMs", "requestCount", "transferBytes"] as const) {
     if (typeof measurement[metric] !== "number" || !Number.isFinite(measurement[metric])) {
       throw new Error(`${expectedPath} did not produce a finite ${metric}`);
@@ -111,17 +128,21 @@ function assertMeasurement(route: string, measurement: Record<string, unknown>):
 
 function parseMeasurement(output: string): Record<string, unknown> {
   const line = output.split("\n").find((candidate) => candidate.startsWith("result: "));
+
   if (!line) throw new Error(`No measurement result in:\n${output}`);
   const encoded = JSON.parse(line.slice("result: ".length));
+
   return JSON.parse(encoded);
 }
 
 await axi(["stop"], true);
 
 const samples: Record<string, Array<Record<string, unknown>>> = {};
+
 try {
   for (const route of routes) {
     samples[route] = [];
+
     // Discard the first run so database, SSR modules and fonts are warm while the HTTP
     // asset cache stays cold on each browser restart.
     for (let index = 0; index <= SAMPLE_COUNT; index += 1) {
@@ -131,11 +152,13 @@ try {
       await axi(["stop"], true);
       await axi(["open", "about:blank"]);
       await axi(["resize", "1440", "900"]);
+
       if (NETWORK) await axi(["emulate", "--network", NETWORK]);
       await axi(["open", new URL(route, BASE_URL).toString()]);
       await axi(["wait", "500"]);
       const result = parseMeasurement(await axi(["eval", measurementExpression]));
       assertMeasurement(route, result);
+
       if (index > 0) samples[route]?.push(result);
     }
   }
@@ -158,4 +181,5 @@ const report = JSON.stringify(
 );
 
 if (process.env.PERF_OUTPUT) await Bun.write(process.env.PERF_OUTPUT, `${report}\n`);
+
 console.log(report);

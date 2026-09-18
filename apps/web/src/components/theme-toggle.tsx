@@ -3,12 +3,14 @@ import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 
 const ORDER = ["light", "dark", "system"] as const;
+
 const LABEL = { light: "Light", dark: "Dark", system: "System" } as const;
+
 const ICON = { light: SunIcon, dark: MoonIcon, system: MonitorIcon };
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
-  const current = (theme && theme in LABEL ? theme : "system") as keyof typeof LABEL;
+  const current = theme === "light" || theme === "dark" ? theme : "system";
   const Icon = ICON[current];
 
   return (

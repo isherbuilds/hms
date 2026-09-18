@@ -6,6 +6,7 @@ const reactQueryPath = Bun.resolveSync(
   "@tanstack/react-query",
   new URL("../../apps/web", import.meta.url).pathname,
 );
+
 const { environmentManager } = await import(reactQueryPath);
 
 test("query retries are disabled during SSR and for auth failures", async () => {

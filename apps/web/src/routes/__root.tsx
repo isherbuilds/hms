@@ -21,9 +21,11 @@ interface RouterAppContext {
    `/$orgSlug` and any non-HTML response. */
 const denyIndexing = createMiddleware().server(async ({ pathname, next }) => {
   const result = await next();
+
   if (shouldDenyIndexing(pathname, PUBLIC_PATHS)) {
     result.response.headers.set("X-Robots-Tag", "noindex, nofollow");
   }
+
   return result;
 });
 
@@ -75,6 +77,7 @@ function SkipLink() {
       href="#main"
       onClick={(event) => {
         const main = document.getElementById("main");
+
         if (!main) return;
         event.preventDefault();
         main.focus();

@@ -1,6 +1,7 @@
 import * as React from "react";
 
 const MOBILE_BREAKPOINT = 1024;
+
 const QUERY = `(max-width: ${MOBILE_BREAKPOINT - 1}px)`;
 
 // One MediaQueryList for the module: `getSnapshot` runs on every render and after
@@ -9,6 +10,7 @@ let query: MediaQueryList | null = null;
 
 function getQuery(): MediaQueryList {
   query ??= window.matchMedia(QUERY);
+
   return query;
 }
 
@@ -25,5 +27,6 @@ export function useIsMobile(): boolean {
 function subscribe(listener: () => void): () => void {
   const mql = getQuery();
   mql.addEventListener("change", listener);
+
   return () => mql.removeEventListener("change", listener);
 }

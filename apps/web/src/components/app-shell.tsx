@@ -37,6 +37,7 @@ import { NAV_GROUPS, PRIMARY_NAV, SETTINGS_TABS } from "@/lib/navigation";
 
 function OrgSwitcher({ activeOrgSlug }: { activeOrgSlug: string }) {
   const organizations = useMembership(activeOrgSlug, (membership) => membership.organizations);
+
   const name =
     organizations.find((org) => org.slug === activeOrgSlug)?.name ?? "Unknown organization";
 
@@ -146,7 +147,9 @@ function OrgSidebar({ orgSlug }: { orgSlug: string }) {
       <SidebarContent>
         {NAV_GROUPS.map((group) => {
           const items = visible.filter((item) => item.group === group);
+
           if (items.length === 0) return null;
+
           return (
             <SidebarGroup key={group}>
               <SidebarGroupLabel>{group}</SidebarGroupLabel>

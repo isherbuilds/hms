@@ -3,9 +3,11 @@ import { env as webEnv } from "@hms/env/web";
 import { defineEventHandler, setResponseHeaders } from "nitro/h3";
 
 const apiOrigin = new URL(webEnv.VITE_SERVER_URL).origin;
+
 const storageOrigin = serverEnv.SEAWEEDFS_ENDPOINT
   ? new URL(serverEnv.SEAWEEDFS_ENDPOINT).origin
   : undefined;
+
 const isDevelopment = import.meta.env.DEV;
 
 const connectSrc = [
@@ -38,10 +40,14 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 export default defineEventHandler((event) => {
-  setResponseHeaders(event, {
+  const headers: Record<string, string> = {
     "Content-Security-Policy": contentSecurityPolicy,
-    ...(serverEnv.NODE_ENV === "production"
-      ? { "Strict-Transport-Security": "max-age=31536000; includeSubDomains" }
-      : {}),
-  });
+  };
+
+  // HSTS only where the response is actually served over TLS.
+  if (serverEnv.NODE_ENV === "production") {
+    headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+  }
+
+  setResponseHeaders(event, headers);
 });
