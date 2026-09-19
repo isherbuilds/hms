@@ -425,8 +425,11 @@ fully discounted line returns goods with zero money. When `refund` is given it
 is capped at the credit note total and posted with `insertRefundTx` (debit
 `patient_receivables`, source `{ invoiceId, creditNoteId }`); otherwise the
 existing refund-due worklist shows the obligation until `recordRefund` clears
-it. Audited as `pharmacy.return`. Returns `{ returnId, creditNoteId,
-creditNoteNumber, refund }`.
+it. A return whose lines are all fully discounted is worth nothing and issues
+no credit note. Audited as `pharmacy.return`, plus `creditNote.issue` and
+`refund.record` for the documents it created. Returns `{ returnId, creditNoteId,
+creditNoteNumber, refund }`, where `creditNoteId` and `creditNoteNumber` are
+`null` on a zero-value return.
 
 **`pharmacy.adjustStock`** (`pharmacy:adjust`) takes `batchId`, `reason`
 (`release | quarantine | writeoff | breakage | count_correction |

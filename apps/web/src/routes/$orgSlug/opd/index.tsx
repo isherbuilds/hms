@@ -11,7 +11,7 @@ import {
   TableRow,
 } from "@hms/ui/components/table";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
-import { ClientOnly, Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ClientOnly, Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { CircleDotIcon, PlusIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { z } from "zod";
@@ -88,9 +88,20 @@ export const Route = createFileRoute("/$orgSlug/opd/")({
   loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {
     const { roles } = await queryClient.query(orpc.member.me.queryOptions({ input: { orgSlug } }));
 
+    // A hand-typed `?status=follow-ups` without the grant is dropped from the URL, so
+    // every reader below sees one status.
+    if (deps.status === "follow-ups" && !authorize(roles, { treatment: ["read"] })) {
+      throw redirect({
+        to: "/$orgSlug/opd",
+        params: { orgSlug },
+        search: { ...deps, status: undefined },
+        replace: true,
+      });
+    }
+
     // Whichever list the URL names arrives with the page, never after it.
     await (
-      deps.status === "follow-ups" && authorize(roles, { treatment: ["read"] })
+      deps.status === "follow-ups"
         ? queryClient.infiniteQuery(followUpsQuery(orgSlug, deps.q ?? ""))
         : queryClient.infiniteQuery(dayQuery(orgSlug, deps, deps.q ?? "", deps.status === "all"))
     ).catch(() => {});
@@ -411,8 +422,8 @@ function OpdDeskView({
               {followUps ? null : (
                 <DateSubmenu
                   today={today}
-                  from={filters.from}
-                  to={filters.to}
+                  from={filters.from ?? today}
+                  to={filters.to ?? today}
                   onChange={(range) => void setRange(range)}
                   onCustom={() => setRangeOpen(true)}
                 />
@@ -489,8 +500,7 @@ function OpdRoute() {
   const { orgSlug } = Route.useParams();
   const status = Route.useSearch({ select: (search) => search.status });
   const canReadTreatment = useCan(orgSlug, { treatment: ["read"] });
-  // A hand-typed `?status=follow-ups` without the grant falls back to the open queue.
-  const followUps = status === "follow-ups" && canReadTreatment;
+  const followUps = status === "follow-ups";
 
   return (
     <>

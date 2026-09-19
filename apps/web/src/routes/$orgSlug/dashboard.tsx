@@ -66,7 +66,8 @@ export const Route = createFileRoute("/$orgSlug/dashboard")({
   component: DashboardRoute,
 });
 
-type StatLink = "/$orgSlug/opd" | "/$orgSlug/files";
+/** Set to open the OPD queue over the dashboard's own range. */
+type StatQueueLink = { from?: string; to?: string };
 
 function StatCard({
   label,
@@ -75,7 +76,7 @@ function StatCard({
   note,
   trailing,
   pending,
-  to,
+  queue,
   orgSlug,
 }: {
   label: string;
@@ -84,7 +85,7 @@ function StatCard({
   note: ReactNode;
   trailing?: ReactNode;
   pending?: boolean;
-  to?: StatLink;
+  queue?: StatQueueLink;
   orgSlug: string;
 }) {
   const body = (
@@ -104,7 +105,7 @@ function StatCard({
         </div>
         <div className="flex items-center justify-between gap-2 text-muted-foreground">
           <span className="min-w-0 truncate">{note}</span>
-          {to && <ArrowRightIcon className="size-3.5 shrink-0" />}
+          {queue && <ArrowRightIcon className="size-3.5 shrink-0" />}
         </div>
       </div>
     </>
@@ -112,14 +113,15 @@ function StatCard({
 
   const shell = "flex flex-col rounded-xl bg-muted p-1";
 
-  if (!to) {
+  if (!queue) {
     return <div className={shell}>{body}</div>;
   }
 
   return (
     <Link
-      to={to}
+      to="/$orgSlug/opd"
       params={{ orgSlug }}
+      search={queue}
       className={`${shell} [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/70`}
     >
       {body}
@@ -187,9 +189,8 @@ function DashboardRoute() {
         action={
           <DateFilter
             today={businessToday}
-            from={from}
-            to={to}
-            unsetLabel="Today"
+            from={from ?? businessToday}
+            to={to ?? businessToday}
             onChange={(range) =>
               void navigate({
                 replace: true,
@@ -213,7 +214,7 @@ function DashboardRoute() {
                 value={today.data?.booked ?? 0}
                 note={`Expected ${dayLabel}`}
                 pending={today.isPending}
-                to="/$orgSlug/opd"
+                queue={{ from, to }}
                 orgSlug={orgSlug}
               />
               <StatCard
@@ -222,7 +223,7 @@ function DashboardRoute() {
                 value={today.data?.checkedIn ?? 0}
                 note={`Arrived ${dayLabel}`}
                 pending={today.isPending}
-                to="/$orgSlug/opd"
+                queue={{ from, to }}
                 orgSlug={orgSlug}
               />
             </>
@@ -238,7 +239,7 @@ function DashboardRoute() {
                   value={money(collections.data?.unbilled)}
                   note="Unbilled past alert threshold"
                   pending={collections.isPending}
-                  to="/$orgSlug/opd"
+                  queue={{ from, to }}
                   orgSlug={orgSlug}
                 />
               )}
@@ -254,7 +255,7 @@ function DashboardRoute() {
                     : "Nothing yet"
                 }
                 pending={collections.isPending}
-                to="/$orgSlug/opd"
+                queue={{ from, to }}
                 orgSlug={orgSlug}
               />
             </>
@@ -333,6 +334,7 @@ function DashboardRoute() {
                 <Link
                   to="/$orgSlug/opd"
                   params={{ orgSlug }}
+                  search={{ from, to }}
                   className="flex items-center gap-1 [@media(hover:hover)_and_(pointer:fine)]:hover:text-foreground"
                 >
                   Open queue

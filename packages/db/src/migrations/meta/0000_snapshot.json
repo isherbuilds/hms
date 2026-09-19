@@ -1,5 +1,5 @@
 {
-  "id": "25359768-6502-4865-82e0-9a7b0ecb6573",
+  "id": "3653c2cf-ae75-485e-82e7-d31f3ef7ba04",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -2870,6 +2870,27 @@
             },
             {
               "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "goods_receipts_org_file_idx": {
+          "name": "goods_receipts_org_file_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "file_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -6949,6 +6970,27 @@
             },
             {
               "expression": "invoice_line_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pharmacy_return_lines_org_return_idx": {
+          "name": "pharmacy_return_lines_org_return_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "return_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

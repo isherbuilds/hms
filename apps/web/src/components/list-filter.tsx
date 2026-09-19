@@ -244,7 +244,6 @@ export function DateFilter({
   from,
   to,
   maxDays,
-  unsetLabel = "All time",
   onChange,
 }: {
   today: string;
@@ -252,8 +251,6 @@ export function DateFilter({
   to?: string;
   /** The report's cap on an inclusive range; unset leaves the range unbounded. */
   maxDays?: number;
-  /** What an empty range means on this page — the server's own default window. */
-  unsetLabel?: string;
   onChange: (range: { from?: string; to?: string }) => void;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
@@ -262,7 +259,7 @@ export function DateFilter({
   const button = (
     <Button ref={trigger} variant="outline">
       <CalendarIcon data-icon="inline-start" className="text-muted-foreground" />
-      {dateRangeLabel(today, from, to, unsetLabel)}
+      {dateRangeLabel(today, from, to)}
       <ChevronDownIcon data-icon="inline-end" className="text-muted-foreground" />
     </Button>
   );

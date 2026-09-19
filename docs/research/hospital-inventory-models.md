@@ -13,8 +13,8 @@ were thin; items marked "not verified" were not traced end to end.
    at pilot scale.
 2. On hand is stored (Odoo, Danphe), derived (OpenMRS Stock Management), or
    derived with an event-refreshed cache (ERPNext `Bin`, OpenBoxes
-   `product_availability`). Only one shape may be authoritative; the ledger is
-   it everywhere.
+   `product_availability`). Only one shape may be authoritative in a given
+   system; HMS makes that the ledger.
 3. One product table with flags (`is_sales_item`, `is_stock_item`,
    `is_fixed_asset`, `is_drug`) beats a table per kind. Marley's `Medication`
    is a clinical layer that links to ordinary `Item` rows; creams, dressings and

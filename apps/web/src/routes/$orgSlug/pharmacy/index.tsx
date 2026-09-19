@@ -93,9 +93,8 @@ function PharmacySalesRoute() {
         <ListToolbar>
           <DateFilter
             today={today}
-            from={from}
-            to={to}
-            unsetLabel="Today"
+            from={from ?? today}
+            to={to ?? today}
             onChange={(range) => void setRange(range)}
           />
         </ListToolbar>
@@ -107,54 +106,84 @@ function PharmacySalesRoute() {
             isEmpty={items.length === 0}
             empty="No sales in this range."
           >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Invoice</TableHead>
-                  <TableHead>Buyer</TableHead>
-                  <TableHead>Patient</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => (
-                  <TableRow key={item.saleId}>
-                    <TableCell className="whitespace-nowrap">
-                      {formatBusinessDate(item.businessDate)}
-                    </TableCell>
-                    <TableCell>
-                      <button
-                        type="button"
-                        aria-haspopup="dialog"
-                        className="font-mono underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-                        onClick={() => void patchSearch({ sale: item.saleId })}
-                      >
-                        {item.invoiceNumber}
-                      </button>
-                    </TableCell>
-                    <TableCell className="capitalize">{item.buyerName}</TableCell>
-                    <TableCell>
-                      {item.patientId ? (
-                        <Link
-                          to="/$orgSlug/patients/$patientId"
-                          params={{ orgSlug, patientId: item.patientId }}
-                          search={{ tab: "billing" }}
-                          className="underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-                        >
-                          Patient record
-                        </Link>
-                      ) : (
-                        <span className="text-muted-foreground">Walk-in</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatMoney(item.grandTotal, currency)}
-                    </TableCell>
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Invoice</TableHead>
+                    <TableHead>Buyer</TableHead>
+                    <TableHead>Patient</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {items.map((item) => (
+                    <TableRow key={item.saleId}>
+                      <TableCell className="whitespace-nowrap">
+                        {formatBusinessDate(item.businessDate)}
+                      </TableCell>
+                      <TableCell>
+                        <button
+                          type="button"
+                          aria-haspopup="dialog"
+                          className="font-mono underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                          onClick={() => void patchSearch({ sale: item.saleId })}
+                        >
+                          {item.invoiceNumber}
+                        </button>
+                      </TableCell>
+                      <TableCell className="capitalize">{item.buyerName}</TableCell>
+                      <TableCell>
+                        {item.patientId ? (
+                          <Link
+                            to="/$orgSlug/patients/$patientId"
+                            params={{ orgSlug, patientId: item.patientId }}
+                            search={{ tab: "billing" }}
+                            className="underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                          >
+                            Patient record
+                          </Link>
+                        ) : (
+                          <span className="text-muted-foreground">Walk-in</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(item.grandTotal, currency)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <ul className="md:hidden">
+              {items.map((item) => (
+                <li key={item.saleId} className="border-b border-border/60 last:border-b-0">
+                  <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    className="flex min-h-10 w-full items-start gap-2 px-3 py-2 text-left"
+                    onClick={() => void patchSearch({ sale: item.saleId })}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-mono">{item.invoiceNumber}</span>
+                      <span className="mt-1 block truncate text-muted-foreground capitalize">
+                        {item.buyerName}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block font-medium tabular-nums">
+                        {formatMoney(item.grandTotal, currency)}
+                      </span>
+                      <span className="mt-1 block whitespace-nowrap text-muted-foreground">
+                        {formatBusinessDate(item.businessDate)}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           </ListState>
         </Panel>
       </PageBody>

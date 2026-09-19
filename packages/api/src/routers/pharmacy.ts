@@ -657,6 +657,8 @@ export const pharmacyRouter = {
       meta: {
         reasonCode: input.reasonCode,
         total: formatDecimal(result.creditNote?.creditNote.total ?? 0n),
+        creditNoteNumber: result.creditNote?.creditNote.creditNoteNumber ?? null,
+        refundNumber: result.refund?.refundNumber ?? null,
       },
     });
 

@@ -186,7 +186,7 @@ Stock on hand is the sum of recorded movements (D041); it is never typed over.
 Count the shelf batch by batch and post each difference through **Adjust** with
 reason `count_correction`, naming the counted sheet in the note. Retain the
 sheet as a file. Opening stock is different: it is posted once, as a goods
-receipt with **opening stock** set, carrying the count time and the retained
+receipt with **opening stock** set, carrying the count date and the retained
 sheet. A batch that already has a movement refuses an opening line, so a later
 recount is always a `count_correction` adjustment.
 

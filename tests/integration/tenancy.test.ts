@@ -687,7 +687,7 @@ const GUARDED_CALLS = {
         {
           productId: "missing",
           batchNumber: "B1",
-          expiryDate: "2030-01-31",
+          expiryDate: "2030-01",
           mrp: 100n,
           qty: 1,
         },
@@ -1097,7 +1097,7 @@ test("pharmacy stock is invisible from another org", async () => {
       {
         productId: product.productId,
         batchNumber: "ALPHA-B1",
-        expiryDate: "2030-01-31",
+        expiryDate: "2030-01",
         mrp: 100n,
         qty: 5,
       },

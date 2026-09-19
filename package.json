@@ -78,7 +78,7 @@
     "pg": "^8.23.0",
     "portless": "^0.15.6",
     "takumi-js": "^2.14.0",
-    "turbo": "^2.10.13",
+    "turbo": "^2.11.2",
     "typescript": "^7.0.2"
   },
   "packageManager": "bun@1.4.0"

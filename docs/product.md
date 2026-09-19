@@ -141,19 +141,19 @@ adapter is evidence-gated.
 
 ## Roadmap gates
 
-| Increment                   | Trigger before specification                                                                                                                      |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Patient timeline and vitals | Live OPD use identifies fields, authors, signing, and correction rules                                                                            |
-| Pharmacy/inventory          | **Gate open 2026-09-18** — paid scope and workflows signed off; see [Pharmacy counter sale and stock](./specs/pharmacy-counter-sale-and-stock.md) |
-| Lab/radiology               | Named clinical owner, measured demand, approved order/result boundary, templates, units, and signing rules                                        |
-| IPD/ADT                     | Stable OPD, paid scope, facility master, and signed admission-to-discharge, deposit, nursing, and billing flow                                    |
-| Emergency                   | Separate safety discovery, medical-owner approval, triage/disposition rules, and downtime ownership                                               |
-| OT/surgery                  | Live IPD plus approved consent, anesthesia, resources, consumables, recovery, and billing                                                         |
-| Insurance/TPA               | Meaningful insured volume or signed payer requirement with tariffs and claim lifecycle                                                            |
-| ABDM                        | Sale requirement plus HFR/HPR/ABHA prerequisites, sandbox access, and compliance owner                                                            |
-| Gateway/portal              | Real remote-payment journey with webhook, refund, and reconciliation ownership                                                                    |
-| Offline mode                | Outage evidence proves network/UPS remediation and controlled paper fallback insufficient                                                         |
-| AI assistance               | Owned workflow with consent, provenance, authorization, source linkage, human review, and failure handling                                        |
+| Increment                   | Trigger before specification                                                                                                                                                                       |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Patient timeline and vitals | Live OPD use identifies fields, authors, signing, and correction rules                                                                                                                             |
+| Pharmacy/inventory          | **Gate open 2026-09-18** — paid scope signed off; the spec's Stage 0 assumptions still await owner confirmation; see [Pharmacy counter sale and stock](./specs/pharmacy-counter-sale-and-stock.md) |
+| Lab/radiology               | Named clinical owner, measured demand, approved order/result boundary, templates, units, and signing rules                                                                                         |
+| IPD/ADT                     | Stable OPD, paid scope, facility master, and signed admission-to-discharge, deposit, nursing, and billing flow                                                                                     |
+| Emergency                   | Separate safety discovery, medical-owner approval, triage/disposition rules, and downtime ownership                                                                                                |
+| OT/surgery                  | Live IPD plus approved consent, anesthesia, resources, consumables, recovery, and billing                                                                                                          |
+| Insurance/TPA               | Meaningful insured volume or signed payer requirement with tariffs and claim lifecycle                                                                                                             |
+| ABDM                        | Sale requirement plus HFR/HPR/ABHA prerequisites, sandbox access, and compliance owner                                                                                                             |
+| Gateway/portal              | Real remote-payment journey with webhook, refund, and reconciliation ownership                                                                                                                     |
+| Offline mode                | Outage evidence proves network/UPS remediation and controlled paper fallback insufficient                                                                                                          |
+| AI assistance               | Owned workflow with consent, provenance, authorization, source linkage, human review, and failure handling                                                                                         |
 
 Before pilot traffic, walk the role map with the shift lead, validate real
 printers, rehearse backups/restores and data import, define cashier handover and

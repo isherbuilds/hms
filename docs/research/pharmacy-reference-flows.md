@@ -6,7 +6,7 @@ pharmacy sale and its stock, gathered 2026-09-18 for
 
 ## Bahmni (OpenMRS plus Odoo)
 
-Bahmni holds no stock. The drug order is an OpenMRS `DrugOrder`; an atom feed
+OpenMRS holds no stock in Bahmni. The drug order is an OpenMRS `DrugOrder`; an atom feed
 maps encounters into a draft Odoo `sale.order` per patient, and Odoo owns
 product, lot, quant, picking, invoice and payment. Confirming the sale creates
 the stock picking, optionally validated and invoiced at once. Batch choice is
@@ -52,13 +52,15 @@ modules were read directly. Across those three stock engines:
 
 - Three layers: item master, batch with expiry, and an append-only movement
   ledger behind every quantity.
-- The batch is fixed on the sale line and stock decrements inside the sale's
-  transaction, never in a later job.
+- The batch is fixed on the sale line. Danphe and ERPNext decrement stock
+  inside the sale's transaction; Bahmni's Odoo picking can be left unvalidated,
+  which defers the movement.
 - Expiry orders batch choice: FEFO by default, with Danphe letting staff pick.
 - A return references the original sale line, is capped at sold minus
   returned, restores the same batch, and produces a credit note; the refund is
   a separate payment.
-- Goods receipt is the only source of a new batch and its prices.
+- Goods receipt is the ordinary source of a new batch and its prices. ERPNext
+  opening stock is the exception: its Batch records are created first.
 - The prescription is a separate document the sale references; the
   prescription itself never moves stock.
 

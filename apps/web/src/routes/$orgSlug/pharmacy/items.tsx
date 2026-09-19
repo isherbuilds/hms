@@ -168,60 +168,91 @@ function PharmacyItemsRoute() {
             isEmpty={items.length === 0}
             empty={query ? "No product matches this search." : "No products yet."}
           >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Generic</TableHead>
-                  <TableHead>Form</TableHead>
-                  <TableHead>Unit × pack</TableHead>
-                  <TableHead>Schedule</TableHead>
-                  <TableHead className="text-right">GST %</TableHead>
-                  <TableHead>HSN</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => (
-                  <TableRow key={item.productId}>
-                    <TableCell className="font-mono">
-                      {item.code ?? (
-                        <span className="font-sans text-muted-foreground">Internal</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-medium">{item.name}</TableCell>
-                    <TableCell>{item.genericName || "—"}</TableCell>
-                    <TableCell>
-                      {[item.form, item.strength].filter(Boolean).join(" ") || "—"}
-                    </TableCell>
-                    <TableCell className="tabular-nums">
-                      {item.stockUnit} × {item.unitsPerPack}
-                    </TableCell>
-                    <TableCell>{SCHEDULE_LABELS[item.schedule]}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {item.taxRatePercent ?? "—"}
-                    </TableCell>
-                    <TableCell className="font-mono">{item.taxCode || "—"}</TableCell>
-                    <TableCell>
-                      {item.catalogItemId === null ? (
-                        <Badge variant="muted">Internal</Badge>
-                      ) : (
-                        <Badge variant={item.active ? "secondary" : "muted"}>
-                          {item.active ? "Active" : "Inactive"}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="xs" onClick={() => setEditing(item)}>
-                        Edit
-                      </Button>
-                    </TableCell>
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Generic</TableHead>
+                    <TableHead>Form</TableHead>
+                    <TableHead>Unit × pack</TableHead>
+                    <TableHead>Schedule</TableHead>
+                    <TableHead className="text-right">GST %</TableHead>
+                    <TableHead>HSN</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {items.map((item) => (
+                    <TableRow key={item.productId}>
+                      <TableCell className="font-mono">
+                        {item.code ?? (
+                          <span className="font-sans text-muted-foreground">Internal</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-medium">{item.name}</TableCell>
+                      <TableCell>{item.genericName || "—"}</TableCell>
+                      <TableCell>
+                        {[item.form, item.strength].filter(Boolean).join(" ") || "—"}
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {item.stockUnit} × {item.unitsPerPack}
+                      </TableCell>
+                      <TableCell>{SCHEDULE_LABELS[item.schedule]}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {item.taxRatePercent ?? "—"}
+                      </TableCell>
+                      <TableCell className="font-mono">{item.taxCode || "—"}</TableCell>
+                      <TableCell>
+                        {item.catalogItemId === null ? (
+                          <Badge variant="muted">Internal</Badge>
+                        ) : (
+                          <Badge variant={item.active ? "secondary" : "muted"}>
+                            {item.active ? "Active" : "Inactive"}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="xs" onClick={() => setEditing(item)}>
+                          Edit
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <ul className="md:hidden">
+              {items.map((item) => (
+                <li
+                  key={item.productId}
+                  className="flex min-w-0 items-start gap-2 border-b border-border/60 px-3 py-2 last:border-b-0"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{item.name}</p>
+                    <p className="mt-1 truncate text-muted-foreground">
+                      <span className="font-mono">{item.code ?? "Internal"}</span> ·{" "}
+                      {item.stockUnit} × {item.unitsPerPack} · {SCHEDULE_LABELS[item.schedule]}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {item.catalogItemId === null ? (
+                      <Badge variant="muted">Internal</Badge>
+                    ) : (
+                      <Badge variant={item.active ? "secondary" : "muted"}>
+                        {item.active ? "Active" : "Inactive"}
+                      </Badge>
+                    )}
+                    <Button variant="ghost" size="xs" onClick={() => setEditing(item)}>
+                      Edit
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </ListState>
         </Panel>
       </PageBody>

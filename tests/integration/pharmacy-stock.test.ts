@@ -14,7 +14,7 @@ beforeAll(async () => {
   await resetTestDatabase();
 });
 
-const FAR_EXPIRY = "2031-12-31";
+const FAR_EXPIRY = "2031-12";
 
 const RECEIVED_ON = "2026-09-01";
 
@@ -92,7 +92,7 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
 
   const { items: onHand } = await api.pharmacy.stockOnHand({ orgSlug: org.slug });
   expect(onHand).toMatchObject([
-    { batchId, batchNumber: "B-100", expiryDate: FAR_EXPIRY, shelfQty: 50, quarantineQty: 0 },
+    { batchId, batchNumber: "B-100", expiryDate: "2031-12-31", shelfQty: 50, quarantineQty: 0 },
   ]);
 
   const search = await api.pharmacy.searchStock({ orgSlug: org.slug, query: "paracet" });
@@ -113,7 +113,7 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
         {
           productId: product.productId,
           batchNumber: "B-100",
-          expiryDate: "2032-01-31",
+          expiryDate: "2032-01",
           mrp: 12_00n,
           qty: 5,
         },
@@ -338,7 +338,7 @@ test("stock search returns only products with sellable shelf stock", async () =>
       {
         productId: expired.productId,
         batchNumber: "EXPIRED-1",
-        expiryDate: "2020-01-01",
+        expiryDate: "2020-01",
         mrp: 10_00n,
         qty: 5,
       },

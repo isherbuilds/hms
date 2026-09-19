@@ -81,6 +81,14 @@ function Combobox<T>({
         render={<Input data-slot="combobox-input" />}
         className={inputClassName}
         {...inputProps}
+        // Enter in a type-ahead picks the match, never submits the form behind it.
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && event.currentTarget.value.length > 0) {
+            event.preventDefault();
+          }
+
+          inputProps?.onKeyDown?.(event);
+        }}
       />
       <ComboboxPrimitive.Portal>
         <ComboboxPrimitive.Positioner

@@ -538,7 +538,7 @@ checkbox items, applied filters as removable chips, and date presets from the
 organization's business date with a custom range in a dialog. It replaced the
 toggle-pill `FilterGroup`/`FilterSelect`, `report-period-controls.tsx`, and the
 `toggle`/`toggle-group` primitives they alone consumed, on every list that had
-them (billing, OPD, patients, files, reports) as well as the three pharmacy
+them (billing, OPD, patients, reports) as well as the three pharmacy
 lists. The pharmacy brief said "no new shared components"; this one is accepted
 here because the stock list needs product, expiry and bucket at once, a pill
 row wraps to two lines on a phone at five options and cannot express
