@@ -770,6 +770,7 @@ CREATE INDEX "credit_notes_org_business_date_idx" ON "credit_notes" USING btree 
 CREATE UNIQUE INDEX "departments_org_name_idx" ON "departments" USING btree ("org_id","name");--> statement-breakpoint
 CREATE INDEX "file_org_created_idx" ON "file" USING btree ("org_id","created_at" DESC NULLS FIRST,"id" DESC NULLS FIRST);--> statement-breakpoint
 CREATE INDEX "goods_receipts_org_received_idx" ON "goods_receipts" USING btree ("org_id","received_on","id");--> statement-breakpoint
+CREATE INDEX "goods_receipts_org_file_idx" ON "goods_receipts" USING btree ("org_id","file_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "patients_org_mrn_idx" ON "patients" USING btree ("org_id","mrn");--> statement-breakpoint
 CREATE UNIQUE INDEX "patients_org_uid_idx" ON "patients" USING btree ("org_id","uid") WHERE "patients"."uid" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "payers_org_name_idx" ON "payers" USING btree ("org_id","name");--> statement-breakpoint
@@ -810,4 +811,5 @@ CREATE UNIQUE INDEX "stock_movements_source_idx" ON "stock_movements" USING btre
 CREATE INDEX "stock_movements_org_batch_bucket_idx" ON "stock_movements" USING btree ("org_id","batch_id","bucket");--> statement-breakpoint
 CREATE INDEX "pharmacy_sales_org_created_idx" ON "pharmacy_sales" USING btree ("org_id","created_at","id");--> statement-breakpoint
 CREATE INDEX "pharmacy_returns_org_sale_idx" ON "pharmacy_returns" USING btree ("org_id","pharmacy_sale_id");--> statement-breakpoint
-CREATE INDEX "pharmacy_return_lines_org_invoice_line_idx" ON "pharmacy_return_lines" USING btree ("org_id","invoice_line_id");
+CREATE INDEX "pharmacy_return_lines_org_invoice_line_idx" ON "pharmacy_return_lines" USING btree ("org_id","invoice_line_id");--> statement-breakpoint
+CREATE INDEX "pharmacy_return_lines_org_return_idx" ON "pharmacy_return_lines" USING btree ("org_id","return_id");

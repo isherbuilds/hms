@@ -256,6 +256,10 @@ keeps its own locks (D040).
   `id`) → Advance Receipts (by `createdAt`, `id`). Receipts and
   product updates both lock the Product before reading or inserting its batches.
   A new record type is placed in this list in the same change that first locks it.
+  One exception: a pharmacy sale locks its batches before taking the invoice
+  counter, because its Charges and Invoice are created inside that transaction
+  and nothing else can wait on them. No writer holds an invoice lock and then
+  waits on a batch, so the inverse pair that would deadlock cannot form.
 - **Counters are locks.** A counter row stays locked until commit, which keeps a
   series gapless. One transaction takes series in the order token → invoice →
   receipt; every other command takes a single series.

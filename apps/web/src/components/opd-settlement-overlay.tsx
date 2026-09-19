@@ -48,6 +48,8 @@ type SettlementOverlayProps = {
   label: string;
   pending: boolean;
   availableCredit: bigint;
+  /** A sale nobody can owe: a short payment is refused here, not by the server. */
+  fullPayment?: boolean;
   /**
    * A reason the page behind knows and the draft cannot — charges that moved on
    * another terminal. Blocks the submit, because the server would refuse the stale
@@ -82,6 +84,7 @@ export function SettlementOverlay({
   blockedReason,
   pending,
   availableCredit,
+  fullPayment,
   onOpenChange,
   onConfirm,
 }: SettlementOverlayProps) {
@@ -135,6 +138,7 @@ export function SettlementOverlay({
     payments,
     attempted,
     currency: quote.currency,
+    fullPayment,
   });
 
   const confirm = () => {

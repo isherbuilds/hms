@@ -1,6 +1,7 @@
 import { db } from "@hms/db";
+import { invoices } from "@hms/db/schema/invoices";
 import { SETTINGS_DEFAULTS, organizationSettings } from "@hms/db/schema/organization-settings";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 
@@ -90,15 +91,48 @@ export const settingsRouter = {
     const { currency, ...mutableFields } = fields;
 
     const [current] = await db
-      .select({ currency: organizationSettings.currency })
+      .select({
+        currency: organizationSettings.currency,
+        invoicePrefix: organizationSettings.invoicePrefix,
+        pharmacyInvoicePrefix: organizationSettings.pharmacyInvoicePrefix,
+      })
       .from(organizationSettings)
       .where(eq(organizationSettings.orgId, scope.orgId))
       .limit(1);
 
+    const stored = current ?? SETTINGS_DEFAULTS;
+
     // Fail loud (D028): a differing currency is a config error, never a silent drop.
-    if (currency !== (current?.currency ?? SETTINGS_DEFAULTS.currency)) {
+    if (currency !== stored.currency) {
       throw new ORPCError("CONFLICT", {
         message: "Currency cannot be changed for this organization",
+      });
+    }
+
+    // The streams count independently over one number index, so moving a prefix to the
+    // other stream recreates a number it already issued. An issued prefix is final.
+    const issued = async (stream: "opd" | "pharmacy") => {
+      const [row] = await db
+        .select({ id: invoices.id })
+        .from(invoices)
+        .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.stream, stream)))
+        .limit(1);
+
+      return row !== undefined;
+    };
+
+    if (fields.invoicePrefix !== stored.invoicePrefix && (await issued("opd"))) {
+      throw new ORPCError("CONFLICT", {
+        message: "The invoice prefix cannot change once an invoice has been issued",
+      });
+    }
+
+    if (
+      fields.pharmacyInvoicePrefix !== stored.pharmacyInvoicePrefix &&
+      (await issued("pharmacy"))
+    ) {
+      throw new ORPCError("CONFLICT", {
+        message: "The pharmacy invoice prefix cannot change once a sale has been invoiced",
       });
     }
 

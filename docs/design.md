@@ -257,10 +257,10 @@ style choice.
   filters.
 - **`SearchInput`** — the one uncontrolled search box. It trims the query and
   applies it after a 300 ms pause.
-- **`FilterGroup`** — a segmented, one-of-N list filter that cannot be
-  deselected. For a fixed set of two to five options.
-- **`FilterSelect`** — the same filter as a native select. For options that come
-  from data, or more than five.
+- **`list-filter.tsx`** — the one list filter idiom (D043): `FilterMenu` inside
+  the search field, `FilterSubmenu` and checkbox items for each dimension,
+  `FilterChips` for what is applied, and `DateSubmenu`/`DateFilter` for the
+  business-date presets and custom range.
 - **`Panel` / `PanelEmpty`** — the muted tray, label row, raised card, optional
   footer, and centered empty copy used by every list. `grow` fills the page for
   the one list on an operational desk.
@@ -271,10 +271,11 @@ style choice.
 
 **List grammar.** Every list page puts `ListToolbar`, with search first and
 filters after it, above a `Panel`. Search is temporary client state. It applies
-after a 300 ms pause and has no submit button. Filters are URL search state. A
-fixed set of two to five options is a `FilterGroup`; a boolean is a two-option
-group such as `All | Active`. Options that come from data, such as catalog
-categories, or that run past five are a `FilterSelect`. Read states come only
+after a 300 ms pause and has no submit button. Filters are URL search state. Every
+dimension is a submenu of checkbox items under the field's filter button, and
+each applied one is a removable chip; an absent parameter is the default, so it
+is never a chip. A list with no search field to anchor to puts its date range on
+a labelled `DateFilter` button instead of behind an icon. Read states come only
 from `ListState`. A cursor list grows only through `LoadMore` in the panel
 footer, which also shows the count. Operational tables never scroll
 horizontally: below `md` a list renders one compact card per row (`text-xs`,
@@ -324,8 +325,8 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
   `p-4`; feature forms compose `SheetHeader`/`SheetFooter` or
   `DialogHeader`/`DialogFooter` rather than recreating their borders and padding.
 - Forms compose `FieldGroup`, `Field`, `FieldSet` and `FieldError`. Sets of two
-  to five choices use a `NativeSelect` or a `role="radiogroup"` row of buttons,
-  and section boundaries use `Separator`.
+  to five choices use a `NativeSelect` or a `role="group"` row of buttons that
+  carry `aria-pressed`, and section boundaries use `Separator`.
 - An overlay holding a pending money write ignores Escape, backdrop, and close
   until the write settles.
 - Sheet motion is limited to the existing 150 ms opacity and directional

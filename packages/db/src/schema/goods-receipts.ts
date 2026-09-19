@@ -44,5 +44,6 @@ export const goodsReceipts = pgTable(
       foreignColumns: [file.orgId, file.id],
     }),
     index("goods_receipts_org_received_idx").on(table.orgId, table.receivedOn, table.id),
+    index("goods_receipts_org_file_idx").on(table.orgId, table.fileId),
   ],
 );

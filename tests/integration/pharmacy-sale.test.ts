@@ -45,7 +45,7 @@ function expectedTotals(qty: number, discount: bigint, unitPrice = MRP, rate = T
 }
 
 function futureExpiry(): string {
-  return `${new Date().getUTCFullYear() + 3}-12-31`;
+  return `${new Date().getUTCFullYear() + 3}-12`;
 }
 
 async function createPharmacyFixture(seed: string) {
@@ -259,7 +259,7 @@ test("an expired batch is refused and writes no sale", async () => {
 
   const batchId = await fixture.receive(medicine.productId, {
     qty: 4,
-    expiryDate: "2020-01-31",
+    expiryDate: "2020-01",
   });
 
   const totals = expectedTotals(1, 0n);

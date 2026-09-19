@@ -116,9 +116,6 @@ export function PharmacyBatchPicker({
             onFocus: () => {
               if (typed().length > 0) search.setOpen(true);
             },
-            onKeyDown: (event) => {
-              if (event.key === "Enter" && typed().length > 0) event.preventDefault();
-            },
             "aria-label": "Search stock",
           }}
           itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2"

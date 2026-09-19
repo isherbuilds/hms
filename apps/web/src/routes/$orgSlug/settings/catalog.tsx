@@ -68,13 +68,15 @@ import { requireOrgPermission } from "@/lib/route-permission";
 import { SettingsTabs } from "./route";
 
 // Kept local so no @hms/db server module reaches the client bundle (hard rule 6).
-// Medicines carry the `pharmacy` category but are written only from Pharmacy → Items,
-// so it is listed for display and never offered by this form.
-const CATALOG_CATEGORIES = ["consultation", "procedure", "lab", "radiology", "other"] as const;
+// Medicines are written only from Pharmacy → Items, so the form never offers that
+// category while the list still shows and filters by it.
+const EDITABLE_CATEGORIES = ["consultation", "procedure", "lab", "radiology", "other"] as const;
 
-type EditableCategory = (typeof CATALOG_CATEGORIES)[number];
+type EditableCategory = (typeof EDITABLE_CATEGORIES)[number];
 
-type CatalogCategory = EditableCategory | "pharmacy";
+const CATALOG_CATEGORIES = [...EDITABLE_CATEGORIES, "pharmacy"] as const;
+
+type CatalogCategory = (typeof CATALOG_CATEGORIES)[number];
 
 const CATEGORY_LABELS: Record<CatalogCategory, string> = {
   consultation: "Consultation",
@@ -133,7 +135,7 @@ export const Route = createFileRoute("/$orgSlug/settings/catalog")({
 const formSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200, "Keep the name under 200 characters"),
   code: z.string().trim().min(1, "Code is required").max(20, "Keep the code under 20 characters"),
-  category: z.enum(CATALOG_CATEGORIES),
+  category: z.enum(EDITABLE_CATEGORIES),
   unitPrice: z.string().regex(DECIMAL_PATTERN, "Amount like 150 or 150.00").transform(parseDecimal),
   taxRatePercent: z.string().regex(/^\d{1,2}(\.\d{1,2})?$/, "Rate like 0, 5, or 12.50"),
   taxCode: z.string().trim().max(20, "Keep the tax code under 20 characters").optional(),
@@ -242,7 +244,7 @@ function CatalogRoute() {
 
   const items = catalog.data?.pages.flatMap((page) => page.items) ?? [];
 
-  const setFilters = (patch: { q?: string; category?: EditableCategory; activeOnly?: true }) =>
+  const setFilters = (patch: { q?: string; category?: CatalogCategory; activeOnly?: true }) =>
     navigate({ replace: true, search: (previous) => ({ ...previous, ...patch }) });
 
   const clear = () => {
@@ -543,7 +545,7 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
                       <FormLabel>Category</FormLabel>
                       <FormControl>
                         <NativeSelect {...field} disabled={isPending}>
-                          {CATALOG_CATEGORIES.map((option) => (
+                          {EDITABLE_CATEGORIES.map((option) => (
                             <option key={option} value={option}>
                               {CATEGORY_LABELS[option]}
                             </option>

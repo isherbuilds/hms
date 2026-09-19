@@ -49,5 +49,6 @@ export const pharmacyReturnLines = pgTable(
     }),
     // Capping a line at sold minus already returned sums the prior returns of one line.
     index("pharmacy_return_lines_org_invoice_line_idx").on(table.orgId, table.invoiceLineId),
+    index("pharmacy_return_lines_org_return_idx").on(table.orgId, table.returnId),
   ],
 );

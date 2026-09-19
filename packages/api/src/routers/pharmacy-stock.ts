@@ -18,7 +18,7 @@ import { conflict, impossible } from "../lib/conflict";
 import { uniqueViolationConstraint } from "../lib/db-errors";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import {
-  dateOnly,
+  expiryMonth,
   likePattern,
   money,
   note,
@@ -51,10 +51,17 @@ const productFields = {
   catalog: catalogDetails.optional(),
 };
 
+// A pack prints a month, so the receipt names one; the batch is good until its last day.
+function monthEnd(month: string): string {
+  const [year, index] = month.split("-");
+
+  return new Date(Date.UTC(Number(year), Number(index), 0)).toISOString().slice(0, 10);
+}
+
 const batchLine = z.object({
   productId: z.string(),
   batchNumber: z.string().trim().min(1).max(50),
-  expiryDate: dateOnly,
+  expiryDate: expiryMonth.transform(monthEnd),
   mrp: money,
 });
 
@@ -491,7 +498,7 @@ export const pharmacyStockRouter = {
         ),
       )
       .orderBy(asc(products.name), asc(products.id))
-      .limit(6);
+      .limit(20);
 
     if (found.length === 0) return [];
 

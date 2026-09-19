@@ -14,6 +14,9 @@ export const positiveMoney = z.bigint().positive();
 // Calendar-valid, not shape-valid: `2026-02-31` must fail here, not in Postgres.
 export const dateOnly = z.iso.date();
 
+/** A pack prints only a month; the server stores that month's last day. */
+export const expiryMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Expiry month like 2031-12");
+
 /**
  * An inclusive business-date window. Both ends are optional in the wire schema and
  * resolved by `resolveDayRange`, so an operational list reads the current day rather

@@ -1,4 +1,5 @@
 import { DECIMAL_PATTERN, parseDecimal } from "@hms/api/core/money";
+import { expiryMonth } from "@hms/api/lib/schemas";
 import { Button } from "@hms/ui/components/button";
 import { Checkbox } from "@hms/ui/components/checkbox";
 import { DropdownMenuCheckboxItem } from "@hms/ui/components/dropdown-menu";
@@ -80,24 +81,22 @@ const REASON_LABELS: Record<string, string> = {
 
 const EXPIRING_DAYS = [30, 90] as const;
 
-// "shelf" is the absent view, so it is a filter to remove, never one to pick.
-const VIEWS = ["quarantine", "zero"] as const;
+// Absent is the sellable shelf; the two views widen it independently.
+const VIEWS = [
+  { id: "quarantine", label: "Quarantine only" },
+  { id: "zero", label: "Include zero" },
+] as const;
 
-type View = (typeof VIEWS)[number];
+type StockFilters = { q?: string; expiring?: 30 | 90; quarantine?: true; zero?: true };
 
-const VIEW_LABELS: Record<View, string> = {
-  quarantine: "Quarantine only",
-  zero: "Include zero",
-};
-
-const stockQuery = (orgSlug: string, filters: { q?: string; expiring?: 30 | 90; view?: View }) =>
+const stockQuery = (orgSlug: string, filters: StockFilters) =>
   orpc.pharmacy.stockOnHand.infiniteOptions({
     input: (cursor: { expiryDate: string; batchId: string } | undefined) => ({
       orgSlug,
       query: filters.q,
       expiringWithinDays: filters.expiring,
-      quarantineOnly: filters.view === "quarantine",
-      includeZero: filters.view === "zero",
+      quarantineOnly: filters.quarantine ?? false,
+      includeZero: filters.zero ?? false,
       cursor,
       limit: 50,
     }),
@@ -114,9 +113,15 @@ export const Route = createFileRoute("/$orgSlug/pharmacy/stock")({
       .union([z.literal(30), z.literal(90)])
       .optional()
       .catch(undefined),
-    view: z.enum(VIEWS).optional().catch(undefined),
+    quarantine: z.literal(true).optional().catch(undefined),
+    zero: z.literal(true).optional().catch(undefined),
   }),
-  loaderDeps: ({ search }) => ({ q: search.q, expiring: search.expiring, view: search.view }),
+  loaderDeps: ({ search }) => ({
+    q: search.q,
+    expiring: search.expiring,
+    quarantine: search.quarantine,
+    zero: search.zero,
+  }),
   loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {
     await requireOrgPermission(queryClient, orgSlug, { pharmacy: ["read"] }, "/$orgSlug/dashboard");
     await loadRouteQuery(queryClient.infiniteQuery(stockQuery(orgSlug, deps)));
@@ -133,20 +138,22 @@ type StockRow = {
 
 function PharmacyStockRoute() {
   const { orgSlug } = Route.useParams();
-  const { q, expiring, view } = Route.useSearch();
+  const { q, expiring, quarantine, zero } = Route.useSearch();
   const navigate = Route.useNavigate();
   const canReceive = useCan(orgSlug, { pharmacy: ["receive"] });
 
   const field = useRef<HTMLDivElement>(null);
   const [receiving, setReceiving] = useState(false);
 
-  const setFilters = (patch: { q?: string; expiring?: 30 | 90; view?: View }) =>
+  const setFilters = (patch: StockFilters) =>
     navigate({ replace: true, search: (previous) => ({ ...previous, ...patch }) });
 
   const clear = () => {
     focusSearch(field, { empty: true });
-    void setFilters({ q: undefined, expiring: undefined, view: undefined });
+    void setFilters({ q: undefined, expiring: undefined, quarantine: undefined, zero: undefined });
   };
+
+  const applied = { quarantine, zero };
 
   const chips: ActiveFilter[] = [
     ...(expiring === undefined
@@ -159,16 +166,18 @@ function PharmacyStockRoute() {
             remove: () => setFilters({ expiring: undefined }),
           },
         ]),
-    ...(view === undefined
-      ? []
-      : [
-          {
-            id: "view",
-            name: "View",
-            label: VIEW_LABELS[view],
-            remove: () => setFilters({ view: undefined }),
-          },
-        ]),
+    ...VIEWS.flatMap((candidate) =>
+      applied[candidate.id]
+        ? [
+            {
+              id: candidate.id,
+              name: "View",
+              label: candidate.label,
+              remove: () => setFilters({ [candidate.id]: undefined }),
+            },
+          ]
+        : [],
+    ),
   ];
 
   return (
@@ -208,13 +217,13 @@ function PharmacyStockRoute() {
                 <FilterSubmenu icon={CircleDotIcon} label="View">
                   {VIEWS.map((candidate) => (
                     <DropdownMenuCheckboxItem
-                      key={candidate}
-                      checked={view === candidate}
+                      key={candidate.id}
+                      checked={applied[candidate.id] === true}
                       onCheckedChange={(checked) =>
-                        void setFilters({ view: checked ? candidate : undefined })
+                        void setFilters({ [candidate.id]: checked ? true : undefined })
                       }
                     >
-                      {VIEW_LABELS[candidate]}
+                      {candidate.label}
                     </DropdownMenuCheckboxItem>
                   ))}
                 </FilterSubmenu>
@@ -226,9 +235,9 @@ function PharmacyStockRoute() {
 
         {/* Only search may retain previous rows; other filters remount this actionable list (D037). */}
         <StockBatches
-          key={`${expiring ?? ""}:${view ?? ""}`}
+          key={`${expiring ?? ""}:${quarantine ?? ""}:${zero ?? ""}`}
           orgSlug={orgSlug}
-          filters={{ q, expiring, view }}
+          filters={{ q, expiring, quarantine, zero }}
         />
       </PageBody>
 
@@ -239,13 +248,7 @@ function PharmacyStockRoute() {
   );
 }
 
-function StockBatches({
-  orgSlug,
-  filters,
-}: {
-  orgSlug: string;
-  filters: { q?: string; expiring?: 30 | 90; view?: View };
-}) {
+function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFilters }) {
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const canAdjust = useCan(orgSlug, { pharmacy: ["adjust"] });
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -262,67 +265,109 @@ function StockBatches({
           isEmpty={rows.length === 0}
           empty={filters.q ? "No batch matches this search." : "No stock matches these filters."}
         >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead>Batch</TableHead>
-                <TableHead>Expiry</TableHead>
-                <TableHead className="text-right">MRP</TableHead>
-                <TableHead>Unit</TableHead>
-                <TableHead className="text-right">Shelf</TableHead>
-                <TableHead className="text-right">Quarantine</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <Fragment key={row.batchId}>
-                  <TableRow>
-                    <TableCell className="font-medium">
-                      {row.name}{" "}
-                      {row.code === null ? (
-                        <span className="text-muted-foreground">Internal</span>
-                      ) : (
-                        <span className="font-mono text-muted-foreground">{row.code}</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-mono">{row.batchNumber}</TableCell>
-                    <TableCell className="whitespace-nowrap">{formatDay(row.expiryDate)}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatMoney(row.mrp, currency)}
-                    </TableCell>
-                    <TableCell>{row.stockUnit}</TableCell>
-                    <TableCell className="text-right tabular-nums">{row.shelfQty}</TableCell>
-                    <TableCell className="text-right tabular-nums">{row.quarantineQty}</TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        onClick={() =>
-                          setExpanded((current) => (current === row.batchId ? null : row.batchId))
-                        }
-                      >
-                        Movements
-                      </Button>
-                      {canAdjust ? (
-                        <Button variant="ghost" size="xs" onClick={() => setAdjusting(row)}>
-                          Adjust
-                        </Button>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                  {expanded === row.batchId ? (
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Product</TableHead>
+                  <TableHead>Batch</TableHead>
+                  <TableHead>Expiry</TableHead>
+                  <TableHead className="text-right">MRP</TableHead>
+                  <TableHead>Unit</TableHead>
+                  <TableHead className="text-right">Shelf</TableHead>
+                  <TableHead className="text-right">Quarantine</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <Fragment key={row.batchId}>
                     <TableRow>
-                      <TableCell colSpan={8}>
-                        <BatchMovements orgSlug={orgSlug} batchId={row.batchId} />
+                      <TableCell className="font-medium">
+                        {row.name}{" "}
+                        {row.code === null ? (
+                          <span className="text-muted-foreground">Internal</span>
+                        ) : (
+                          <span className="font-mono text-muted-foreground">{row.code}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-mono">{row.batchNumber}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {formatDay(row.expiryDate)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(row.mrp, currency)}
+                      </TableCell>
+                      <TableCell>{row.stockUnit}</TableCell>
+                      <TableCell className="text-right tabular-nums">{row.shelfQty}</TableCell>
+                      <TableCell className="text-right tabular-nums">{row.quarantineQty}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() =>
+                            setExpanded((current) => (current === row.batchId ? null : row.batchId))
+                          }
+                        >
+                          Movements
+                        </Button>
+                        {canAdjust ? (
+                          <Button variant="ghost" size="xs" onClick={() => setAdjusting(row)}>
+                            Adjust
+                          </Button>
+                        ) : null}
                       </TableCell>
                     </TableRow>
+                    {expanded === row.batchId ? (
+                      <TableRow>
+                        <TableCell colSpan={8}>
+                          <BatchMovements orgSlug={orgSlug} batchId={row.batchId} />
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </Fragment>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <ul className="md:hidden">
+            {rows.map((row) => (
+              <li key={row.batchId} className="border-b border-border/60 px-3 py-2 last:border-b-0">
+                <div className="flex min-w-0 items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{row.name}</p>
+                    <p className="mt-1 truncate font-mono text-muted-foreground">
+                      {row.batchNumber} · {formatDay(row.expiryDate)}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right tabular-nums">
+                    <p className="font-medium">{row.shelfQty}</p>
+                    <p className="mt-1 text-muted-foreground">{row.quarantineQty} held</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 pt-1">
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() =>
+                      setExpanded((current) => (current === row.batchId ? null : row.batchId))
+                    }
+                  >
+                    Movements
+                  </Button>
+                  {canAdjust ? (
+                    <Button variant="ghost" size="xs" onClick={() => setAdjusting(row)}>
+                      Adjust
+                    </Button>
                   ) : null}
-                </Fragment>
-              ))}
-            </TableBody>
-          </Table>
+                </div>
+                {expanded === row.batchId ? (
+                  <BatchMovements orgSlug={orgSlug} batchId={row.batchId} />
+                ) : null}
+              </li>
+            ))}
+          </ul>
         </ListState>
       </Panel>
 
@@ -442,7 +487,7 @@ const receiveSchema = z
           productId: z.string().min(1, "Choose a product"),
           productName: z.string(),
           batchNumber: z.string().trim().min(1, "Batch number is required").max(50),
-          expiryDate: z.iso.date("Use a valid date"),
+          expiryDate: expiryMonth,
           mrp: z.string().regex(DECIMAL_PATTERN, "Amount like 20 or 20.50").transform(parseDecimal),
           qty: numberText(z.number().int().min(1, "At least 1")),
         }),
@@ -481,6 +526,14 @@ const adjustSchema = z
     note: z.string().trim().min(1, "Explain this adjustment").max(500),
   })
   .superRefine((value, context) => {
+    if (value.qty < 0 && value.reason !== "count_correction") {
+      context.addIssue({
+        code: "custom",
+        path: ["qty"],
+        message: "Enter a positive quantity",
+      });
+    }
+
     if (value.reason === "internal_issue" && value.departmentId === "") {
       context.addIssue({
         code: "custom",
@@ -536,7 +589,7 @@ function BatchLines({ orgSlug }: { orgSlug: string }) {
         <div key={row.fieldKey} className="grid gap-2 border-t border-border pt-3 sm:grid-cols-2">
           <ProductLineField orgSlug={orgSlug} path={`lines.${index}`} />
           <TextField name={`lines.${index}.batchNumber`} label="Batch number" />
-          <TextField name={`lines.${index}.expiryDate`} label="Expiry" type="date" />
+          <TextField name={`lines.${index}.expiryDate`} label="Expiry month" type="month" />
           <TextField name={`lines.${index}.mrp`} label="MRP" inputMode="decimal" />
           <TextField name={`lines.${index}.qty`} label="Quantity" inputMode="numeric" />
           {rows.fields.length > 1 ? (

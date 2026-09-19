@@ -113,6 +113,7 @@ export function settlementProblems({
   payments,
   attempted,
   currency,
+  fullPayment = false,
 }: {
   /** Paise, already net of the discount, as quoted by the server. */
   due: bigint;
@@ -123,6 +124,8 @@ export function settlementProblems({
   payments: PaymentLine[];
   attempted: boolean;
   currency: string;
+  /** A sale with nobody to owe it, so the server takes nothing short of the bill. */
+  fullPayment?: boolean;
 }): SettlementProblem[] {
   const problems: SettlementProblem[] = [];
   const amount = (paise: bigint) => formatMoney(paise, currency);
@@ -197,7 +200,18 @@ export function settlementProblems({
   const balance = due - collecting;
   const discounted = discountPaise > 0n;
 
-  if ((balance > 0n || discounted) && note.trim() === "") {
+  if (balance > 0n && fullPayment) {
+    const last = payments.at(-1);
+    problems.push({
+      key: "balance",
+      fieldId: last ? `payment-amount-${last.id}` : "settlement-discount",
+      message: `This sale is paid in full: ${amount(balance)} is still due.`,
+      quiet: false,
+      selectOnFocus: true,
+    });
+  }
+
+  if (((balance > 0n && !fullPayment) || discounted) && note.trim() === "") {
     problems.push({
       key: "note",
       fieldId: "settlement-note",

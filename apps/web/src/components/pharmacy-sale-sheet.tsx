@@ -1,4 +1,5 @@
 import { DECIMAL_PATTERN } from "@hms/api/core/money";
+import { requirePaymentReference } from "@hms/api/lib/schemas";
 import { Button } from "@hms/ui/components/button";
 import {
   FormControl,
@@ -292,16 +293,26 @@ const returnSchema = z
     ),
     reasonCode: z.enum(RETURN_REASON_CODES),
     note: z.string().trim().max(500, "Keep the note under 500 characters").optional(),
-    // Blank is "credit it, refund later"; a figure hands the money back with the return.
-    refundAmount: z
-      .string()
-      .refine((value) => value.trim() === "" || DECIMAL_PATTERN.test(value), "Amount like 150.00")
-      .refine(
-        (value) => value.trim() === "" || (parseMoneyInput(value) ?? ZERO) > ZERO,
-        "Enter an amount above zero",
-      ),
-    refundMethod: z.enum(PAYMENT_METHODS),
-    refundReference: z.string().trim().max(100).optional(),
+    refund: z
+      .object({
+        // Blank is "credit it, refund later"; a figure hands the money back with the return.
+        amount: z
+          .string()
+          .refine(
+            (value) => value.trim() === "" || DECIMAL_PATTERN.test(value),
+            "Amount like 150.00",
+          )
+          .refine(
+            (value) => value.trim() === "" || (parseMoneyInput(value) ?? ZERO) > ZERO,
+            "Enter an amount above zero",
+          ),
+        method: z.enum(PAYMENT_METHODS),
+        reference: z.string().trim().max(100).optional(),
+      })
+      .superRefine((value, context) => {
+        if (value.amount.trim() === "") return;
+        requirePaymentReference(value, context);
+      }),
   })
   .refine((value) => value.lines.some((line) => line.qty > 0), {
     path: ["lines"],
@@ -364,9 +375,7 @@ function ReturnDialog({
         })),
         reasonCode: "damaged",
         note: "",
-        refundAmount: "",
-        refundMethod: "cash",
-        refundReference: "",
+        refund: { amount: "", method: "cash", reference: "" },
       }}
       onClose={onClose}
       run={(value) =>
@@ -377,12 +386,12 @@ function ReturnDialog({
           note: value.note || undefined,
           lines: value.lines.filter((line) => line.qty > 0),
           refund:
-            value.refundAmount.trim() === ""
+            value.refund.amount.trim() === ""
               ? undefined
               : {
-                  method: value.refundMethod,
-                  amount: parseMoneyInput(value.refundAmount) ?? ZERO,
-                  reference: value.refundReference || undefined,
+                  method: value.refund.method,
+                  amount: parseMoneyInput(value.refund.amount) ?? ZERO,
+                  reference: value.refund.reference || undefined,
                 },
         })
       }
@@ -412,7 +421,7 @@ function ReturnDialog({
 
       <div className="grid gap-3 sm:grid-cols-3">
         <RegisteredFormField
-          name="refundAmount"
+          name="refund.amount"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Refund now</FormLabel>
@@ -429,7 +438,7 @@ function ReturnDialog({
           )}
         />
         <RegisteredFormField
-          name="refundMethod"
+          name="refund.method"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Refund method</FormLabel>
@@ -446,7 +455,7 @@ function ReturnDialog({
             </FormItem>
           )}
         />
-        <TextField name="refundReference" label="Refund reference" />
+        <TextField name="refund.reference" label="Refund reference" />
       </div>
     </FormDialog>
   );

@@ -190,6 +190,15 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
   // The credit the overlay opens with, read on Collect; null while it is closed.
   const [settlement, setSettlement] = useState<bigint | null>(null);
 
+  // Freezes the buyer while the credit read is in flight, so the overlay cannot open on
+  // one patient's credit while the sale names another.
+  const readCredit = useMutation({
+    mutationFn: (patientId: string) => openingCredit(queryClient, orgSlug, patientId),
+    onSuccess: (credit) => {
+      if (credit !== null) setSettlement(credit);
+    },
+  });
+
   const dirty = cart.length > 0;
 
   const blocker = useBlocker({
@@ -258,21 +267,21 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
           ignoreBlocker: true,
         });
       },
-      // The overlay holds a total the server will keep refusing; the refresh brings the new one.
-      onError: closeOnConflict(() => setSettlement(null)),
+      // Cart lines are local snapshots of shelf and price, so no refetch repairs them.
+      onError: closeOnConflict(() => {
+        setSettlement(null);
+        setCart([]);
+      }),
     }),
   );
 
-  const collect = async () => {
+  const collect = () => {
     setAttempted(true);
 
     if (blocked) return;
 
     if (buyerKind === "patient" && patient) {
-      const credit = await openingCredit(queryClient, orgSlug, patient.id);
-
-      if (credit === null) return;
-      setSettlement(credit);
+      readCredit.mutate(patient.id);
 
       return;
     }
@@ -304,7 +313,7 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
   const collectButton = (id: string, messageClassName?: string) => (
     <>
       <SubmitButton
-        isSubmitting={sell.isPending}
+        isSubmitting={sell.isPending || readCredit.isPending}
         aria-disabled={blocked !== undefined || undefined}
         aria-describedby={attempted && blocked ? id : undefined}
         className="w-40 max-w-full aria-disabled:bg-primary aria-disabled:text-primary-foreground"
@@ -328,10 +337,10 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          void collect();
+          collect();
         }}
       >
-        <fieldset disabled={sell.isPending} className="contents">
+        <fieldset disabled={sell.isPending || readCredit.isPending} className="contents">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
             <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
               <FormSection title="Buyer">
@@ -496,6 +505,7 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                 quote={quote}
                 basis="inclusive"
                 availableCredit={settlement}
+                fullPayment={buyerKind !== "patient" || !patient}
                 description={`${buyerLabel} · pharmacy counter`}
                 label="Record sale"
                 pending={sell.isPending}
