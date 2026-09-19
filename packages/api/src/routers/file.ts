@@ -1,6 +1,7 @@
 import { db } from "@hms/db";
 import { attachments } from "@hms/db/schema/attachments";
 import { file as fileTable } from "@hms/db/schema/file";
+import { goodsReceipts } from "@hms/db/schema/goods-receipts";
 import { createReadUrl, createUploadUrl, deleteObject, maxUploadBytes } from "@hms/storage";
 import { ORPCError } from "@orpc/server";
 import { createHash } from "node:crypto";
@@ -232,6 +233,22 @@ export const fileRouter = {
       if (attached) {
         throw new ORPCError("CONFLICT", {
           message: "This file is attached to a record. Detach it there before deleting it.",
+        });
+      }
+
+      // A goods receipt holds its delivery note or signed count sheet by foreign key, so
+      // the same check has to cover it or the delete reaches a constraint error as a 500.
+      const [received] = await tx
+        .select({ id: goodsReceipts.id })
+        .from(goodsReceipts)
+        .where(
+          and(eq(goodsReceipts.orgId, context.scope.orgId), eq(goodsReceipts.fileId, input.key)),
+        )
+        .limit(1);
+
+      if (received) {
+        throw new ORPCError("CONFLICT", {
+          message: "This file is the document for a goods receipt and cannot be deleted.",
         });
       }
 

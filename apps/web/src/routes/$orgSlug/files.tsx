@@ -107,7 +107,6 @@ function FilesRoute() {
     <>
       <PageHeader
         title="Files"
-        description="Stored privately · links are signed and expire after 15 minutes"
         action={
           canUpload ? (
             <>

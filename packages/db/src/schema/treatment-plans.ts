@@ -38,7 +38,6 @@ export const treatmentPlans = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    check("treatment_plans_status_check", sql`${table.status} in ('open', 'completed', 'closed')`),
     check(
       "treatment_plans_close_reason_check",
       sql`${table.status} <> 'closed' or ${table.closeReason} is not null`,

@@ -1,9 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 
-import { useDebouncedCallback } from "@/hooks/use-debounced-value";
+import { searchEmptyMessage, useSearchTerm } from "@/hooks/use-remote-search";
 import { orpc } from "@/lib/orpc";
-import { errorMessage } from "@/lib/orpc-error";
 
 /** Debounced catalog lookup shared by intake services and treatment plan items. */
 export function useCatalogSearch({
@@ -16,35 +14,21 @@ export function useCatalogSearch({
   /** Shown once a search returned nothing. */
   noMatch: string;
 }) {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const settle = useDebouncedCallback(setQuery, 250);
-  const searching = query.length > 0;
+  const search = useSearchTerm();
 
   const catalog = useQuery({
     ...orpc.catalog.searchServices.queryOptions({
-      input: { orgSlug, query: query || undefined, includeConsultation },
+      input: { orgSlug, query: search.term || undefined, includeConsultation },
     }),
-    enabled: searching,
+    enabled: search.searching,
   });
 
   return {
+    ...search,
     items: catalog.data ?? [],
-    // Never a popup over an empty field: there is nothing to match yet.
-    open: open && searching,
-    setOpen,
-    onInputValueChange: (value: string) => settle(value.trim()),
-    clear: () => {
-      settle("");
-      setQuery("");
-      setOpen(false);
-    },
-    emptyMessage: !searching
-      ? null
-      : catalog.isError
-        ? errorMessage(catalog.error, "Could not search the catalog")
-        : catalog.isPending
-          ? "Searching…"
-          : noMatch,
+    emptyMessage: searchEmptyMessage(search.searching, catalog, {
+      noMatch,
+      failed: "Could not search the catalog",
+    }),
   };
 }

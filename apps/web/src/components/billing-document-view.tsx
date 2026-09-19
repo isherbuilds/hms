@@ -96,16 +96,13 @@ function BillingDocumentView({
   return (
     <>
       <div className="contents lg:hidden">
-        <PageHeader
-          title={number ? `${kind} ${number}` : kind}
-          description={
-            patient && (
-              <>
-                <span className="capitalize">{patient.patientName}</span> · MRN {patient.patientMrn}
-              </>
-            )
-          }
-        />
+        <PageHeader title={number ? `${kind} ${number}` : kind} />
+        {patient ? (
+          <p className="shrink-0 truncate px-4 py-2 text-xs text-muted-foreground">
+            <span className="capitalize">{patient.patientName}</span>
+            {patient.patientMrn ? ` · MRN ${patient.patientMrn}` : null}
+          </p>
+        ) : null}
       </div>
       <iframe title={kind} src={pdfUrl} className="min-h-0 w-full flex-1 border-0" />
     </>

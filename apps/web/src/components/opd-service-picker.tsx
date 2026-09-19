@@ -110,7 +110,7 @@ export function ServicePicker({
               },
               "aria-label": "Search services",
             }}
-            itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-none border-b border-border px-3 py-2 last:border-b-0"
+            itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2"
             renderItem={renderMatch}
             emptyContent={
               search.emptyMessage ? (

@@ -232,6 +232,14 @@ shared finance domain: immutable documents, collection, corrections, accounting,
 and authorization (D019). Shared care-setting UI is extracted only after a
 second shipped desk proves the same interaction and state model.
 
+The pharmacy owns `products` (the D027 domain master), `stock_batches`,
+the append-only `stock_movements` ledger, `goods_receipts`,
+`pharmacy_sales`, `pharmacy_returns`, and `pharmacy_return_lines`. A product
+with no `catalogItemId` is an internal supply: stocked and issued, never sold.
+Opening stock is a goods receipt with `opening` set, not a separate document. `invoices`
+and `charges` carry exactly one typed parent, an OPD Appointment or a Pharmacy
+sale, matched to `invoices.stream` by a check constraint.
+
 ## Writes and concurrency
 
 The database serializes concurrent writes; the application neither retries nor
@@ -243,16 +251,16 @@ keeps its own locks (D040).
   then re-read balances in a new statement, because under READ COMMITTED only a
   statement that starts after the lock sees what committed while it waited.
 - **Lock order.** A transaction takes locks in this order and skips what it
-  does not need: request key → OPD Appointment → Treatment plan item → Treatment
-  plan → Charges → Invoice → Advance Receipts (by `createdAt`, `id`). A new
-  record type is placed in this list in the same change that first locks it.
+  does not need: OPD Appointment → Treatment plan item → Treatment plan →
+  Charges → Invoice → Products (by `id`) → Stock batches (by `expiryDate`,
+  `id`) → Advance Receipts (by `createdAt`, `id`). Receipts and
+  product updates both lock the Product before reading or inserting its batches.
+  A new record type is placed in this list in the same change that first locks it.
 - **Counters are locks.** A counter row stays locked until commit, which keeps a
   series gapless. One transaction takes series in the order token → invoice →
   receipt; every other command takes a single series.
-- **Money commands without a revision** (Advance Receipt, Payments, Credit Note,
-  Refund, settled walk-in) claim a client `requestKey` as their first statement,
-  so a retry after a lost response is refused instead of recording twice (D039).
-  A form holding a pending money write cannot be dismissed.
+- **Pending money writes stay open.** A form holding a pending money write
+  cannot be dismissed.
 - **A care record's Charge set** carries `chargeRevision`. Every post-check-in
   change to it (plan posting, void, Invoice issuance) advances it in the same
   transaction; settlement locks the record and must match both the reviewed
@@ -313,6 +321,10 @@ credits Patient Receivables. An unused-credit Refund debits the liability. A uni
 `bigint` paise, and the RPC link carries `bigint` end to end; decimal strings exist only
 where a person types or reads them (form inputs, PDF cells, audit meta).
 Payments use four methods: Cash, UPI, Card, and Bank transfer.
+
+A pharmacy sale credits Pharmacy Sales Revenue (`4500`). Pharmacy invoices are
+tax-inclusive: the line price is the batch MRP, so taxable value and tax are
+extracted from the discounted gross per line. OPD invoices stay tax-exclusive.
 
 Split collection is one tenant-scoped transaction containing up to four
 Payments. Every line gets its own Receipt and journal source; lines

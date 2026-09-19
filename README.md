@@ -29,3 +29,8 @@ the canonical command list.
 Start at the [documentation index](docs/README.md) for the source-of-truth map
 and current work registry. Contributor and agent rules are in
 [AGENTS.md](AGENTS.md); end-user help lives in `apps/fumadocs`.
+
+## License
+
+HMS is licensed under the [GNU Affero General Public License v3.0](LICENSE).
+The corresponding source is available at <https://github.com/isherbuilds/hms>.

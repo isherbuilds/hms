@@ -228,7 +228,7 @@ export function InvoiceDocument({
                 </span>
               ),
             },
-            { label: "MRN", value: invoice.patientMrn },
+            ...(invoice.patientMrn ? [{ label: "MRN", value: invoice.patientMrn }] : []),
             { label: "Issued by", value: invoice.issuedByName },
           ]}
         />
@@ -298,8 +298,12 @@ export function InvoiceDocument({
           <SectionTitle>Billed to</SectionTitle>
           <div style={{ ...personName, fontWeight: 700 }}>{invoice.patientName}</div>
           {guardian ? <div style={{ color: colors.muted }}>{guardian}</div> : null}
-          <div style={{ color: colors.muted }}>MRN {invoice.patientMrn}</div>
-          <div style={{ color: colors.muted }}>{invoice.patientPhone}</div>
+          {invoice.patientMrn ? (
+            <div style={{ color: colors.muted }}>MRN {invoice.patientMrn}</div>
+          ) : null}
+          {invoice.patientPhone ? (
+            <div style={{ color: colors.muted }}>{invoice.patientPhone}</div>
+          ) : null}
           {invoice.patientAddress ? (
             <div style={{ color: colors.muted }}>{invoice.patientAddress.replace(/\n/g, ", ")}</div>
           ) : null}
@@ -401,7 +405,8 @@ export function ReceiptDocument({ invoice, payment }: { invoice: Invoice; paymen
             label: "Received from",
             value: (
               <>
-                <span style={personName}>{invoice.patientName}</span> · MRN {invoice.patientMrn}
+                <span style={personName}>{invoice.patientName}</span>
+                {invoice.patientMrn ? ` · MRN ${invoice.patientMrn}` : null}
               </>
             ),
           },
@@ -454,7 +459,9 @@ export function CreditNoteDocument({
         <div style={{ flex: 1 }}>
           <SectionTitle>Issued to</SectionTitle>
           <strong style={personName}>{invoice.patientName}</strong>
-          <div style={{ color: colors.muted }}>MRN {invoice.patientMrn}</div>
+          {invoice.patientMrn ? (
+            <div style={{ color: colors.muted }}>MRN {invoice.patientMrn}</div>
+          ) : null}
         </div>
       </section>
       <p style={{ margin: "0 0 12px" }}>
@@ -513,7 +520,8 @@ export function RefundDocument({
             label: "Refunded to",
             value: (
               <>
-                <span style={personName}>{invoice.patientName}</span> · MRN {invoice.patientMrn}
+                <span style={personName}>{invoice.patientName}</span>
+                {invoice.patientMrn ? ` · MRN ${invoice.patientMrn}` : null}
               </>
             ),
           },

@@ -49,6 +49,12 @@ const SYSTEM_ACCOUNTS = [
     name: "Radiology Revenue",
     type: "income",
   },
+  {
+    key: "revenue_pharmacy",
+    code: "4500",
+    name: "Pharmacy Sales Revenue",
+    type: "income",
+  },
   { key: "revenue_other", code: "4900", name: "Other Revenue", type: "income" },
 ] as const satisfies ReadonlyArray<{
   key: string;
@@ -68,6 +74,7 @@ const REVENUE_ACCOUNTS: Record<CatalogCategory, SystemAccountKey> = {
   procedure: "revenue_procedure",
   lab: "revenue_lab",
   radiology: "revenue_radiology",
+  pharmacy: "revenue_pharmacy",
   other: "revenue_other",
 };
 

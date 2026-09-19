@@ -9,14 +9,17 @@ import { sql } from "drizzle-orm";
 
 import { businessDate } from "../lib/business-date";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
-import type { PaymentMethod } from "../lib/schemas";
+import { dayRange, resolveDayRange, type PaymentMethod } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
 
+// The window the dashboard reports on: today unless the operator widened it.
+const dayInput = orgInput.extend(dayRange);
+
 export const dashboardRouter = {
-  today: orgProcedure({ opd: ["read"] }, orgInput).handler(async ({ context }) => {
+  today: orgProcedure({ opd: ["read"] }, dayInput).handler(async ({ context, input }) => {
     const { orgId } = context.scope;
     const { timeZone } = await readOrgSettings(orgId);
-    const currentDay = businessDate(new Date(), timeZone);
+    const { from, to } = resolveDayRange(input, businessDate(new Date(), timeZone));
 
     // `businessDate` is the arrival day, so a booking made yesterday for today counts today.
     const [counts, mix] = await Promise.all([
@@ -27,7 +30,7 @@ export const dashboardRouter = {
             count(*) filter (where ${opdAppointments.status} = 'booked')::integer as "booked"
           from ${opdAppointments}
           where ${opdAppointments.orgId} = ${orgId}
-            and ${opdAppointments.businessDate} = ${currentDay}
+            and ${opdAppointments.businessDate} between ${from} and ${to}
         `,
       ),
       db.execute<{ department: string; count: number }>(sql`
@@ -38,7 +41,7 @@ export const dashboardRouter = {
             on ${departments.id} = ${opdAppointments.departmentId}
            and ${departments.orgId} = ${orgId}
           where ${opdAppointments.orgId} = ${orgId}
-            and ${opdAppointments.businessDate} = ${currentDay}
+            and ${opdAppointments.businessDate} between ${from} and ${to}
             and ${opdAppointments.status} = 'checked_in'
           group by 1
           order by 2 desc, 1 asc
@@ -54,13 +57,14 @@ export const dashboardRouter = {
     return { ...totals, mix: mix.rows };
   }),
 
-  collections: orgProcedure({ billing: ["read"] }, orgInput).handler(async ({ context }) => {
+  collections: orgProcedure({ billing: ["read"] }, dayInput).handler(async ({ context, input }) => {
     const { orgId } = context.scope;
     const { timeZone, unbilledAlertHours } = await readOrgSettings(orgId);
-    const currentDay = businessDate(new Date(), timeZone);
+    const { from, to } = resolveDayRange(input, businessDate(new Date(), timeZone));
     const unbilledBefore = new Date(Date.now() - unbilledAlertHours * 3_600_000);
     // Matches the 14-day series below; without it each arm scans the org's whole history.
-    const trendStart = sql`${currentDay}::date - 13`;
+    // The series always runs back from the window's last day, whatever the window is.
+    const trendStart = sql`${to}::date - 13`;
 
     const [result, byMethod, trend] = await Promise.all([
       db.execute<{ unbilled: string }>(sql`
@@ -84,17 +88,17 @@ export const dashboardRouter = {
           select ${payments.method} as method, ${payments.amount} as amount
           from ${payments}
           where ${payments.orgId} = ${orgId}
-            and ${payments.businessDate} = ${currentDay}
+            and ${payments.businessDate} between ${from} and ${to}
           union all
           select ${advanceReceipts.method} as method, ${advanceReceipts.amount} as amount
           from ${advanceReceipts}
           where ${advanceReceipts.orgId} = ${orgId}
-            and ${advanceReceipts.businessDate} = ${currentDay}
+            and ${advanceReceipts.businessDate} between ${from} and ${to}
           union all
           select ${refunds.method} as method, -${refunds.amount} as amount
           from ${refunds}
           where ${refunds.orgId} = ${orgId}
-            and ${refunds.businessDate} = ${currentDay}
+            and ${refunds.businessDate} between ${from} and ${to}
         )
         select method, sum(amount)::bigint as "amount"
         from collections
@@ -104,23 +108,23 @@ export const dashboardRouter = {
       // Gap-filled: a day with no payments must plot as zero, not compress the axis.
       db.execute<{ day: string; amount: string }>(sql`
         with days as (
-          select (${currentDay}::date - series.days_ago)::date as day
+          select (${to}::date - series.days_ago)::date as day
           from generate_series(13, 0, -1) as series(days_ago)
         ), collections as (
           select ${payments.businessDate} as day, ${payments.amount} as amount
           from ${payments}
           where ${payments.orgId} = ${orgId}
-            and ${payments.businessDate} between ${trendStart} and ${currentDay}
+            and ${payments.businessDate} between ${trendStart} and ${to}
           union all
           select ${advanceReceipts.businessDate} as day, ${advanceReceipts.amount} as amount
           from ${advanceReceipts}
           where ${advanceReceipts.orgId} = ${orgId}
-            and ${advanceReceipts.businessDate} between ${trendStart} and ${currentDay}
+            and ${advanceReceipts.businessDate} between ${trendStart} and ${to}
           union all
           select ${refunds.businessDate} as day, -${refunds.amount} as amount
           from ${refunds}
           where ${refunds.orgId} = ${orgId}
-            and ${refunds.businessDate} between ${trendStart} and ${currentDay}
+            and ${refunds.businessDate} between ${trendStart} and ${to}
         )
         select to_char(days.day, 'YYYY-MM-DD') as "day",
                coalesce(sum(collections.amount), 0)::bigint as "amount"
@@ -132,15 +136,16 @@ export const dashboardRouter = {
     ]);
 
     const totals = result.rows[0];
-    // The gap-filled series always ends on the current Business Date.
-    const today = trend.rows.at(-1);
 
-    if (!totals || !today) {
+    if (!totals) {
       throw new Error("Dashboard collections query returned no row");
     }
 
+    // The window's own total, so it follows the range rather than the trend's last bar.
+    const collected = byMethod.rows.reduce((sum, row) => sum + BigInt(row.amount), 0n);
+
     return {
-      collected: BigInt(today.amount),
+      collected,
       unbilled: BigInt(totals.unbilled),
       byMethod: byMethod.rows.map((row) => ({
         ...row,

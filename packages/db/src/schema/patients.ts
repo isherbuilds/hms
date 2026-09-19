@@ -1,17 +1,10 @@
-import {
-  check,
-  boolean,
-  date,
-  pgTable,
-  text,
-  timestamp,
-  unique,
-  uniqueIndex,
-} from "drizzle-orm/pg-core";
+import { boolean, date, pgTable, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 import { organization, user } from "./auth";
 import type { EmergencyContactRelation, GuardianRelation } from "./patient-relations";
+
+export const PATIENT_SEX = ["male", "female", "other", "unknown"] as const;
 
 export const patients = pgTable(
   "patients",
@@ -23,7 +16,7 @@ export const patients = pgTable(
     mrn: text("mrn").notNull(),
     name: text("name").notNull(),
     phone: text("phone").notNull(),
-    sex: text("sex", { enum: ["male", "female", "other", "unknown"] }).notNull(),
+    sex: text("sex", { enum: PATIENT_SEX }).notNull(),
     dateOfBirth: date("date_of_birth", { mode: "string" }).notNull(),
     dobEstimated: boolean("dob_estimated").default(false).notNull(),
     // Callers pass "" when not provided; no null semantics downstream.
@@ -49,11 +42,6 @@ export const patients = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
-    check("patients_sex_check", sql`${table.sex} in ('male', 'female', 'other', 'unknown')`),
-    check(
-      "patients_blood_group_check",
-      sql`${table.bloodGroup} is null or ${table.bloodGroup} in ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')`,
-    ),
     unique("patients_org_id_id_unique").on(table.orgId, table.id),
     uniqueIndex("patients_org_mrn_idx").on(table.orgId, table.mrn),
     uniqueIndex("patients_org_uid_idx")

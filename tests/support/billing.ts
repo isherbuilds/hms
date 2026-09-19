@@ -103,6 +103,7 @@ export async function settlePendingCharges(
       taxCode: charge.taxCode,
     })),
     discountAmount,
+    "exclusive",
   );
 
   return api.billing.settleCharges({

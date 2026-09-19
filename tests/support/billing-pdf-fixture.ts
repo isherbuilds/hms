@@ -12,7 +12,9 @@ export function billingPdfFixture({
     invoice: {
       id: "invoice-1",
       orgId: "org-1",
+      stream: "opd" as const,
       opdAppointmentId: "appointment-1",
+      pharmacySaleId: null,
       patientId: "patient-1",
       invoiceNumber: "INV-2026-0001",
       fiscalYear: "2026-27",

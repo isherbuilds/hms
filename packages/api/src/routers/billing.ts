@@ -15,43 +15,38 @@ import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { user } from "@hms/db/schema/auth";
 import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { formatDecimal } from "../core/money";
 import { audit } from "../audit";
-import { businessDate, businessDateAnchor } from "../lib/business-date";
+import { businessDate } from "../lib/business-date";
 import { advanceRemaining } from "../lib/advance-credit";
+import {
+  billingDocumentContext,
+  insertRefundTx,
+  issueInvoiceTx,
+  lockInvoice,
+  postCreditNoteTx,
+  recordPaymentsTx,
+} from "../lib/billing-documents";
 import { impossible } from "../lib/conflict";
 import { invoiceBalanceFor, invoiceBalancesFor } from "../lib/invoice-balance";
 import { voidPendingCharges } from "../lib/opd-close";
 import { planLabel } from "../lib/treatment-label";
-import {
-  calculateInvoiceBalance,
-  computeInvoiceLines,
-  derivePartialCredit,
-  documentNumber,
-  fiscalYearLabel,
-} from "../lib/invoice-math";
-import {
-  postJournalEntries,
-  revenueAccountFor,
-  settlementAccountFor,
-  type SystemAccountKey,
-} from "../lib/ledger";
+import { calculateInvoiceBalance, documentNumber } from "../lib/invoice-math";
+import { postJournalEntries, settlementAccountFor } from "../lib/ledger";
 import {
   money,
   note,
   paymentLine,
   positiveMoney,
   reason,
-  requestKey,
   requirePaymentReference,
   type PaymentMethod,
 } from "../lib/schemas";
-import { claimRequestKey } from "../lib/request-key";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
-import { readOrgSettings } from "../lib/settings-cache";
+import type { OrgSettings } from "../lib/settings-cache";
 import { billingWorklistRouter } from "./billing-worklist";
 
 const creditLineInput = z.union([
@@ -59,165 +54,29 @@ const creditLineInput = z.union([
   z.strictObject({ invoiceLineId: z.string(), gross: positiveMoney }),
 ]);
 
-export async function billingDocumentContext(orgId: string) {
-  const settings = await readOrgSettings(orgId);
-  const now = new Date();
-
-  const fiscalYear = fiscalYearLabel(
-    businessDateAnchor(now, settings.timeZone),
-    settings.fiscalYearStartMonth,
-  );
-
-  return { settings, now, fiscalYear };
-}
-
-async function lockInvoice(tx: DbTransaction, orgId: string, invoiceId: string) {
-  const [invoice] = await tx
-    .select({
-      id: invoices.id,
-      invoiceNumber: invoices.invoiceNumber,
-      grandTotal: invoices.grandTotal,
-      patientId: invoices.patientId,
-      treatmentPlanId: opdAppointments.treatmentPlanId,
-    })
-    .from(invoices)
-    .innerJoin(
-      opdAppointments,
-      and(eq(opdAppointments.orgId, orgId), eq(opdAppointments.id, invoices.opdAppointmentId)),
-    )
-    .where(and(eq(invoices.orgId, orgId), eq(invoices.id, invoiceId)))
-    .limit(1)
-    .for("update", { of: invoices });
-
-  if (!invoice) {
-    throw new ORPCError("NOT_FOUND", { message: "That invoice no longer exists." });
-  }
-
-  return invoice;
-}
-
-async function applyPatientCreditTx(
-  tx: DbTransaction,
-  args: {
-    scope: { orgId: string; userId: string };
-    invoice: Awaited<ReturnType<typeof lockInvoice>>;
-    amount: bigint;
-    now: Date;
-    timeZone: string;
-  },
-) {
-  const { scope, invoice } = args;
-
-  if (args.amount === 0n) return;
-
-  // Lock in one stable order, then read balances in a new statement: under READ COMMITTED
-  // only a statement that starts after the lock sees allocations committed while it waited.
-  // Credit only shrinks, so a receipt already spent in this snapshot is never locked.
-  const locked = await tx
-    .select({ id: advanceReceipts.id })
-    .from(advanceReceipts)
-    .where(
-      and(
-        eq(advanceReceipts.orgId, scope.orgId),
-        eq(advanceReceipts.patientId, invoice.patientId),
-        sql`${advanceRemaining(scope.orgId)} > 0`,
-      ),
-    )
-    .orderBy(asc(advanceReceipts.createdAt), asc(advanceReceipts.id))
-    .for("update");
-
-  const receipts = await tx
-    .select({
-      id: advanceReceipts.id,
-      treatmentPlanId: advanceReceipts.treatmentPlanId,
-      remaining: advanceRemaining(scope.orgId),
-    })
-    .from(advanceReceipts)
-    .where(
-      and(
-        eq(advanceReceipts.orgId, scope.orgId),
-        eq(advanceReceipts.patientId, invoice.patientId),
-        inArray(
-          advanceReceipts.id,
-          locked.map((receipt) => receipt.id),
-        ),
-      ),
-    )
-    .orderBy(asc(advanceReceipts.createdAt), asc(advanceReceipts.id));
-
-  const available = receipts.reduce((sum, receipt) => sum + receipt.remaining, 0n);
-
-  if (args.amount > available) {
-    throw new ORPCError("CONFLICT", { message: "That credit is no longer available." });
-  }
-
-  // Credit taken for this visit's plan goes first; a visit with no plan spends untagged
-  // credit first. The sort is stable, so each group stays oldest-first.
-  receipts.sort(
-    (first, second) =>
-      Number(second.treatmentPlanId === invoice.treatmentPlanId) -
-      Number(first.treatmentPlanId === invoice.treatmentPlanId),
-  );
-
-  let due = args.amount;
-  const rows: Array<typeof advanceAllocations.$inferInsert> = [];
-
-  for (const receipt of receipts) {
-    const amount = receipt.remaining < due ? receipt.remaining : due;
-
-    if (amount === 0n) continue;
-
-    rows.push({
-      id: Bun.randomUUIDv7(),
-      orgId: scope.orgId,
-      advanceReceiptId: receipt.id,
-      invoiceId: invoice.id,
-      amount,
-      allocatedBy: scope.userId,
-      createdAt: args.now,
-    });
-    due -= amount;
-  }
-
-  const inserted = await tx.insert(advanceAllocations).values(rows).returning();
-
-  await postJournalEntries(
-    tx,
-    scope.orgId,
-    inserted.map((allocation) => ({
-      sourceType: "advance_allocation",
-      sourceId: allocation.id,
-      narration: `Advance allocation · Invoice ${invoice.invoiceNumber}`,
-      createdBy: scope.userId,
-      now: args.now,
-      timeZone: args.timeZone,
-      lines: [
-        { account: "patient_advances", debit: allocation.amount },
-        { account: "patient_receivables", credit: allocation.amount },
-      ],
-    })),
-  );
-}
-
-async function issueInvoiceTx(
+/**
+ * The OPD desk's settlement: it owns appointment eligibility and the charge revision,
+ * and leaves the document and the money to the shared helpers.
+ */
+export async function settleInvoiceTx(
   tx: DbTransaction,
   args: {
     scope: { orgId: string; userId: string };
     appointmentId: string;
     discountAmount: bigint;
     note?: string;
-    settings: Awaited<ReturnType<typeof billingDocumentContext>>["settings"];
+    payments: Array<{ method: PaymentMethod; amount: bigint; reference?: string }>;
+    applyCredit: bigint;
+    settings: OrgSettings;
     now: Date;
     fiscalYear: string;
     invoiceId: string;
+    expectedGrandTotal: bigint;
+    // "fresh" means the care row was created in this transaction, so no concurrent charge writer exists.
     expectedChargeRevision: number | "fresh";
   },
 ) {
-  const { scope, settings, now, fiscalYear, invoiceId } = args;
-
-  if (args.discountAmount > 0n && !args.note) {
-    throw new ORPCError("BAD_REQUEST", { message: "Add a reason for the discount" });
-  }
+  const { scope } = args;
 
   const [appointmentAndPatient] = await tx
     .select({
@@ -258,284 +117,32 @@ async function issueInvoiceTx(
     });
   }
 
-  const pendingCharges = await tx
-    .select({
-      chargeId: charges.id,
-      revenueCategory: charges.revenueCategory,
-      description: charges.description,
-      qty: charges.qty,
-      unitPrice: charges.unitPrice,
-      taxRatePercent: charges.taxRatePercent,
-      taxCode: charges.taxCode,
-    })
-    .from(charges)
-    .where(
-      and(
-        eq(charges.orgId, scope.orgId),
-        eq(charges.opdAppointmentId, appointmentAndPatient.opdAppointmentId),
-        eq(charges.status, "pending"),
-      ),
-    )
-    .orderBy(asc(charges.createdAt), asc(charges.id))
-    .for("update");
-
-  if (pendingCharges.length === 0) {
-    throw new ORPCError("CONFLICT", {
-      message: "These charges were already settled or voided.",
-    });
-  }
-
-  const subtotalPaise = pendingCharges.reduce(
-    (sum, charge) => sum + BigInt(charge.qty) * charge.unitPrice,
-    0n,
-  );
-
-  if (args.discountAmount > subtotalPaise) {
-    throw new ORPCError("BAD_REQUEST", {
-      message: "The charges changed. Review the invoice and try again",
-    });
-  }
-
-  const computed = computeInvoiceLines(pendingCharges, args.discountAmount);
-
-  const categoryByChargeId = new Map(
-    pendingCharges.map((charge) => [charge.chargeId, charge.revenueCategory]),
-  );
-
-  const computedWithRevenue = computed.lines.map((line) => {
-    const revenueCategory = categoryByChargeId.get(line.chargeId);
-
-    if (revenueCategory === undefined) {
-      throw new Error(`Revenue category missing for charge ${line.chargeId}`);
-    }
-
-    return { ...line, revenueCategory };
-  });
-
-  const sequence = await nextCounter(tx, scope.orgId, `invoice:${fiscalYear}`);
-  const invoiceNumber = documentNumber(settings.invoicePrefix, fiscalYear, sequence);
-
   const guardian = guardianLabel({
     guardianRelation: appointmentAndPatient.patientGuardianRelation,
     guardianName: appointmentAndPatient.patientGuardianName,
   });
 
-  const [invoice] = await tx
-    .insert(invoices)
-    .values({
-      id: invoiceId,
-      orgId: scope.orgId,
-      opdAppointmentId: appointmentAndPatient.opdAppointmentId,
-      patientId: appointmentAndPatient.patientId,
-      invoiceNumber,
-      fiscalYear,
-      businessDate: businessDate(now, settings.timeZone),
-      discountAmount: args.discountAmount,
-      note: args.note ?? null,
-      subtotal: computed.subtotal,
-      taxTotal: computed.taxTotal,
-      grandTotal: computed.grandTotal,
-      orgLegalName: settings.legalName,
-      orgAddress: settings.address,
-      orgTaxId: settings.taxId,
-      currency: settings.currency,
-      patientName: appointmentAndPatient.patientName,
-      patientMrn: appointmentAndPatient.patientMrn,
-      patientPhone: appointmentAndPatient.patientPhone,
-      patientAddress: appointmentAndPatient.patientAddress,
-      patientGuardian: guardian ? `${guardian.relation} ${guardian.name}` : null,
-      issuedBy: scope.userId,
-      createdAt: now,
-    })
-    .returning();
-
-  if (!invoice) throw impossible("invoice insert returned no row");
-
-  const insertedLines = await tx
-    .insert(invoiceLines)
-    .values(
-      computedWithRevenue.map((line) => ({
-        id: Bun.randomUUIDv7(),
-        orgId: scope.orgId,
-        invoiceId,
-        ...line,
-      })),
-    )
-    .returning();
-
-  const flippedCharges = await tx
-    .update(charges)
-    .set({ status: "invoiced", invoiceId, updatedAt: now })
-    .where(
-      and(
-        eq(charges.orgId, scope.orgId),
-        eq(charges.opdAppointmentId, appointmentAndPatient.opdAppointmentId),
-        inArray(
-          charges.id,
-          computedWithRevenue.map((line) => line.chargeId),
-        ),
-        eq(charges.status, "pending"),
-      ),
-    )
-    .returning({ id: charges.id });
-
-  // The charges were locked FOR UPDATE above, so nothing can have flipped them since.
-  if (flippedCharges.length !== computedWithRevenue.length) {
-    throw impossible("locked pending charges changed status mid-transaction");
-  }
-
-  const revenueByAccount = new Map<SystemAccountKey, bigint>();
-
-  for (const line of computedWithRevenue) {
-    const account = revenueAccountFor(line.revenueCategory);
-    revenueByAccount.set(account, (revenueByAccount.get(account) ?? 0n) + line.taxableValue);
-  }
-
-  if (computed.grandTotal > 0n) {
-    await postJournalEntries(tx, scope.orgId, [
-      {
-        sourceType: "invoice",
-        sourceId: invoiceId,
-        narration: `Invoice ${invoiceNumber}`,
-        createdBy: scope.userId,
-        now,
-        timeZone: settings.timeZone,
-        lines: [
-          { account: "patient_receivables", debit: computed.grandTotal },
-          ...[...revenueByAccount].map(([account, amount]) => ({
-            account,
-            credit: amount,
-          })),
-          ...(computed.taxTotal > 0n
-            ? [{ account: "gst_output" as const, credit: computed.taxTotal }]
-            : []),
-        ],
-      },
-    ]);
-  }
-
-  const [versionedAppointment] = await tx
-    .update(opdAppointments)
-    .set({ chargeRevision: sql`${opdAppointments.chargeRevision} + 1` })
-    .where(
-      and(
-        eq(opdAppointments.orgId, scope.orgId),
-        eq(opdAppointments.id, appointmentAndPatient.opdAppointmentId),
-      ),
-    )
-    .returning({ chargeRevision: opdAppointments.chargeRevision });
-
-  if (!versionedAppointment) throw impossible("locked appointment vanished before versioning");
-
-  return { invoice, lines: insertedLines, chargeRevision: versionedAppointment.chargeRevision };
-}
-
-async function recordPaymentsTx(
-  tx: DbTransaction,
-  args: {
-    scope: { orgId: string; userId: string };
-    invoiceId: string;
-    payments: Array<{ method: PaymentMethod; amount: bigint; reference?: string }>;
-    applyCredit: bigint;
-    settings: Awaited<ReturnType<typeof billingDocumentContext>>["settings"];
-    now: Date;
-    fiscalYear: string;
-  },
-) {
-  const { scope, settings, now, fiscalYear } = args;
-  const invoice = await lockInvoice(tx, scope.orgId, args.invoiceId);
-
-  const balance = await invoiceBalanceFor(tx, scope.orgId, invoice);
-  const collectedPaise = args.payments.reduce((sum, payment) => sum + payment.amount, 0n);
-  const outstanding = balance.outstanding > 0n ? balance.outstanding : 0n;
-
-  if (args.applyCredit > outstanding) {
-    throw new ORPCError("CONFLICT", {
-      message: "That credit is more than the invoice still owes.",
-    });
-  }
-
-  if (collectedPaise > outstanding - args.applyCredit) {
-    throw new ORPCError("CONFLICT", {
-      message: "That payment is more than the invoice still owes.",
-    });
-  }
-
-  await applyPatientCreditTx(tx, {
+  const issued = await issueInvoiceTx(tx, {
     scope,
-    invoice,
-    amount: args.applyCredit,
-    now,
-    timeZone: settings.timeZone,
+    parent: {
+      stream: "opd",
+      opdAppointmentId: appointmentAndPatient.opdAppointmentId,
+      patient: {
+        id: appointmentAndPatient.patientId,
+        name: appointmentAndPatient.patientName,
+        mrn: appointmentAndPatient.patientMrn,
+        phone: appointmentAndPatient.patientPhone,
+        address: appointmentAndPatient.patientAddress,
+        guardian: guardian ? `${guardian.relation} ${guardian.name}` : null,
+      },
+    },
+    discountAmount: args.discountAmount,
+    note: args.note,
+    settings: args.settings,
+    now: args.now,
+    fiscalYear: args.fiscalYear,
+    invoiceId: args.invoiceId,
   });
-
-  if (args.payments.length === 0) return [];
-
-  const firstSequence = await nextCounter(
-    tx,
-    scope.orgId,
-    `receipt:${fiscalYear}`,
-    args.payments.length,
-  );
-
-  const recorded = await tx
-    .insert(payments)
-    .values(
-      args.payments.map((payment, index) => ({
-        id: Bun.randomUUIDv7(),
-        orgId: scope.orgId,
-        invoiceId: args.invoiceId,
-        method: payment.method,
-        amount: payment.amount,
-        reference: payment.reference ?? null,
-        receiptNumber: documentNumber(settings.receiptPrefix, fiscalYear, firstSequence + index),
-        fiscalYear,
-        businessDate: businessDate(now, settings.timeZone),
-        receivedBy: scope.userId,
-        createdAt: now,
-      })),
-    )
-    .returning();
-
-  await postJournalEntries(
-    tx,
-    scope.orgId,
-    recorded.map((payment) => ({
-      sourceType: "payment",
-      sourceId: payment.id,
-      narration: `Receipt ${payment.receiptNumber} · Invoice ${invoice.invoiceNumber}`,
-      createdBy: scope.userId,
-      now,
-      timeZone: settings.timeZone,
-      lines: [
-        { account: settlementAccountFor(payment.method), debit: payment.amount },
-        { account: "patient_receivables", credit: payment.amount },
-      ],
-    })),
-  );
-
-  return recorded;
-}
-
-export async function settleInvoiceTx(
-  tx: DbTransaction,
-  args: {
-    scope: { orgId: string; userId: string };
-    appointmentId: string;
-    discountAmount: bigint;
-    note?: string;
-    payments: Array<{ method: PaymentMethod; amount: bigint; reference?: string }>;
-    applyCredit: bigint;
-    settings: Awaited<ReturnType<typeof billingDocumentContext>>["settings"];
-    now: Date;
-    fiscalYear: string;
-    invoiceId: string;
-    expectedGrandTotal: bigint;
-    // "fresh" means the care row was created in this transaction, so no concurrent charge writer exists.
-    expectedChargeRevision: number | "fresh";
-  },
-) {
-  const issued = await issueInvoiceTx(tx, args);
 
   if (issued.invoice.grandTotal !== args.expectedGrandTotal) {
     throw new ORPCError("CONFLICT", {
@@ -564,81 +171,37 @@ export async function settleInvoiceTx(
     });
   }
 
-  if (args.payments.length === 0 && args.applyCredit === 0n) {
-    return { ...issued, payments: [] };
-  }
+  const recorded =
+    args.payments.length === 0 && args.applyCredit === 0n
+      ? []
+      : await recordPaymentsTx(tx, {
+          scope,
+          invoiceId: args.invoiceId,
+          payments: args.payments,
+          applyCredit: args.applyCredit,
+          settings: args.settings,
+          now: args.now,
+          fiscalYear: args.fiscalYear,
+        });
 
-  const recorded = await recordPaymentsTx(tx, {
-    scope: args.scope,
-    invoiceId: args.invoiceId,
-    payments: args.payments,
-    applyCredit: args.applyCredit,
-    settings: args.settings,
-    now: args.now,
-    fiscalYear: args.fiscalYear,
-  });
+  const [versionedAppointment] = await tx
+    .update(opdAppointments)
+    .set({ chargeRevision: sql`${opdAppointments.chargeRevision} + 1` })
+    .where(
+      and(
+        eq(opdAppointments.orgId, scope.orgId),
+        eq(opdAppointments.id, appointmentAndPatient.opdAppointmentId),
+      ),
+    )
+    .returning({ chargeRevision: opdAppointments.chargeRevision });
 
-  return { ...issued, payments: recorded };
-}
+  if (!versionedAppointment) throw impossible("locked appointment vanished before versioning");
 
-/** Numbers, stores, and posts one Refund once its caller has locked and capped the source. */
-async function insertRefundTx(
-  tx: DbTransaction,
-  args: {
-    scope: { orgId: string; userId: string };
-    settings: { timeZone: string };
-    now: Date;
-    fiscalYear: string;
-    refundId: string;
-    line: { method: PaymentMethod; amount: bigint; reference?: string };
-    source: {
-      invoiceId: string | null;
-      creditNoteId: string | null;
-      advanceReceiptId: string | null;
-    };
-    debit: "patient_advances" | "patient_receivables";
-    narration: string;
-  },
-) {
-  const { scope, fiscalYear, now } = args;
-  const sequence = await nextCounter(tx, scope.orgId, `refund:${fiscalYear}`);
-  const refundNumber = documentNumber("RF", fiscalYear, sequence);
-
-  const [inserted] = await tx
-    .insert(refunds)
-    .values({
-      id: args.refundId,
-      orgId: scope.orgId,
-      ...args.source,
-      method: args.line.method,
-      amount: args.line.amount,
-      reference: args.line.reference ?? null,
-      refundNumber,
-      fiscalYear,
-      businessDate: businessDate(now, args.settings.timeZone),
-      refundedBy: scope.userId,
-      createdAt: now,
-    })
-    .returning();
-
-  if (!inserted) throw impossible("refund insert returned no row");
-
-  await postJournalEntries(tx, scope.orgId, [
-    {
-      sourceType: "refund",
-      sourceId: args.refundId,
-      narration: `Refund ${refundNumber} · ${args.narration}`,
-      createdBy: scope.userId,
-      now,
-      timeZone: args.settings.timeZone,
-      lines: [
-        { account: args.debit, debit: inserted.amount },
-        { account: settlementAccountFor(args.line.method), credit: inserted.amount },
-      ],
-    },
-  ]);
-
-  return inserted;
+  return {
+    ...issued,
+    chargeRevision: versionedAppointment.chargeRevision,
+    payments: recorded,
+  };
 }
 
 export const billingRouter = {
@@ -651,7 +214,7 @@ export const billingRouter = {
 
     const charge = await db.transaction(async (tx) => {
       const [candidate] = await tx
-        .select({ appointmentId: charges.opdAppointmentId })
+        .select({ appointmentId: opdAppointments.id })
         .from(charges)
         .innerJoin(
           opdAppointments,
@@ -710,7 +273,6 @@ export const billingRouter = {
     { billing: ["write"] },
     orgInput
       .extend({
-        requestKey,
         patientId: z.string(),
         treatmentPlanId: z.string().optional(),
         method: paymentLine.shape.method,
@@ -748,8 +310,6 @@ export const billingRouter = {
     });
 
     const advance = await db.transaction(async (tx) => {
-      await claimRequestKey(tx, scope.orgId, input.requestKey);
-
       const plan = input.treatmentPlanId
         ? await tx
             .select({ id: treatmentPlans.id, label: planLabel(scope.orgId) })
@@ -950,7 +510,6 @@ export const billingRouter = {
     { billing: ["write"] },
     orgInput
       .extend({
-        requestKey,
         invoiceId: z.string(),
         payments: z.array(paymentLine).max(4).default([]),
         applyCredit: money.default(0n),
@@ -963,8 +522,6 @@ export const billingRouter = {
     const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
 
     const recorded = await db.transaction(async (tx) => {
-      await claimRequestKey(tx, scope.orgId, input.requestKey);
-
       return recordPaymentsTx(tx, {
         scope,
         invoiceId: input.invoiceId,
@@ -992,7 +549,6 @@ export const billingRouter = {
   issueCreditNote: orgProcedure(
     { billing: ["creditNote"] },
     orgInput.extend({
-      requestKey,
       invoiceId: z.string(),
       reason,
       lines: z.array(creditLineInput).min(1),
@@ -1009,197 +565,25 @@ export const billingRouter = {
     const creditNoteId = Bun.randomUUIDv7();
 
     const result = await db.transaction(async (tx) => {
-      await claimRequestKey(tx, scope.orgId, input.requestKey);
-
+      // Checked before any write: a pharmacy correction has to bring the goods back.
       const invoice = await lockInvoice(tx, scope.orgId, input.invoiceId);
 
-      const [sourceLines, [priorCredit], priorLines] = await Promise.all([
-        tx
-          .select({
-            id: invoiceLines.id,
-            revenueCategory: invoiceLines.revenueCategory,
-            taxRatePercent: invoiceLines.taxRatePercent,
-            taxableValue: invoiceLines.taxableValue,
-            taxAmount: invoiceLines.taxAmount,
-            gross: invoiceLines.gross,
-          })
-          .from(invoiceLines)
-          .where(
-            and(
-              eq(invoiceLines.orgId, scope.orgId),
-              eq(invoiceLines.invoiceId, input.invoiceId),
-              inArray(invoiceLines.id, requestedIds),
-            ),
-          ),
-        tx
-          .select({ total: sql`coalesce(sum(${creditNotes.total}), 0)::bigint`.mapWith(BigInt) })
-          .from(creditNotes)
-          .where(
-            and(eq(creditNotes.orgId, scope.orgId), eq(creditNotes.invoiceId, input.invoiceId)),
-          ),
-        tx
-          .select({
-            invoiceLineId: creditNoteLines.invoiceLineId,
-            taxableValue: creditNoteLines.taxableValue,
-            taxAmount: creditNoteLines.taxAmount,
-            gross: creditNoteLines.gross,
-          })
-          .from(creditNoteLines)
-          .innerJoin(
-            creditNotes,
-            and(
-              eq(creditNotes.orgId, scope.orgId),
-              eq(creditNotes.id, creditNoteLines.creditNoteId),
-            ),
-          )
-          .where(
-            and(eq(creditNoteLines.orgId, scope.orgId), eq(creditNotes.invoiceId, input.invoiceId)),
-          ),
-      ]);
-
-      if (sourceLines.length !== requestedIds.length) {
-        throw new ORPCError("NOT_FOUND", {
-          message: "One of those invoice lines no longer exists.",
+      if (invoice.stream !== "opd") {
+        throw new ORPCError("CONFLICT", {
+          message: "Pharmacy invoices are corrected by a return.",
         });
       }
 
-      const creditedByLine = new Map<
-        string,
-        { taxableValue: bigint; taxAmount: bigint; gross: bigint }
-      >();
-
-      for (const line of priorLines) {
-        const credited = creditedByLine.get(line.invoiceLineId) ?? {
-          taxableValue: 0n,
-          taxAmount: 0n,
-          gross: 0n,
-        };
-
-        credited.taxableValue += line.taxableValue;
-        credited.taxAmount += line.taxAmount;
-        credited.gross += line.gross;
-        creditedByLine.set(line.invoiceLineId, credited);
-      }
-
-      const sourceById = new Map(sourceLines.map((line) => [line.id, line]));
-
-      const computedLines = input.lines.map((requested) => {
-        const source = sourceById.get(requested.invoiceLineId)!;
-
-        const prior = creditedByLine.get(source.id) ?? {
-          taxableValue: 0n,
-          taxAmount: 0n,
-          gross: 0n,
-        };
-
-        let values: ReturnType<typeof derivePartialCredit>;
-
-        if ("full" in requested) {
-          const remainingGross = source.gross - prior.gross;
-
-          if (remainingGross <= 0n) {
-            throw new ORPCError("BAD_REQUEST", {
-              message: "This line is already fully credited.",
-            });
-          }
-
-          values = {
-            taxableValue: source.taxableValue - prior.taxableValue,
-            taxAmount: source.taxAmount - prior.taxAmount,
-            gross: remainingGross,
-          };
-        } else {
-          values = derivePartialCredit(requested.gross, source.taxRatePercent);
-        }
-
-        if (
-          prior.taxableValue + values.taxableValue > source.taxableValue ||
-          prior.taxAmount + values.taxAmount > source.taxAmount ||
-          prior.gross + values.gross > source.gross
-        ) {
-          throw new ORPCError("BAD_REQUEST", {
-            message: "That credit is more than the invoice line is worth.",
-          });
-        }
-
-        return { invoiceLineId: source.id, revenueCategory: source.revenueCategory, ...values };
+      return postCreditNoteTx(tx, {
+        scope,
+        invoiceId: input.invoiceId,
+        reason: input.reason,
+        lines: input.lines,
+        settings,
+        now,
+        fiscalYear,
+        creditNoteId,
       });
-
-      const subtotalPaise = computedLines.reduce((sum, line) => sum + line.taxableValue, 0n);
-      const taxTotalPaise = computedLines.reduce((sum, line) => sum + line.taxAmount, 0n);
-      const totalPaise = computedLines.reduce((sum, line) => sum + line.gross, 0n);
-      const priorCreditPaise = priorCredit?.total ?? 0n;
-
-      if (priorCreditPaise + totalPaise > invoice.grandTotal) {
-        throw new ORPCError("BAD_REQUEST", {
-          message: "Total credits would exceed the invoice.",
-        });
-      }
-
-      const sequence = await nextCounter(tx, scope.orgId, `creditNote:${fiscalYear}`);
-      const creditNoteNumber = documentNumber(settings.creditNotePrefix, fiscalYear, sequence);
-
-      const [creditNote] = await tx
-        .insert(creditNotes)
-        .values({
-          id: creditNoteId,
-          orgId: scope.orgId,
-          invoiceId: input.invoiceId,
-          creditNoteNumber,
-          fiscalYear,
-          businessDate: businessDate(now, settings.timeZone),
-          reason: input.reason,
-          subtotal: subtotalPaise,
-          taxTotal: taxTotalPaise,
-          total: totalPaise,
-          issuedBy: scope.userId,
-          createdAt: now,
-        })
-        .returning();
-
-      if (!creditNote) throw impossible("credit note insert returned no row");
-
-      const insertedLines = await tx
-        .insert(creditNoteLines)
-        .values(
-          computedLines.map(({ revenueCategory: _revenueCategory, ...line }) => ({
-            id: Bun.randomUUIDv7(),
-            orgId: scope.orgId,
-            creditNoteId,
-            ...line,
-          })),
-        )
-        .returning();
-
-      const revenueByAccount = new Map<SystemAccountKey, bigint>();
-
-      for (const line of computedLines) {
-        const account = revenueAccountFor(line.revenueCategory);
-        revenueByAccount.set(account, (revenueByAccount.get(account) ?? 0n) + line.taxableValue);
-      }
-
-      await postJournalEntries(tx, scope.orgId, [
-        {
-          sourceType: "credit_note",
-          sourceId: creditNoteId,
-          narration: `Credit note ${creditNoteNumber} · Invoice ${invoice.invoiceNumber}`,
-          createdBy: scope.userId,
-          now,
-          timeZone: settings.timeZone,
-          lines: [
-            ...[...revenueByAccount].map(([account, amount]) => ({
-              account,
-              debit: amount,
-            })),
-            ...(taxTotalPaise > 0n
-              ? [{ account: "gst_output" as const, debit: taxTotalPaise }]
-              : []),
-            { account: "patient_receivables", credit: totalPaise },
-          ],
-        },
-      ]);
-
-      return { creditNote, lines: insertedLines };
     });
 
     audit({
@@ -1220,7 +604,6 @@ export const billingRouter = {
     { billing: ["advanceRefund"] },
     orgInput
       .extend({
-        requestKey,
         advanceReceiptId: z.string(),
         ...paymentLine.shape,
       })
@@ -1231,8 +614,6 @@ export const billingRouter = {
     const refundId = Bun.randomUUIDv7();
 
     const refund = await db.transaction(async (tx) => {
-      await claimRequestKey(tx, scope.orgId, input.requestKey);
-
       const [advance] = await tx
         .select({ id: advanceReceipts.id, receiptNumber: advanceReceipts.receiptNumber })
         .from(advanceReceipts)
@@ -1293,7 +674,6 @@ export const billingRouter = {
     { billing: ["creditNote"] },
     orgInput
       .extend({
-        requestKey,
         creditNoteId: z.string(),
         ...paymentLine.shape,
       })
@@ -1304,8 +684,6 @@ export const billingRouter = {
     const refundId = Bun.randomUUIDv7();
 
     const refund = await db.transaction(async (tx) => {
-      await claimRequestKey(tx, scope.orgId, input.requestKey);
-
       const [creditNote] = await tx
         .select({
           invoiceId: creditNotes.invoiceId,

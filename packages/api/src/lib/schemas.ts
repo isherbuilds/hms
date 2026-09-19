@@ -1,6 +1,7 @@
 import { PAYER_TYPES, type PayerType } from "@hms/db/schema/payer-types";
 import { PAYMENT_METHODS, type PaymentMethod } from "@hms/db/schema/payment-methods";
 import { EMERGENCY_CONTACT_RELATIONS, GUARDIAN_RELATIONS } from "@hms/db/schema/patient-relations";
+import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 
 // Input fragments shared by more than one router.
@@ -12,6 +13,27 @@ export const positiveMoney = z.bigint().positive();
 
 // Calendar-valid, not shape-valid: `2026-02-31` must fail here, not in Postgres.
 export const dateOnly = z.iso.date();
+
+/**
+ * An inclusive business-date window. Both ends are optional in the wire schema and
+ * resolved by `resolveDayRange`, so an operational list reads the current day rather
+ * than the organization's whole history.
+ */
+export const dayRange = { from: dateOnly.optional(), to: dateOnly.optional() };
+
+export function resolveDayRange(
+  input: { from?: string; to?: string },
+  today: string,
+): { from: string; to: string } {
+  const from = input.from ?? today;
+  const to = input.to ?? today;
+
+  if (from > to) {
+    throw new ORPCError("BAD_REQUEST", { message: "That range starts after it ends" });
+  }
+
+  return { from, to };
+}
 
 export const shortName = z.string().trim().min(1).max(200);
 
@@ -59,9 +81,6 @@ export function requirePaymentReference(
     });
   }
 }
-
-/** Minted once per form submission and resent on retry; see `claimRequestKey`. */
-export const requestKey = z.uuid();
 
 export const paymentLine = z
   .object({

@@ -15,6 +15,7 @@ export const ac = createAccessControl({
   patient: ["create", "read", "update"],
   opd: ["create", "read", "update"],
   billing: ["read", "write", "creditNote", "advanceRefund"],
+  pharmacy: ["read", "sell", "return", "receive", "adjust", "manageItems"],
   treatment: ["create", "read", "update"],
   catalog: ["create", "read", "update"],
   payer: ["create", "read", "update"],
@@ -31,6 +32,7 @@ export const reception = ac.newRole({
   patient: ["create", "read", "update"],
   opd: ["create", "read", "update"],
   billing: ["read", "write"],
+  pharmacy: ["read"],
   treatment: ["create", "read", "update"],
   catalog: ["read"],
   payer: ["read"],
@@ -47,6 +49,7 @@ export const cashier = ac.newRole({
   patient: ["read"],
   opd: ["read"],
   billing: ["read", "write", "advanceRefund"],
+  pharmacy: ["read"],
   treatment: ["read"],
   catalog: ["read"],
   payer: ["read"],
@@ -62,6 +65,7 @@ export const accountant = ac.newRole({
   patient: ["read"],
   opd: ["read"],
   billing: ["read", "creditNote", "advanceRefund"],
+  pharmacy: ["read"],
   treatment: ["read"],
   catalog: ["read"],
   payer: ["read"],
@@ -70,6 +74,21 @@ export const accountant = ac.newRole({
   report: ["readDailyCollections", "readOpdRegister", "readFinancial"],
   audit: ["read"],
   file: ["read"],
+});
+
+// The counter sells with its own grant and never holds `billing:write`; a supervising
+// pharmacist is granted `admin` alongside it for adjustments (roles are a union).
+export const pharmacist = ac.newRole({
+  ...memberAc.statements,
+  member: ["read"],
+  patient: ["read"],
+  opd: ["read"],
+  billing: ["read"],
+  pharmacy: ["read", "sell", "return", "receive"],
+  catalog: ["read"],
+  settings: ["read"],
+  report: ["readDailyCollections"],
+  file: ["upload", "read"],
 });
 
 // `admin` and `owner` read as duplicates and must stay that way: they spread
@@ -81,6 +100,7 @@ export const admin = ac.newRole({
   patient: ["create", "read", "update"],
   opd: ["create", "read", "update"],
   billing: ["read", "write", "creditNote", "advanceRefund"],
+  pharmacy: ["read", "sell", "return", "receive", "adjust", "manageItems"],
   treatment: ["create", "read", "update"],
   catalog: ["create", "read", "update"],
   payer: ["create", "read", "update"],
@@ -97,6 +117,7 @@ export const owner = ac.newRole({
   patient: ["create", "read", "update"],
   opd: ["create", "read", "update"],
   billing: ["read", "write", "creditNote", "advanceRefund"],
+  pharmacy: ["read", "sell", "return", "receive", "adjust", "manageItems"],
   treatment: ["create", "read", "update"],
   catalog: ["create", "read", "update"],
   payer: ["create", "read", "update"],
@@ -110,7 +131,7 @@ export const owner = ac.newRole({
 // Better Auth merges built-in `member`/`admin`/`owner` roles into this map, but HMS
 // authorizes only through `parseRoles`/`authorize`, which reject stored `member`;
 // reset legacy rows per D022 before deploying.
-export const roles = { owner, admin, reception, cashier, accountant } as const;
+export const roles = { owner, admin, reception, cashier, accountant, pharmacist } as const;
 
 export type RoleKey = keyof typeof roles;
 
@@ -120,6 +141,7 @@ export const ROLE_LABELS: Record<RoleKey, string> = {
   reception: "Reception",
   cashier: "Cashier",
   accountant: "Accountant",
+  pharmacist: "Pharmacist",
 };
 
 export const ORG_ROLES = [
@@ -128,6 +150,7 @@ export const ORG_ROLES = [
   "reception",
   "cashier",
   "accountant",
+  "pharmacist",
 ] as const satisfies readonly RoleKey[];
 
 export type AppPermission = Parameters<typeof roles.admin.authorize>[0];

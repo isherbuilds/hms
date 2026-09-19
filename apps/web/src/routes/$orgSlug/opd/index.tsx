@@ -1,7 +1,7 @@
 import { authorize } from "@hms/auth/access";
 import { Badge } from "@hms/ui/components/badge";
 import { Button, buttonVariants } from "@hms/ui/components/button";
-import { Input } from "@hms/ui/components/input";
+import { DropdownMenuCheckboxItem } from "@hms/ui/components/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -12,15 +12,23 @@ import {
 } from "@hms/ui/components/table";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { ClientOnly, Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
-import { useState } from "react";
+import { CircleDotIcon, PlusIcon } from "lucide-react";
+import { useRef, useState } from "react";
 import { z } from "zod";
 
 import { OpdAppointmentStatusBadge, useOpdCheckIn } from "@/components/opd-appointment";
 import { CheckInOpdAppointmentDialog } from "@/components/opd-appointment-dialogs";
 import { followUpsQuery, OpdFollowUps } from "@/components/opd-follow-ups";
 import {
-  FilterGroup,
+  DateRangePopover,
+  DateSubmenu,
+  FilterChips,
+  FilterMenu,
+  FilterSubmenu,
+  focusSearch,
+  type ActiveFilter,
+} from "@/components/list-filter";
+import {
   ListState,
   ListToolbar,
   LoadMore,
@@ -33,74 +41,33 @@ import { StaleDataNotice } from "@/components/stale-data-notice";
 import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
 import { OPERATIONAL_INFINITE_REFETCH } from "@/lib/operational-query";
-import { formatBusinessDate, formatTime, useOrgDateTime } from "@/lib/org-datetime";
+import { dateRangeLabel } from "@/lib/date-presets";
+import { formatTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { practitionerDisplayName } from "@/lib/practitioner-name";
 
-function DayStepper({
-  date,
-  today,
-  onChange,
-}: {
-  date: string;
-  today: string;
-  onChange: (date: string) => void;
-}) {
-  const shift = (days: number) => {
-    const next = new Date(`${date}T00:00:00Z`);
-    next.setUTCDate(next.getUTCDate() + days);
-
-    return next.toISOString().slice(0, 10);
-  };
-
-  return (
-    <div className="flex items-center gap-1">
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        aria-label="Previous day"
-        onClick={() => onChange(shift(-1))}
-      >
-        <ChevronLeftIcon />
-      </Button>
-      {date !== today && (
-        <Button size="sm" variant="ghost" onClick={() => onChange(today)}>
-          Today
-        </Button>
-      )}
-      <Input
-        type="date"
-        aria-label="Outpatient date"
-        value={date}
-        onChange={(event) => onChange(event.target.value || today)}
-        className="h-7 w-32"
-      />
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        aria-label="Next day"
-        onClick={() => onChange(shift(1))}
-      >
-        <ChevronRightIcon />
-      </Button>
-    </div>
-  );
-}
+const STATUS_LABELS = { all: "All", "follow-ups": "Follow-ups" } as const;
 
 const opdDaySearchSchema = z.object({
-  date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
+  // Absent is the current day, which the server resolves; the URL stays clean for it.
+  from: z.iso.date().optional().catch(undefined),
+  to: z.iso.date().optional().catch(undefined),
+  q: z.string().trim().min(1).max(100).optional().catch(undefined),
   // Absent is the open queue. Follow-ups lists due treatment plans instead of the day.
   status: z.enum(["all", "follow-ups"]).optional().catch(undefined),
 });
 
-const dayQuery = (orgSlug: string, date: string | undefined, q: string, includeClosed: boolean) =>
+const dayQuery = (
+  orgSlug: string,
+  range: { from?: string; to?: string },
+  q: string,
+  includeClosed: boolean,
+) =>
   orpc.opd.day.infiniteOptions({
     input: (cursor: { dayOrderAt: Date; id: string } | undefined) => ({
       orgSlug,
-      date,
+      from: range.from,
+      to: range.to,
       // Absent, not empty: a blank field reads the whole day.
       q: q || undefined,
       includeClosed,
@@ -117,15 +84,15 @@ const dayQuery = (orgSlug: string, date: string | undefined, q: string, includeC
 export const Route = createFileRoute("/$orgSlug/opd/")({
   head: () => ({ meta: [{ title: "Outpatient · HMS" }] }),
   validateSearch: opdDaySearchSchema,
-  loaderDeps: ({ search: { date, status } }) => ({ date, status }),
+  loaderDeps: ({ search: { from, to, q, status } }) => ({ from, to, q, status }),
   loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {
     const { roles } = await queryClient.query(orpc.member.me.queryOptions({ input: { orgSlug } }));
 
     // Whichever list the URL names arrives with the page, never after it.
     await (
       deps.status === "follow-ups" && authorize(roles, { treatment: ["read"] })
-        ? queryClient.infiniteQuery(followUpsQuery(orgSlug, ""))
-        : queryClient.infiniteQuery(dayQuery(orgSlug, deps.date, "", deps.status === "all"))
+        ? queryClient.infiniteQuery(followUpsQuery(orgSlug, deps.q ?? ""))
+        : queryClient.infiniteQuery(dayQuery(orgSlug, deps, deps.q ?? "", deps.status === "all"))
     ).catch(() => {});
   },
   component: OpdRoute,
@@ -187,13 +154,12 @@ function OpdStatusCell({
 }
 
 function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string }) {
-  const { date, status } = Route.useSearch();
+  const { from, to, status } = Route.useSearch();
   const { timeZone, today } = useOrgDateTime();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
-  const shownDate = date ?? today;
 
   const day = useInfiniteQuery({
-    ...dayQuery(orgSlug, date, search, status === "all"),
+    ...dayQuery(orgSlug, { from, to }, search, status === "all"),
     ...OPERATIONAL_INFINITE_REFETCH,
   });
 
@@ -228,9 +194,7 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
         empty={
           search
             ? "No appointments match this search."
-            : shownDate === today
-              ? "No appointments today."
-              : `No appointments on ${formatBusinessDate(shownDate)}.`
+            : `No appointments ${dateRangeLabel(today, from, to, "Today").toLowerCase()}.`
         }
       >
         <>
@@ -365,7 +329,7 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
   );
 }
 
-// Owns the settled search term so the page header above never sees a keystroke.
+// The applied search lives in the URL, so a reload and the Back button keep the queue.
 function OpdDeskView({
   orgSlug,
   followUps,
@@ -375,9 +339,61 @@ function OpdDeskView({
   followUps: boolean;
   canReadTreatment: boolean;
 }) {
-  const [search, setSearch] = useState("");
   const filters = Route.useSearch();
   const navigate = useNavigate();
+  const { today } = useOrgDateTime();
+  const field = useRef<HTMLDivElement>(null);
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const search = filters.q ?? "";
+  const statuses = canReadTreatment ? (["all", "follow-ups"] as const) : (["all"] as const);
+
+  const setFilters = (patch: {
+    q?: string;
+    status?: "all" | "follow-ups";
+    from?: string;
+    to?: string;
+  }) =>
+    navigate({
+      to: "/$orgSlug/opd",
+      params: { orgSlug },
+      search: (previous) => ({ ...previous, ...patch }),
+      replace: true,
+    });
+
+  // Today is the queue's resting state and the server's own default, so it leaves the URL.
+  const setRange = (range: { from?: string; to?: string }) =>
+    setFilters(
+      range.from === today && range.to === today ? { from: undefined, to: undefined } : range,
+    );
+
+  const clear = () => {
+    focusSearch(field, { empty: true });
+    void setFilters({ q: undefined, status: undefined, from: undefined, to: undefined });
+  };
+
+  const chips: ActiveFilter[] = [
+    ...(filters.status === undefined
+      ? []
+      : [
+          {
+            id: "status",
+            name: "Status",
+            label: STATUS_LABELS[filters.status],
+            remove: () => setFilters({ status: undefined }),
+          },
+        ]),
+    // The call sheet is not a day's list, so it never carries a date chip.
+    ...(followUps || (filters.from === undefined && filters.to === undefined)
+      ? []
+      : [
+          {
+            id: "date",
+            name: "Date",
+            label: dateRangeLabel(today, filters.from, filters.to, "Today"),
+            remove: () => setFilters({ from: undefined, to: undefined }),
+          },
+        ]),
+  ];
 
   return (
     <PageBody>
@@ -387,27 +403,45 @@ function OpdDeskView({
           placeholder={
             followUps ? "Search patient, MRN or phone" : "Search name, MRN, phone or token"
           }
-          onQueryChange={setSearch}
-        />
-        <FilterGroup
-          label="Status"
-          value={followUps ? "follow-ups" : filters.status === "all" ? "all" : "open"}
-          options={[
-            { value: "open", label: "Open" },
-            { value: "all", label: "All" },
-            ...(canReadTreatment ? [{ value: "follow-ups", label: "Follow-ups" }] : []),
-          ]}
-          onValueChange={(next) =>
-            void navigate({
-              to: "/$orgSlug/opd",
-              params: { orgSlug },
-              search: {
-                ...filters,
-                status: next === "all" || next === "follow-ups" ? next : undefined,
-              },
-              replace: true,
-            })
+          value={filters.q}
+          fieldRef={field}
+          onQueryChange={(next) => void setFilters({ q: next || undefined })}
+          trailing={
+            <FilterMenu anchor={field} active={chips.length > 0}>
+              {followUps ? null : (
+                <DateSubmenu
+                  today={today}
+                  from={filters.from}
+                  to={filters.to}
+                  onChange={(range) => void setRange(range)}
+                  onCustom={() => setRangeOpen(true)}
+                />
+              )}
+              <FilterSubmenu icon={CircleDotIcon} label="Status">
+                {statuses.map((candidate) => (
+                  <DropdownMenuCheckboxItem
+                    key={candidate}
+                    checked={filters.status === candidate}
+                    onCheckedChange={(checked) =>
+                      void setFilters({ status: checked ? candidate : undefined })
+                    }
+                  >
+                    {STATUS_LABELS[candidate]}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </FilterSubmenu>
+            </FilterMenu>
           }
+        />
+        <FilterChips filters={chips} field={field} onClear={clear} />
+        <DateRangePopover
+          open={rangeOpen}
+          onOpenChange={setRangeOpen}
+          anchor={field}
+          from={filters.from}
+          to={filters.to}
+          today={today}
+          onApply={(range) => void setRange(range)}
         />
       </ListToolbar>
       {followUps ? (
@@ -416,7 +450,7 @@ function OpdDeskView({
         // A new day or filter remounts the list, so another queue's rows and their check-in
         // controls never stand in while it loads; only typing keeps previous rows (D037).
         <OpdAppointments
-          key={`${filters.date ?? ""}:${filters.status ?? ""}`}
+          key={`${filters.from ?? ""}:${filters.to ?? ""}:${filters.status ?? ""}`}
           orgSlug={orgSlug}
           search={search}
         />
@@ -435,43 +469,19 @@ function NewAppointmentLink({ orgSlug }: { orgSlug: string }) {
   );
 }
 
-function OpdHeader({ orgSlug, showDay }: { orgSlug: string; showDay: boolean }) {
-  const filters = Route.useSearch();
-  const navigate = useNavigate();
-  const { today } = useOrgDateTime();
+// The day is a filter now, so the header carries only the action.
+function OpdHeader({ orgSlug }: { orgSlug: string }) {
   const roles = useMembership(orgSlug, (membership) => membership.roles);
 
   // Registering the patient is part of the same intake, so both grants are required.
   const canCreateOpdAppointments =
     authorize(roles, { opd: ["create"] }) && authorize(roles, { patient: ["read"] });
 
-  const shownDate = filters.date ?? today;
-
   return (
-    <>
-      <PageHeader
-        title="Outpatient"
-        action={
-          <>
-            {/* A day belongs to the queue; the call sheet is not a day's list. */}
-            {showDay ? (
-              <DayStepper
-                date={shownDate}
-                today={today}
-                onChange={(next) =>
-                  void navigate({
-                    to: "/$orgSlug/opd",
-                    params: { orgSlug },
-                    search: { ...filters, date: next === today ? undefined : next },
-                  })
-                }
-              />
-            ) : null}
-            {canCreateOpdAppointments ? <NewAppointmentLink orgSlug={orgSlug} /> : null}
-          </>
-        }
-      />
-    </>
+    <PageHeader
+      title="Outpatient"
+      action={canCreateOpdAppointments ? <NewAppointmentLink orgSlug={orgSlug} /> : null}
+    />
   );
 }
 
@@ -484,7 +494,7 @@ function OpdRoute() {
 
   return (
     <>
-      <OpdHeader orgSlug={orgSlug} showDay={!followUps} />
+      <OpdHeader orgSlug={orgSlug} />
       <OpdDeskView
         key={orgSlug}
         orgSlug={orgSlug}

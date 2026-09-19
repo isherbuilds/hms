@@ -232,6 +232,7 @@ export function ChargeCheckout({
         <ClientOnly fallback={null}>
           <SettlementOverlay
             quote={quote}
+            basis="exclusive"
             availableCredit={collecting}
             description={`${quote.lines.length} charge${quote.lines.length === 1 ? "" : "s"} on this appointment`}
             label="Issue invoice"

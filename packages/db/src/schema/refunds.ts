@@ -16,7 +16,6 @@ import { advanceReceipts } from "./advance-receipts";
 import { creditNotes } from "./credit-notes";
 import { invoices } from "./invoices";
 import { type PaymentMethod } from "./payment-methods";
-import { paymentMethodCheck } from "./payments";
 
 export const refunds = pgTable(
   "refunds",
@@ -40,7 +39,6 @@ export const refunds = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    check("refunds_method_check", paymentMethodCheck(table.method)),
     check("refunds_amount_check", sql`${table.amount} > 0`),
     check(
       "refunds_source_check",

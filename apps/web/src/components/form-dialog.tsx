@@ -41,8 +41,7 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   schema: T;
   defaultValues: DefaultValues<z.input<T>>;
   success: string;
-  /** `requestKey` stays the same across retries while this dialog is open (D039). */
-  run: (value: z.output<T>, requestKey: string) => Promise<R>;
+  run: (value: z.output<T>) => Promise<R>;
   /** Keeps the dialog open on success, showing the document the call produced. */
   done?: (result: R) => Printed;
   onClose: () => void;
@@ -52,10 +51,9 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   const form = useZodForm(schema, { defaultValues });
 
   const [printed, setPrinted] = useState<Printed | null>(null);
-  const [requestKey] = useState(() => crypto.randomUUID());
 
   const submit = useMutation({
-    mutationFn: (value: z.output<T>) => run(value, requestKey),
+    mutationFn: (value: z.output<T>) => run(value),
     onSuccess: (result) => {
       if (done) setPrinted(done(result));
       else onClose();

@@ -10,7 +10,21 @@ import { patients } from "@hms/db/schema/patients";
 import { practitioners } from "@hms/db/schema/practitioners";
 import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { ORPCError } from "@orpc/server";
-import { and, asc, desc, eq, ilike, inArray, isNull, like, lt, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  between,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  like,
+  lt,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
@@ -25,19 +39,19 @@ import { normalizePhone } from "../lib/phone";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
 import {
-  dateOnly,
+  dayRange,
   money,
   note,
   paymentLine,
   phone,
   reason,
-  requestKey,
+  resolveDayRange,
   likePattern,
   searchQuery,
   personName,
 } from "../lib/schemas";
-import { claimRequestKey } from "../lib/request-key";
-import { billingDocumentContext, settleInvoiceTx } from "./billing";
+import { billingDocumentContext } from "../lib/billing-documents";
+import { settleInvoiceTx } from "./billing";
 
 const appointmentIdInput = orgInput.extend({ appointmentId: z.string() });
 
@@ -274,6 +288,7 @@ export const opdRouter = {
         taxCode: item.taxCode,
       })),
       input.discountAmount,
+      "exclusive",
     );
 
     return {
@@ -299,7 +314,6 @@ export const opdRouter = {
   createWalkIn: orgProcedure(
     { opd: ["create"], patient: ["read"], billing: ["write"] },
     orgInput.extend({
-      requestKey,
       patientId: z.string(),
       practitionerId: z.string(),
       treatmentPlanId: z.string().optional(),
@@ -356,8 +370,6 @@ export const opdRouter = {
     ];
 
     const result = await db.transaction(async (tx) => {
-      await claimRequestKey(tx, scope.orgId, input.requestKey);
-
       const plan = await requireOpenTreatmentPlan(
         tx,
         scope.orgId,
@@ -714,7 +726,7 @@ export const opdRouter = {
   day: orgProcedure(
     { opd: ["read"] },
     orgInput.extend({
-      date: dateOnly.optional(),
+      ...dayRange,
       q: searchQuery,
       includeClosed: z.boolean().default(false),
       cursor: z.object({ dayOrderAt: z.coerce.date(), id: z.string() }).optional(),
@@ -725,9 +737,10 @@ export const opdRouter = {
     const { timeZone } = await readOrgSettings(scope.orgId);
     const now = new Date();
     const currentDay = businessDate(now, timeZone);
-    const day = input.date ?? currentDay;
+    const { from, to } = resolveDayRange(input, currentDay);
 
-    if (day < currentDay) {
+    // A past day can still hold bookings nobody closed; the queue is where that shows.
+    if (from < currentDay) {
       await closeExpiredBookings({
         orgId: scope.orgId,
         actorId: scope.userId,
@@ -738,7 +751,7 @@ export const opdRouter = {
 
     const pagePredicate = and(
       eq(opdAppointments.orgId, scope.orgId),
-      eq(opdAppointments.businessDate, day),
+      between(opdAppointments.businessDate, from, to),
       input.includeClosed
         ? inArray(opdAppointments.status, OPD_APPOINTMENT_STATUSES)
         : inArray(opdAppointments.status, ["booked", "checked_in"]),
@@ -849,6 +862,11 @@ export const opdRouter = {
       const outstanding = balances.get(invoice.id)?.outstanding;
 
       if (outstanding === undefined) continue;
+
+      if (invoice.opdAppointmentId === null) {
+        throw impossible(`invoice ${invoice.id} selected by appointment has no appointment`);
+      }
+
       dueByAppointment.set(
         invoice.opdAppointmentId,
         (dueByAppointment.get(invoice.opdAppointmentId) ?? 0n) + outstanding,

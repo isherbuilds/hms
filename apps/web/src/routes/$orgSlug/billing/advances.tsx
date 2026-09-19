@@ -63,7 +63,7 @@ function AdvancesHeldRoute() {
 
   return (
     <>
-      <PageHeader title="Advances held" description="Unused patient credit, oldest receipt first" />
+      <PageHeader title="Advances held" />
       <PageBody>
         <ListToolbar>
           <SearchInput

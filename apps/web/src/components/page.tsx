@@ -1,25 +1,15 @@
 import { Button } from "@hms/ui/components/button";
 import { Input } from "@hms/ui/components/input";
-import { NativeSelect } from "@hms/ui/components/native-select";
 import { SidebarTrigger } from "@hms/ui/components/sidebar";
-import { ToggleGroup, ToggleGroupItem } from "@hms/ui/components/toggle-group";
 import { cn } from "@hms/ui/lib/utils";
 import { createLink } from "@tanstack/react-router";
 import { SearchIcon } from "lucide-react";
-import type { ComponentProps, ReactNode } from "react";
+import { useEffect, useRef, type ComponentProps, type ReactNode, type Ref } from "react";
 
 import { useDebouncedCallback } from "@/hooks/use-debounced-value";
 import { errorMessage } from "@/lib/orpc-error";
 
-export function PageHeader({
-  title,
-  description,
-  action,
-}: {
-  title: string;
-  description?: ReactNode;
-  action?: ReactNode;
-}) {
+export function PageHeader({ title, action }: { title: string; action?: ReactNode }) {
   return (
     <div
       data-slot="page-header"
@@ -27,14 +17,7 @@ export function PageHeader({
     >
       <SidebarTrigger className="print:hidden lg:hidden" />
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <h1 className="truncate text-sm font-medium">{title}</h1>
-          {description && (
-            <p className="hidden min-w-0 truncate text-xs text-muted-foreground sm:block">
-              {description}
-            </p>
-          )}
-        </div>
+        <h1 className="min-w-0 truncate text-sm font-medium">{title}</h1>
         {action && <div className="ml-auto flex shrink-0 items-center gap-2">{action}</div>}
       </div>
     </div>
@@ -143,6 +126,30 @@ export const PageTab = createLink(function PageTabAnchor({
   );
 });
 
+/**
+ * One titled band of a full-page form. The card owns the border; the last section
+ * drops its own so the card's rounded edge is not cut by a line.
+ */
+export function FormSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="grid gap-3 border-b border-border p-4 last:border-b-0">
+      <div className="flex flex-wrap items-baseline gap-x-3">
+        <h2 className="font-medium">{title}</h2>
+        {description ? <p className="text-muted-foreground">{description}</p> : null}
+      </div>
+      <div className="min-w-0">{children}</div>
+    </section>
+  );
+}
+
 export function ListToolbar({ children }: { children: ReactNode }) {
   return <div className="flex flex-wrap items-center gap-2">{children}</div>;
 }
@@ -150,91 +157,85 @@ export function ListToolbar({ children }: { children: ReactNode }) {
 export function SearchInput({
   label,
   placeholder,
+  value,
+  delay = 300,
   onQueryChange,
+  fieldRef,
+  trailing,
 }: {
   label: string;
   placeholder: string;
+  /** The applied query from the URL, so a reload shows what filters the list. */
+  value?: string;
+  /** 300 ms for a server-searched list, 150 ms for an in-memory master list. */
+  delay?: number;
+  /** The trimmed text; an empty string clears the search. */
   onQueryChange: (query: string) => void;
+  fieldRef?: Ref<HTMLDivElement>;
+  /** The filter trigger, drawn inside the field's right edge. */
+  trailing?: ReactNode;
 }) {
+  const input = useRef<HTMLInputElement>(null);
   // The list re-renders after each pause, not after each keystroke.
-  const handleChange = useDebouncedCallback(onQueryChange, 300);
+  const apply = useDebouncedCallback((text: string) => onQueryChange(text.trim()), delay);
+
+  // Clear, Back, or a link changes the URL; the box follows, but never while the
+  // operator types in it.
+  useEffect(() => {
+    const element = input.current;
+
+    if (!element) return;
+
+    const applied = value ?? "";
+
+    if (document.activeElement !== element) element.value = applied;
+
+    // The box now shows the applied query, so a pause scheduled before it holds stale
+    // text: Clear empties the box itself, and its pending pause would write `q` back.
+    if (element.value.trim() === applied) apply.cancel();
+  }, [value]);
 
   return (
-    <div className="relative w-full max-w-md">
+    <div ref={fieldRef} className="relative w-full sm:w-88">
       <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
       <Input
+        ref={input}
         type="search"
         aria-label={label}
         placeholder={placeholder}
-        className="pl-8"
-        onChange={(event) => handleChange(event.currentTarget.value.trim())}
+        defaultValue={value}
+        // The server's query cap: a longer query would validate to no search.
+        maxLength={100}
+        autoComplete="off"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        className={cn(
+          "pl-8",
+          trailing !== undefined && "pr-8 [&::-webkit-search-cancel-button]:appearance-none",
+        )}
+        onChange={(event) => apply(event.currentTarget.value)}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return;
+
+          if (event.key === "Enter") {
+            event.preventDefault();
+            apply.now(event.currentTarget.value);
+          }
+
+          // Esc clears the text only; filters never clear on Esc.
+          if (event.key === "Escape" && event.currentTarget.value) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.currentTarget.value = "";
+            apply.now("");
+          }
+        }}
       />
+      {trailing === undefined ? null : (
+        <div className="absolute inset-y-0 right-1 flex items-center">{trailing}</div>
+      )}
     </div>
-  );
-}
-
-export function FilterGroup<T extends string>({
-  label,
-  value,
-  options,
-  onValueChange,
-}: {
-  label: string;
-  value: T;
-  options: readonly { value: T; label: string }[];
-  onValueChange: (value: T) => void;
-}) {
-  return (
-    <ToggleGroup
-      aria-label={label}
-      value={[value]}
-      size="sm"
-      spacing={1}
-      className="bg-muted p-0.5"
-      onValueChange={(next) => {
-        const nextValue = options.find((option) => option.value === next[0])?.value;
-
-        if (nextValue !== undefined) onValueChange(nextValue);
-      }}
-    >
-      {options.map((option) => (
-        <ToggleGroupItem key={option.value} value={option.value}>
-          {option.label}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
-  );
-}
-
-/** One-of-N list filter whose options come from data or run past five. */
-export function FilterSelect<T extends string>({
-  label,
-  value,
-  options,
-  onValueChange,
-}: {
-  label: string;
-  value: T;
-  options: readonly { value: T; label: string }[];
-  onValueChange: (value: T) => void;
-}) {
-  return (
-    <NativeSelect
-      aria-label={label}
-      value={value}
-      onChange={(event) => {
-        const nextValue = options.find((option) => option.value === event.target.value)?.value;
-
-        if (nextValue !== undefined) onValueChange(nextValue);
-      }}
-      className="w-44"
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </NativeSelect>
   );
 }
 

@@ -15,7 +15,6 @@ import {
 import { organization, user } from "./auth";
 import { patients } from "./patients";
 import { type PaymentMethod } from "./payment-methods";
-import { paymentMethodCheck } from "./payments";
 import { treatmentPlans } from "./treatment-plans";
 
 export const advanceReceipts = pgTable(
@@ -50,7 +49,6 @@ export const advanceReceipts = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    check("advance_receipts_method_check", paymentMethodCheck(table.method)),
     check("advance_receipts_amount_check", sql`${table.amount} > 0`),
     unique("advance_receipts_org_id_id_unique").on(table.orgId, table.id),
     uniqueIndex("advance_receipts_org_number_idx").on(table.orgId, table.receiptNumber),

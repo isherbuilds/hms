@@ -80,7 +80,7 @@ const creditSchema = z
 
 type InvoiceHeader = {
   id: string;
-  patientId: string;
+  patientId: string | null;
   invoiceNumber: string;
   currency: string;
   grandTotal: bigint;
@@ -114,7 +114,9 @@ export function InvoiceAccount({
   });
 
   const openPayment = async () => {
-    const credit = await openingCredit(queryClient, orgSlug, invoice.patientId);
+    const credit = invoice.patientId
+      ? await openingCredit(queryClient, orgSlug, invoice.patientId)
+      : ZERO;
 
     if (credit === null) return;
     setAction({ kind: "payment", credit });
@@ -282,7 +284,7 @@ function PaymentDialog({
   currency: string;
   onIssueCreditNote?: () => void;
 }) {
-  // A pending payment keeps the dialog open; reopening would mint a new request key (D039).
+  // Keep the dialog open while its payment is pending.
   const paying = useIsMutating({ mutationKey: orpc.billing.recordPayments.mutationKey() }) > 0;
 
   return (
@@ -341,10 +343,9 @@ function CreditDialog({
       success="Credit note issued"
       onClose={onClose}
       contentClassName="max-w-2xl"
-      run={(value, requestKey) =>
+      run={(value) =>
         orpc.billing.issueCreditNote.call({
           orgSlug,
-          requestKey,
           invoiceId,
           reason: value.reason,
           lines: value.lines.flatMap((line): CreditLineInput[] => {
@@ -463,10 +464,9 @@ function RefundDialog({
       defaultValues={{ creditNoteId: "", method: "cash", amount: "", reference: "" }}
       success="Refund recorded"
       onClose={onClose}
-      run={(value, requestKey) =>
+      run={(value) =>
         orpc.billing.recordRefund.call({
           orgSlug,
-          requestKey,
           creditNoteId: value.creditNoteId,
           method: value.method,
           amount: value.amount,

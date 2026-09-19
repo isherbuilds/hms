@@ -168,10 +168,34 @@ all of these as complete:
 8. Before incorporation is public, the home page carries the Companies
    (Incorporation) Rules r26 identity block: legal name, CIN, registered office,
    phone, email, and grievance contact. `/about` and `/privacy` state it is owed.
+9. For the pharmacy: the chartered accountant has approved the inclusive-MRP
+   presentation and document label, the GST registration the pharmacy invoices
+   under is confirmed, and the licence particulars appear on the printed
+   pharmacy Invoice.
 
 Record evidence and exceptions with the release, not in a permanent parallel
 checklist. Re-run only the affected gate after a configuration or workflow
 change.
+
+## Pharmacy stock procedures
+
+Stock on hand is the sum of recorded movements (D041); it is never typed over.
+
+### Physical count
+
+Count the shelf batch by batch and post each difference through **Adjust** with
+reason `count_correction`, naming the counted sheet in the note. Retain the
+sheet as a file. Opening stock is different: it is posted once, as a goods
+receipt with **opening stock** set, carrying the count time and the retained
+sheet. A batch that already has a movement refuses an opening line, so a later
+recount is always a `count_correction` adjustment.
+
+### Downtime re-entry
+
+Sales made on paper during an outage are entered afterwards at the desk, one
+sale at a time, with the paper number in the note. Each entry moves its own
+stock, so stock is never typed over to match the shelf; a remaining difference
+is a counted `count_correction` with its sheet.
 
 ## Accounts and Organizations
 

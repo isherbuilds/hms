@@ -507,7 +507,11 @@ await db.transaction(async (tx) => {
   for (const invoice of invoiceRows) {
     const sequence = await nextCounter(tx, orgId, `invoice:${invoice.fiscalYear}`);
     invoice.invoiceNumber = documentNumber(settings.invoicePrefix, invoice.fiscalYear, sequence);
-    invoice.patientMrn = patientById.get(invoice.patientId)!.mrn;
+
+    const patient = invoice.patientId ? patientById.get(invoice.patientId) : undefined;
+
+    if (!patient) throw new Error(`Seed invoice ${invoice.id} has no patient`);
+    invoice.patientMrn = patient.mrn;
   }
 
   for (const payment of paymentRows) {

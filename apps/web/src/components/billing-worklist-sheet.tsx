@@ -23,7 +23,7 @@ export function BillingWorklistSheet({
   open: OpenRow | null;
   onClose: () => void;
 }) {
-  // A pending payment keeps the sheet open; reopening would mint a new request key (D039).
+  // A pending payment keeps the sheet open so the cashier sees how it settles.
   const paying = useIsMutating({ mutationKey: orpc.billing.recordPayments.mutationKey() }) > 0;
 
   return (
@@ -59,7 +59,7 @@ function Body({
       <div className="flex flex-col gap-4 overflow-y-auto p-4">
         <div className="flex flex-col gap-1">
           <span className="font-mono text-muted-foreground">
-            {row.reference} · {row.patientMrn}
+            {row.patientMrn ? `${row.reference} · ${row.patientMrn}` : row.reference}
           </span>
           <span className="flex items-center gap-2">
             <span
@@ -92,7 +92,7 @@ function Body({
             onClose={onClose}
             submitLabel="Collect"
           />
-        ) : (
+        ) : row.appointmentId ? (
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">
               Nothing is owed until the invoice is issued.
@@ -111,7 +111,7 @@ function Body({
               Issue invoice
             </Button>
           </div>
-        )}
+        ) : null}
 
         <Separator />
 
@@ -122,21 +122,23 @@ function Body({
               {row.patientPhone}
             </Badge>
           ) : null}
-          <Button
-            size="sm"
-            variant="outline"
-            className="ml-auto"
-            nativeButton={false}
-            render={
-              <Link
-                to="/$orgSlug/opd/$appointmentId/billing"
-                params={{ orgSlug, appointmentId: row.appointmentId }}
-              />
-            }
-          >
-            <ExternalLinkIcon />
-            Open visit billing
-          </Button>
+          {row.appointmentId ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto"
+              nativeButton={false}
+              render={
+                <Link
+                  to="/$orgSlug/opd/$appointmentId/billing"
+                  params={{ orgSlug, appointmentId: row.appointmentId }}
+                />
+              }
+            >
+              <ExternalLinkIcon />
+              Open visit billing
+            </Button>
+          ) : null}
         </div>
       </div>
     </>

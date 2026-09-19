@@ -63,10 +63,7 @@ function AuditRoute() {
 
   return (
     <>
-      <PageHeader
-        title="Audit"
-        description="Sensitive actions and every permission denial in this organization"
-      />
+      <PageHeader title="Audit" />
       <SettingsTabs orgSlug={orgSlug} />
 
       <PageBody>

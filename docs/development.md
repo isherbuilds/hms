@@ -195,8 +195,7 @@ range; a passing TypeScript build cannot prove an auth database is migratable.
   `bun run db:seed -- --reset`.
 - A write that checks more than one row, creates money, or changes a Charge set
   follows [Writes and concurrency](./architecture.md#writes-and-concurrency):
-  conditional updates, the documented lock order, a request key for money
-  without a revision, and the shared void path.
+  conditional updates, the documented lock order, and the shared void path.
 
 - No secret or server-only value import may reach client assets.
 
@@ -280,10 +279,9 @@ callbacks, so a callback that navigates reads the fresh data once. A mutation
 adds only its own success copy, a field error, or `closeOnConflict(close)` for an
 overlay holding a refused snapshot.
 
-A money form mints its `requestKey` once per open form (`FormDialog` passes it to
-`run`) and blocks dismissal while its write is pending (D039). A payment amount
-is filled only by an explicit action; changing credit or discount never
-overwrites what the cashier typed.
+A money form blocks dismissal while its write is pending. A payment amount is
+filled only by an explicit action; changing credit or discount never overwrites
+what the cashier typed.
 
 Remote type-ahead keeps raw text in the smallest child and debounces before the
 query key; the server matches and bounds the results. Local filtering is for a

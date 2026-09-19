@@ -1,7 +1,5 @@
-import { sql } from "drizzle-orm";
 import {
   bigint,
-  check,
   foreignKey,
   index,
   integer,
@@ -40,10 +38,6 @@ export const invoiceLines = pgTable(
     revenueCategory: text("revenue_category", { enum: CATALOG_CATEGORIES }).notNull(),
   },
   (table) => [
-    check(
-      "invoice_lines_revenue_category_check",
-      sql`${table.revenueCategory} in ('consultation', 'procedure', 'lab', 'radiology', 'other')`,
-    ),
     unique("invoice_lines_org_id_id_unique").on(table.orgId, table.id),
     foreignKey({
       columns: [table.orgId, table.invoiceId],

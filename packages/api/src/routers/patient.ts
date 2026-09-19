@@ -5,7 +5,7 @@ import { attachments } from "@hms/db/schema/attachments";
 import { departments } from "@hms/db/schema/departments";
 import { invoices } from "@hms/db/schema/invoices";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
-import { patients } from "@hms/db/schema/patients";
+import { PATIENT_SEX, patients } from "@hms/db/schema/patients";
 import { patientPayers } from "@hms/db/schema/patient-payers";
 import { payers } from "@hms/db/schema/payers";
 import { practitioners } from "@hms/db/schema/practitioners";
@@ -17,7 +17,7 @@ import { z } from "zod";
 
 import { audit } from "../audit";
 import { advanceRemaining } from "../lib/advance-credit";
-import { conflict } from "../lib/conflict";
+import { conflict, impossible } from "../lib/conflict";
 import { uniqueViolationConstraint } from "../lib/db-errors";
 import { invoiceBalancesFor } from "../lib/invoice-balance";
 import { normalizePhone } from "../lib/phone";
@@ -46,7 +46,7 @@ const sponsorInput = z
 const patientFields = z.object({
   name: personName,
   phone,
-  sex: z.enum(["male", "female", "other", "unknown"]),
+  sex: z.enum(PATIENT_SEX),
   dateOfBirth: dateOnly,
   dobEstimated: z.boolean(),
   address: z.string().trim().max(500).default(""),
@@ -209,6 +209,7 @@ export const patientRouter = {
     { patient: ["read"] },
     orgInput.extend({
       query: searchQuery,
+      sex: z.enum(PATIENT_SEX).optional(),
       phone: z
         .string()
         .trim()
@@ -231,6 +232,7 @@ export const patientRouter = {
     const scoped = and(
       eq(patients.orgId, context.scope.orgId),
       input.cursor ? lt(patients.id, input.cursor) : undefined,
+      input.sex ? eq(patients.sex, input.sex) : undefined,
       normalizedPhone ? eq(phoneDigits, normalizedPhone) : undefined,
       queryPattern
         ? or(
@@ -366,6 +368,11 @@ export const patientRouter = {
       const balance = balances.get(invoice.id);
 
       if (!balance) throw new Error(`Balance missing for invoice ${invoice.id}`);
+
+      if (invoice.opdAppointmentId === null) {
+        throw impossible(`invoice ${invoice.id} selected by visit has no appointment`);
+      }
+
       outstandingByVisit.set(
         invoice.opdAppointmentId,
         (outstandingByVisit.get(invoice.opdAppointmentId) ?? 0n) + balance.outstanding,

@@ -7,6 +7,7 @@ import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { and, asc, eq, inArray, lt, type SQL } from "drizzle-orm";
 
 import { audit } from "../audit";
+import { impossible } from "./conflict";
 
 /**
  * Voids the pending charges `where` selects. A plan counts pending charges as delivered,
@@ -102,7 +103,10 @@ export async function closeExpiredBookings(options: {
 
     const voidedByAppointment = new Map<string, number>();
 
+    // Every voided charge here came through the appointment predicate above.
     for (const charge of voided) {
+      if (charge.opdAppointmentId === null) throw impossible("swept charge has no appointment");
+
       voidedByAppointment.set(
         charge.opdAppointmentId,
         (voidedByAppointment.get(charge.opdAppointmentId) ?? 0) + 1,

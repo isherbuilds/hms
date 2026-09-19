@@ -1,0 +1,523 @@
+import { computeInvoiceLines } from "@hms/api/lib/invoice-math";
+import { Badge } from "@hms/ui/components/badge";
+import { Button } from "@hms/ui/components/button";
+import { Input } from "@hms/ui/components/input";
+import { SubmitButton } from "@hms/ui/components/submit-button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@hms/ui/components/table";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ClientOnly, useBlocker, useNavigate } from "@tanstack/react-router";
+import { Trash2Icon } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { FinancialSummary } from "@/components/opd-financial-summary";
+import {
+  OpdPatientSearch,
+  SelectedPatientChip,
+  type SelectedPatient,
+} from "@/components/opd-patient-picker";
+import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
+import { FormSection, Panel } from "@/components/page";
+import { PharmacyBatchPicker, type SaleLine } from "@/components/pharmacy-batch-picker";
+import { useCan, useMembership } from "@/lib/membership";
+import { formatMoney, ZERO } from "@/lib/money";
+import type { WalkInQuote } from "@/lib/opd-service-preview";
+import { formatBusinessDate } from "@/lib/org-datetime";
+import { orpc } from "@/lib/orpc";
+import { closeOnConflict } from "@/lib/orpc-error";
+import { openingCredit } from "@/lib/patient-credit";
+
+type Buyer = "walk-in" | "patient";
+
+const BUYER_LABELS = [
+  ["walk-in", "Walk-in"],
+  ["patient", "Patient"],
+] as const satisfies readonly (readonly [Buyer, string])[];
+
+function SaleLines({
+  lines,
+  currency,
+  onChange,
+  onRemove,
+}: {
+  lines: SaleLine[];
+  currency: string;
+  onChange: (batchId: string, qty: number) => void;
+  onRemove: (batchId: string) => void;
+}) {
+  const commitQty = (line: SaleLine, input: HTMLInputElement) => {
+    // The shelf is the ceiling: the server refuses more, so the field never offers it.
+    const qty = Math.min(line.shelfQty, Math.max(1, input.valueAsNumber || 1));
+    input.value = String(qty);
+    onChange(line.batchId, qty);
+  };
+
+  const qtyField = (line: SaleLine) => (
+    <Input
+      key={`${line.batchId}:${line.qty}`}
+      type="number"
+      min={1}
+      max={line.shelfQty}
+      defaultValue={line.qty}
+      aria-label={`${line.productName} quantity`}
+      className="w-16 tabular-nums"
+      onBlur={(event) => commitQty(line, event.currentTarget)}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        commitQty(line, event.currentTarget);
+      }}
+    />
+  );
+
+  const removeButton = (line: SaleLine) => (
+    <Button
+      type="button"
+      size="icon-xs"
+      variant="ghost"
+      aria-label={`Remove ${line.productName}`}
+      onClick={() => onRemove(line.batchId)}
+    >
+      <Trash2Icon />
+    </Button>
+  );
+
+  if (lines.length === 0) {
+    return <p className="text-muted-foreground">Nothing added yet</p>;
+  }
+
+  return (
+    <>
+      <div className="hidden overflow-hidden rounded-lg ring-1 ring-border md:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Product</TableHead>
+              <TableHead>Batch</TableHead>
+              <TableHead>Expiry</TableHead>
+              <TableHead className="w-20">Qty</TableHead>
+              <TableHead className="text-right">MRP</TableHead>
+              <TableHead className="text-right">Amount</TableHead>
+              <TableHead className="w-10">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {lines.map((line) => (
+              <TableRow key={line.batchId}>
+                <TableCell>
+                  <p className="font-medium capitalize">{line.productName}</p>
+                  <p className="font-mono text-muted-foreground">{line.code}</p>
+                </TableCell>
+                <TableCell className="font-mono">{line.batchNumber}</TableCell>
+                <TableCell className="whitespace-nowrap">
+                  {formatBusinessDate(line.expiryDate)}
+                </TableCell>
+                <TableCell>{qtyField(line)}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatMoney(line.mrp, currency)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatMoney(line.mrp * BigInt(line.qty), currency)}
+                </TableCell>
+                <TableCell>{removeButton(line)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="grid gap-2 md:hidden">
+        {lines.map((line) => (
+          <article
+            key={line.batchId}
+            className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-lg border border-border p-3"
+          >
+            <div className="min-w-0">
+              <p className="truncate font-medium capitalize">{line.productName}</p>
+              <div className="flex flex-wrap gap-1 pt-2">
+                <Badge variant="muted" className="font-mono">
+                  {line.batchNumber}
+                </Badge>
+                <Badge variant="outline">Expires {formatBusinessDate(line.expiryDate)}</Badge>
+              </div>
+            </div>
+            <div className="grid justify-items-end gap-2">
+              <span className="font-medium tabular-nums">
+                {formatMoney(line.mrp * BigInt(line.qty), currency)}
+              </span>
+              <div className="flex items-end gap-2">
+                <label className="grid justify-items-end gap-1 text-muted-foreground">
+                  Qty
+                  {qtyField(line)}
+                </label>
+                {removeButton(line)}
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </>
+  );
+}
+
+export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const currency = useMembership(orgSlug, (membership) => membership.currency);
+  // A patient buyer reads the patient master; a counter sale does not.
+  const canReadPatients = useCan(orgSlug, { patient: ["read"] });
+
+  const [cart, setCart] = useState<SaleLine[]>([]);
+  const [buyerKind, setBuyerKind] = useState<Buyer>("walk-in");
+  const [walkInName, setWalkInName] = useState("");
+  const [walkInPhone, setWalkInPhone] = useState("");
+  const [patient, setPatient] = useState<SelectedPatient | null>(null);
+  const [showPrescription, setShowPrescription] = useState(false);
+  const [forName, setForName] = useState("");
+  const [prescriberName, setPrescriberName] = useState("");
+  const [prescriptionReference, setPrescriptionReference] = useState("");
+  const [attempted, setAttempted] = useState(false);
+  // The credit the overlay opens with, read on Collect; null while it is closed.
+  const [settlement, setSettlement] = useState<bigint | null>(null);
+
+  const dirty = cart.length > 0;
+
+  const blocker = useBlocker({
+    shouldBlockFn: () => dirty,
+    enableBeforeUnload: dirty,
+    withResolver: true,
+  });
+
+  const add = (line: Omit<SaleLine, "qty">) =>
+    setCart((current) => [...current, { ...line, qty: 1 }]);
+
+  // MRP carries the tax, so the pharmacy basis is inclusive. The overlay owns the
+  // discount, so the desk only ever quotes the undiscounted bill.
+  const computed = computeInvoiceLines(
+    cart.map((line) => ({
+      chargeId: line.batchId,
+      description: line.productName,
+      qty: line.qty,
+      unitPrice: line.mrp,
+      taxRatePercent: line.taxRatePercent,
+      taxCode: null,
+    })),
+    ZERO,
+    "inclusive",
+  );
+
+  const quote: WalkInQuote = {
+    currency,
+    lines: computed.lines.map((line) => ({
+      ...line,
+      category: "pharmacy",
+      source: "service" as const,
+    })),
+    subtotal: computed.subtotal,
+    discountAmount: ZERO,
+    taxTotal: computed.taxTotal,
+    grandTotal: computed.grandTotal,
+  };
+
+  const scheduleH1 = cart.some((line) => line.schedule === "h1");
+  const prescriptionOpen = showPrescription || scheduleH1;
+
+  const blocked =
+    cart.length === 0
+      ? "Add a batch to the sale."
+      : buyerKind === "patient" && !patient
+        ? "Choose the patient."
+        : buyerKind === "walk-in" && walkInName.trim() === ""
+          ? "Enter the buyer's name."
+          : scheduleH1 && prescriberName.trim() === ""
+            ? "A Schedule H1 medicine needs the prescriber."
+            : undefined;
+
+  const sell = useMutation(
+    orpc.pharmacy.sell.mutationOptions({
+      onSuccess: async (result) => {
+        setSettlement(null);
+        setCart([]);
+        toast.success(`Sale ${result.invoiceNumber} recorded`);
+
+        // The sales list opens the recorded sale, which is where Print lives.
+        await navigate({
+          to: "/$orgSlug/pharmacy",
+          params: { orgSlug },
+          search: { sale: result.saleId },
+          ignoreBlocker: true,
+        });
+      },
+      // The overlay holds a total the server will keep refusing; the refresh brings the new one.
+      onError: closeOnConflict(() => setSettlement(null)),
+    }),
+  );
+
+  const collect = async () => {
+    setAttempted(true);
+
+    if (blocked) return;
+
+    if (buyerKind === "patient" && patient) {
+      const credit = await openingCredit(queryClient, orgSlug, patient.id);
+
+      if (credit === null) return;
+      setSettlement(credit);
+
+      return;
+    }
+
+    setSettlement(ZERO);
+  };
+
+  const settle = (draft: SettlementDraft) => {
+    if (blocked) return;
+
+    sell.mutate({
+      orgSlug,
+      lines: cart.map((line) => ({ batchId: line.batchId, qty: line.qty })),
+      buyer:
+        buyerKind === "patient" && patient
+          ? { patientId: patient.id }
+          : { name: walkInName.trim(), phone: walkInPhone.trim() || undefined },
+      forName: forName.trim() || undefined,
+      prescriberName: prescriberName.trim() || undefined,
+      prescriptionReference: prescriptionReference.trim() || undefined,
+      discountAmount: draft.discountAmount,
+      note: draft.note,
+      payments: draft.payments,
+      applyCredit: draft.applyCredit,
+      expectedGrandTotal: draft.expectedGrandTotal,
+    });
+  };
+
+  const collectButton = (id: string, messageClassName?: string) => (
+    <>
+      <SubmitButton
+        isSubmitting={sell.isPending}
+        aria-disabled={blocked !== undefined || undefined}
+        aria-describedby={attempted && blocked ? id : undefined}
+        className="w-40 max-w-full aria-disabled:bg-primary aria-disabled:text-primary-foreground"
+      >
+        Collect
+      </SubmitButton>
+      {attempted && blocked ? (
+        <p id={id} className={`text-muted-foreground ${messageClassName ?? ""}`}>
+          {blocked}
+        </p>
+      ) : null}
+    </>
+  );
+
+  const buyerLabel =
+    buyerKind === "patient" ? (patient?.name ?? "patient") : walkInName.trim() || "walk-in";
+
+  return (
+    <>
+      <form
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          void collect();
+        }}
+      >
+        <fieldset disabled={sell.isPending} className="contents">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+            <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
+              <FormSection title="Buyer">
+                <div className="grid gap-3">
+                  {canReadPatients ? (
+                    <div
+                      role="group"
+                      aria-label="Buyer"
+                      className="flex w-fit gap-1 rounded-md bg-muted p-0.5"
+                    >
+                      {BUYER_LABELS.map(([kind, label]) => (
+                        <Button
+                          key={kind}
+                          type="button"
+                          size="xs"
+                          aria-pressed={buyerKind === kind}
+                          variant={buyerKind === kind ? "secondary" : "ghost"}
+                          onClick={() => setBuyerKind(kind)}
+                        >
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {buyerKind === "walk-in" ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="flex flex-col gap-2 text-muted-foreground">
+                        Name <span className="sr-only">required</span>
+                        <Input
+                          value={walkInName}
+                          placeholder="Customer name"
+                          aria-invalid={attempted && walkInName.trim() === ""}
+                          onChange={(event) => setWalkInName(event.target.value)}
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-muted-foreground">
+                        Phone
+                        <Input
+                          value={walkInPhone}
+                          inputMode="tel"
+                          placeholder="Optional"
+                          onChange={(event) => setWalkInPhone(event.target.value)}
+                        />
+                      </label>
+                    </div>
+                  ) : patient ? (
+                    <SelectedPatientChip patient={patient} onClear={() => setPatient(null)} />
+                  ) : (
+                    <OpdPatientSearch orgSlug={orgSlug} onSelect={setPatient} />
+                  )}
+                </div>
+              </FormSection>
+
+              <FormSection title="Items" description="Search the shelf and pick a batch">
+                <div className="grid gap-3">
+                  <PharmacyBatchPicker
+                    orgSlug={orgSlug}
+                    chosen={new Set(cart.map((line) => line.batchId))}
+                    onAdd={add}
+                  />
+                  <SaleLines
+                    lines={cart}
+                    currency={currency}
+                    onChange={(batchId, qty) =>
+                      setCart((current) =>
+                        current.map((line) => (line.batchId === batchId ? { ...line, qty } : line)),
+                      )
+                    }
+                    onRemove={(batchId) =>
+                      setCart((current) => current.filter((line) => line.batchId !== batchId))
+                    }
+                  />
+                  <div className="border-t border-border pt-3 lg:hidden">
+                    <FinancialSummary quote={quote} />
+                  </div>
+                </div>
+              </FormSection>
+
+              <FormSection
+                title="Prescription"
+                description={scheduleH1 ? "Required for Schedule H1" : "Optional"}
+              >
+                <div className="grid gap-3">
+                  {scheduleH1 ? null : (
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="ghost"
+                      className="justify-self-start"
+                      aria-expanded={prescriptionOpen}
+                      onClick={() => setShowPrescription((open) => !open)}
+                    >
+                      {prescriptionOpen ? "Hide details" : "Add details"}
+                    </Button>
+                  )}
+                  {scheduleH1 ? (
+                    <p className="text-muted-foreground">
+                      A Schedule H1 medicine is on this sale: the prescriber is required.
+                    </p>
+                  ) : null}
+                  {prescriptionOpen ? (
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <label className="flex flex-col gap-2 text-muted-foreground">
+                        For whom
+                        <Input
+                          value={forName}
+                          placeholder="Who it is for"
+                          onChange={(event) => setForName(event.target.value)}
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-muted-foreground">
+                        Prescriber {scheduleH1 ? <span className="text-destructive">*</span> : null}
+                        <Input
+                          value={prescriberName}
+                          aria-invalid={scheduleH1 && attempted && prescriberName.trim() === ""}
+                          placeholder="Prescribing doctor"
+                          onChange={(event) => setPrescriberName(event.target.value)}
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-muted-foreground">
+                        Prescription reference
+                        <Input
+                          value={prescriptionReference}
+                          placeholder="Slip or note number"
+                          onChange={(event) => setPrescriptionReference(event.target.value)}
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+                </div>
+              </FormSection>
+            </div>
+
+            <aside className="hidden lg:block">
+              <div className="sticky top-0">
+                <Panel label="Payment" minHeight="min-h-0" padded>
+                  <FinancialSummary quote={quote} />
+                  {collectButton("sale-desk-issue")}
+                </Panel>
+              </div>
+            </aside>
+          </div>
+
+          <footer className="absolute inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card p-3 lg:hidden">
+            <div className="min-w-0">
+              <p className="truncate text-muted-foreground">
+                Payable · {cart.length} line{cart.length === 1 ? "" : "s"}
+              </p>
+              <p className="truncate text-sm font-medium tabular-nums">
+                {formatMoney(quote.grandTotal, currency)}
+              </p>
+            </div>
+            <div className="ml-auto grid shrink-0 justify-items-end gap-1">
+              {collectButton("sale-desk-mobile-issue", "max-w-48 text-right")}
+            </div>
+          </footer>
+
+          {settlement !== null ? (
+            <ClientOnly fallback={null}>
+              <SettlementOverlay
+                quote={quote}
+                basis="inclusive"
+                availableCredit={settlement}
+                description={`${buyerLabel} · pharmacy counter`}
+                label="Record sale"
+                pending={sell.isPending}
+                onOpenChange={(open) => {
+                  if (!open) setSettlement(null);
+                }}
+                onConfirm={settle}
+              />
+            </ClientOnly>
+          ) : null}
+        </fieldset>
+      </form>
+      {blocker.status === "blocked" ? (
+        <ConfirmDialog
+          title="Discard this sale?"
+          description="Nothing on the counter has been recorded yet."
+          confirmLabel="Discard sale"
+          open
+          onConfirm={blocker.proceed}
+          onCancel={blocker.reset}
+        />
+      ) : null}
+    </>
+  );
+}

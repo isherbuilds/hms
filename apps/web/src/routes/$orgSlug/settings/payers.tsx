@@ -88,7 +88,6 @@ function PayersRoute() {
     <>
       <PageHeader
         title="Payers"
-        description="Manage insurers, TPAs, corporate sponsors, and schemes"
         action={
           canCreate ? <Button onClick={() => setCreateOpen(true)}>New payer</Button> : undefined
         }

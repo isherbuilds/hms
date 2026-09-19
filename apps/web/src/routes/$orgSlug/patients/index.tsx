@@ -1,4 +1,5 @@
 import { Button } from "@hms/ui/components/button";
+import { DropdownMenuCheckboxItem } from "@hms/ui/components/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -9,9 +10,17 @@ import {
 } from "@hms/ui/components/table";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { VenusAndMarsIcon } from "lucide-react";
+import { useRef } from "react";
 import { z } from "zod";
 
+import {
+  FilterChips,
+  FilterMenu,
+  FilterSubmenu,
+  focusSearch,
+  type ActiveFilter,
+} from "@/components/list-filter";
 import {
   ListState,
   ListToolbar,
@@ -27,11 +36,24 @@ import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { patientAgeLabel } from "@/lib/patient-age";
 
-const patientSearchQuery = (orgSlug: string, query: string) =>
+// "unknown" is a recorded answer, so it filters like any other.
+const PATIENT_SEX = ["male", "female", "other", "unknown"] as const;
+
+type PatientFilters = { q?: string; sex?: (typeof PATIENT_SEX)[number] };
+
+const SEX_LABELS = {
+  male: "Male",
+  female: "Female",
+  other: "Other",
+  unknown: "Unknown",
+} as const;
+
+const patientSearchQuery = (orgSlug: string, filters: PatientFilters) =>
   orpc.patient.search.infiniteOptions({
     input: (cursor: string | undefined) => ({
       orgSlug,
-      query: query || undefined,
+      query: filters.q,
+      sex: filters.sex,
       cursor,
       limit: 20,
     }),
@@ -42,9 +64,9 @@ const patientSearchQuery = (orgSlug: string, query: string) =>
     placeholderData: keepPreviousData,
   });
 
-function PatientResults({ orgSlug, query }: { orgSlug: string; query: string }) {
+function PatientResults({ orgSlug, filters }: { orgSlug: string; filters: PatientFilters }) {
   const { timeZone, today } = useOrgDateTime();
-  const patients = useInfiniteQuery(patientSearchQuery(orgSlug, query));
+  const patients = useInfiniteQuery(patientSearchQuery(orgSlug, filters));
   const items = patients.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
@@ -53,7 +75,13 @@ function PatientResults({ orgSlug, query }: { orgSlug: string; query: string }) 
         query={patients}
         errorTitle="Could not load patients"
         isEmpty={items.length === 0}
-        empty={query ? "No patients match this search." : "No patients registered yet."}
+        empty={
+          filters.q
+            ? "No patients match this search."
+            : filters.sex
+              ? "No patients match these filters."
+              : "No patients registered yet."
+        }
       >
         <>
           <div className="hidden md:block">
@@ -125,49 +153,57 @@ function PatientResults({ orgSlug, query }: { orgSlug: string; query: string }) 
   );
 }
 
-function PatientRegistry({ orgSlug }: { orgSlug: string }) {
-  const [query, setQuery] = useState("");
-
-  return (
-    <PageBody>
-      <ListToolbar>
-        <SearchInput
-          label="Search patients"
-          placeholder="Search name, MRN, or phone"
-          onQueryChange={setQuery}
-        />
-      </ListToolbar>
-      <PatientResults orgSlug={orgSlug} query={query} />
-    </PageBody>
-  );
-}
-
 export const Route = createFileRoute("/$orgSlug/patients/")({
   head: () => ({ meta: [{ title: "Patients · HMS" }] }),
   // Registration is a panel over this list, so its open state lives in the URL: the
   // link is shareable and Back closes it.
   validateSearch: z.object({
     create: z.boolean().optional().catch(undefined),
+    q: z.string().trim().min(1).max(100).optional().catch(undefined),
+    sex: z.enum(PATIENT_SEX).optional().catch(undefined),
   }),
-  loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
-    await queryClient.infiniteQuery(patientSearchQuery(orgSlug, "")).catch(() => {});
+  // `create` stays out: opening the sheet must not refetch the registry.
+  loaderDeps: ({ search: { q, sex } }) => ({ q, sex }),
+  loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {
+    await queryClient.infiniteQuery(patientSearchQuery(orgSlug, deps)).catch(() => {});
   },
   component: PatientsRoute,
 });
 
 function PatientsRoute() {
   const { orgSlug } = Route.useParams();
-  const { create } = Route.useSearch();
+  const { create, ...filters } = Route.useSearch();
+  const { q, sex } = filters;
   const navigate = useNavigate({ from: Route.fullPath });
+  const field = useRef<HTMLDivElement>(null);
   const registerTrigger = useRef<HTMLButtonElement>(null);
   // Cashiers and accountants read the registry but cannot register.
   const canRegister = useCan(orgSlug, { patient: ["create"] });
+
+  const setFilters = (patch: PatientFilters) =>
+    navigate({ replace: true, search: (previous) => ({ ...previous, ...patch }) });
+
+  const clear = () => {
+    focusSearch(field, { empty: true });
+    void setFilters({ q: undefined, sex: undefined });
+  };
+
+  const chips: ActiveFilter[] =
+    sex === undefined
+      ? []
+      : [
+          {
+            id: "sex",
+            name: "Sex",
+            label: SEX_LABELS[sex],
+            remove: () => setFilters({ sex: undefined }),
+          },
+        ];
 
   return (
     <>
       <PageHeader
         title="Patients"
-        description="Every patient registered in this organization"
         action={
           canRegister ? (
             <Button
@@ -180,7 +216,36 @@ function PatientsRoute() {
         }
       />
 
-      <PatientRegistry key={orgSlug} orgSlug={orgSlug} />
+      <PageBody>
+        <ListToolbar>
+          <SearchInput
+            label="Search patients"
+            placeholder="Search name, MRN, or phone"
+            value={q}
+            fieldRef={field}
+            onQueryChange={(next) => void setFilters({ q: next || undefined })}
+            trailing={
+              <FilterMenu anchor={field} active={chips.length > 0}>
+                <FilterSubmenu icon={VenusAndMarsIcon} label="Sex">
+                  {PATIENT_SEX.map((candidate) => (
+                    <DropdownMenuCheckboxItem
+                      key={candidate}
+                      checked={sex === candidate}
+                      onCheckedChange={(checked) =>
+                        void setFilters({ sex: checked ? candidate : undefined })
+                      }
+                    >
+                      {SEX_LABELS[candidate]}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </FilterSubmenu>
+              </FilterMenu>
+            }
+          />
+          <FilterChips filters={chips} field={field} onClear={clear} />
+        </ListToolbar>
+        <PatientResults key={orgSlug} orgSlug={orgSlug} filters={filters} />
+      </PageBody>
 
       {canRegister ? (
         <PatientSheet

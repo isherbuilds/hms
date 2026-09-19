@@ -52,7 +52,7 @@ test("a discount updates tax and payable locally from the trusted quote", () => 
     "INR",
   );
 
-  expect(applyDiscount(quote, 10_00n)).toMatchObject({
+  expect(applyDiscount(quote, 10_00n, "exclusive")).toMatchObject({
     subtotal: 100_00n,
     discountAmount: 10_00n,
     taxTotal: 16_20n,

@@ -22,6 +22,7 @@ import { useState, type ReactNode } from "react";
 import { SettlementFields } from "@/components/opd-settlement-fields";
 import { formatDecimal } from "@hms/api/core/money";
 import { formatMoney, parseMoneyInput, ZERO } from "@/lib/money";
+import type { PriceBasis } from "@hms/api/lib/invoice-math";
 import { applyDiscount, type WalkInQuote } from "@/lib/opd-service-preview";
 import {
   amountOf,
@@ -41,6 +42,8 @@ export type SettlementDraft = {
 type SettlementOverlayProps = {
   /** Before any discount: the overlay discounts its own copy rather than re-rendering the page behind it on every digit. */
   quote: WalkInQuote;
+  /** How the quote's prices carry tax. Pharmacy MRP is inclusive; services are not. */
+  basis: PriceBasis;
   description: string;
   label: string;
   pending: boolean;
@@ -73,6 +76,7 @@ function focusProblemField(fieldId: string, selectOnFocus?: boolean) {
 // no effect and no "did it just open?" bookkeeping.
 export function SettlementOverlay({
   quote,
+  basis,
   description,
   label,
   blockedReason,
@@ -110,7 +114,7 @@ export function SettlementOverlay({
   // undiscounted figures until it is fixed.
   const discounted =
     discountPaise !== null && discountPaise <= quote.subtotal
-      ? applyDiscount(quote, discountPaise)
+      ? applyDiscount(quote, discountPaise, basis)
       : quote;
 
   const creditCap =

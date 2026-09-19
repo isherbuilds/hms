@@ -10,11 +10,13 @@ export type WorklistRow = {
   key: string;
   /** Null while the charges are still uninvoiced: nothing is collectable yet. */
   invoiceId: string | null;
-  appointmentId: string;
-  patientId: string;
+  /** Null on a pharmacy invoice: there is no visit to open. */
+  appointmentId: string | null;
+  /** Null when the buyer is a walk-in with no Patient record. */
+  patientId: string | null;
   reference: string;
   patientName: string;
-  patientMrn: string;
+  patientMrn: string | null;
   patientPhone: string | null;
   currency: string;
   total: bigint;
@@ -56,10 +58,10 @@ type UnbilledInput = {
 type InvoiceInput = {
   id: string;
   invoiceNumber: string;
-  appointmentId: string;
-  patientId: string;
+  appointmentId: string | null;
+  patientId: string | null;
   patientName: string;
-  patientMrn: string;
+  patientMrn: string | null;
   patientPhone: string | null;
   grandTotal: bigint;
   paid: bigint;

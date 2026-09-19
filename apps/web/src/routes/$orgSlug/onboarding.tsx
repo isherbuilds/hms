@@ -20,15 +20,9 @@ function OrganizationOnboardingRoute() {
     authorize(membership.roles, permission),
   );
 
-  const organizationName =
-    membership.organizations.find(({ slug }) => slug === orgSlug)?.name ?? orgSlug;
-
   return (
     <>
-      <PageHeader
-        title="Setup"
-        description={`${organizationName} · start with the details that shape daily work`}
-      />
+      <PageHeader title="Setup" />
       <PageBody className="max-w-3xl">
         <section aria-labelledby="setup-path">
           <div className="mb-2 flex items-center justify-between gap-4">

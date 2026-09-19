@@ -49,7 +49,17 @@ type InvoiceLine = {
   taxCode: string | null;
 };
 
-export function computeInvoiceLines(charges: ChargeInput[], discountPaise: bigint) {
+export type PriceBasis = "exclusive" | "inclusive";
+
+export function priceBasisFor(stream: "opd" | "pharmacy"): PriceBasis {
+  return stream === "pharmacy" ? "inclusive" : "exclusive";
+}
+
+export function computeInvoiceLines(
+  charges: ChargeInput[],
+  discountPaise: bigint,
+  basis: PriceBasis,
+) {
   const preparedLines = charges.map((charge) => {
     if (!Number.isSafeInteger(charge.qty) || charge.qty < 0) {
       throw new Error(`Invalid quantity: ${charge.qty}`);
@@ -86,14 +96,18 @@ export function computeInvoiceLines(charges: ChargeInput[], discountPaise: bigin
   let grandTotalPaise = 0n;
 
   const lines = preparedLines.map(({ charge, lineSubtotal, allocatedDiscount }): InvoiceLine => {
-    const taxableValuePaise = lineSubtotal - allocatedDiscount;
+    const netPaise = lineSubtotal - allocatedDiscount;
+    const rate = parseDecimal(charge.taxRatePercent);
 
-    const taxAmountPaise = divideHalfUp(
-      taxableValuePaise * parseDecimal(charge.taxRatePercent),
-      10_000n,
-    );
+    // Inclusive (pharmacy MRP): the net amount already contains the tax, so it is the
+    // gross and the taxable value is extracted from it. Exclusive: the net is taxable.
+    const taxableValuePaise =
+      basis === "inclusive" ? divideHalfUp(netPaise * 10_000n, 10_000n + rate) : netPaise;
 
-    const grossPaise = taxableValuePaise + taxAmountPaise;
+    const taxAmountPaise =
+      basis === "inclusive" ? netPaise - taxableValuePaise : divideHalfUp(netPaise * rate, 10_000n);
+
+    const grossPaise = basis === "inclusive" ? netPaise : netPaise + taxAmountPaise;
 
     taxTotalPaise += taxAmountPaise;
     grandTotalPaise += grossPaise;

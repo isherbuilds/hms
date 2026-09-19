@@ -123,6 +123,13 @@ export const catalogRouter = {
     const { orgSlug: _claim, ...fields } = input;
     const id = Bun.randomUUIDv7();
 
+    // A pharmacy catalog row is written only through `pharmacy.createProduct`.
+    if (fields.category === "pharmacy") {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Pharmacy products are managed from Pharmacy → Items.",
+      });
+    }
+
     try {
       const [item] = await db
         .insert(catalogItems)
@@ -169,6 +176,24 @@ export const catalogRouter = {
     const { scope } = context;
     const { orgSlug: _claim, itemId, ...fields } = input;
 
+    if (fields.category === "pharmacy") {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Pharmacy products are managed from Pharmacy → Items.",
+      });
+    }
+
+    const [stored] = await db
+      .select({ category: catalogItems.category })
+      .from(catalogItems)
+      .where(and(eq(catalogItems.orgId, scope.orgId), eq(catalogItems.id, itemId)))
+      .limit(1);
+
+    if (stored?.category === "pharmacy") {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Pharmacy products are managed from Pharmacy → Items.",
+      });
+    }
+
     try {
       const [item] = await db
         .update(catalogItems)
@@ -211,6 +236,18 @@ export const catalogRouter = {
     orgInput.extend({ itemId: z.string(), active: z.boolean() }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
+
+    const [stored] = await db
+      .select({ category: catalogItems.category })
+      .from(catalogItems)
+      .where(and(eq(catalogItems.orgId, scope.orgId), eq(catalogItems.id, input.itemId)))
+      .limit(1);
+
+    if (stored?.category === "pharmacy") {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Pharmacy products are managed from Pharmacy → Items.",
+      });
+    }
 
     const [item] = await db
       .update(catalogItems)
