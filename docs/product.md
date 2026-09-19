@@ -41,20 +41,25 @@ Use exact staff language in navigation and exact record names in code. Avoid a
 generic Visit, Encounter, Episode, Case, or Account when the actual record is
 known.
 
-| Staff label        | URL                               | Record / code                      | Meaning                                                                                                                                    |
-| ------------------ | --------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| OPD                | `/$orgSlug/opd`                   | OPD Appointment / `opdAppointment` | One scheduled or walk-in outpatient attendance from booking/arrival through consultation outcome                                           |
-| Patients           | `/$orgSlug/patients`              | Patient                            | Organization-local patient identity and MRN                                                                                                |
-| Billing            | `/$orgSlug/billing`               | Charge / Invoice                   | Organization-wide financial worklists and source documents                                                                                 |
-| Treatment plan     | OPD visit Treatment panel         | Treatment plan / `treatmentPlan`   | One course of quoted work for one Patient and Practitioner, named by its items                                                             |
-| Sitting            | OPD and Treatment surfaces        | Plan-linked OPD Appointment        | One attendance in a Treatment plan; the count is derived from linked appointments                                                          |
-| Follow-ups         | `/$orgSlug/opd?status=follow-ups` | Treatment follow-up read model     | Open plans without a booked sitting, due or undated, ordered by the requested next date; a Status filter of the OPD desk, not its own page |
-| Advance Receipt    | Patient Billing tab               | Advance receipt / `advanceReceipt` | Money held for future services; it is Credit and a liability until allocation                                                              |
-| Credit             | Patient and settlement views      | Unallocated advance balance        | What is left of a Patient's Advance Receipts; the cashier applies it to an Invoice                                                         |
-| Post to this visit | OPD visit Treatment panel         | `treatment.postToVisit`            | Turns one quoted plan item into a Charge on the sitting that delivered it                                                                  |
-| Reports            | `/$orgSlug/reports`               | Report/read model                  | Reproducible views over source records; never another write model                                                                          |
-| IPD                | future `/$orgSlug/ipd`            | Admission                          | A future inpatient stay with its own lifecycle                                                                                             |
-| Emergency          | future `/$orgSlug/emergency`      | Emergency Case                     | A future emergency workflow with its own lifecycle                                                                                         |
+| Staff label        | URL                               | Record / code                       | Meaning                                                                                                                                    |
+| ------------------ | --------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| OPD                | `/$orgSlug/opd`                   | OPD Appointment / `opdAppointment`  | One scheduled or walk-in outpatient attendance from booking/arrival through consultation outcome                                           |
+| Patients           | `/$orgSlug/patients`              | Patient                             | Organization-local patient identity and MRN                                                                                                |
+| Billing            | `/$orgSlug/billing`               | Charge / Invoice                    | Organization-wide financial worklists and source documents                                                                                 |
+| Treatment plan     | OPD visit Treatment panel         | Treatment plan / `treatmentPlan`    | One course of quoted work for one Patient and Practitioner, named by its items                                                             |
+| Sitting            | OPD and Treatment surfaces        | Plan-linked OPD Appointment         | One attendance in a Treatment plan; the count is derived from linked appointments                                                          |
+| Follow-ups         | `/$orgSlug/opd?status=follow-ups` | Treatment follow-up read model      | Open plans without a booked sitting, due or undated, ordered by the requested next date; a Status filter of the OPD desk, not its own page |
+| Advance Receipt    | Patient Billing tab               | Advance receipt / `advanceReceipt`  | Money held for future services; it is Credit and a liability until allocation                                                              |
+| Credit             | Patient and settlement views      | Unallocated advance balance         | What is left of a Patient's Advance Receipts; the cashier applies it to an Invoice                                                         |
+| Post to this visit | OPD visit Treatment panel         | `treatment.postToVisit`             | Turns one quoted plan item into a Charge on the sitting that delivered it                                                                  |
+| Reports            | `/$orgSlug/reports`               | Report/read model                   | Reproducible views over source records; never another write model                                                                          |
+| Pharmacy           | `/$orgSlug/pharmacy`              | Pharmacy sale / `pharmacySale`      | One counter sale of medicines to a walk-in or a Patient, with its own Invoice                                                              |
+| Product            | `/$orgSlug/pharmacy/items`        | Product / `products`                | One stocked item; with a catalog item it is sold at the counter (D027), without one it is an internal supply                               |
+| Batch              | `/$orgSlug/pharmacy/stock`        | Stock batch / `stockBatches`        | One received lot of a medicine: batch number, expiry, and MRP; immutable once created                                                      |
+| Stock movement     | Batch row on the stock page       | `stockMovements`                    | One signed, reason-coded quantity change on a batch and bucket; stock on hand is their sum (D041)                                          |
+| Pharmacy return    | Pharmacy sale Sheet               | Pharmacy return / `pharmacyReturns` | Goods coming back against a sale into quarantine, with its Credit Note and any refund                                                      |
+| IPD                | future `/$orgSlug/ipd`            | Admission                           | A future inpatient stay with its own lifecycle                                                                                             |
+| Emergency          | future `/$orgSlug/emergency`      | Emergency Case                      | A future emergency workflow with its own lifecycle                                                                                         |
 
 There is no universal care wrapper. OPD Appointments, future Admissions, and
 future Emergency Cases own separate tables and state machines. Typed child
@@ -136,19 +141,19 @@ adapter is evidence-gated.
 
 ## Roadmap gates
 
-| Increment                   | Trigger before specification                                                                                   |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Patient timeline and vitals | Live OPD use identifies fields, authors, signing, and correction rules                                         |
-| Pharmacy/inventory          | Paid scope, pharmacy owner, verified opening stock, and signed sale/return/purchase/adjustment workflows       |
-| Lab/radiology               | Named clinical owner, measured demand, approved order/result boundary, templates, units, and signing rules     |
-| IPD/ADT                     | Stable OPD, paid scope, facility master, and signed admission-to-discharge, deposit, nursing, and billing flow |
-| Emergency                   | Separate safety discovery, medical-owner approval, triage/disposition rules, and downtime ownership            |
-| OT/surgery                  | Live IPD plus approved consent, anesthesia, resources, consumables, recovery, and billing                      |
-| Insurance/TPA               | Meaningful insured volume or signed payer requirement with tariffs and claim lifecycle                         |
-| ABDM                        | Sale requirement plus HFR/HPR/ABHA prerequisites, sandbox access, and compliance owner                         |
-| Gateway/portal              | Real remote-payment journey with webhook, refund, and reconciliation ownership                                 |
-| Offline mode                | Outage evidence proves network/UPS remediation and controlled paper fallback insufficient                      |
-| AI assistance               | Owned workflow with consent, provenance, authorization, source linkage, human review, and failure handling     |
+| Increment                   | Trigger before specification                                                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Patient timeline and vitals | Live OPD use identifies fields, authors, signing, and correction rules                                                                            |
+| Pharmacy/inventory          | **Gate open 2026-09-18** — paid scope and workflows signed off; see [Pharmacy counter sale and stock](./specs/pharmacy-counter-sale-and-stock.md) |
+| Lab/radiology               | Named clinical owner, measured demand, approved order/result boundary, templates, units, and signing rules                                        |
+| IPD/ADT                     | Stable OPD, paid scope, facility master, and signed admission-to-discharge, deposit, nursing, and billing flow                                    |
+| Emergency                   | Separate safety discovery, medical-owner approval, triage/disposition rules, and downtime ownership                                               |
+| OT/surgery                  | Live IPD plus approved consent, anesthesia, resources, consumables, recovery, and billing                                                         |
+| Insurance/TPA               | Meaningful insured volume or signed payer requirement with tariffs and claim lifecycle                                                            |
+| ABDM                        | Sale requirement plus HFR/HPR/ABHA prerequisites, sandbox access, and compliance owner                                                            |
+| Gateway/portal              | Real remote-payment journey with webhook, refund, and reconciliation ownership                                                                    |
+| Offline mode                | Outage evidence proves network/UPS remediation and controlled paper fallback insufficient                                                         |
+| AI assistance               | Owned workflow with consent, provenance, authorization, source linkage, human review, and failure handling                                        |
 
 Before pilot traffic, walk the role map with the shift lead, validate real
 printers, rehearse backups/restores and data import, define cashier handover and
@@ -162,8 +167,7 @@ single-shift cutover ([operations](./operations.md#pilot-readiness)).
 - Issued financial documents are immutable; corrections are linked documents.
 - Money, tax, quantities, numbering, configuration, and cross-domain references
   fail loudly.
-- A retried money command never records twice (D039), and a correction never
-  guesses which record the staff meant (D038).
+- A correction never guesses which record the staff meant (D038).
 - Derived balances and future stock come from source transactions, not editable
   summary fields.
 - AI never bypasses tenancy, authorization, provenance, consent, or review.

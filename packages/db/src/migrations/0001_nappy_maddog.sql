@@ -1,1 +1,0 @@
-ALTER TABLE "catalog_items" ADD COLUMN "custom_rate" boolean DEFAULT false NOT NULL;

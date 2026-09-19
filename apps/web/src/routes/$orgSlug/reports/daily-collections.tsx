@@ -12,8 +12,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { DownloadIcon, PrinterIcon } from "lucide-react";
 import { z } from "zod";
 
-import { ReportPeriodControls } from "@/components/report-period-controls";
-import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import { DateFilter } from "@/components/list-filter";
+import { ErrorNote, ListToolbar, PageBody, PageHeader } from "@/components/page";
 import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
@@ -21,7 +21,7 @@ import { loadRouteQuery } from "@/lib/orpc-error";
 import { downloadXlsx } from "@/lib/report-export";
 import { REPORT_PRINT_LANDSCAPE_CSS } from "@/lib/report-presentation";
 import { methodLabel } from "@/lib/settlement";
-import { orgMonthToDate as defaultRange } from "@/lib/org-datetime";
+import { orgMonthToDate as defaultRange, useOrgDateTime } from "@/lib/org-datetime";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 const MAX_DAYS = 92;
@@ -58,6 +58,12 @@ function DailyCollectionsRoute() {
   const { orgSlug } = Route.useParams();
   const navigate = Route.useNavigate();
   const { from, to } = Route.useLoaderData();
+  const { today } = useOrgDateTime();
+
+  // Reports always read a period, so clearing the preset falls back to the route default.
+  const setRange = (range: { from?: string; to?: string }) =>
+    navigate({ search: range, replace: true });
+
   const currency = useMembership(orgSlug, (membership) => membership.currency);
 
   const report = useQuery(
@@ -131,31 +137,25 @@ function DailyCollectionsRoute() {
     <>
       <PageHeader
         title="Daily collections"
-        description="Payments and advances, less refunds, by method and business date"
+        action={
+          <>
+            <Button disabled={!report.data} onClick={exportReport}>
+              <DownloadIcon data-icon="inline-start" />
+              Export Excel
+            </Button>
+            <Button variant="outline" disabled={!report.data} onClick={() => window.print()}>
+              <PrinterIcon data-icon="inline-start" />
+              Print / PDF
+            </Button>
+          </>
+        }
       />
       <PageBody>
-        <ReportPeriodControls
-          key={`${orgSlug}:${from}:${to}`}
-          from={from}
-          to={to}
-          maxDays={MAX_DAYS}
-          onApply={(range) => void navigate({ search: range, replace: true })}
-        >
-          <Button size="sm" variant="outline" disabled={!report.data} onClick={exportReport}>
-            <DownloadIcon data-icon="inline-start" />
-            Export Excel
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!report.data}
-            onClick={() => window.print()}
-          >
-            <PrinterIcon data-icon="inline-start" />
-            Print / PDF
-          </Button>
-        </ReportPeriodControls>
-
+        <div className="print:hidden">
+          <ListToolbar>
+            <DateFilter today={today} from={from} to={to} maxDays={MAX_DAYS} onChange={setRange} />
+          </ListToolbar>
+        </div>
         {report.isPending ? null : report.isError ? (
           <ErrorNote title="Could not load daily collections" error={report.error} />
         ) : (

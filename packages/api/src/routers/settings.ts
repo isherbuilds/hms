@@ -38,10 +38,27 @@ const settingsFields = z.object({
   receiptPrefix: z.string().trim().max(10),
   advanceReceiptPrefix: z.string().trim().max(10),
   creditNotePrefix: z.string().trim().max(10),
+  pharmacyInvoicePrefix: z.string().trim().max(10),
   fiscalYearStartMonth: z.number().int().min(1).max(12),
   followUpValidityDays: z.number().int().min(1).max(365),
   unbilledAlertHours: z.number().int().min(1).max(168),
 });
+
+// OPD and pharmacy invoices count on separate counters but share one uniqueness
+// index on `(orgId, invoiceNumber)`. Equal prefixes render the same number twice
+// and the second sale dies on a constraint error, so they are refused here.
+function rejectSharedInvoicePrefix(
+  value: { invoicePrefix: string; pharmacyInvoicePrefix: string },
+  context: z.RefinementCtx,
+): void {
+  if (value.invoicePrefix !== value.pharmacyInvoicePrefix) return;
+
+  context.addIssue({
+    code: "custom",
+    path: ["pharmacyInvoicePrefix"],
+    message: "Use a different prefix from the OPD invoice prefix",
+  });
+}
 
 export type SettingsFields = z.infer<typeof settingsFields>;
 
@@ -64,54 +81,55 @@ export const settingsRouter = {
     },
   ),
 
-  update: orgProcedure({ settings: ["update"] }, orgInput.extend(settingsFields.shape)).handler(
-    async ({ context, input }): Promise<SettingsFields> => {
-      const { scope } = context;
-      const { orgSlug: _claim, ...fields } = input;
-      const { currency, ...mutableFields } = fields;
+  update: orgProcedure(
+    { settings: ["update"] },
+    orgInput.extend(settingsFields.shape).superRefine(rejectSharedInvoicePrefix),
+  ).handler(async ({ context, input }): Promise<SettingsFields> => {
+    const { scope } = context;
+    const { orgSlug: _claim, ...fields } = input;
+    const { currency, ...mutableFields } = fields;
 
-      const [current] = await db
-        .select({ currency: organizationSettings.currency })
-        .from(organizationSettings)
-        .where(eq(organizationSettings.orgId, scope.orgId))
-        .limit(1);
+    const [current] = await db
+      .select({ currency: organizationSettings.currency })
+      .from(organizationSettings)
+      .where(eq(organizationSettings.orgId, scope.orgId))
+      .limit(1);
 
-      // Fail loud (D028): a differing currency is a config error, never a silent drop.
-      if (currency !== (current?.currency ?? SETTINGS_DEFAULTS.currency)) {
-        throw new ORPCError("CONFLICT", {
-          message: "Currency cannot be changed for this organization",
-        });
-      }
-
-      // A later time-zone change re-derives future dates only; written rows keep the
-      // business date they were numbered under. The check above is sufficient: no
-      // write path ever changes a stored currency, so the upsert needs no guard.
-      const [row] = await db
-        .insert(organizationSettings)
-        .values({ ...fields, orgId: scope.orgId })
-        .onConflictDoUpdate({
-          target: organizationSettings.orgId,
-          set: { ...mutableFields, updatedAt: new Date() },
-        })
-        .returning();
-
-      if (!row) {
-        throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Failed to save settings" });
-      }
-
-      // Derived reads must see the new prefixes on the next call in this process.
-      invalidateOrgSettings(scope.orgId);
-
-      audit({
-        action: "settings.update",
-        actorId: scope.userId,
-        orgId: scope.orgId,
-        target: `settings:${scope.orgId}`,
+    // Fail loud (D028): a differing currency is a config error, never a silent drop.
+    if (currency !== (current?.currency ?? SETTINGS_DEFAULTS.currency)) {
+      throw new ORPCError("CONFLICT", {
+        message: "Currency cannot be changed for this organization",
       });
+    }
 
-      const { orgId: _orgId, createdAt: _c, updatedAt: _u, ...saved } = row;
+    // A later time-zone change re-derives future dates only; written rows keep the
+    // business date they were numbered under. The check above is sufficient: no
+    // write path ever changes a stored currency, so the upsert needs no guard.
+    const [row] = await db
+      .insert(organizationSettings)
+      .values({ ...fields, orgId: scope.orgId })
+      .onConflictDoUpdate({
+        target: organizationSettings.orgId,
+        set: { ...mutableFields, updatedAt: new Date() },
+      })
+      .returning();
 
-      return saved;
-    },
-  ),
+    if (!row) {
+      throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Failed to save settings" });
+    }
+
+    // Derived reads must see the new prefixes on the next call in this process.
+    invalidateOrgSettings(scope.orgId);
+
+    audit({
+      action: "settings.update",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `settings:${scope.orgId}`,
+    });
+
+    const { orgId: _orgId, createdAt: _c, updatedAt: _u, ...saved } = row;
+
+    return saved;
+  }),
 };

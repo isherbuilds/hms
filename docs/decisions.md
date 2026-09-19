@@ -188,8 +188,7 @@ invoice issuance) advances it in the same transaction.
 Settlement must match the revision the desk reviewed while holding the care-row
 lock, and must separately match the reviewed grand total after trusted repricing.
 The revision replaces pending-Charge ID lists and latest-Invoice-ID surrogates.
-It is not a generic Billing Account, a request key (D039), or financial
-lifecycle state.
+It is not a generic Billing Account or financial lifecycle state.
 
 **Context:** A row lock serializes two desks but cannot tell whether the second
 desk reviewed the newly committed state. Invoice IDs describe child documents,
@@ -244,19 +243,25 @@ one stream, and the desk becomes the place that decides which stream earned the
 money. Lab, radiology and pharmacy bill where the work is ordered, by the domain
 that owns it, when those domains ship.
 
-### D025 — Invoice granularity is one document per appointment, and that is a decision to revisit before lab or pharmacy ships. **Open.**
+### D025 — One invoice per stream with its own numbering series
 
-**Raised 2026-09-01.** `billing.settleCharges` issues one invoice per
-appointment, mixing every revenue category on it. D024 keeps that honest today
-by allowing only one stream onto an outpatient visit. When a second billing
-domain arrives the choice is: keep one document per visit and split by
-`revenueCategory` in reporting only, or issue one document per stream with its
-own numbering series.
+**Accepted 2026-09-18.** `invoices.stream` is `opd` or `pharmacy`, and an
+invoice carries exactly one typed parent — an OPD Appointment or a Pharmacy
+sale — enforced by a check that also matches the parent to the stream. OPD
+keeps the counter `invoice:${fy}` with `invoicePrefix`; pharmacy numbers from
+`invoice:pharmacy:${fy}` with `pharmacyInvoicePrefix`. Receipts, credit notes
+and refunds keep one org-wide series each. Pharmacy prices are tax-inclusive
+(MRP) and OPD prices tax-exclusive, so the price basis is a pure function of
+the stream rather than a stored column.
 
-**Context:** Numbering runs through `counter`, and issued financial documents are
-immutable (`docs/product.md`), so changing granularity afterwards means
-migrating documents the product promises never to rewrite. Decide before the
-first non-OPD invoice exists, not after.
+**Rejected:** one document per visit split by `revenueCategory` in reporting
+only. A pharmacy counter sale has no visit to hang the document on, and a
+mixed document cannot carry two tax bases.
+
+**Context:** Numbering runs through `counter`, and issued financial documents
+are immutable (`docs/product.md`), so granularity had to be decided before the
+first non-OPD invoice existed. See
+[Pharmacy counter sale and stock](./specs/pharmacy-counter-sale-and-stock.md).
 
 ### D026 — Conditional state writes collapse missing and stale rows into one conflict
 
@@ -278,9 +283,16 @@ refreshing authoritative state.
 [research ledger](./research/README.md#adopted-findings).** A
 billable item is one `catalog_items` row: name, code, category, price, tax,
 active. When pharmacy, lab, IPD, or OT open (product roadmap gates), each domain
-owns its own master (drug and batch, lab test and components, bed type, package
-and components) that carries a required composite tenant foreign key to its
-`catalog_items` row, unique on `(orgId, catalogItemId)`. The catalog never
+owns its own master (product and batch, lab test and components, bed type,
+package and components) that carries a composite tenant foreign key to its
+`catalog_items` row, unique on `(orgId, catalogItemId)` where the link is set.
+The link is nullable, because a domain master also holds rows that are never
+billed: a pharmacy `products` row with no catalog row is an internal supply
+(gloves, soap, cleaning liquid) that is stocked and issued but not sellable, and
+every sale and stock-search path joins the catalog row inner, so it cannot be
+sold. The domain master owns the display `name` and writes it onto the linked
+catalog row in the same transaction, because that row remains the snapshot
+source for the Charge. The catalog never
 grows a kind column, nullable domain columns, or a details blob, and no second
 items table with its own name, price, tax, or invoice type is created. Price
 _source_ may be domain-specific (batch MRP, occupancy × rate); the Charge
@@ -438,27 +450,13 @@ work and rewrote a price the desk had set.
 
 ### D039 — A money command carries a request key
 
-**Accepted 2026-09-16.** Advance Receipts, Payments, Credit
-Notes, Refunds, and settled walk-ins take a `requestKey` UUID. The client mints
-one per open form and resends it on retry; `claimRequestKey` inserts it into
-`request_keys` under `(orgId, id)` as the transaction's first statement, and an
-existing key is a `CONFLICT`. A concurrent retry waits on that insert and is
-refused once the first commits, or proceeds if it rolled back, so a failed
-attempt never burns its key. A form holding a pending money write cannot be
-dismissed, so reopening it cannot mint a second key for one collection. A replay
-is refused, not answered with the original result: invalidation (D036) shows the
-saved record, and storing results would copy every document. `settleCharges`
-needs no key because its `chargeRevision` check refuses a replay (D020).
-
-**Context:** A lost response left the desk unable to tell whether money was
-saved, and a retry recorded it twice; receipt numbers and balanced journals
-cannot catch that because the second attempt numbers and balances too. Matching
-on patient, amount, or time was rejected: two genuine receipts can share all of
-them.
-
-**Residual risk:** if the connection drops after commit and the refetch runs
-before the commit is visible, a reopened form shows the old balance under a new
-key. Close it with a key that outlives the form only if the pilot observes it.
+**Superseded 2026-09-19.** For the MVP, the owner accepted removing the request key,
+`request_keys` table, `claimRequestKey`, and `pharmacy.sell`'s
+`alreadyRecorded` reply were removed. Money and stock commands rely only on row
+locks (D040), the Charge revision (D020), and document uniqueness. A retry after
+a lost response can record twice; staff resolve it through the normal correction
+documents. Revisit replay protection if a client requires it or the pilot records
+a duplicate caused by retrying a lost response.
 
 ### D040 — Writes serialize with row locks in one documented order
 
@@ -475,3 +473,81 @@ isolation.
 **Context:** Two writers that lock the same rows in opposite orders deadlock, and
 PostgreSQL resolves it by aborting one, which reaches the desk as a failed save.
 A written order makes the check mechanical in review.
+
+### D041 — Stock on hand is the sum of movements
+
+**Accepted 2026-09-18; evidence:
+[Pharmacy reference flows](./research/pharmacy-reference-flows.md).** Stock is
+held per batch with its expiry, and quantity lives only in an append-only
+`stock_movements` ledger keyed by batch and bucket (`shelf | quarantine`) with
+a check tying the sign of `qty` to the reason. On hand is `sum(qty)`, read
+under the batch lock. Every writer locks its batches `SELECT … FOR UPDATE`
+ordered by `(expiryDate, id)`, reads the bucket sums afterwards, and refuses a
+bucket that would fall below zero. A goods receipt, ordinary or opening, is the
+only source of a new batch; a return goes into quarantine and is released to the
+shelf by an adjustment.
+
+**Rejected:** a maintained balance column on the batch (Danphe's shape) before
+measurement. A balance that is written by every path is the figure someone
+eventually types over, and the sum with a `(orgId, batchId, bucket)` index is
+measured on realistic movement history before any projection is added.
+
+### D042 — One migration baseline, and rules live in zod
+
+**Accepted 2026-09-18; evidence:
+[Hospital inventory models](./research/hospital-inventory-models.md).** No
+database retains this schema yet, so the applied history is squashed to one
+baseline migration under D022's exception, and the entry below records it. Four
+schema choices land with that baseline.
+
+**Enum lists leave the database.** Every check of the form `column in ('a',
+'b', …)` is removed. Validity of a vocabulary is stated once, by the
+`z.enum(CONST)` on the write path, over the same `as const` array that types the
+column. The database keeps what zod cannot see: sign and money checks, the
+`stock_movements` sign-by-reason rule, cross-column shape checks, unique keys,
+and foreign keys. A new value then costs a constant and a deploy, not a
+migration, and the two statements of the same list can no longer drift.
+
+**`medications` becomes `products`, with a nullable catalog link.** The table,
+the `stock_batches.productId` column, and the API procedures rename. The link
+to `catalog_items` is nullable and its unique index is partial, so the store
+holds internal supplies beside sellable medicines (D027).
+
+**Opening stock is a goods receipt.** `stock_counts` and `postOpeningCount` are
+deleted. `goods_receipts` gains `opening` and a nullable `fileId` for the
+retained count sheet, and `supplierName` becomes nullable. `receiveGoods` with
+`opening` posts `opening` movements and refuses a batch that already moved,
+exactly as the count document did. One receiving path replaces two documents
+that shared every line, batch and lock rule.
+
+**An internal issue names its department.** `stock_movements.departmentId` is a
+nullable composite foreign key that only reason `internal_issue` sets; the zod
+input requires it for that reason and refuses it for every other. Stock that
+leaves the store for a ward is answerable to a department before the IPD spec
+replaces the interim path with a typed issue.
+
+**Rejected:** keeping the enum checks as a second guard. A check that repeats a
+zod enum fails later and worse — after the transaction, as a 500 instead of a
+field error — and the pair drifts on the first value someone adds to only one.
+
+### D043 — One list filter idiom across the console
+
+**Accepted 2026-09-19.** Lists filter through `components/list-filter.tsx`: a
+filter button inside the search field opening a Base UI menu of submenus and
+checkbox items, applied filters as removable chips, and date presets from the
+organization's business date with a custom range in a dialog. It replaced the
+toggle-pill `FilterGroup`/`FilterSelect`, `report-period-controls.tsx`, and the
+`toggle`/`toggle-group` primitives they alone consumed, on every list that had
+them (billing, OPD, patients, files, reports) as well as the three pharmacy
+lists. The pharmacy brief said "no new shared components"; this one is accepted
+here because the stock list needs product, expiry and bucket at once, a pill
+row wraps to two lines on a phone at five options and cannot express
+multi-select, and two filter idioms side by side would be the worse outcome.
+
+**Licence:** the owner accepted AGPL-3.0 for the repository. The root licence,
+package metadata, README, and application source link state that choice; the
+adapted Midday files retain their original copyright notices.
+
+**Rejected:** deferring the migration and giving pharmacy a local control. Two
+idioms would drift on the first filter someone adds to only one, and the shared
+module is the one place the date preset and business-date rule lives.

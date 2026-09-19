@@ -58,18 +58,6 @@ export const opdAppointments = pgTable(
   },
   (table) => [
     check(
-      "opd_appointments_arrival_mode_check",
-      sql`${table.arrivalMode} in (${sql.raw(
-        OPD_ARRIVAL_MODES.map((mode) => `'${mode}'`).join(", "),
-      )})`,
-    ),
-    check(
-      "opd_appointments_status_check",
-      sql`${table.status} in (${sql.raw(
-        OPD_APPOINTMENT_STATUSES.map((status) => `'${status}'`).join(", "),
-      )})`,
-    ),
-    check(
       "opd_appointments_token_positive_check",
       sql`${table.tokenNumber} is null or ${table.tokenNumber} > 0`,
     ),

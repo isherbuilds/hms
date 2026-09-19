@@ -1,0 +1,400 @@
+import { Badge } from "@hms/ui/components/badge";
+import { Button } from "@hms/ui/components/button";
+import { Checkbox } from "@hms/ui/components/checkbox";
+import { FormControl } from "@hms/ui/components/form";
+import { NativeSelect } from "@hms/ui/components/native-select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@hms/ui/components/table";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
+import { Watch, useFormContext } from "react-hook-form";
+import { z } from "zod";
+
+import { FormDialog } from "@/components/form-dialog";
+import { ControlledField, TextField } from "@/components/form-fields";
+import {
+  ListState,
+  ListToolbar,
+  LoadMore,
+  PageBody,
+  PageHeader,
+  Panel,
+  SearchInput,
+} from "@/components/page";
+import { numberText } from "@/lib/form-schema";
+import { orpc } from "@/lib/orpc";
+import { requireOrgPermission } from "@/lib/route-permission";
+
+import { PharmacyTabs } from "./route";
+
+// Kept local so no @hms/db server module reaches the client bundle (hard rule 6).
+const STOCK_UNITS = [
+  "tablet",
+  "capsule",
+  "ml",
+  "strip",
+  "bottle",
+  "vial",
+  "tube",
+  "piece",
+] as const;
+
+const SCHEDULES = ["none", "h", "h1", "x"] as const;
+
+const SCHEDULE_LABELS: Record<(typeof SCHEDULES)[number], string> = {
+  none: "No schedule",
+  h: "Schedule H",
+  h1: "Schedule H1",
+  x: "Schedule X",
+};
+
+const productListQuery = (orgSlug: string, query: string) =>
+  orpc.pharmacy.listProducts.infiniteOptions({
+    input: (cursor: { name: string; id: string } | undefined) => ({
+      orgSlug,
+      query: query || undefined,
+      cursor,
+      limit: 50,
+    }),
+    initialPageParam: undefined,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
+  });
+
+export const Route = createFileRoute("/$orgSlug/pharmacy/items")({
+  head: () => ({ meta: [{ title: "Products · HMS" }] }),
+  loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
+    await requireOrgPermission(
+      queryClient,
+      orgSlug,
+      { pharmacy: ["manageItems"] },
+      "/$orgSlug/dashboard",
+    );
+    await queryClient.infiniteQuery(productListQuery(orgSlug, "")).catch(() => {});
+  },
+  component: PharmacyItemsRoute,
+});
+
+/** One row of the product master; a null `code` marks an internal supply. */
+type Product = Awaited<ReturnType<typeof orpc.pharmacy.listProducts.call>>["items"][number];
+
+const productSchema = z
+  .object({
+    name: z.string().trim().min(1, "Name is required").max(200),
+    genericName: z.string().trim().max(200),
+    form: z.string().trim().max(50),
+    strength: z.string().trim().max(50),
+    stockUnit: z.enum(STOCK_UNITS),
+    unitsPerPack: numberText(z.number().int().min(1, "At least 1 per pack")),
+    schedule: z.enum(SCHEDULES),
+    manufacturer: z.string().trim().max(200),
+    sold: z.boolean(),
+    code: z.string().trim().max(20),
+    taxRatePercent: z.string().trim(),
+    taxCode: z.string().trim().max(20),
+    active: z.boolean(),
+  })
+  .superRefine((value, context) => {
+    if (!value.sold) return;
+
+    if (value.code === "") {
+      context.addIssue({ code: "custom", path: ["code"], message: "Code is required" });
+    }
+
+    if (!/^\d{1,2}(\.\d{1,2})?$/.test(value.taxRatePercent)) {
+      context.addIssue({
+        code: "custom",
+        path: ["taxRatePercent"],
+        message: "Rate like 0, 5, or 12.50",
+      });
+    }
+  });
+
+type ProductFormValues = z.input<typeof productSchema>;
+
+const EMPTY_VALUES: ProductFormValues = {
+  name: "",
+  genericName: "",
+  form: "",
+  strength: "",
+  stockUnit: "tablet",
+  unitsPerPack: "1",
+  schedule: "none",
+  manufacturer: "",
+  sold: true,
+  code: "",
+  taxRatePercent: "0",
+  taxCode: "",
+  active: true,
+};
+
+function PharmacyItemsRoute() {
+  const { orgSlug } = Route.useParams();
+  const [query, setQuery] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Product | null>(null);
+
+  const products = useInfiniteQuery(productListQuery(orgSlug, query));
+  const items = products.data?.pages.flatMap((page) => page.items) ?? [];
+
+  return (
+    <>
+      <PageHeader
+        title="Products"
+        action={<Button onClick={() => setCreating(true)}>Add product</Button>}
+      />
+      <PharmacyTabs orgSlug={orgSlug} />
+
+      <PageBody>
+        <ListToolbar>
+          <SearchInput
+            label="Search products"
+            placeholder="Search name, code or generic"
+            onQueryChange={setQuery}
+          />
+        </ListToolbar>
+
+        <Panel label="Products" footer={<LoadMore query={products} shown={items.length} />}>
+          <ListState
+            query={products}
+            errorTitle="Could not load products"
+            isEmpty={items.length === 0}
+            empty={query ? "No product matches this search." : "No products yet."}
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Generic</TableHead>
+                  <TableHead>Form</TableHead>
+                  <TableHead>Unit × pack</TableHead>
+                  <TableHead>Schedule</TableHead>
+                  <TableHead className="text-right">GST %</TableHead>
+                  <TableHead>HSN</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((item) => (
+                  <TableRow key={item.productId}>
+                    <TableCell className="font-mono">
+                      {item.code ?? (
+                        <span className="font-sans text-muted-foreground">Internal</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-medium">{item.name}</TableCell>
+                    <TableCell>{item.genericName || "—"}</TableCell>
+                    <TableCell>
+                      {[item.form, item.strength].filter(Boolean).join(" ") || "—"}
+                    </TableCell>
+                    <TableCell className="tabular-nums">
+                      {item.stockUnit} × {item.unitsPerPack}
+                    </TableCell>
+                    <TableCell>{SCHEDULE_LABELS[item.schedule]}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {item.taxRatePercent ?? "—"}
+                    </TableCell>
+                    <TableCell className="font-mono">{item.taxCode || "—"}</TableCell>
+                    <TableCell>
+                      {item.catalogItemId === null ? (
+                        <Badge variant="muted">Internal</Badge>
+                      ) : (
+                        <Badge variant={item.active ? "secondary" : "muted"}>
+                          {item.active ? "Active" : "Inactive"}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="xs" onClick={() => setEditing(item)}>
+                        Edit
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ListState>
+        </Panel>
+      </PageBody>
+
+      {creating ? (
+        <ProductDialog orgSlug={orgSlug} product={null} onClose={() => setCreating(false)} />
+      ) : null}
+      {editing ? (
+        <ProductDialog
+          key={editing.productId}
+          orgSlug={orgSlug}
+          product={editing}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function ProductDialog({
+  orgSlug,
+  product,
+  onClose,
+}: {
+  orgSlug: string;
+  product: Product | null;
+  onClose: () => void;
+}) {
+  // The API refuses to unlink a catalog row, so an already sold product keeps the box on.
+  const lockedSold = product?.catalogItemId != null;
+
+  return (
+    <FormDialog
+      title={product ? "Edit product" : "Add product"}
+      description="Name, pack and tax details carry onto every sale of this product."
+      submitLabel={product ? "Save changes" : "Add product"}
+      schema={productSchema}
+      contentClassName="max-w-xl"
+      defaultValues={
+        product
+          ? {
+              name: product.name,
+              genericName: product.genericName ?? "",
+              form: product.form ?? "",
+              strength: product.strength ?? "",
+              stockUnit: product.stockUnit,
+              unitsPerPack: String(product.unitsPerPack),
+              schedule: product.schedule,
+              manufacturer: product.manufacturer ?? "",
+              sold: lockedSold,
+              code: product.code ?? "",
+              taxRatePercent: product.taxRatePercent ?? "0",
+              taxCode: product.taxCode ?? "",
+              active: product.active ?? true,
+            }
+          : EMPTY_VALUES
+      }
+      success={product ? "Product updated" : "Product added"}
+      onClose={onClose}
+      run={(values) => {
+        const shared = {
+          orgSlug,
+          name: values.name,
+          genericName: values.genericName || undefined,
+          form: values.form || undefined,
+          strength: values.strength || undefined,
+          stockUnit: values.stockUnit,
+          unitsPerPack: values.unitsPerPack,
+          schedule: values.schedule,
+          manufacturer: values.manufacturer || undefined,
+          catalog: values.sold
+            ? {
+                code: values.code,
+                taxRatePercent: values.taxRatePercent,
+                taxCode: values.taxCode || undefined,
+                active: values.active,
+              }
+            : undefined,
+        };
+
+        return product
+          ? orpc.pharmacy.updateProduct.call({ ...shared, productId: product.productId })
+          : orpc.pharmacy.createProduct.call(shared);
+      }}
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <TextField name="name" label="Name" />
+        <TextField name="genericName" label="Generic name (optional)" />
+        <TextField name="manufacturer" label="Manufacturer (optional)" />
+        <TextField name="form" label="Form (optional)" placeholder="tablet" />
+        <TextField name="strength" label="Strength (optional)" placeholder="500 mg" />
+        <ControlledField
+          name="stockUnit"
+          label="Stock unit"
+          render={(field) => (
+            <FormControl>
+              <NativeSelect {...field}>
+                {STOCK_UNITS.map((unit) => (
+                  <option key={unit} value={unit}>
+                    {unit}
+                  </option>
+                ))}
+              </NativeSelect>
+            </FormControl>
+          )}
+        />
+        <TextField name="unitsPerPack" label="Units per pack" inputMode="numeric" />
+        <ControlledField
+          name="schedule"
+          label="Schedule"
+          render={(field) => (
+            <FormControl>
+              <NativeSelect {...field}>
+                {SCHEDULES.map((schedule) => (
+                  <option key={schedule} value={schedule}>
+                    {SCHEDULE_LABELS[schedule]}
+                  </option>
+                ))}
+              </NativeSelect>
+            </FormControl>
+          )}
+        />
+      </div>
+
+      <ControlledField
+        name="sold"
+        label="Sold at the counter"
+        description="Off for an internal supply: stocked and issued, never billed."
+        className="flex flex-wrap items-center gap-2"
+        render={(field) => (
+          <FormControl>
+            <Checkbox
+              checked={field.value}
+              disabled={lockedSold}
+              onCheckedChange={field.onChange}
+            />
+          </FormControl>
+        )}
+      />
+
+      <CatalogFields />
+    </FormDialog>
+  );
+}
+
+/** The billing details, present only while the product is sold at the counter. */
+function CatalogFields() {
+  const { control } = useFormContext();
+
+  return (
+    <Watch
+      control={control}
+      name="sold"
+      exact
+      render={(sold) =>
+        sold ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TextField name="code" label="Code" />
+            <TextField name="taxRatePercent" label="GST %" inputMode="decimal" placeholder="12" />
+            <TextField name="taxCode" label="HSN (optional)" />
+            <ControlledField
+              name="active"
+              label="Active"
+              className="flex flex-wrap items-center gap-2"
+              render={(field) => (
+                <FormControl>
+                  <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+              )}
+            />
+          </div>
+        ) : null
+      }
+    />
+  );
+}

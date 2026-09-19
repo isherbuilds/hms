@@ -15,7 +15,7 @@ export type GstBucket = {
   number: string;
   date: string;
   patientName: string;
-  patientMrn: string;
+  patientMrn: string | null;
   taxRatePercent: string;
   taxCode: string | null;
   taxableValue: bigint;
@@ -199,7 +199,7 @@ export function buildGstReport({
       number: string;
       date: string;
       patientName: string;
-      patientMrn: string;
+      patientMrn: string | null;
       taxableValuePaise: bigint;
       cgstPaise: bigint;
       sgstPaise: bigint;

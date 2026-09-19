@@ -12,7 +12,7 @@ export async function requireOrgPermission(
   queryClient: QueryClient,
   orgSlug: string,
   permission: AppPermission,
-  where: "/$orgSlug/dashboard" | "/$orgSlug/opd" | "/$orgSlug/settings",
+  where: "/$orgSlug/dashboard" | "/$orgSlug/opd" | "/$orgSlug/pharmacy" | "/$orgSlug/settings",
 ): Promise<Membership> {
   const membership = await queryClient.query(orpc.member.me.queryOptions({ input: { orgSlug } }));
 

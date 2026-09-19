@@ -46,14 +46,9 @@ export const treatmentPlanItems = pgTable(
     check("treatment_plan_items_unit_price_check", sql`${table.unitPrice} >= 0`),
     check("treatment_plan_items_tax_rate_check", sql`${table.taxRatePercent} >= 0`),
     check("treatment_plan_items_qty_check", sql`${table.qtyPlanned} > 0`),
-    check("treatment_plan_items_status_check", sql`${table.status} in ('open', 'dropped')`),
     check(
       "treatment_plan_items_drop_reason_check",
       sql`${table.status} <> 'dropped' or ${table.dropReason} is not null`,
-    ),
-    check(
-      "treatment_plan_items_revenue_category_check",
-      sql`${table.revenueCategory} in ('consultation', 'procedure', 'lab', 'radiology', 'other')`,
     ),
     unique("treatment_plan_items_org_id_id_unique").on(table.orgId, table.id),
     foreignKey({

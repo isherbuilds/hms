@@ -19,7 +19,7 @@ function ReportsIndexRoute() {
 
   return (
     <>
-      <PageHeader title="Reports" description="Day-close and financial handover" />
+      <PageHeader title="Reports" />
       <PageBody>
         <p className="text-muted-foreground">
           These reports cover transactions recorded in this HMS. Opening balances, non-billing

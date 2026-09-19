@@ -324,9 +324,10 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
   `p-4`; feature forms compose `SheetHeader`/`SheetFooter` or
   `DialogHeader`/`DialogFooter` rather than recreating their borders and padding.
 - Forms compose `FieldGroup`, `Field`, `FieldSet` and `FieldError`. Sets of two
-  to five choices use `ToggleGroup`, and section boundaries use `Separator`.
+  to five choices use a `NativeSelect` or a `role="radiogroup"` row of buttons,
+  and section boundaries use `Separator`.
 - An overlay holding a pending money write ignores Escape, backdrop, and close
-  until the write settles (D039).
+  until the write settles.
 - Sheet motion is limited to the existing 150 ms opacity and directional
   transform transition. It communicates where the occasional overlay came from;
   frequent list and keyboard interactions remain static.

@@ -105,7 +105,6 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
   });
 
   const advance = await setup.api.billing.recordAdvance({
-    requestKey: crypto.randomUUID(),
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     treatmentPlanId: plan.id,
@@ -255,7 +254,6 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
   ).toEqual([bookedPlan.id, future.id, noDate.id, plan.id]);
 
   const refund = await setup.api.billing.recordAdvanceRefund({
-    requestKey: crypto.randomUUID(),
     orgSlug: setup.organization.slug,
     advanceReceiptId: advance.id,
     method: "cash",
@@ -601,7 +599,6 @@ test("closing a plan ahead of queued item writes leaves no dependent change behi
 
     await expectORPCCode(
       setup.api.billing.recordAdvance({
-        requestKey: crypto.randomUUID(),
         orgSlug: setup.organization.slug,
         patientId: setup.patient.id,
         treatmentPlanId: plan.id,
@@ -628,7 +625,6 @@ test("three irregular plan advances settle three physiotherapy sittings before u
 
   await expectORPCCode(
     setup.api.billing.recordAdvance({
-      requestKey: crypto.randomUUID(),
       orgSlug: setup.organization.slug,
       patientId: setup.patient.id,
       treatmentPlanId: plan.id,
@@ -640,7 +636,6 @@ test("three irregular plan advances settle three physiotherapy sittings before u
 
   // Older and untagged: plan sittings spend the plan's own credit first.
   await setup.api.billing.recordAdvance({
-    requestKey: crypto.randomUUID(),
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     method: "cash",
@@ -648,7 +643,6 @@ test("three irregular plan advances settle three physiotherapy sittings before u
   });
 
   const first = await setup.api.billing.recordAdvance({
-    requestKey: crypto.randomUUID(),
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     method: "cash",
@@ -657,7 +651,6 @@ test("three irregular plan advances settle three physiotherapy sittings before u
   });
 
   const second = await setup.api.billing.recordAdvance({
-    requestKey: crypto.randomUUID(),
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     method: "upi",
@@ -667,7 +660,6 @@ test("three irregular plan advances settle three physiotherapy sittings before u
   });
 
   const third = await setup.api.billing.recordAdvance({
-    requestKey: crypto.randomUUID(),
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     treatmentPlanId: plan.id,
@@ -752,7 +744,6 @@ test("three irregular plan advances settle three physiotherapy sittings before u
   expect(credit.total).toBe(10_00n);
   await expectORPCCode(
     setup.api.billing.recordAdvanceRefund({
-      requestKey: crypto.randomUUID(),
       orgSlug: setup.organization.slug,
       advanceReceiptId: third.id,
       method: "cash",
@@ -880,7 +871,6 @@ test("credit allocation does not spend receipts created after its lock statement
   });
 
   const first = await setup.api.billing.recordAdvance({
-    requestKey: crypto.randomUUID(),
     orgSlug,
     patientId: setup.patient.id,
     method: "cash",
@@ -898,7 +888,6 @@ test("credit allocation does not spend receipts created after its lock statement
     ]);
 
     const allocation = setup.api.billing.recordPayments({
-      requestKey: crypto.randomUUID(),
       orgSlug,
       invoiceId: settled.invoice.id,
       applyCredit: 50_00n,
@@ -913,7 +902,6 @@ test("credit allocation does not spend receipts created after its lock statement
       return waiting.rows[0];
     });
     await setup.api.billing.recordAdvance({
-      requestKey: crypto.randomUUID(),
       orgSlug,
       patientId: setup.patient.id,
       method: "cash",
@@ -929,7 +917,6 @@ test("credit allocation does not spend receipts created after its lock statement
         .outstanding,
     ).toBe(50_00n);
     await setup.api.billing.recordPayments({
-      requestKey: crypto.randomUUID(),
       orgSlug,
       invoiceId: settled.invoice.id,
       applyCredit: 50_00n,

@@ -11,7 +11,7 @@ import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { useMutation } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useFieldArray, useFormState, Watch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -96,9 +96,6 @@ export function RecordPaymentForm({
     );
   };
 
-  // One key per open form, resent if the desk retries after a lost response (D039).
-  const [requestKey] = useState(() => crypto.randomUUID());
-
   const record = useMutation(
     orpc.billing.recordPayments.mutationOptions({
       onSuccess: (_data, variables) => {
@@ -152,7 +149,6 @@ export function RecordPaymentForm({
 
           record.mutate({
             orgSlug,
-            requestKey,
             invoiceId,
             payments: payments.map(({ id: _id, ...payment }) => ({
               ...payment,

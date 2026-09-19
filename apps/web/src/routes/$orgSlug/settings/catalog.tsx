@@ -19,6 +19,7 @@ import {
   FormMessage,
   RegisteredFormField,
 } from "@hms/ui/components/form";
+import { DropdownMenuCheckboxItem } from "@hms/ui/components/dropdown-menu";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
@@ -37,14 +38,20 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
-import { memo, useCallback, useState } from "react";
+import { CircleDotIcon, TagIcon } from "lucide-react";
+import { memo, useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { TextField } from "@/components/form-fields";
 import {
-  FilterGroup,
-  FilterSelect,
+  FilterChips,
+  FilterMenu,
+  FilterSubmenu,
+  focusSearch,
+  type ActiveFilter,
+} from "@/components/list-filter";
+import {
   ListState,
   ListToolbar,
   LoadMore,
@@ -61,15 +68,20 @@ import { requireOrgPermission } from "@/lib/route-permission";
 import { SettingsTabs } from "./route";
 
 // Kept local so no @hms/db server module reaches the client bundle (hard rule 6).
+// Medicines carry the `pharmacy` category but are written only from Pharmacy → Items,
+// so it is listed for display and never offered by this form.
 const CATALOG_CATEGORIES = ["consultation", "procedure", "lab", "radiology", "other"] as const;
 
-type CatalogCategory = (typeof CATALOG_CATEGORIES)[number];
+type EditableCategory = (typeof CATALOG_CATEGORIES)[number];
+
+type CatalogCategory = EditableCategory | "pharmacy";
 
 const CATEGORY_LABELS: Record<CatalogCategory, string> = {
   consultation: "Consultation",
   procedure: "Procedure",
   lab: "Lab",
   radiology: "Radiology",
+  pharmacy: "Pharmacy",
   other: "Other",
 };
 
@@ -94,16 +106,21 @@ const catalogListQuery = (
 export const Route = createFileRoute("/$orgSlug/settings/catalog")({
   head: () => ({ meta: [{ title: "Catalog · HMS" }] }),
   validateSearch: z.object({
+    q: z.string().trim().min(1).max(100).optional().catch(undefined),
     category: z.enum(CATALOG_CATEGORIES).optional().catch(undefined),
     activeOnly: z.boolean().optional().catch(undefined),
   }),
-  loaderDeps: ({ search }) => ({ category: search.category, activeOnly: search.activeOnly }),
+  loaderDeps: ({ search }) => ({
+    q: search.q,
+    category: search.category,
+    activeOnly: search.activeOnly,
+  }),
   loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {
     await requireOrgPermission(queryClient, orgSlug, { catalog: ["update"] }, "/$orgSlug/settings");
     await queryClient
       .infiniteQuery(
         catalogListQuery(orgSlug, {
-          query: "",
+          query: deps.q ?? "",
           category: deps.category,
           activeOnly: deps.activeOnly ?? false,
         }),
@@ -139,6 +156,8 @@ type CatalogItem = {
   updatedAt: Date | string;
 };
 
+type EditableCatalogItem = CatalogItem & { category: EditableCategory };
+
 const EMPTY_VALUES: CatalogFormValues = {
   name: "",
   code: "",
@@ -152,11 +171,12 @@ const EMPTY_VALUES: CatalogFormValues = {
 function CatalogRoute() {
   const { orgSlug } = Route.useParams();
   const queryClient = useQueryClient();
-  const { category, activeOnly } = Route.useSearch();
+  const { q, category, activeOnly } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const [query, setQuery] = useState("");
+  const field = useRef<HTMLDivElement>(null);
+  const query = q ?? "";
   const [createOpen, setCreateOpen] = useState(false);
-  const [editing, setEditing] = useState<CatalogItem | null>(null);
+  const [editing, setEditing] = useState<EditableCatalogItem | null>(null);
 
   const toggleActive = useMutation(
     orpc.catalog.setActive.mutationOptions({
@@ -222,11 +242,36 @@ function CatalogRoute() {
 
   const items = catalog.data?.pages.flatMap((page) => page.items) ?? [];
 
+  const setFilters = (patch: { q?: string; category?: EditableCategory; activeOnly?: true }) =>
+    navigate({ replace: true, search: (previous) => ({ ...previous, ...patch }) });
+
+  const clear = () => {
+    focusSearch(field, { empty: true });
+    void setFilters({ q: undefined, category: undefined, activeOnly: undefined });
+  };
+
+  const chips: ActiveFilter[] = [];
+
+  if (category)
+    chips.push({
+      id: "category",
+      name: "Category",
+      label: CATEGORY_LABELS[category],
+      remove: () => setFilters({ category: undefined }),
+    });
+
+  if (activeOnly)
+    chips.push({
+      id: "activeOnly",
+      name: "Status",
+      label: "Active only",
+      remove: () => setFilters({ activeOnly: undefined }),
+    });
+
   return (
     <>
       <PageHeader
         title="Service catalog"
-        description="Manage billable services, prices, and tax details"
         action={<Button onClick={() => setCreateOpen(true)}>New item</Button>}
       />
       <SettingsTabs orgSlug={orgSlug} />
@@ -236,45 +281,38 @@ function CatalogRoute() {
           <SearchInput
             label="Search catalog"
             placeholder="Search code or name"
-            onQueryChange={setQuery}
+            value={q}
+            fieldRef={field}
+            onQueryChange={(next) => void setFilters({ q: next || undefined })}
+            trailing={
+              <FilterMenu anchor={field} active={chips.length > 0}>
+                <FilterSubmenu icon={TagIcon} label="Category">
+                  {CATALOG_CATEGORIES.map((candidate) => (
+                    <DropdownMenuCheckboxItem
+                      key={candidate}
+                      checked={category === candidate}
+                      onCheckedChange={(checked) =>
+                        void setFilters({ category: checked ? candidate : undefined })
+                      }
+                    >
+                      {CATEGORY_LABELS[candidate]}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </FilterSubmenu>
+                <FilterSubmenu icon={CircleDotIcon} label="Status">
+                  <DropdownMenuCheckboxItem
+                    checked={activeOnly === true}
+                    onCheckedChange={(checked) =>
+                      void setFilters({ activeOnly: checked ? true : undefined })
+                    }
+                  >
+                    Active only
+                  </DropdownMenuCheckboxItem>
+                </FilterSubmenu>
+              </FilterMenu>
+            }
           />
-          <FilterSelect<"all" | CatalogCategory>
-            label="Category"
-            value={category ?? "all"}
-            options={[
-              { value: "all", label: "All categories" },
-              ...CATALOG_CATEGORIES.map((value) => ({
-                value,
-                label: CATEGORY_LABELS[value],
-              })),
-            ]}
-            onValueChange={(next) => {
-              void navigate({
-                search: (previous) => ({
-                  ...previous,
-                  category: next === "all" ? undefined : next,
-                }),
-                replace: true,
-              });
-            }}
-          />
-          <FilterGroup<"all" | "active">
-            label="Status"
-            value={activeOnly ? "active" : "all"}
-            options={[
-              { value: "all", label: "All" },
-              { value: "active", label: "Active" },
-            ]}
-            onValueChange={(next) => {
-              void navigate({
-                search: (previous) => ({
-                  ...previous,
-                  activeOnly: next === "active" ? true : undefined,
-                }),
-                replace: true,
-              });
-            }}
-          />
+          <FilterChips filters={chips} field={field} onClear={clear} />
         </ListToolbar>
 
         <Panel label="Items" footer={<LoadMore query={catalog} shown={items.length} />}>
@@ -350,8 +388,11 @@ const CatalogRow = memo(function CatalogRow({
   item: CatalogItem;
   pending: boolean;
   onToggle: (item: CatalogItem) => void;
-  onEdit: (item: CatalogItem) => void;
+  onEdit: (item: EditableCatalogItem) => void;
 }) {
+  // A const narrows inside the click closure; `item.category` would not.
+  const category = item.category;
+
   return (
     <TableRow>
       <TableCell className="font-mono">{item.code}</TableCell>
@@ -367,7 +408,7 @@ const CatalogRow = memo(function CatalogRow({
         <div className="flex items-center gap-2">
           <Checkbox
             checked={item.active}
-            disabled={pending}
+            disabled={pending || item.category === "pharmacy"}
             aria-label={`Set ${item.name} ${item.active ? "inactive" : "active"}`}
             onCheckedChange={() => onToggle(item)}
           />
@@ -377,9 +418,13 @@ const CatalogRow = memo(function CatalogRow({
         </div>
       </TableCell>
       <TableCell className="text-right">
-        <Button variant="ghost" size="xs" onClick={() => onEdit(item)}>
-          Edit
-        </Button>
+        {category === "pharmacy" ? (
+          <span className="text-muted-foreground">Pharmacy → Items</span>
+        ) : (
+          <Button variant="ghost" size="xs" onClick={() => onEdit({ ...item, category })}>
+            Edit
+          </Button>
+        )}
       </TableCell>
     </TableRow>
   );
@@ -395,7 +440,7 @@ type CatalogItemDialogProps =
   | {
       mode: "edit";
       orgSlug: string;
-      item: CatalogItem;
+      item: EditableCatalogItem;
       open: boolean;
       onOpenChange: (open: boolean) => void;
     };

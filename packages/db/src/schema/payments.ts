@@ -1,7 +1,6 @@
-import { type SQL, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   bigint,
-  type AnyPgColumn,
   check,
   date,
   foreignKey,
@@ -14,12 +13,7 @@ import {
 
 import { organization, user } from "./auth";
 import { invoices } from "./invoices";
-import { PAYMENT_METHODS, type PaymentMethod } from "./payment-methods";
-
-// drizzle-kit serializes check SQL verbatim, so the list must be literal, not bound.
-export function paymentMethodCheck(column: AnyPgColumn): SQL {
-  return sql`${column} in (${sql.raw(PAYMENT_METHODS.map((method) => `'${method}'`).join(", "))})`;
-}
+import type { PaymentMethod } from "./payment-methods";
 
 export const payments = pgTable(
   "payments",
@@ -41,7 +35,6 @@ export const payments = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    check("payments_method_check", paymentMethodCheck(table.method)),
     check("payments_amount_check", sql`${table.amount} > 0`),
     foreignKey({
       columns: [table.orgId, table.invoiceId],

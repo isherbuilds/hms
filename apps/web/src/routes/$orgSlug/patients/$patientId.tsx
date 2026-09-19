@@ -389,11 +389,6 @@ function PatientDetailRoute() {
     <>
       <PageHeader
         title="Patient"
-        description={
-          <>
-            {record.mrn} · <span className="capitalize">{record.name}</span>
-          </>
-        }
         action={
           authorize(roles, { opd: ["create"] }) ? (
             <Link

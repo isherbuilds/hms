@@ -13,8 +13,8 @@ import { DownloadIcon, PrinterIcon } from "lucide-react";
 import { z } from "zod";
 
 import { OPD_STATUS_LABELS, OpdAppointmentStatusBadge } from "@/components/opd-appointment";
-import { ReportPeriodControls } from "@/components/report-period-controls";
-import { ErrorNote, PageBody, PageHeader } from "@/components/page";
+import { DateFilter } from "@/components/list-filter";
+import { ErrorNote, ListToolbar, PageBody, PageHeader } from "@/components/page";
 import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
@@ -64,6 +64,12 @@ function OpdRegisterRoute() {
   const { orgSlug } = Route.useParams();
   const navigate = Route.useNavigate();
   const { from, to } = Route.useLoaderData();
+  const { today } = useOrgDateTime();
+
+  // Reports always read a period, so clearing the preset falls back to the route default.
+  const setRange = (range: { from?: string; to?: string }) =>
+    navigate({ search: range, replace: true });
+
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const { timeZone } = useOrgDateTime();
   const report = useQuery(orpc.report.opdRegister.queryOptions({ input: { orgSlug, from, to } }));
@@ -137,31 +143,25 @@ function OpdRegisterRoute() {
     <>
       <PageHeader
         title="OPD register"
-        description="One row per appointment with attendance and money"
+        action={
+          <>
+            <Button disabled={!report.data} onClick={exportReport}>
+              <DownloadIcon data-icon="inline-start" />
+              Export Excel
+            </Button>
+            <Button variant="outline" disabled={!report.data} onClick={() => window.print()}>
+              <PrinterIcon data-icon="inline-start" />
+              Print / PDF
+            </Button>
+          </>
+        }
       />
       <PageBody>
-        <ReportPeriodControls
-          key={`${orgSlug}:${from}:${to}`}
-          from={from}
-          to={to}
-          maxDays={MAX_DAYS}
-          onApply={(range) => void navigate({ search: range, replace: true })}
-        >
-          <Button size="sm" variant="outline" disabled={!report.data} onClick={exportReport}>
-            <DownloadIcon data-icon="inline-start" />
-            Export Excel
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!report.data}
-            onClick={() => window.print()}
-          >
-            <PrinterIcon data-icon="inline-start" />
-            Print / PDF
-          </Button>
-        </ReportPeriodControls>
-
+        <div className="print:hidden">
+          <ListToolbar>
+            <DateFilter today={today} from={from} to={to} maxDays={MAX_DAYS} onChange={setRange} />
+          </ListToolbar>
+        </div>
         {report.isPending ? null : report.isError ? (
           <ErrorNote title="Could not load the OPD register" error={report.error} />
         ) : (

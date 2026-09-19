@@ -449,11 +449,7 @@ function MembersRoute() {
 
   return (
     <>
-      <PageHeader
-        title="Members"
-        description="Everyone with access to this organization"
-        action={<InviteAction orgSlug={orgSlug} />}
-      />
+      <PageHeader title="Members" action={<InviteAction orgSlug={orgSlug} />} />
       <SettingsTabs orgSlug={orgSlug} />
       <MemberDirectory key={orgSlug} orgSlug={orgSlug} />
     </>

@@ -332,6 +332,7 @@ export const billingWorklistRouter = {
         invoiceNumber: invoices.invoiceNumber,
         patientName: invoices.patientName,
         patientMrn: invoices.patientMrn,
+        stream: invoices.stream,
         businessDate: invoices.businessDate,
         refundDue: sql`(-(${settled}))::bigint`.mapWith(BigInt),
       })

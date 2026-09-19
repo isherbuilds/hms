@@ -11,20 +11,29 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { z } from "zod";
 
 import { BarChart, type BarDatum } from "@/components/bar-chart";
+import { DateFilter } from "@/components/list-filter";
 import { ListState, PageBody, PageHeader, Panel } from "@/components/page";
 import { useMembership } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
 import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
-import { formatDay } from "@/lib/org-datetime";
+import { dateRangeLabel } from "@/lib/date-presets";
+import { formatBusinessDate, formatDay, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { methodLabel } from "@/lib/settlement";
 import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 export const Route = createFileRoute("/$orgSlug/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard · HMS" }] }),
-  loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
+  // Today is the resting state, so it leaves the URL rather than pinning it.
+  validateSearch: z.object({
+    from: z.iso.date().optional().catch(undefined),
+    to: z.iso.date().optional().catch(undefined),
+  }),
+  loaderDeps: ({ search: { from, to } }) => ({ from, to }),
+  loader: async ({ context: { queryClient }, deps: { from, to }, params: { orgSlug } }) => {
     const { roles } = await queryClient.query(orpc.member.me.queryOptions({ input: { orgSlug } }));
 
     const prefetches: Promise<unknown>[] = [];
@@ -32,12 +41,12 @@ export const Route = createFileRoute("/$orgSlug/dashboard")({
     if (authorize(roles, { opd: ["read"] })) {
       prefetches.push(
         queryClient
-          .query(orpc.dashboard.today.queryOptions({ input: { orgSlug } }))
+          .query(orpc.dashboard.today.queryOptions({ input: { orgSlug, from, to } }))
           .catch(() => {}),
         queryClient
           .query(
             orpc.opd.day.queryOptions({
-              input: { orgSlug, limit: 6 },
+              input: { orgSlug, from, to, limit: 6 },
             }),
           )
           .catch(() => {}),
@@ -47,7 +56,7 @@ export const Route = createFileRoute("/$orgSlug/dashboard")({
     if (authorize(roles, { billing: ["read"] })) {
       prefetches.push(
         queryClient
-          .query(orpc.dashboard.collections.queryOptions({ input: { orgSlug } }))
+          .query(orpc.dashboard.collections.queryOptions({ input: { orgSlug, from, to } }))
           .catch(() => {}),
       );
     }
@@ -120,8 +129,15 @@ function StatCard({
 
 function DashboardRoute() {
   const { orgSlug } = Route.useParams();
+  const { from, to } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const { today: businessToday } = useOrgDateTime();
   const roles = useMembership(orgSlug, (membership) => membership.roles);
   const currency = useMembership(orgSlug, (membership) => membership.currency);
+  // Absent is the current day, which the server resolves; the URL stays clean for it.
+  const rangeLabel = dateRangeLabel(businessToday, from, to, "Today");
+  const isToday = from === undefined && to === undefined;
+  const dayLabel = rangeLabel.toLowerCase();
 
   const money = (value: bigint | undefined) =>
     value === undefined ? "—" : formatMoney(value, currency);
@@ -132,20 +148,20 @@ function DashboardRoute() {
   const canReadBilling = authorize(roles, { billing: ["read"] });
 
   const today = useQuery({
-    ...orpc.dashboard.today.queryOptions({ input: { orgSlug } }),
+    ...orpc.dashboard.today.queryOptions({ input: { orgSlug, from, to } }),
     ...OPERATIONAL_REFETCH,
     enabled: canReadOpdAppointments,
   });
 
   const collections = useQuery({
-    ...orpc.dashboard.collections.queryOptions({ input: { orgSlug } }),
+    ...orpc.dashboard.collections.queryOptions({ input: { orgSlug, from, to } }),
     ...OPERATIONAL_REFETCH,
     enabled: canReadBilling,
   });
 
   const queue = useQuery({
     ...orpc.opd.day.queryOptions({
-      input: { orgSlug, limit: 6 },
+      input: { orgSlug, from, to, limit: 6 },
     }),
     ...OPERATIONAL_REFETCH,
     enabled: canReadOpdAppointments,
@@ -166,7 +182,26 @@ function DashboardRoute() {
 
   return (
     <>
-      <PageHeader title="Dashboard" />
+      <PageHeader
+        title="Dashboard"
+        action={
+          <DateFilter
+            today={businessToday}
+            from={from}
+            to={to}
+            unsetLabel="Today"
+            onChange={(range) =>
+              void navigate({
+                replace: true,
+                search:
+                  range.from === businessToday && range.to === businessToday
+                    ? { from: undefined, to: undefined }
+                    : range,
+              })
+            }
+          />
+        }
+      />
 
       <PageBody>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -176,7 +211,7 @@ function DashboardRoute() {
                 label="Booked, not arrived"
                 icon={ClockIcon}
                 value={today.data?.booked ?? 0}
-                note="Expected today"
+                note={`Expected ${dayLabel}`}
                 pending={today.isPending}
                 to="/$orgSlug/opd"
                 orgSlug={orgSlug}
@@ -185,7 +220,7 @@ function DashboardRoute() {
                 label="Checked in"
                 icon={StethoscopeIcon}
                 value={today.data?.checkedIn ?? 0}
-                note="Arrived today"
+                note={`Arrived ${dayLabel}`}
                 pending={today.isPending}
                 to="/$orgSlug/opd"
                 orgSlug={orgSlug}
@@ -194,17 +229,21 @@ function DashboardRoute() {
           )}
           {canReadBilling && (
             <>
+              {/* A live alert about what is still unbilled right now, not a figure for
+                  a past day: it would read as history it is not. */}
+              {isToday && (
+                <StatCard
+                  label="Unbilled"
+                  icon={ReceiptTextIcon}
+                  value={money(collections.data?.unbilled)}
+                  note="Unbilled past alert threshold"
+                  pending={collections.isPending}
+                  to="/$orgSlug/opd"
+                  orgSlug={orgSlug}
+                />
+              )}
               <StatCard
-                label="Unbilled"
-                icon={ReceiptTextIcon}
-                value={money(collections.data?.unbilled)}
-                note="Unbilled past alert threshold"
-                pending={collections.isPending}
-                to="/$orgSlug/opd"
-                orgSlug={orgSlug}
-              />
-              <StatCard
-                label="Collected today"
+                label="Collected"
                 icon={WalletIcon}
                 value={money(collections.data?.collected)}
                 note={
@@ -225,7 +264,11 @@ function DashboardRoute() {
         {(canReadBilling || canReadOpdAppointments) && (
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             {canReadBilling && (
-              <Panel label="Collections, last 14 days" minHeight="min-h-44" padded>
+              <Panel
+                label={`Collections, 14 days to ${formatBusinessDate(to ?? businessToday)}`}
+                minHeight="min-h-44"
+                padded
+              >
                 <ListState
                   query={collections}
                   errorTitle="Could not load collections"
@@ -248,7 +291,7 @@ function DashboardRoute() {
                   query={today}
                   errorTitle="Could not load today's counts"
                   isEmpty={mixTotal === 0}
-                  empty="No appointments today."
+                  empty={`No appointments ${dayLabel}.`}
                 >
                   {mixTotal > 0 && (
                     <>

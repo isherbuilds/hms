@@ -17,6 +17,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: true,
     accountant: true,
+    pharmacist: true,
   },
   {
     permission: { settings: ["update"] },
@@ -25,6 +26,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { audit: ["read"] },
@@ -33,6 +35,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: true,
+    pharmacist: false,
   },
   {
     permission: { report: ["readDailyCollections"] },
@@ -41,6 +44,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: true,
     accountant: true,
+    pharmacist: true,
   },
   {
     permission: { report: ["readOpdRegister"] },
@@ -49,6 +53,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: true,
+    pharmacist: false,
   },
   {
     permission: { report: ["readFinancial"] },
@@ -57,6 +62,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: true,
+    pharmacist: false,
   },
   {
     permission: { catalog: ["read"] },
@@ -65,6 +71,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: true,
     accountant: true,
+    pharmacist: true,
   },
   {
     permission: { catalog: ["create"] },
@@ -73,6 +80,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { catalog: ["update"] },
@@ -81,6 +89,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { payer: ["read"] },
@@ -89,6 +98,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: true,
     accountant: true,
+    pharmacist: false,
   },
   {
     permission: { payer: ["create"] },
@@ -97,6 +107,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { staff: ["read"] },
@@ -105,6 +116,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: true,
     accountant: true,
+    pharmacist: false,
   },
   {
     permission: { staff: ["create"] },
@@ -113,6 +125,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { staff: ["update"] },
@@ -121,6 +134,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { file: ["upload"] },
@@ -129,6 +143,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: false,
     accountant: false,
+    pharmacist: true,
   },
   {
     permission: { file: ["read"] },
@@ -137,6 +152,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: true,
     accountant: true,
+    pharmacist: true,
   },
   {
     permission: { file: ["delete"] },
@@ -145,6 +161,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { member: ["read"] },
@@ -153,6 +170,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: true,
     accountant: true,
+    pharmacist: true,
   },
   {
     permission: { member: ["create"] },
@@ -161,6 +179,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { member: ["update"] },
@@ -169,6 +188,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { member: ["delete"] },
@@ -177,6 +197,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { invitation: ["create"] },
@@ -185,6 +206,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { invitation: ["cancel"] },
@@ -193,6 +215,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { organization: ["update"] },
@@ -201,6 +224,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { organization: ["delete"] },
@@ -209,6 +233,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { patient: ["create"] },
@@ -217,6 +242,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { patient: ["read"] },
@@ -225,6 +251,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: true,
     accountant: true,
+    pharmacist: true,
   },
   {
     permission: { patient: ["update"] },
@@ -233,6 +260,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { opd: ["create"] },
@@ -241,6 +269,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { opd: ["read"] },
@@ -249,6 +278,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: true,
     accountant: true,
+    pharmacist: true,
   },
   {
     permission: { opd: ["update"] },
@@ -257,6 +287,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { treatment: ["read"] },
@@ -265,6 +296,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: true,
     accountant: true,
+    pharmacist: false,
   },
   {
     permission: { treatment: ["create"] },
@@ -273,6 +305,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { treatment: ["update"] },
@@ -281,6 +314,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: false,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { billing: ["read"] },
@@ -289,6 +323,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: true,
     accountant: true,
+    pharmacist: true,
   },
   {
     permission: { billing: ["write"] },
@@ -297,6 +332,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: true,
     cashier: true,
     accountant: false,
+    pharmacist: false,
   },
   {
     permission: { billing: ["creditNote"] },
@@ -305,6 +341,7 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: false,
     accountant: true,
+    pharmacist: false,
   },
   {
     permission: { billing: ["advanceRefund"] },
@@ -313,6 +350,61 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     reception: false,
     cashier: true,
     accountant: true,
+    pharmacist: false,
+  },
+  {
+    permission: { pharmacy: ["read"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: true,
+    accountant: true,
+    pharmacist: true,
+  },
+  {
+    permission: { pharmacy: ["sell"] },
+    owner: true,
+    admin: true,
+    reception: false,
+    cashier: false,
+    accountant: false,
+    pharmacist: true,
+  },
+  {
+    permission: { pharmacy: ["return"] },
+    owner: true,
+    admin: true,
+    reception: false,
+    cashier: false,
+    accountant: false,
+    pharmacist: true,
+  },
+  {
+    permission: { pharmacy: ["receive"] },
+    owner: true,
+    admin: true,
+    reception: false,
+    cashier: false,
+    accountant: false,
+    pharmacist: true,
+  },
+  {
+    permission: { pharmacy: ["adjust"] },
+    owner: true,
+    admin: true,
+    reception: false,
+    cashier: false,
+    accountant: false,
+    pharmacist: false,
+  },
+  {
+    permission: { pharmacy: ["manageItems"] },
+    owner: true,
+    admin: true,
+    reception: false,
+    cashier: false,
+    accountant: false,
+    pharmacist: false,
   },
 ];
 
@@ -327,6 +419,7 @@ test("each role grants exactly the permissions the matrix declares", () => {
     reception: authorize(["reception"], row.permission),
     cashier: authorize(["cashier"], row.permission),
     accountant: authorize(["accountant"], row.permission),
+    pharmacist: authorize(["pharmacist"], row.permission),
   }));
 
   expect(granted).toEqual(MATRIX);

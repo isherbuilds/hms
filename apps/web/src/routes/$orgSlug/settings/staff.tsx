@@ -170,10 +170,7 @@ function StaffRoute() {
 
   return (
     <>
-      <PageHeader
-        title="Staff"
-        description="Manage clinical departments, practitioners, login links, and consultation fees"
-      />
+      <PageHeader title="Staff" />
       <SettingsTabs orgSlug={orgSlug} />
 
       <PageBody>

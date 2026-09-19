@@ -96,6 +96,7 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     receiptPrefix: "RCT",
     advanceReceiptPrefix: "ADV",
     creditNotePrefix: "CN",
+    pharmacyInvoicePrefix: "PH",
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
     unbilledAlertHours: 24,
@@ -447,7 +448,6 @@ test("payments, credits, and refunds post exactly and reconcile in the OPD regis
   const issued = await issueConsultationInvoice(fixture, "Settlement");
   await expectORPCCode(
     fixture.api.billing.recordPayments({
-      requestKey: crypto.randomUUID(),
       orgSlug: fixture.organization.slug,
       invoiceId: issued.invoice.id,
       payments: [{ method: "bank", amount: 18_00n }],
@@ -456,14 +456,12 @@ test("payments, credits, and refunds post exactly and reconcile in the OPD regis
   );
 
   const [cash] = await fixture.api.billing.recordPayments({
-    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     payments: [{ method: "cash", amount: 100_00n }],
   });
 
   const [bank] = await fixture.api.billing.recordPayments({
-    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     payments: [{ method: "bank", amount: 18_00n, reference: "BANK-LEDGER" }],
@@ -500,7 +498,6 @@ test("payments, credits, and refunds post exactly and reconcile in the OPD regis
   }
 
   const credited = await fixture.api.billing.issueCreditNote({
-    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     reason: "Partial reversal",
@@ -515,7 +512,6 @@ test("payments, credits, and refunds post exactly and reconcile in the OPD regis
   expectBalanced(creditJournal.lines);
 
   const refund = await fixture.api.billing.recordRefund({
-    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     creditNoteId: credited.creditNote.id,
     method: "upi",
@@ -572,7 +568,6 @@ test("daily collections nets payments and refunds by Business Date and method", 
   const fixture = await createAccountingFixture("accounting-daily-collections");
   const issued = await issueConsultationInvoice(fixture, "Daily Collections");
   await fixture.api.billing.recordPayments({
-    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     payments: [
@@ -585,7 +580,6 @@ test("daily collections nets payments and refunds by Business Date and method", 
   if (!invoiceLine) throw new Error("expected an invoice line");
 
   const credited = await fixture.api.billing.issueCreditNote({
-    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     reason: "Partial collection reversal",
@@ -593,7 +587,6 @@ test("daily collections nets payments and refunds by Business Date and method", 
   });
 
   await fixture.api.billing.recordRefund({
-    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     creditNoteId: credited.creditNote.id,
     method: "cash",
@@ -601,7 +594,6 @@ test("daily collections nets payments and refunds by Business Date and method", 
   });
 
   const advance = await fixture.api.billing.recordAdvance({
-    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     patientId: fixture.patient.id,
     method: "bank",
@@ -610,7 +602,6 @@ test("daily collections nets payments and refunds by Business Date and method", 
   });
 
   await fixture.api.billing.recordAdvanceRefund({
-    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     advanceReceiptId: advance.id,
     method: "bank",
@@ -745,7 +736,6 @@ test("balance sheet balances GST output and current surplus against assets", asy
   const issued = await issueConsultationInvoice(fixture, "Balance Sheet");
 
   const advance = await fixture.api.billing.recordAdvance({
-    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     patientId: fixture.patient.id,
     method: "cash",
@@ -755,7 +745,6 @@ test("balance sheet balances GST output and current surplus against assets", asy
   // An allocation and an advance refund both balance whichever accounts they name, so
   // the only proof they named the right ones is the account balances they leave behind.
   await fixture.api.billing.recordPayments({
-    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     payments: [],
@@ -763,7 +752,6 @@ test("balance sheet balances GST output and current surplus against assets", asy
   });
 
   await fixture.api.billing.recordAdvanceRefund({
-    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     advanceReceiptId: advance.id,
     method: "cash",
@@ -830,7 +818,6 @@ test("GST register reconciles invoice and credit-note documents, rates, HSN, and
   }
 
   const credited = await fixture.api.billing.issueCreditNote({
-    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     reason: "Consultation reversal",
@@ -959,7 +946,6 @@ test("invoice and credit note keep the revenue category captured when the charge
   }
 
   const credited = await fixture.api.billing.issueCreditNote({
-    requestKey: crypto.randomUUID(),
     orgSlug: fixture.organization.slug,
     invoiceId: issued.invoice.id,
     reason: "Category changed after charge creation",
@@ -1001,8 +987,8 @@ test("concurrent first invoices seed one complete chart and both post", async ()
     .from(accounts)
     .where(eq(accounts.orgId, fixture.organization.id));
 
-  expect(chart).toHaveLength(10);
-  expect(new Set(chart.map((row) => row.systemKey)).size).toBe(10);
+  expect(chart).toHaveLength(11);
+  expect(new Set(chart.map((row) => row.systemKey)).size).toBe(11);
 });
 
 test("journal lines reject accounts and entries from another organization", async () => {

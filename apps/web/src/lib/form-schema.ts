@@ -72,5 +72,3 @@ export const patientFieldSchema = z.object({
         .nullable(),
     ),
 });
-
-export type PatientFields = z.output<typeof patientFieldSchema>;

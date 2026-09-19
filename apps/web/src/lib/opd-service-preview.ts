@@ -1,4 +1,4 @@
-import { computeInvoiceLines } from "@hms/api/lib/invoice-math";
+import { computeInvoiceLines, type PriceBasis } from "@hms/api/lib/invoice-math";
 
 export type WalkInQuote = {
   currency: string;
@@ -35,7 +35,12 @@ function attachLineMetadata<T extends object>(
   });
 }
 
-export function applyDiscount(quote: WalkInQuote, discountAmount: bigint): WalkInQuote {
+/** `basis` is the quote's own tax treatment: pharmacy MRP is inclusive, services are not. */
+export function applyDiscount(
+  quote: WalkInQuote,
+  discountAmount: bigint,
+  basis: PriceBasis,
+): WalkInQuote {
   const computed = computeInvoiceLines(
     quote.lines.map((line) => ({
       chargeId: line.chargeId,
@@ -46,6 +51,7 @@ export function applyDiscount(quote: WalkInQuote, discountAmount: bigint): WalkI
       taxCode: line.taxCode,
     })),
     discountAmount,
+    basis,
   );
 
   return {
@@ -79,7 +85,7 @@ export function servicePreview(services: PreviewService[], currency: string): Wa
     taxCode: null,
   }));
 
-  const computed = computeInvoiceLines(previewLines, 0n);
+  const computed = computeInvoiceLines(previewLines, 0n, "exclusive");
 
   return {
     currency,

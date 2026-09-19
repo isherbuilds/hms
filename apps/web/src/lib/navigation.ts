@@ -9,6 +9,7 @@ import {
   LayoutDashboardIcon,
   ListChecksIcon,
   ListOrderedIcon,
+  PillIcon,
   ReceiptTextIcon,
   WalletIcon,
   StethoscopeIcon,
@@ -33,6 +34,7 @@ type PrimaryNavItem = NavEntry<
   | "/$orgSlug/dashboard"
   | "/$orgSlug/patients"
   | "/$orgSlug/opd"
+  | "/$orgSlug/pharmacy"
   | "/$orgSlug/billing"
   | "/$orgSlug/reports"
   | "/$orgSlug/files"
@@ -56,6 +58,13 @@ export const PRIMARY_NAV: readonly PrimaryNavItem[] = [
     icon: ListOrderedIcon,
     group: "Care",
     permission: { opd: ["read"] },
+  },
+  {
+    to: "/$orgSlug/pharmacy",
+    label: "Pharmacy",
+    icon: PillIcon,
+    group: "Care",
+    permission: { pharmacy: ["read"] },
   },
   {
     to: "/$orgSlug/patients",
@@ -109,6 +118,17 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   { to: "/$orgSlug/settings/catalog", label: "Catalog", permission: { catalog: ["update"] } },
   { to: "/$orgSlug/settings/payers", label: "Payers", permission: { payer: ["update"] } },
   { to: "/$orgSlug/settings/audit", label: "Audit", permission: { audit: ["read"] } },
+];
+
+type PharmacyTab = NavEntry<
+  "/$orgSlug/pharmacy" | "/$orgSlug/pharmacy/stock" | "/$orgSlug/pharmacy/items"
+>;
+
+// The sale desk is not a tab: it is a task opened from the sales list, like OPD intake.
+export const PHARMACY_TABS: readonly PharmacyTab[] = [
+  { to: "/$orgSlug/pharmacy", label: "Sales", permission: { pharmacy: ["read"] } },
+  { to: "/$orgSlug/pharmacy/stock", label: "Stock", permission: { pharmacy: ["read"] } },
+  { to: "/$orgSlug/pharmacy/items", label: "Products", permission: { pharmacy: ["manageItems"] } },
 ];
 
 type ReportLink = NavEntry<

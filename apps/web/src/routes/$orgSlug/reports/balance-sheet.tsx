@@ -122,10 +122,7 @@ function BalanceSheetRoute() {
 
   return (
     <>
-      <PageHeader
-        title="Balance sheet"
-        description="Financial position from transactions recorded in this HMS"
-      />
+      <PageHeader title="Balance sheet" />
       <PageBody>
         <div className="flex flex-wrap items-end gap-2 print:hidden">
           <label className="grid gap-1">

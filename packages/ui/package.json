@@ -20,6 +20,7 @@
     "lucide-react": "catalog:",
     "next-themes": "catalog:",
     "react": "catalog:",
+    "react-day-picker": "^10.0.1",
     "react-dom": "catalog:",
     "react-hook-form": "catalog:",
     "shadcn": "^4.21.0",

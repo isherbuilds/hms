@@ -27,12 +27,15 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { Monogram } from "@/components/monogram";
 import { FinancialSummary } from "@/components/opd-financial-summary";
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
 import { ServiceLines } from "@/components/opd-intake-services";
-import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
-import { Panel } from "@/components/page";
+import {
+  OpdPatientSearch,
+  SelectedPatientChip,
+  type SelectedPatient,
+} from "@/components/opd-patient-picker";
+import { FormSection, Panel } from "@/components/page";
 import { ServicePicker, type ServiceLine } from "@/components/opd-service-picker";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { useMembership } from "@/lib/membership";
@@ -104,51 +107,19 @@ type QuoteState = {
   ready: boolean;
 };
 
-function IntakeSection({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="grid gap-3 border-b border-border p-4 last:border-b-0">
-      <div className="flex flex-wrap items-baseline gap-x-3">
-        <h2 className="font-medium">{title}</h2>
-        {description ? <p className="text-muted-foreground">{description}</p> : null}
-      </div>
-      <div className="min-w-0">{children}</div>
-    </section>
-  );
-}
-
 function PatientField({ orgSlug }: { orgSlug: string }) {
   const { control, setValue, setFocus } = useFormContext<IntakeValues>();
   const patient = useWatch({ control, name: "patient", exact: true });
 
   if (patient) {
     return (
-      <div className="flex min-h-10 items-center gap-2 rounded-md bg-muted px-3">
-        <Monogram label={patient.name} />
-        <span className="flex min-w-0 flex-col leading-tight">
-          <span className="truncate font-medium capitalize">{patient.name}</span>
-          <span className="truncate font-mono text-muted-foreground">{patient.mrn}</span>
-        </span>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className="ml-auto"
-          onClick={() => {
-            setValue("patient", null, { shouldDirty: true });
-            setValue("treatmentPlanId", "", { shouldDirty: true });
-          }}
-        >
-          Change
-        </Button>
-      </div>
+      <SelectedPatientChip
+        patient={patient}
+        onClear={() => {
+          setValue("patient", null, { shouldDirty: true });
+          setValue("treatmentPlanId", "", { shouldDirty: true });
+        }}
+      />
     );
   }
 
@@ -177,7 +148,7 @@ function SittingForField({ orgSlug }: { orgSlug: string }) {
   if (!patient || !patientRecord.data?.openTreatmentPlans.length) return null;
 
   return (
-    <IntakeSection title="Sitting for" description="Optional treatment plan link">
+    <FormSection title="Sitting for" description="Optional treatment plan link">
       <RegisteredFormField
         name="treatmentPlanId"
         render={({ field }) => (
@@ -197,7 +168,7 @@ function SittingForField({ orgSlug }: { orgSlug: string }) {
           </FormItem>
         )}
       />
-    </IntakeSection>
+    </FormSection>
   );
 }
 
@@ -760,9 +731,6 @@ export function OpdIntakeForm({
     }),
   );
 
-  // One key per intake, resent if the desk retries after a lost response (D039).
-  const [requestKey] = useState(() => crypto.randomUUID());
-
   const createWalkIn = useMutation(
     orpc.opd.createWalkIn.mutationOptions({
       onSuccess: async ({ appointment }) => {
@@ -783,7 +751,6 @@ export function OpdIntakeForm({
     if (!current.patient || !canSettleWalkIn) return;
     createWalkIn.mutate({
       orgSlug,
-      requestKey,
       patientId: current.patient.id,
       practitionerId: current.practitionerId,
       treatmentPlanId: current.treatmentPlanId || undefined,
@@ -859,11 +826,11 @@ export function OpdIntakeForm({
           >
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
               <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
-                <IntakeSection title="Patient">
+                <FormSection title="Patient">
                   <PatientField orgSlug={orgSlug} />
-                </IntakeSection>
+                </FormSection>
 
-                <IntakeSection
+                <FormSection
                   title="Care team"
                   description="Configured attendance fees appear in Services"
                 >
@@ -872,13 +839,13 @@ export function OpdIntakeForm({
                     practitioners={practitioners}
                     canSettleWalkIn={canSettleWalkIn}
                   />
-                </IntakeSection>
+                </FormSection>
 
                 <SittingForField orgSlug={orgSlug} />
 
-                <IntakeSection title="Services" description="Optional for Now and Later">
+                <FormSection title="Services" description="Optional for Now and Later">
                   <ServicesFields orgSlug={orgSlug} currency={currency} quoteState={quoteState} />
-                </IntakeSection>
+                </FormSection>
               </div>
 
               <aside className="hidden lg:block">
@@ -901,6 +868,7 @@ export function OpdIntakeForm({
               <ClientOnly fallback={null}>
                 <SettlementOverlay
                   quote={quoteState.data}
+                  basis="exclusive"
                   availableCredit={settlement}
                   description={`${settlementPatient.name} · walk-in now`}
                   label="Confirm walk-in"

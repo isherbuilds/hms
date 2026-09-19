@@ -1,5 +1,5 @@
 {
-  "id": "05d6cf2a-0adf-4b51-a6e7-05060c3ff7f9",
+  "id": "25359768-6502-4865-82e0-9a7b0ecb6573",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -138,10 +138,517 @@
         }
       },
       "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.advance_allocations": {
+      "name": "advance_allocations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "advance_receipt_id": {
+          "name": "advance_receipt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "invoice_id": {
+          "name": "invoice_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "allocated_by": {
+          "name": "allocated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "advance_allocations_org_invoice_idx": {
+          "name": "advance_allocations_org_invoice_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "invoice_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "advance_allocations_org_receipt_idx": {
+          "name": "advance_allocations_org_receipt_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "advance_receipt_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "advance_allocations_org_id_organization_id_fk": {
+          "name": "advance_allocations_org_id_organization_id_fk",
+          "tableFrom": "advance_allocations",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "advance_allocations_allocated_by_user_id_fk": {
+          "name": "advance_allocations_allocated_by_user_id_fk",
+          "tableFrom": "advance_allocations",
+          "tableTo": "user",
+          "columnsFrom": [
+            "allocated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "advance_allocations_org_id_advance_receipt_id_advance_receipts_org_id_id_fk": {
+          "name": "advance_allocations_org_id_advance_receipt_id_advance_receipts_org_id_id_fk",
+          "tableFrom": "advance_allocations",
+          "tableTo": "advance_receipts",
+          "columnsFrom": [
+            "org_id",
+            "advance_receipt_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "advance_allocations_org_id_invoice_id_invoices_org_id_id_fk": {
+          "name": "advance_allocations_org_id_invoice_id_invoices_org_id_id_fk",
+          "tableFrom": "advance_allocations",
+          "tableTo": "invoices",
+          "columnsFrom": [
+            "org_id",
+            "invoice_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "advance_allocations_org_id_id_unique": {
+          "name": "advance_allocations_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
       "checkConstraints": {
-        "accounts_type_check": {
-          "name": "accounts_type_check",
-          "value": "\"accounts\".\"type\" in ('asset', 'liability', 'equity', 'income', 'expense')"
+        "advance_allocations_amount_check": {
+          "name": "advance_allocations_amount_check",
+          "value": "\"advance_allocations\".\"amount\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.advance_receipts": {
+      "name": "advance_receipts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "treatment_plan_id": {
+          "name": "treatment_plan_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "method": {
+          "name": "method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reference": {
+          "name": "reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "receipt_number": {
+          "name": "receipt_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fiscal_year": {
+          "name": "fiscal_year",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_date": {
+          "name": "business_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_legal_name": {
+          "name": "org_legal_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_address": {
+          "name": "org_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_tax_id": {
+          "name": "org_tax_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_name": {
+          "name": "patient_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_mrn": {
+          "name": "patient_mrn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_phone": {
+          "name": "patient_phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_address": {
+          "name": "patient_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "patient_guardian": {
+          "name": "patient_guardian",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "received_by": {
+          "name": "received_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "advance_receipts_org_number_idx": {
+          "name": "advance_receipts_org_number_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "receipt_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "advance_receipts_org_patient_created_idx": {
+          "name": "advance_receipts_org_patient_created_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "advance_receipts_org_created_id_idx": {
+          "name": "advance_receipts_org_created_id_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "advance_receipts_org_business_date_idx": {
+          "name": "advance_receipts_org_business_date_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "advance_receipts_org_plan_idx": {
+          "name": "advance_receipts_org_plan_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "treatment_plan_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"advance_receipts\".\"treatment_plan_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "advance_receipts_org_id_organization_id_fk": {
+          "name": "advance_receipts_org_id_organization_id_fk",
+          "tableFrom": "advance_receipts",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "advance_receipts_received_by_user_id_fk": {
+          "name": "advance_receipts_received_by_user_id_fk",
+          "tableFrom": "advance_receipts",
+          "tableTo": "user",
+          "columnsFrom": [
+            "received_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "advance_receipts_org_id_patient_id_patients_org_id_id_fk": {
+          "name": "advance_receipts_org_id_patient_id_patients_org_id_id_fk",
+          "tableFrom": "advance_receipts",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "org_id",
+            "patient_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "advance_receipts_org_id_treatment_plan_id_treatment_plans_org_id_id_fk": {
+          "name": "advance_receipts_org_id_treatment_plan_id_treatment_plans_org_id_id_fk",
+          "tableFrom": "advance_receipts",
+          "tableTo": "treatment_plans",
+          "columnsFrom": [
+            "org_id",
+            "treatment_plan_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "advance_receipts_org_id_id_unique": {
+          "name": "advance_receipts_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "advance_receipts_amount_check": {
+          "name": "advance_receipts_amount_check",
+          "value": "\"advance_receipts\".\"amount\" > 0"
         }
       },
       "isRLSEnabled": false
@@ -329,12 +836,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "attachments_target_type_check": {
-          "name": "attachments_target_type_check",
-          "value": "\"attachments\".\"target_type\" in ('prescription')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.audit_log": {
@@ -455,13 +957,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "issuer": {
-          "name": "issuer",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'local:credential'"
-        },
         "user_id": {
           "name": "user_id",
           "type": "text",
@@ -540,11 +1035,11 @@
           "method": "btree",
           "with": {}
         },
-        "account_issuer_accountId_uidx": {
-          "name": "account_issuer_accountId_uidx",
+        "account_provider_accountId_uidx": {
+          "name": "account_provider_accountId_uidx",
           "columns": [
             {
-              "expression": "issuer",
+              "expression": "provider_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1156,6 +1651,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "custom_rate": {
+          "name": "custom_rate",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "tax_rate_percent": {
           "name": "tax_rate_percent",
           "type": "numeric(4, 2)",
@@ -1290,10 +1792,6 @@
       },
       "policies": {},
       "checkConstraints": {
-        "catalog_items_category_check": {
-          "name": "catalog_items_category_check",
-          "value": "\"catalog_items\".\"category\" in ('consultation', 'procedure', 'lab', 'radiology', 'other')"
-        },
         "catalog_items_unit_price_check": {
           "name": "catalog_items_unit_price_check",
           "value": "\"catalog_items\".\"unit_price\" >= 0"
@@ -1325,7 +1823,13 @@
           "name": "opd_appointment_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "pharmacy_sale_id": {
+          "name": "pharmacy_sale_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "catalog_item_id": {
           "name": "catalog_item_id",
@@ -1450,6 +1954,49 @@
           "method": "btree",
           "with": {}
         },
+        "charges_org_pharmacy_sale_idx": {
+          "name": "charges_org_pharmacy_sale_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "pharmacy_sale_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "charges_org_source_idx": {
+          "name": "charges_org_source_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"charges\".\"source_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "charges_org_status_created_idx": {
           "name": "charges_org_status_created_idx",
           "columns": [
@@ -1541,6 +2088,21 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
+        "charges_org_id_pharmacy_sale_id_pharmacy_sales_org_id_id_fk": {
+          "name": "charges_org_id_pharmacy_sale_id_pharmacy_sales_org_id_id_fk",
+          "tableFrom": "charges",
+          "tableTo": "pharmacy_sales",
+          "columnsFrom": [
+            "org_id",
+            "pharmacy_sale_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "charges_org_id_invoice_id_invoices_org_id_id_fk": {
           "name": "charges_org_id_invoice_id_invoices_org_id_id_fk",
           "tableFrom": "charges",
@@ -1582,17 +2144,9 @@
           "name": "charges_tax_rate_percent_check",
           "value": "\"charges\".\"tax_rate_percent\" >= 0"
         },
-        "charges_source_type_check": {
-          "name": "charges_source_type_check",
-          "value": "\"charges\".\"source_type\" in ('consult_fee', 'catalog')"
-        },
-        "charges_status_check": {
-          "name": "charges_status_check",
-          "value": "\"charges\".\"status\" in ('pending', 'invoiced', 'voided')"
-        },
-        "charges_revenue_category_check": {
-          "name": "charges_revenue_category_check",
-          "value": "\"charges\".\"revenue_category\" in ('consultation', 'procedure', 'lab', 'radiology', 'other')"
+        "charges_parent_check": {
+          "name": "charges_parent_check",
+          "value": "(\"charges\".\"opd_appointment_id\" is not null and \"charges\".\"pharmacy_sale_id\" is null) or (\"charges\".\"pharmacy_sale_id\" is not null and \"charges\".\"opd_appointment_id\" is null)"
         }
       },
       "isRLSEnabled": false
@@ -2231,6 +2785,160 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.goods_receipts": {
+      "name": "goods_receipts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "opening": {
+          "name": "opening",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "supplier_name": {
+          "name": "supplier_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "supplier_reference": {
+          "name": "supplier_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "received_on": {
+          "name": "received_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "file_id": {
+          "name": "file_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "received_by": {
+          "name": "received_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "goods_receipts_org_received_idx": {
+          "name": "goods_receipts_org_received_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "received_on",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "goods_receipts_org_id_organization_id_fk": {
+          "name": "goods_receipts_org_id_organization_id_fk",
+          "tableFrom": "goods_receipts",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "goods_receipts_received_by_user_id_fk": {
+          "name": "goods_receipts_received_by_user_id_fk",
+          "tableFrom": "goods_receipts",
+          "tableTo": "user",
+          "columnsFrom": [
+            "received_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "goods_receipts_org_id_file_id_file_org_id_id_fk": {
+          "name": "goods_receipts_org_id_file_id_file_org_id_id_fk",
+          "tableFrom": "goods_receipts",
+          "tableTo": "file",
+          "columnsFrom": [
+            "org_id",
+            "file_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "goods_receipts_org_id_id_unique": {
+          "name": "goods_receipts_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.organization_settings": {
       "name": "organization_settings",
       "schema": "",
@@ -2277,11 +2985,25 @@
           "primaryKey": false,
           "notNull": true
         },
+        "pharmacy_invoice_prefix": {
+          "name": "pharmacy_invoice_prefix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PH'"
+        },
         "receipt_prefix": {
           "name": "receipt_prefix",
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "advance_receipt_prefix": {
+          "name": "advance_receipt_prefix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ADV'"
         },
         "credit_note_prefix": {
           "name": "credit_note_prefix",
@@ -2597,16 +3319,7 @@
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "patients_sex_check": {
-          "name": "patients_sex_check",
-          "value": "\"patients\".\"sex\" in ('male', 'female', 'other', 'unknown')"
-        },
-        "patients_blood_group_check": {
-          "name": "patients_blood_group_check",
-          "value": "\"patients\".\"blood_group\" is null or \"patients\".\"blood_group\" in ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.payers": {
@@ -2702,12 +3415,7 @@
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "payers_type_check": {
-          "name": "payers_type_check",
-          "value": "\"payers\".\"type\" in ('insurer', 'tpa', 'corporate', 'scheme')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.patient_payers": {
@@ -3043,6 +3751,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "treatment_plan_id": {
+          "name": "treatment_plan_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "caller_name": {
           "name": "caller_name",
           "type": "text",
@@ -3293,6 +4007,34 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "opd_appointments_org_treatment_date_idx": {
+          "name": "opd_appointments_org_treatment_date_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "treatment_plan_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"opd_appointments\".\"treatment_plan_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -3366,6 +4108,21 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "opd_appointments_org_id_treatment_plan_id_treatment_plans_org_id_id_fk": {
+          "name": "opd_appointments_org_id_treatment_plan_id_treatment_plans_org_id_id_fk",
+          "tableFrom": "opd_appointments",
+          "tableTo": "treatment_plans",
+          "columnsFrom": [
+            "org_id",
+            "treatment_plan_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3381,14 +4138,6 @@
       },
       "policies": {},
       "checkConstraints": {
-        "opd_appointments_arrival_mode_check": {
-          "name": "opd_appointments_arrival_mode_check",
-          "value": "\"opd_appointments\".\"arrival_mode\" in ('scheduled', 'walk_in')"
-        },
-        "opd_appointments_status_check": {
-          "name": "opd_appointments_status_check",
-          "value": "\"opd_appointments\".\"status\" in ('booked', 'checked_in', 'cancelled', 'no_show')"
-        },
         "opd_appointments_token_positive_check": {
           "name": "opd_appointments_token_positive_check",
           "value": "\"opd_appointments\".\"token_number\" is null or \"opd_appointments\".\"token_number\" > 0"
@@ -3428,17 +4177,30 @@
           "primaryKey": false,
           "notNull": true
         },
+        "stream": {
+          "name": "stream",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'opd'"
+        },
         "opd_appointment_id": {
           "name": "opd_appointment_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "pharmacy_sale_id": {
+          "name": "pharmacy_sale_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "patient_id": {
           "name": "patient_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "invoice_number": {
           "name": "invoice_number",
@@ -3523,13 +4285,13 @@
           "name": "patient_mrn",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "patient_phone": {
           "name": "patient_phone",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "patient_address": {
           "name": "patient_address",
@@ -3602,6 +4364,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "invoices_org_pharmacy_sale_idx": {
+          "name": "invoices_org_pharmacy_sale_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "pharmacy_sale_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"invoices\".\"pharmacy_sale_id\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -3697,6 +4481,21 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
+        "invoices_org_id_pharmacy_sale_id_pharmacy_sales_org_id_id_fk": {
+          "name": "invoices_org_id_pharmacy_sale_id_pharmacy_sales_org_id_id_fk",
+          "tableFrom": "invoices",
+          "tableTo": "pharmacy_sales",
+          "columnsFrom": [
+            "org_id",
+            "pharmacy_sale_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "invoices_org_id_patient_id_patients_org_id_id_fk": {
           "name": "invoices_org_id_patient_id_patients_org_id_id_fk",
           "tableFrom": "invoices",
@@ -3746,9 +4545,13 @@
           "name": "invoices_discount_not_above_subtotal_check",
           "value": "\"invoices\".\"discount_amount\" <= \"invoices\".\"subtotal\""
         },
+        "invoices_parent_check": {
+          "name": "invoices_parent_check",
+          "value": "(\"invoices\".\"stream\" = 'opd' and \"invoices\".\"opd_appointment_id\" is not null and \"invoices\".\"patient_id\" is not null and \"invoices\".\"pharmacy_sale_id\" is null) or (\"invoices\".\"stream\" = 'pharmacy' and \"invoices\".\"pharmacy_sale_id\" is not null and \"invoices\".\"opd_appointment_id\" is null)"
+        },
         "invoices_total_math_check": {
           "name": "invoices_total_math_check",
-          "value": "\"invoices\".\"grand_total\" = \"invoices\".\"subtotal\" - \"invoices\".\"discount_amount\" + \"invoices\".\"tax_total\""
+          "value": "\"invoices\".\"grand_total\" = \"invoices\".\"subtotal\" - \"invoices\".\"discount_amount\" + (case \"invoices\".\"stream\" when 'opd' then \"invoices\".\"tax_total\" else 0 end)"
         }
       },
       "isRLSEnabled": false
@@ -3943,12 +4746,7 @@
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "invoice_lines_revenue_category_check": {
-          "name": "invoice_lines_revenue_category_check",
-          "value": "\"invoice_lines\".\"revenue_category\" in ('consultation', 'procedure', 'lab', 'radiology', 'other')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.payments": {
@@ -4141,10 +4939,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "payments_method_check": {
-          "name": "payments_method_check",
-          "value": "\"payments\".\"method\" in ('cash', 'upi', 'card', 'bank')"
-        },
         "payments_amount_check": {
           "name": "payments_amount_check",
           "value": "\"payments\".\"amount\" > 0"
@@ -4172,13 +4966,19 @@
           "name": "invoice_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "credit_note_id": {
           "name": "credit_note_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "advance_receipt_id": {
+          "name": "advance_receipt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "method": {
           "name": "method",
@@ -4320,6 +5120,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "refunds_org_advance_receipt_idx": {
+          "name": "refunds_org_advance_receipt_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "advance_receipt_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -4378,19 +5199,475 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "refunds_org_id_advance_receipt_id_advance_receipts_org_id_id_fk": {
+          "name": "refunds_org_id_advance_receipt_id_advance_receipts_org_id_id_fk",
+          "tableFrom": "refunds",
+          "tableTo": "advance_receipts",
+          "columnsFrom": [
+            "org_id",
+            "advance_receipt_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "refunds_method_check": {
-          "name": "refunds_method_check",
-          "value": "\"refunds\".\"method\" in ('cash', 'upi', 'card', 'bank')"
-        },
         "refunds_amount_check": {
           "name": "refunds_amount_check",
           "value": "\"refunds\".\"amount\" > 0"
+        },
+        "refunds_source_check": {
+          "name": "refunds_source_check",
+          "value": "num_nonnulls(\"refunds\".\"credit_note_id\", \"refunds\".\"advance_receipt_id\") = 1"
+        },
+        "refunds_invoice_source_check": {
+          "name": "refunds_invoice_source_check",
+          "value": "(\"refunds\".\"invoice_id\" is not null) = (\"refunds\".\"credit_note_id\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.treatment_plans": {
+      "name": "treatment_plans",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "practitioner_id": {
+          "name": "practitioner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "next_sitting_on": {
+          "name": "next_sitting_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "next_sitting_note": {
+          "name": "next_sitting_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "close_reason": {
+          "name": "close_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "treatment_plans_org_patient_status_idx": {
+          "name": "treatment_plans_org_patient_status_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "treatment_plans_org_status_next_idx": {
+          "name": "treatment_plans_org_status_next_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "next_sitting_on",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "treatment_plans_org_id_organization_id_fk": {
+          "name": "treatment_plans_org_id_organization_id_fk",
+          "tableFrom": "treatment_plans",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "treatment_plans_created_by_user_id_fk": {
+          "name": "treatment_plans_created_by_user_id_fk",
+          "tableFrom": "treatment_plans",
+          "tableTo": "user",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "treatment_plans_org_id_patient_id_patients_org_id_id_fk": {
+          "name": "treatment_plans_org_id_patient_id_patients_org_id_id_fk",
+          "tableFrom": "treatment_plans",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "org_id",
+            "patient_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "treatment_plans_org_id_practitioner_id_practitioners_org_id_id_fk": {
+          "name": "treatment_plans_org_id_practitioner_id_practitioners_org_id_id_fk",
+          "tableFrom": "treatment_plans",
+          "tableTo": "practitioners",
+          "columnsFrom": [
+            "org_id",
+            "practitioner_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "treatment_plans_org_id_id_unique": {
+          "name": "treatment_plans_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "treatment_plans_close_reason_check": {
+          "name": "treatment_plans_close_reason_check",
+          "value": "\"treatment_plans\".\"status\" <> 'closed' or \"treatment_plans\".\"close_reason\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.treatment_plan_items": {
+      "name": "treatment_plan_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "treatment_plan_id": {
+          "name": "treatment_plan_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "catalog_item_id": {
+          "name": "catalog_item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unit_price": {
+          "name": "unit_price",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tax_rate_percent": {
+          "name": "tax_rate_percent",
+          "type": "numeric(4, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tax_code": {
+          "name": "tax_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revenue_category": {
+          "name": "revenue_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty_planned": {
+          "name": "qty_planned",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "drop_reason": {
+          "name": "drop_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "treatment_plan_items_org_plan_idx": {
+          "name": "treatment_plan_items_org_plan_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "treatment_plan_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "treatment_plan_items_org_id_organization_id_fk": {
+          "name": "treatment_plan_items_org_id_organization_id_fk",
+          "tableFrom": "treatment_plan_items",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "treatment_plan_items_created_by_user_id_fk": {
+          "name": "treatment_plan_items_created_by_user_id_fk",
+          "tableFrom": "treatment_plan_items",
+          "tableTo": "user",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "treatment_plan_items_org_id_treatment_plan_id_treatment_plans_org_id_id_fk": {
+          "name": "treatment_plan_items_org_id_treatment_plan_id_treatment_plans_org_id_id_fk",
+          "tableFrom": "treatment_plan_items",
+          "tableTo": "treatment_plans",
+          "columnsFrom": [
+            "org_id",
+            "treatment_plan_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "treatment_plan_items_org_id_catalog_item_id_catalog_items_org_id_id_fk": {
+          "name": "treatment_plan_items_org_id_catalog_item_id_catalog_items_org_id_id_fk",
+          "tableFrom": "treatment_plan_items",
+          "tableTo": "catalog_items",
+          "columnsFrom": [
+            "org_id",
+            "catalog_item_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "treatment_plan_items_org_id_id_unique": {
+          "name": "treatment_plan_items_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "treatment_plan_items_unit_price_check": {
+          "name": "treatment_plan_items_unit_price_check",
+          "value": "\"treatment_plan_items\".\"unit_price\" >= 0"
+        },
+        "treatment_plan_items_tax_rate_check": {
+          "name": "treatment_plan_items_tax_rate_check",
+          "value": "\"treatment_plan_items\".\"tax_rate_percent\" >= 0"
+        },
+        "treatment_plan_items_qty_check": {
+          "name": "treatment_plan_items_qty_check",
+          "value": "\"treatment_plan_items\".\"qty_planned\" > 0"
+        },
+        "treatment_plan_items_drop_reason_check": {
+          "name": "treatment_plan_items_drop_reason_check",
+          "value": "\"treatment_plan_items\".\"status\" <> 'dropped' or \"treatment_plan_items\".\"drop_reason\" is not null"
         }
       },
       "isRLSEnabled": false
@@ -4689,6 +5966,1084 @@
         "journal_lines_one_side_check": {
           "name": "journal_lines_one_side_check",
           "value": "(\"journal_lines\".\"debit\" = 0) <> (\"journal_lines\".\"credit\" = 0)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.products": {
+      "name": "products",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "catalog_item_id": {
+          "name": "catalog_item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generic_name": {
+          "name": "generic_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "form": {
+          "name": "form",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "strength": {
+          "name": "strength",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stock_unit": {
+          "name": "stock_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "units_per_pack": {
+          "name": "units_per_pack",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "schedule": {
+          "name": "schedule",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "manufacturer": {
+          "name": "manufacturer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "products_org_catalog_item_idx": {
+          "name": "products_org_catalog_item_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "catalog_item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"products\".\"catalog_item_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "products_org_name_idx": {
+          "name": "products_org_name_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "products_org_id_organization_id_fk": {
+          "name": "products_org_id_organization_id_fk",
+          "tableFrom": "products",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "products_org_id_catalog_item_id_catalog_items_org_id_id_fk": {
+          "name": "products_org_id_catalog_item_id_catalog_items_org_id_id_fk",
+          "tableFrom": "products",
+          "tableTo": "catalog_items",
+          "columnsFrom": [
+            "org_id",
+            "catalog_item_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "products_org_id_id_unique": {
+          "name": "products_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "products_units_per_pack_check": {
+          "name": "products_units_per_pack_check",
+          "value": "\"products\".\"units_per_pack\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.stock_batches": {
+      "name": "stock_batches",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "product_id": {
+          "name": "product_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_number": {
+          "name": "batch_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiry_date": {
+          "name": "expiry_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mrp": {
+          "name": "mrp",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "stock_batches_org_product_batch_idx": {
+          "name": "stock_batches_org_product_batch_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "batch_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "stock_batches_org_expiry_idx": {
+          "name": "stock_batches_org_expiry_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "expiry_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "stock_batches_org_id_organization_id_fk": {
+          "name": "stock_batches_org_id_organization_id_fk",
+          "tableFrom": "stock_batches",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "stock_batches_org_id_product_id_products_org_id_id_fk": {
+          "name": "stock_batches_org_id_product_id_products_org_id_id_fk",
+          "tableFrom": "stock_batches",
+          "tableTo": "products",
+          "columnsFrom": [
+            "org_id",
+            "product_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "stock_batches_org_id_id_unique": {
+          "name": "stock_batches_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "stock_batches_mrp_check": {
+          "name": "stock_batches_mrp_check",
+          "value": "\"stock_batches\".\"mrp\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.stock_movements": {
+      "name": "stock_movements",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bucket": {
+          "name": "bucket",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty": {
+          "name": "qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_type": {
+          "name": "source_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "department_id": {
+          "name": "department_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "stock_movements_source_idx": {
+          "name": "stock_movements_source_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "batch_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bucket",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "stock_movements_org_batch_bucket_idx": {
+          "name": "stock_movements_org_batch_bucket_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "batch_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bucket",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "stock_movements_org_id_organization_id_fk": {
+          "name": "stock_movements_org_id_organization_id_fk",
+          "tableFrom": "stock_movements",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "stock_movements_created_by_user_id_fk": {
+          "name": "stock_movements_created_by_user_id_fk",
+          "tableFrom": "stock_movements",
+          "tableTo": "user",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "stock_movements_org_id_batch_id_stock_batches_org_id_id_fk": {
+          "name": "stock_movements_org_id_batch_id_stock_batches_org_id_id_fk",
+          "tableFrom": "stock_movements",
+          "tableTo": "stock_batches",
+          "columnsFrom": [
+            "org_id",
+            "batch_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "stock_movements_org_id_department_id_departments_org_id_id_fk": {
+          "name": "stock_movements_org_id_department_id_departments_org_id_id_fk",
+          "tableFrom": "stock_movements",
+          "tableTo": "departments",
+          "columnsFrom": [
+            "org_id",
+            "department_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "stock_movements_org_id_id_unique": {
+          "name": "stock_movements_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "stock_movements_qty_check": {
+          "name": "stock_movements_qty_check",
+          "value": "\"stock_movements\".\"qty\" <> 0"
+        },
+        "stock_movements_sign_check": {
+          "name": "stock_movements_sign_check",
+          "value": "(\"stock_movements\".\"reason\" in ('sale', 'writeoff', 'breakage', 'internal_issue') and \"stock_movements\".\"qty\" < 0) or (\"stock_movements\".\"reason\" in ('opening', 'receipt', 'return') and \"stock_movements\".\"qty\" > 0) or (\"stock_movements\".\"reason\" in ('release', 'quarantine', 'count_correction'))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.pharmacy_sales": {
+      "name": "pharmacy_sales",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "opd_appointment_id": {
+          "name": "opd_appointment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "buyer_name": {
+          "name": "buyer_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "buyer_phone": {
+          "name": "buyer_phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "for_name": {
+          "name": "for_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prescriber_name": {
+          "name": "prescriber_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prescription_reference": {
+          "name": "prescription_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sold_by": {
+          "name": "sold_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "pharmacy_sales_org_created_idx": {
+          "name": "pharmacy_sales_org_created_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pharmacy_sales_org_id_organization_id_fk": {
+          "name": "pharmacy_sales_org_id_organization_id_fk",
+          "tableFrom": "pharmacy_sales",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "pharmacy_sales_sold_by_user_id_fk": {
+          "name": "pharmacy_sales_sold_by_user_id_fk",
+          "tableFrom": "pharmacy_sales",
+          "tableTo": "user",
+          "columnsFrom": [
+            "sold_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_sales_org_id_patient_id_patients_org_id_id_fk": {
+          "name": "pharmacy_sales_org_id_patient_id_patients_org_id_id_fk",
+          "tableFrom": "pharmacy_sales",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "org_id",
+            "patient_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_sales_org_id_opd_appointment_id_opd_appointments_org_id_id_fk": {
+          "name": "pharmacy_sales_org_id_opd_appointment_id_opd_appointments_org_id_id_fk",
+          "tableFrom": "pharmacy_sales",
+          "tableTo": "opd_appointments",
+          "columnsFrom": [
+            "org_id",
+            "opd_appointment_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "pharmacy_sales_org_id_id_unique": {
+          "name": "pharmacy_sales_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pharmacy_returns": {
+      "name": "pharmacy_returns",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pharmacy_sale_id": {
+          "name": "pharmacy_sale_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "invoice_id": {
+          "name": "invoice_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "credit_note_id": {
+          "name": "credit_note_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason_code": {
+          "name": "reason_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepted_by": {
+          "name": "accepted_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "pharmacy_returns_org_sale_idx": {
+          "name": "pharmacy_returns_org_sale_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "pharmacy_sale_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pharmacy_returns_org_id_organization_id_fk": {
+          "name": "pharmacy_returns_org_id_organization_id_fk",
+          "tableFrom": "pharmacy_returns",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "pharmacy_returns_accepted_by_user_id_fk": {
+          "name": "pharmacy_returns_accepted_by_user_id_fk",
+          "tableFrom": "pharmacy_returns",
+          "tableTo": "user",
+          "columnsFrom": [
+            "accepted_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_returns_org_id_pharmacy_sale_id_pharmacy_sales_org_id_id_fk": {
+          "name": "pharmacy_returns_org_id_pharmacy_sale_id_pharmacy_sales_org_id_id_fk",
+          "tableFrom": "pharmacy_returns",
+          "tableTo": "pharmacy_sales",
+          "columnsFrom": [
+            "org_id",
+            "pharmacy_sale_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_returns_org_id_invoice_id_invoices_org_id_id_fk": {
+          "name": "pharmacy_returns_org_id_invoice_id_invoices_org_id_id_fk",
+          "tableFrom": "pharmacy_returns",
+          "tableTo": "invoices",
+          "columnsFrom": [
+            "org_id",
+            "invoice_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_returns_org_id_credit_note_id_credit_notes_org_id_id_fk": {
+          "name": "pharmacy_returns_org_id_credit_note_id_credit_notes_org_id_id_fk",
+          "tableFrom": "pharmacy_returns",
+          "tableTo": "credit_notes",
+          "columnsFrom": [
+            "org_id",
+            "credit_note_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "pharmacy_returns_org_id_id_unique": {
+          "name": "pharmacy_returns_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pharmacy_return_lines": {
+      "name": "pharmacy_return_lines",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "return_id": {
+          "name": "return_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "invoice_line_id": {
+          "name": "invoice_line_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty": {
+          "name": "qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gross": {
+          "name": "gross",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "pharmacy_return_lines_org_invoice_line_idx": {
+          "name": "pharmacy_return_lines_org_invoice_line_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "invoice_line_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pharmacy_return_lines_org_id_organization_id_fk": {
+          "name": "pharmacy_return_lines_org_id_organization_id_fk",
+          "tableFrom": "pharmacy_return_lines",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "pharmacy_return_lines_org_id_return_id_pharmacy_returns_org_id_id_fk": {
+          "name": "pharmacy_return_lines_org_id_return_id_pharmacy_returns_org_id_id_fk",
+          "tableFrom": "pharmacy_return_lines",
+          "tableTo": "pharmacy_returns",
+          "columnsFrom": [
+            "org_id",
+            "return_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_return_lines_org_id_invoice_line_id_invoice_lines_org_id_id_fk": {
+          "name": "pharmacy_return_lines_org_id_invoice_line_id_invoice_lines_org_id_id_fk",
+          "tableFrom": "pharmacy_return_lines",
+          "tableTo": "invoice_lines",
+          "columnsFrom": [
+            "org_id",
+            "invoice_line_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pharmacy_return_lines_org_id_batch_id_stock_batches_org_id_id_fk": {
+          "name": "pharmacy_return_lines_org_id_batch_id_stock_batches_org_id_id_fk",
+          "tableFrom": "pharmacy_return_lines",
+          "tableTo": "stock_batches",
+          "columnsFrom": [
+            "org_id",
+            "batch_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "pharmacy_return_lines_org_id_id_unique": {
+          "name": "pharmacy_return_lines_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "pharmacy_return_lines_qty_check": {
+          "name": "pharmacy_return_lines_qty_check",
+          "value": "\"pharmacy_return_lines\".\"qty\" >= 0"
+        },
+        "pharmacy_return_lines_gross_check": {
+          "name": "pharmacy_return_lines_gross_check",
+          "value": "\"pharmacy_return_lines\".\"gross\" >= 0"
+        },
+        "pharmacy_return_lines_non_empty_check": {
+          "name": "pharmacy_return_lines_non_empty_check",
+          "value": "\"pharmacy_return_lines\".\"qty\" > 0 or \"pharmacy_return_lines\".\"gross\" > 0"
         }
       },
       "isRLSEnabled": false

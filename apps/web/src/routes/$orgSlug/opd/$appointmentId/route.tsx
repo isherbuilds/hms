@@ -152,7 +152,6 @@ function OpdRecordLayout() {
       <div className={cn("contents", isClinical && "print:hidden")}>
         <PageHeader
           title="Outpatient appointment"
-          description={<OpdRecordDescription orgSlug={orgSlug} record={record} />}
           action={
             <>
               <RecordFreshness orgSlug={orgSlug} appointmentId={appointmentId} />
@@ -173,6 +172,9 @@ function OpdRecordLayout() {
 
       <PageBody className="mx-auto w-full max-w-5xl">
         <div className={cn("contents", isClinical && "print:hidden")}>
+          <p className="truncate text-muted-foreground">
+            <OpdRecordDescription orgSlug={orgSlug} record={record} />
+          </p>
           <OpdRecordSummary
             record={record}
             action={

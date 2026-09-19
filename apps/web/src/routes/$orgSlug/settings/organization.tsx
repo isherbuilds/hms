@@ -56,31 +56,45 @@ function isSupportedTimeZone(value: string): boolean {
   }
 }
 
-const formSchema = z.object({
-  legalName: z.string().trim().max(200, "Keep the legal name under 200 characters"),
-  address: z.string().trim().max(500, "Keep the address under 500 characters"),
-  taxId: z.string().trim().max(50, "Keep the tax id under 50 characters"),
-  currency: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^[A-Z]{3}$/, "Use a three-letter code like INR"),
-  timeZone: z.string().refine(isSupportedTimeZone, {
-    message: "Use a valid IANA time zone like Asia/Kolkata",
-  }),
-  mrnPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
-  invoicePrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
-  receiptPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
-  advanceReceiptPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
-  creditNotePrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
-  fiscalYearStartMonth: numberText(z.number().int().min(1, "Pick a month").max(12, "Pick a month")),
-  followUpValidityDays: numberText(
-    z.number().int().min(1, "Between 1 and 365 days").max(365, "Between 1 and 365 days"),
-  ),
-  unbilledAlertHours: numberText(
-    z.number().int().min(1, "Between 1 and 168 hours").max(168, "Between 1 and 168 hours"),
-  ),
-});
+const formSchema = z
+  .object({
+    legalName: z.string().trim().max(200, "Keep the legal name under 200 characters"),
+    address: z.string().trim().max(500, "Keep the address under 500 characters"),
+    taxId: z.string().trim().max(50, "Keep the tax id under 50 characters"),
+    currency: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/, "Use a three-letter code like INR"),
+    timeZone: z.string().refine(isSupportedTimeZone, {
+      message: "Use a valid IANA time zone like Asia/Kolkata",
+    }),
+    mrnPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
+    invoicePrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
+    receiptPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
+    advanceReceiptPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
+    creditNotePrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
+    pharmacyInvoicePrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
+    fiscalYearStartMonth: numberText(
+      z.number().int().min(1, "Pick a month").max(12, "Pick a month"),
+    ),
+    followUpValidityDays: numberText(
+      z.number().int().min(1, "Between 1 and 365 days").max(365, "Between 1 and 365 days"),
+    ),
+    unbilledAlertHours: numberText(
+      z.number().int().min(1, "Between 1 and 168 hours").max(168, "Between 1 and 168 hours"),
+    ),
+  })
+  // Mirrors the server refusal: both invoice streams share one number namespace.
+  .superRefine((value, context) => {
+    if (value.invoicePrefix === value.pharmacyInvoicePrefix) {
+      context.addIssue({
+        code: "custom",
+        path: ["pharmacyInvoicePrefix"],
+        message: "Use a different prefix from the OPD invoice prefix",
+      });
+    }
+  });
 
 function toFormValues(settings: SettingsFields) {
   return {
@@ -125,10 +139,7 @@ function SettingsRoute() {
 
   return (
     <>
-      <PageHeader
-        title="Organization"
-        description="Legal identity, currency, and document numbering for this organization"
-      />
+      <PageHeader title="Organization" />
       <SettingsTabs orgSlug={orgSlug} />
       <PageBody className="max-w-2xl">
         {settings.isError && <ErrorNote title="Could not load settings" error={settings.error} />}
@@ -233,6 +244,7 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
             <div className="grid gap-3 sm:grid-cols-2">
               <TextField name="mrnPrefix" label="MRN prefix" />
               <TextField name="invoicePrefix" label="Invoice prefix" />
+              <TextField name="pharmacyInvoicePrefix" label="Pharmacy invoice prefix" />
               <TextField name="receiptPrefix" label="Receipt prefix" />
               <TextField name="creditNotePrefix" label="Credit note prefix" />
               <TextField name="advanceReceiptPrefix" label="Advance receipt prefix" />

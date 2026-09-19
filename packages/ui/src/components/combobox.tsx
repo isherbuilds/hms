@@ -30,7 +30,7 @@ type ComboboxProps<T> = {
 };
 
 const ITEM_CLASS =
-  "relative flex cursor-default items-center rounded-md px-2 py-2 text-xs outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:shadow-[inset_2px_0_0_var(--foreground)] data-disabled:pointer-events-none data-disabled:opacity-50";
+  "relative flex cursor-default items-center rounded-md px-2 py-2 text-xs outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:inset-ring data-highlighted:inset-ring-foreground/10 data-highlighted:shadow-xs data-disabled:pointer-events-none data-disabled:opacity-50";
 
 // Consumers own filtering and selection; this supplies the accessible input, popup
 // and keyboard behaviour only. Object values are intentional: both current callers

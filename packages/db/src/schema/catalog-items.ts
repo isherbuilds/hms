@@ -19,6 +19,7 @@ export const CATALOG_CATEGORIES = [
   "procedure",
   "lab",
   "radiology",
+  "pharmacy",
   "other",
 ] as const;
 
@@ -49,10 +50,6 @@ export const catalogItems = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    check(
-      "catalog_items_category_check",
-      sql`${table.category} in ('consultation', 'procedure', 'lab', 'radiology', 'other')`,
-    ),
     check("catalog_items_unit_price_check", sql`${table.unitPrice} >= 0`),
     check(
       "catalog_items_tax_rate_check",

@@ -71,8 +71,9 @@ function NewOpdAppointmentRoute() {
 
   return (
     <>
-      <PageHeader title="Appointment" description={formatBusinessDate(today)} />
+      <PageHeader title="Appointment" />
       <PageBody className="mx-auto w-full max-w-6xl pb-24 lg:pb-4">
+        <p className="text-muted-foreground">{formatBusinessDate(today)}</p>
         <OpdIntakeForm
           // The seed only feeds the form's defaults, so a new `?patientId` remounts it.
           key={`${seedPatient?.id ?? ""}:${seedTreatmentPlanId ?? ""}`}

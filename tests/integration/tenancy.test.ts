@@ -21,6 +21,8 @@ import { resetTestDatabase } from "../support/database";
 import { shiftLocalMinute } from "../support/time";
 import { uniqueSuffix } from "../support/unique";
 
+const RECEIVED_ON = "2026-09-01";
+
 beforeAll(async () => {
   await resetTestDatabase();
 });
@@ -385,6 +387,7 @@ const GUARDED_CALLS = {
       receiptPrefix: "RCT",
       advanceReceiptPrefix: "ADV",
       creditNotePrefix: "CN",
+      pharmacyInvoicePrefix: "PH",
       fiscalYearStartMonth: 4,
       followUpValidityDays: 14,
       unbilledAlertHours: 24,
@@ -496,7 +499,6 @@ const GUARDED_CALLS = {
     }),
   "opd.createWalkIn": (api, claim) =>
     api.opd.createWalkIn({
-      requestKey: crypto.randomUUID(),
       ...claim,
       patientId: Bun.randomUUIDv7(),
       practitionerId: Bun.randomUUIDv7(),
@@ -555,14 +557,12 @@ const GUARDED_CALLS = {
     }),
   "billing.recordPayments": (api, claim) =>
     api.billing.recordPayments({
-      requestKey: crypto.randomUUID(),
       ...claim,
       invoiceId: Bun.randomUUIDv7(),
       payments: [{ method: "cash", amount: 1_00n }],
     }),
   "billing.recordAdvance": (api, claim) =>
     api.billing.recordAdvance({
-      requestKey: crypto.randomUUID(),
       ...claim,
       patientId: Bun.randomUUIDv7(),
       method: "cash",
@@ -570,7 +570,6 @@ const GUARDED_CALLS = {
     }),
   "billing.recordAdvanceRefund": (api, claim) =>
     api.billing.recordAdvanceRefund({
-      requestKey: crypto.randomUUID(),
       ...claim,
       advanceReceiptId: Bun.randomUUIDv7(),
       method: "cash",
@@ -582,7 +581,6 @@ const GUARDED_CALLS = {
     api.billing.getAdvanceReceipt({ ...claim, advanceId: Bun.randomUUIDv7() }),
   "billing.issueCreditNote": (api, claim) =>
     api.billing.issueCreditNote({
-      requestKey: crypto.randomUUID(),
       ...claim,
       invoiceId: Bun.randomUUIDv7(),
       reason: "Intrusion",
@@ -590,7 +588,6 @@ const GUARDED_CALLS = {
     }),
   "billing.recordRefund": (api, claim) =>
     api.billing.recordRefund({
-      requestKey: crypto.randomUUID(),
       ...claim,
       creditNoteId: Bun.randomUUIDv7(),
       method: "cash",
@@ -658,6 +655,70 @@ const GUARDED_CALLS = {
   "member.updateRole": (api, claim) =>
     api.member.updateRole({ ...claim, memberId: "m", role: "admin" }),
   "member.remove": (api, claim) => api.member.remove({ ...claim, memberId: "m" }),
+  "pharmacy.createProduct": (api, claim) =>
+    api.pharmacy.createProduct({
+      ...claim,
+      name: "Intrusion",
+      catalog: { code: `INTR-${uniqueSuffix()}`, taxRatePercent: "12" },
+      stockUnit: "tablet",
+      unitsPerPack: 10,
+    }),
+  "pharmacy.updateProduct": (api, claim) =>
+    api.pharmacy.updateProduct({
+      ...claim,
+      productId: "missing",
+      name: "Intrusion",
+      catalog: { code: `INTR-${uniqueSuffix()}`, taxRatePercent: "12" },
+      stockUnit: "tablet",
+      unitsPerPack: 10,
+    }),
+  "pharmacy.listProducts": (api, claim) => api.pharmacy.listProducts({ ...claim }),
+  "pharmacy.searchStock": (api, claim) =>
+    api.pharmacy.searchStock({ ...claim, query: "intrusion" }),
+  "pharmacy.stockOnHand": (api, claim) => api.pharmacy.stockOnHand({ ...claim }),
+  "pharmacy.listMovements": (api, claim) =>
+    api.pharmacy.listMovements({ ...claim, batchId: "missing" }),
+  "pharmacy.receiveGoods": (api, claim) =>
+    api.pharmacy.receiveGoods({
+      ...claim,
+      supplierName: "Intrusion",
+      receivedOn: RECEIVED_ON,
+      lines: [
+        {
+          productId: "missing",
+          batchNumber: "B1",
+          expiryDate: "2030-01-31",
+          mrp: 100n,
+          qty: 1,
+        },
+      ],
+    }),
+  "pharmacy.adjustStock": (api, claim) =>
+    api.pharmacy.adjustStock({
+      ...claim,
+      batchId: "missing",
+      reason: "writeoff",
+      qty: 1,
+      bucket: "shelf",
+      note: "tenancy",
+    }),
+  "pharmacy.sell": (api, claim) =>
+    api.pharmacy.sell({
+      ...claim,
+      lines: [{ batchId: "missing", qty: 1 }],
+      buyer: { name: "walk in" },
+      payments: [],
+      expectedGrandTotal: 0n,
+    }),
+  "pharmacy.returnSale": (api, claim) =>
+    api.pharmacy.returnSale({
+      ...claim,
+      saleId: "missing",
+      reasonCode: "damaged",
+      lines: [{ invoiceLineId: "missing", qty: 1 }],
+    }),
+  "pharmacy.getSale": (api, claim) => api.pharmacy.getSale({ ...claim, saleId: "missing" }),
+  "pharmacy.listSales": (api, claim) => api.pharmacy.listSales({ ...claim }),
 } satisfies Record<string, (api: AppRouterClient, claim: OrgClaim) => Promise<object | void>>;
 
 // SAFETY: deliberately empty claim, typed only to reach the procedure signatures.
@@ -764,7 +825,6 @@ async function createTreatmentScopeFixture(
   });
 
   const advance = await api.billing.recordAdvance({
-    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     treatmentPlanId: plan.id,
@@ -1013,6 +1073,53 @@ test("catalog rows are invisible from another org and cannot be updated by forei
   );
 });
 
+test("pharmacy stock is invisible from another org", async () => {
+  const alice = await createTestUser("pharmacy-scope-alice");
+  const alpha = await createOrganization(alice, "pharmacy-scope-alpha");
+  const bob = await createTestUser("pharmacy-scope-bob");
+  const beta = await createOrganization(bob, "pharmacy-scope-beta");
+
+  const aliceClient = clientFor(alice);
+
+  const product = await aliceClient.pharmacy.createProduct({
+    orgSlug: alpha.slug,
+    name: "Alpha Tablet",
+    catalog: { code: `ALPHA-${uniqueSuffix()}`, taxRatePercent: "12" },
+    stockUnit: "tablet",
+    unitsPerPack: 10,
+  });
+
+  const receipt = await aliceClient.pharmacy.receiveGoods({
+    orgSlug: alpha.slug,
+    supplierName: "Alpha Supplier",
+    receivedOn: RECEIVED_ON,
+    lines: [
+      {
+        productId: product.productId,
+        batchNumber: "ALPHA-B1",
+        expiryDate: "2030-01-31",
+        mrp: 100n,
+        qty: 5,
+      },
+    ],
+  });
+
+  const [batch] = receipt.batches;
+
+  if (!batch) throw new Error("the receipt returned no batch");
+
+  const bobClient = clientFor(bob);
+
+  expect(
+    (await bobClient.pharmacy.stockOnHand({ orgSlug: beta.slug, productId: product.productId }))
+      .items,
+  ).toEqual([]);
+  await expectORPCCode(
+    bobClient.pharmacy.listMovements({ orgSlug: beta.slug, batchId: batch.batchId }),
+    "NOT_FOUND",
+  );
+});
+
 test("one client concurrently scopes catalog calls to two organizations", async () => {
   const user = await createTestUser("catalog-scope-multi");
   const one = await createOrganization(user, "catalog-scope-one");
@@ -1182,7 +1289,6 @@ test("OPD appointment rows are invisible from another org through queue or get",
   );
 
   const created = await aliceClient.opd.createWalkIn({
-    requestKey: crypto.randomUUID(),
     orgSlug: alpha.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -1206,7 +1312,8 @@ test("OPD appointment rows are invisible from another org through queue or get",
   expect(
     await bobClient.opd.day({
       orgSlug: beta.slug,
-      date: "2026-08-22",
+      from: "2026-08-22",
+      to: "2026-08-22",
       q: patient.name,
       includeClosed: true,
     }),
@@ -1289,7 +1396,6 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
 
   const [inOne, inTwo] = await Promise.all([
     api.opd.createWalkIn({
-      requestKey: crypto.randomUUID(),
       orgSlug: one.slug,
       patientId: patientOne.id,
       practitionerId: practitionerOne.id,
@@ -1299,7 +1405,6 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
       },
     }),
     api.opd.createWalkIn({
-      requestKey: crypto.randomUUID(),
       orgSlug: two.slug,
       patientId: patientTwo.id,
       practitionerId: practitionerTwo.id,
@@ -1348,6 +1453,7 @@ async function createScopedInvoice(
     receiptPrefix: "RCT",
     advanceReceiptPrefix: "ADV",
     creditNotePrefix: "CN",
+    pharmacyInvoicePrefix: "PH",
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
     unbilledAlertHours: 24,
@@ -1385,7 +1491,6 @@ async function createScopedInvoice(
   });
 
   const created = await api.opd.createWalkIn({
-    requestKey: crypto.randomUUID(),
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
@@ -1542,7 +1647,6 @@ test("one client concurrently scopes report calls to two organizations", async (
   ]);
 
   await api.billing.recordPayments({
-    requestKey: crypto.randomUUID(),
     orgSlug: one.slug,
     invoiceId: inOne.invoice.id,
     payments: [{ method: "cash", amount: 40_00n }],

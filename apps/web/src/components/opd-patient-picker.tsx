@@ -12,35 +12,57 @@ import { useQuery } from "@tanstack/react-query";
 import { SearchIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { Monogram } from "@/components/monogram";
 import { ErrorNote } from "@/components/page";
 import { PatientSheet } from "@/components/patient-sheet";
 import { useDebouncedCallback } from "@/hooks/use-debounced-value";
+import { MIN_SEARCH_CHARS, SEARCH_RESULT_LIMIT } from "@/hooks/use-remote-search";
 import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { patientAgeLabel } from "@/lib/patient-age";
 
 export type SelectedPatient = { id: string; name: string; mrn: string };
 
+/** What `OpdPatientSearch` becomes once a patient is chosen. */
+export function SelectedPatientChip({
+  patient,
+  onClear,
+}: {
+  patient: SelectedPatient;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex min-h-10 items-center gap-2 rounded-md bg-muted px-3">
+      <Monogram label={patient.name} />
+      <span className="flex min-w-0 flex-col leading-tight">
+        <span className="truncate font-medium capitalize">{patient.name}</span>
+        <span className="truncate font-mono text-muted-foreground">{patient.mrn}</span>
+      </span>
+      <Button type="button" size="sm" variant="ghost" className="ml-auto" onClick={onClear}>
+        Change
+      </Button>
+    </div>
+  );
+}
+
 const HAS_LETTERS = /\p{L}/u;
 
 function phoneQuery(value: string) {
   const digits = normalizePhone(value);
   const hasLetters = HAS_LETTERS.test(value);
+  const isPhone = !hasLetters && digits.length >= 4;
 
   return {
-    isPhone: !hasLetters && digits.length >= 4,
-    incomplete: !hasLetters && digits.length < 4,
+    isPhone,
+    // A phone needs enough digits to narrow; a name needs enough letters.
+    incomplete: !isPhone && (hasLetters ? value.length < MIN_SEARCH_CHARS : digits.length < 4),
   };
 }
 
 function callerSeed(value: string): { name?: string; phone?: string } {
-  const classification = phoneQuery(value);
+  if (phoneQuery(value).isPhone) return { phone: value };
 
-  if (classification.isPhone) return { phone: value };
-
-  if (classification.incomplete) return {};
-
-  return { name: value };
+  return HAS_LETTERS.test(value) ? { name: value } : {};
 }
 
 // Uncontrolled: the DOM holds what is typed and only the settled term becomes
@@ -67,8 +89,8 @@ function PatientSearchInput({
   const results = useQuery({
     ...orpc.patient.search.queryOptions({
       input: isPhone
-        ? { orgSlug, phone: search, limit: 20 }
-        : { orgSlug, query: search, limit: 20 },
+        ? { orgSlug, phone: search, limit: SEARCH_RESULT_LIMIT }
+        : { orgSlug, query: search, limit: SEARCH_RESULT_LIMIT },
     }),
     enabled: search.length > 0 && !incomplete,
   });
@@ -135,7 +157,7 @@ function PatientSearchInput({
               openRegistration();
             },
           }}
-          itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-none border-b border-border px-3 py-2 last:border-b-0"
+          itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-2 px-3 py-2"
           renderItem={renderMatch}
           emptyContent={
             results.isPending && !incomplete && search.length > 0 ? (

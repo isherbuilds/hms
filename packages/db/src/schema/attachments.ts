@@ -1,16 +1,9 @@
-import { sql } from "drizzle-orm";
-import {
-  check,
-  foreignKey,
-  index,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-} from "drizzle-orm/pg-core";
+import { foreignKey, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
 import { file } from "./file";
+
+export const ATTACHMENT_TARGETS = ["prescription"] as const;
 
 // `targetId` has no foreign key — it points at a different table per `targetType`.
 // Each domain's attach procedure must prove the target is in the caller's org, and
@@ -22,7 +15,7 @@ export const attachments = pgTable(
     orgId: text("org_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    targetType: text("target_type").notNull(),
+    targetType: text("target_type", { enum: ATTACHMENT_TARGETS }).notNull(),
     targetId: text("target_id").notNull(),
     fileId: text("file_id").notNull(),
     createdBy: text("created_by")
@@ -37,7 +30,6 @@ export const attachments = pgTable(
       columns: [table.orgId, table.fileId],
       foreignColumns: [file.orgId, file.id],
     }),
-    check("attachments_target_type_check", sql`${table.targetType} in ('prescription')`),
     uniqueIndex("attachments_org_target_file_uq").on(
       table.orgId,
       table.targetType,
