@@ -14,11 +14,11 @@ export const SEARCH_RESULT_LIMIT = 6;
  * query, because only it knows what it is searching; this owns the bookkeeping every
  * combobox repeats.
  */
-export function useSearchTerm(delay = 250) {
+export function useSearchTerm(delay = 250, minChars = MIN_SEARCH_CHARS) {
   const [term, setTerm] = useState("");
   const [open, setOpen] = useState(false);
   const settle = useDebouncedCallback(setTerm, delay);
-  const searching = term.length >= MIN_SEARCH_CHARS;
+  const searching = term.length >= minChars;
 
   return {
     term,
