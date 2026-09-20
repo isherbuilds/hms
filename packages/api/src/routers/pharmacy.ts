@@ -208,11 +208,16 @@ export const pharmacyRouter = {
           throw new ORPCError("BAD_REQUEST", { message: `${batch.name} is no longer sold` });
         }
 
-        // Scheduled-drug dispensing needs the prescription/register workflow that is
-        // explicitly outside this MVP. Stock may exist, but the counter cannot sell it.
-        if (batch.schedule !== "none") {
+        if (batch.schedule === "x") {
           throw new ORPCError("BAD_REQUEST", {
-            message: `${batch.name} is Schedule ${batch.schedule.toUpperCase()} and cannot be sold at this counter yet`,
+            message: `${batch.name} is a Schedule X medicine and is not sold here`,
+          });
+        }
+
+        // `forName` defaults to the buyer, so the H1 register only lacks the prescriber.
+        if (batch.schedule === "h1" && !input.prescriberName) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: `${batch.name} needs the prescriber's name`,
           });
         }
       }

@@ -238,6 +238,9 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
     grandTotal: computed.grandTotal,
   };
 
+  const scheduleH1 = cart.some((line) => line.schedule === "h1");
+  const prescriptionOpen = showPrescription || scheduleH1;
+
   const blocked =
     cart.length === 0
       ? "Add a batch to the sale."
@@ -245,7 +248,9 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
         ? "Choose the patient."
         : buyerKind === "walk-in" && walkInName.trim() === ""
           ? "Enter the buyer's name."
-          : undefined;
+          : scheduleH1 && prescriberName.trim() === ""
+            ? "A Schedule H1 medicine needs the prescriber."
+            : undefined;
 
   const sell = useMutation(
     orpc.pharmacy.sell.mutationOptions({
@@ -415,19 +420,29 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                 </div>
               </FormSection>
 
-              <FormSection title="Prescription" description="Optional for unscheduled counter sales">
+              <FormSection
+                title="Prescription"
+                description={scheduleH1 ? "Required for Schedule H1" : "Optional"}
+              >
                 <div className="grid gap-3">
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="ghost"
-                    className="justify-self-start"
-                    aria-expanded={showPrescription}
-                    onClick={() => setShowPrescription((open) => !open)}
-                  >
-                    {showPrescription ? "Hide details" : "Add details"}
-                  </Button>
-                  {showPrescription ? (
+                  {scheduleH1 ? null : (
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="ghost"
+                      className="justify-self-start"
+                      aria-expanded={prescriptionOpen}
+                      onClick={() => setShowPrescription((open) => !open)}
+                    >
+                      {prescriptionOpen ? "Hide details" : "Add details"}
+                    </Button>
+                  )}
+                  {scheduleH1 ? (
+                    <p className="text-muted-foreground">
+                      A Schedule H1 medicine is on this sale: the prescriber is required.
+                    </p>
+                  ) : null}
+                  {prescriptionOpen ? (
                     <div className="grid gap-3 sm:grid-cols-3">
                       <label className="flex flex-col gap-2 text-muted-foreground">
                         For whom
@@ -438,9 +453,10 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                         />
                       </label>
                       <label className="flex flex-col gap-2 text-muted-foreground">
-                        Prescriber
+                        Prescriber {scheduleH1 ? <span className="text-destructive">*</span> : null}
                         <Input
                           value={prescriberName}
+                          aria-invalid={scheduleH1 && attempted && prescriberName.trim() === ""}
                           placeholder="Prescribing doctor"
                           onChange={(event) => setPrescriberName(event.target.value)}
                         />
