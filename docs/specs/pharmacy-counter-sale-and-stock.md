@@ -89,8 +89,10 @@ this spec. Nothing in the code depends on an answer beyond what is written.
    off.
 4. **Receiving.** Assumed: the pharmacist receives deliveries with the
    supplier's invoice; HMS records supplier name, reference, and batches.
-5. **Prescriptions.** Assumed: Schedule H1 is stocked and sold with prescriber
-   and patient name recorded; Schedule X is not stocked and is refused.
+5. **Prescriptions.** Assumed: this MVP sells only unscheduled medicines at the
+   counter. Schedule H, H1, and X products may exist in stock, but counter search
+   hides them and `pharmacy.sell` refuses them until the prescription/register
+   workflow is specified and implemented.
 6. **Legal entity and paper.** Assumed: the pharmacy invoices under the
    hospital's GST registration with its own printed series, and hospital
    Advance Receipts may be spent at the counter when the sale names the
@@ -369,10 +371,11 @@ pharmacy_return | adjustment`), `sourceId`, `departmentId` (nullable composite
   (nullable), `forName` (who the medicine is for; the buyer when omitted),
   `prescriberName` (nullable), `prescriptionReference` (nullable), `note`
   (nullable), `soldBy`,
-  `createdAt`. A sale containing a Schedule H1 line requires `forName` and
-  `prescriberName` (`BAD_REQUEST`). **Schedule X lines are refused**
-  (`BAD_REQUEST`). H1 register printing is deferred; the sale captures the
-  facts the paper register needs.
+  `createdAt`. Counter sales currently accept only `schedule = none`;
+  Schedule H, H1, and X lines are refused (`BAD_REQUEST`) until their
+  prescription/register workflow is implemented. The optional `forName`,
+  `prescriberName`, and `prescriptionReference` fields remain available for
+  unscheduled sales when staff want to retain those details.
 - **`pharmacy_returns`** header: `id`, `orgId`, `pharmacySaleId`, `invoiceId`,
   `creditNoteId`, `reasonCode` (`damaged | wrong_item | unwanted |
 expired_on_shelf | correction`), `note` (nullable), `acceptedBy`, `createdAt`.
@@ -400,8 +403,8 @@ and `packages/api/src/routers/pharmacy-stock.ts` (stock half), merged into one
 2. Read the batches with their product and catalog rows; a product with no
    catalog row is not sellable, so the join refuses it. Refuse
    (`BAD_REQUEST`, naming the medicine): expired batch (`expiryDate < today`
-   in the org time zone), inactive catalog item, Schedule X, Schedule H1
-   without `forName` and `prescriberName`. Insert one Charge per line.
+   in the org time zone), inactive catalog item, or any scheduled medicine
+   (`h | h1 | x`). Insert one Charge per line.
 3. Lock batches in order, read shelf sums, refuse (`CONFLICT`) an aggregated
    qty above shelf stock, naming the medicine.
 4. `issueInvoiceTx` (stream `pharmacy`), compare `expectedGrandTotal`
@@ -524,9 +527,9 @@ the console keeps one filter idiom.
   OPD intake — a sectioned card beside a sticky payment aside, no tab strip, a
   blocker on an abandoned cart. Sections are buyer (Patient search or free name
   and phone), items (a batch type-ahead over the shelf plus a line table of
-  medicine, batch, expiry, qty, MRP and amount), and a prescription disclosure
-  for for-whom, prescriber and reference that opens itself when an H1 line is
-  present. **Collect** opens the shared `SettlementOverlay` on an inclusive-tax
+  medicine, batch, expiry, qty, MRP and amount), and an optional prescription
+  disclosure for for-whom, prescriber and reference. Scheduled medicines do not
+  appear in the counter search. **Collect** opens the shared `SettlementOverlay` on an inclusive-tax
   basis, which owns discount, credit, payment lines and note. On success it
   returns to the sales list with the new sale open, where **Print** lives.
 - `/$orgSlug/pharmacy/stock`: batches with shelf and quarantine, filters
@@ -559,8 +562,8 @@ the console keeps one filter idiom.
   shelf per batch, numbers in the pharmacy series with the pharmacy prefix,
   extracts tax from the discounted gross, records the receipt and a balanced
   journal on `revenue_pharmacy`; expired, inactive, over-stock (two lines on
-  one batch), Schedule X, and H1 without prescriber are each refused with no
-  rows written; two concurrent sales of the last unit have one winner; repeated
+  one batch), and Schedule H/H1/X sales are each refused with no rows written;
+  two concurrent sales of the last unit have one winner; repeated
   partial returns end in exact reversal of taxable, tax, and gross; a return
   above remaining qty is refused; a returned unit sits in quarantine and cannot
   be sold; an immediate refund on return is capped and clears refund due;
@@ -620,14 +623,15 @@ the console keeps one filter idiom.
   `internal_issue`).
 - Multiple stores or locations per organization.
 - Reorder levels, supplier returns, drug interaction and allergy checks.
-- Schedule X sales, refused outright.
+- Scheduled-drug dispensing (Schedule H, H1, and X); all three are refused at
+  the counter until the prescription/register workflow is specified.
 - Bulk opening-stock import from a file (a script may call `receiveGoods` with
   `opening` set).
 
 ## Explicitly Deferred
 
-- Schedule H1 register printing. The sale captures for-name, prescriber, and
-  prescription reference; the paper register continues until the print ships.
+- Schedule H/H1 dispensing and the H1 register workflow. The MVP fails closed
+  instead of recording a partial legal workflow.
 - Near-expiry colour at the sale line; the batch list shows expiry.
 - Partial payment for a walk-in without a Patient: refused.
 - Stock valuation and opening valuation. The count document retains the sheet
