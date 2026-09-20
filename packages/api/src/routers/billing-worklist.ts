@@ -75,26 +75,56 @@ export const billingWorklistRouter = {
     const search = input.query ? likePattern(input.query) : undefined;
     const threshold = new Date(Date.now() - settings.unbilledAlertHours * 3_600_000);
 
+    // One grouped read of the visits waiting to be billed. The row list narrows it by
+    // search; the card is a desk total, so it never does.
+    const waiting = db
+      .select({
+        appointmentId: opdAppointments.id,
+        chargeCount: sql<number>`count(*)::integer`.as("charge_count"),
+        pendingValue: sql`sum(${charges.unitPrice} * ${charges.qty})::bigint`
+          .mapWith(BigInt)
+          .as("pending_value"),
+        oldestChargeAt: sql<Date>`min(${charges.createdAt})`.as("oldest_charge_at"),
+      })
+      .from(charges)
+      .innerJoin(
+        opdAppointments,
+        and(
+          eq(opdAppointments.orgId, scope.orgId),
+          eq(opdAppointments.id, charges.opdAppointmentId),
+        ),
+      )
+      .where(
+        and(
+          eq(charges.orgId, scope.orgId),
+          eq(charges.status, "pending"),
+          eq(opdAppointments.status, "checked_in"),
+        ),
+      )
+      .groupBy(opdAppointments.id)
+      .having(sql`min(${charges.createdAt}) < ${threshold}`)
+      .as("waiting");
+
     const [unbilledMatches, [toBill], [openMoney], [collected]] = await Promise.all([
       db
         .select({
-          appointmentId: opdAppointments.id,
+          appointmentId: waiting.appointmentId,
           patientId: patients.id,
           tokenNumber: opdAppointments.tokenNumber,
           patientName: patients.name,
           patientMrn: patients.mrn,
           patientPhone: patients.phone,
           practitionerName: practitioners.name,
-          chargeCount: sql<number>`count(*)::integer`,
-          pendingValue: sql`sum(${charges.unitPrice} * ${charges.qty})::bigint`.mapWith(BigInt),
-          oldestChargeAt: sql<Date>`min(${charges.createdAt})`,
+          chargeCount: waiting.chargeCount,
+          pendingValue: waiting.pendingValue,
+          oldestChargeAt: waiting.oldestChargeAt,
         })
-        .from(charges)
+        .from(waiting)
         .innerJoin(
           opdAppointments,
           and(
             eq(opdAppointments.orgId, scope.orgId),
-            eq(opdAppointments.id, charges.opdAppointmentId),
+            eq(opdAppointments.id, waiting.appointmentId),
           ),
         )
         .innerJoin(
@@ -108,46 +138,16 @@ export const billingWorklistRouter = {
             eq(practitioners.id, opdAppointments.practitionerId),
           ),
         )
-        .where(
-          and(
-            eq(charges.orgId, scope.orgId),
-            eq(charges.status, "pending"),
-            eq(opdAppointments.status, "checked_in"),
-            search ? or(ilike(patients.name, search), ilike(patients.mrn, search)) : undefined,
-          ),
-        )
-        .groupBy(
-          opdAppointments.id,
-          opdAppointments.tokenNumber,
-          patients.id,
-          patients.name,
-          patients.mrn,
-          patients.phone,
-          practitioners.name,
-        )
-        .having(sql`min(${charges.createdAt}) < ${threshold}`)
+        .where(search ? or(ilike(patients.name, search), ilike(patients.mrn, search)) : undefined)
         // Oldest first: the longest wait is the most likely to walk out unbilled.
-        .orderBy(sql`min(${charges.createdAt}) asc`, asc(opdAppointments.id))
+        .orderBy(asc(waiting.oldestChargeAt), asc(waiting.appointmentId))
         .limit(input.limit + 1),
-      // The card is a desk total, not a search result. Keep it stable while the row list narrows.
       db
-        .execute<{ count: number; total: string }>(sql`
-          select count(*)::int as "count",
-                 coalesce(sum(waiting.pending_value), 0)::bigint as "total"
-          from (
-            select sum(${charges.unitPrice} * ${charges.qty})::bigint as pending_value
-            from ${charges}
-            inner join ${opdAppointments}
-              on ${opdAppointments.orgId} = ${charges.orgId}
-             and ${opdAppointments.id} = ${charges.opdAppointmentId}
-            where ${charges.orgId} = ${scope.orgId}
-              and ${charges.status} = 'pending'
-              and ${opdAppointments.status} = 'checked_in'
-            group by ${opdAppointments.id}
-            having min(${charges.createdAt}) < ${threshold}
-          ) waiting
-        `)
-        .then((result) => result.rows),
+        .select({
+          count: sql<number>`count(*)::integer`,
+          total: sql`coalesce(sum(${waiting.pendingValue}), 0)::bigint`.mapWith(BigInt),
+        })
+        .from(waiting),
       // One scan answers all four figures; four procedures would be four scans per poll.
       db
         .select({
@@ -192,7 +192,7 @@ export const billingWorklistRouter = {
       unbilled,
       hasMore,
       summary: {
-        toBillTotal: BigInt(toBill?.total ?? "0"),
+        toBillTotal: toBill?.total ?? 0n,
         toBillCount: toBill?.count ?? 0,
         collectedToday: BigInt(collected?.total ?? "0"),
         receiptCount: collected?.receiptCount ?? 0,

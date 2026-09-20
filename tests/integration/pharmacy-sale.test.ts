@@ -356,27 +356,49 @@ test("two lines on one batch above shelf stock are refused together", async () =
   expect(chargeRows).toHaveLength(0);
 });
 
-test("scheduled medicines are refused at the counter", async () => {
+test("a Schedule X medicine is refused and Schedule H1 needs a prescriber", async () => {
   const fixture = await createPharmacyFixture("pharmacy-sale-schedule");
+  const scheduleX = await fixture.createMedicine({ schedule: "x" });
+  const scheduleH1 = await fixture.createMedicine({ schedule: "h1" });
+  const xBatch = await fixture.receive(scheduleX.productId, { qty: 2 });
+  const h1Batch = await fixture.receive(scheduleH1.productId, { qty: 2 });
+
   const totals = expectedTotals(1, 0n);
 
-  for (const schedule of ["h", "h1", "x"] as const) {
-    const medicine = await fixture.createMedicine({ schedule });
-    const batchId = await fixture.receive(medicine.productId, { qty: 2 });
+  await expectORPCCode(
+    fixture.api.pharmacy.sell({
+      orgSlug: fixture.organization.slug,
+      lines: [{ batchId: xBatch, qty: 1 }],
+      buyer: { name: "walk in buyer" },
+      payments: [{ method: "cash", amount: totals.grandTotal }],
+      expectedGrandTotal: totals.grandTotal,
+    }),
+    "BAD_REQUEST",
+  );
 
-    await expectORPCCode(
-      fixture.api.pharmacy.sell({
-        orgSlug: fixture.organization.slug,
-        lines: [{ batchId, qty: 1 }],
-        buyer: { name: "walk in buyer" },
-        payments: [{ method: "cash", amount: totals.grandTotal }],
-        expectedGrandTotal: totals.grandTotal,
-      }),
-      "BAD_REQUEST",
-    );
+  await expectORPCCode(
+    fixture.api.pharmacy.sell({
+      orgSlug: fixture.organization.slug,
+      lines: [{ batchId: h1Batch, qty: 1 }],
+      buyer: { name: "walk in buyer" },
+      payments: [{ method: "cash", amount: totals.grandTotal }],
+      expectedGrandTotal: totals.grandTotal,
+    }),
+    "BAD_REQUEST",
+  );
 
-    expect((await fixture.stockFor(batchId)).shelfQty).toBe(2);
-  }
+  await fixture.api.pharmacy.sell({
+    orgSlug: fixture.organization.slug,
+    lines: [{ batchId: h1Batch, qty: 1 }],
+    buyer: { name: "walk in buyer" },
+    prescriberName: "dr mehta",
+    prescriptionReference: "RX-19",
+    payments: [{ method: "cash", amount: totals.grandTotal }],
+    expectedGrandTotal: totals.grandTotal,
+  });
+
+  expect((await fixture.stockFor(h1Batch)).shelfQty).toBe(1);
+  expect((await fixture.stockFor(xBatch)).shelfQty).toBe(2);
 });
 
 test("two concurrent sales of the last unit leave exactly one winner", async () => {

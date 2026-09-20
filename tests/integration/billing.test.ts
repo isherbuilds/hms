@@ -1529,6 +1529,14 @@ test("the unbilled threshold hides fresh charges until they age into the worklis
   expect(aged.unbilled.map((row) => row.appointmentId)).toEqual([appointment.id]);
   expect(aged.hasMore).toBe(false);
   expect(aged.summary.toBillCount).toBe(1);
+
+  const narrowed = await fixture.api.billing.worklist({
+    orgSlug: fixture.organization.slug,
+    query: "no such patient",
+  });
+
+  expect(narrowed.unbilled).toEqual([]);
+  expect(narrowed.summary).toMatchObject({ toBillCount: 1, toBillTotal: 75_00n });
 });
 
 test("open invoices page on a cursor and can be narrowed to the overdue ones", async () => {

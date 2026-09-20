@@ -9,7 +9,7 @@ import { PRODUCT_SCHEDULES, STOCK_UNITS, products } from "@hms/db/schema/product
 import { stockBatches } from "@hms/db/schema/stock-batches";
 import { STOCK_BUCKETS, type StockBucket, stockMovements } from "@hms/db/schema/stock-movements";
 import { ORPCError } from "@orpc/server";
-import { and, asc, desc, eq, exists, ilike, inArray, like, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, ilike, inArray, like, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
@@ -453,7 +453,7 @@ export const pharmacyStockRouter = {
     const pattern = likePattern(input.query);
     const shelf = bucketSum(scope.orgId, "shelf");
 
-    // Scheduled-drug dispensing is outside this MVP. Only an unscheduled product
+    // The inner join and existence check are the sale rule: only a non-Schedule-X product
     // with an active catalog row and sellable shelf stock can consume the result limit.
     const found = await db
       .select({
@@ -476,7 +476,7 @@ export const pharmacyStockRouter = {
         and(
           eq(products.orgId, scope.orgId),
           eq(catalogItems.active, true),
-          eq(products.schedule, "none"),
+          ne(products.schedule, "x"),
           exists(
             db
               .select({ id: stockBatches.id })
