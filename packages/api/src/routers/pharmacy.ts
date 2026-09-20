@@ -208,16 +208,11 @@ export const pharmacyRouter = {
           throw new ORPCError("BAD_REQUEST", { message: `${batch.name} is no longer sold` });
         }
 
-        if (batch.schedule === "x") {
+        // Scheduled-drug dispensing needs the prescription/register workflow that is
+        // explicitly outside this MVP. Stock may exist, but the counter cannot sell it.
+        if (batch.schedule !== "none") {
           throw new ORPCError("BAD_REQUEST", {
-            message: `${batch.name} is a Schedule X medicine and is not sold here`,
-          });
-        }
-
-        // `forName` defaults to the buyer, so the H1 register only lacks the prescriber.
-        if (batch.schedule === "h1" && !input.prescriberName) {
-          throw new ORPCError("BAD_REQUEST", {
-            message: `${batch.name} needs the prescriber's name`,
+            message: `${batch.name} is Schedule ${batch.schedule.toUpperCase()} and cannot be sold at this counter yet`,
           });
         }
       }
@@ -662,6 +657,32 @@ export const pharmacyRouter = {
       },
     });
 
+    if (result.creditNote) {
+      audit({
+        action: "creditNote.issue",
+        actorId: scope.userId,
+        orgId: scope.orgId,
+        target: `creditNote:${creditNoteId}`,
+        meta: {
+          creditNoteNumber: result.creditNote.creditNote.creditNoteNumber,
+          total: formatDecimal(result.creditNote.creditNote.total),
+        },
+      });
+    }
+
+    if (result.refund) {
+      audit({
+        action: "refund.record",
+        actorId: scope.userId,
+        orgId: scope.orgId,
+        target: `refund:${result.refund.id}`,
+        meta: {
+          refundNumber: result.refund.refundNumber,
+          amount: formatDecimal(result.refund.amount),
+        },
+      });
+    }
+
     return {
       returnId,
       creditNoteId: result.creditNote ? creditNoteId : null,
@@ -800,7 +821,7 @@ export const pharmacyRouter = {
     { pharmacy: ["read"] },
     orgInput.extend({
       ...dayRange,
-      cursor: z.object({ createdAt: z.string(), id: z.string() }).optional(),
+      cursor: z.object({ createdAt: z.iso.datetime(), id: z.string() }).optional(),
       limit: pageLimit,
     }),
   ).handler(async ({ context, input }) => {
