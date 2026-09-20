@@ -453,7 +453,7 @@ export const pharmacyStockRouter = {
     const pattern = likePattern(input.query);
     const shelf = bucketSum(scope.orgId, "shelf");
 
-    // The inner join and existence check are the sale rule: only a non-Schedule-X product
+    // Scheduled-drug dispensing is outside this MVP. Only an unscheduled product
     // with an active catalog row and sellable shelf stock can consume the result limit.
     const found = await db
       .select({
@@ -476,7 +476,7 @@ export const pharmacyStockRouter = {
         and(
           eq(products.orgId, scope.orgId),
           eq(catalogItems.active, true),
-          sql`${products.schedule} <> 'x'`,
+          eq(products.schedule, "none"),
           exists(
             db
               .select({ id: stockBatches.id })
@@ -541,7 +541,7 @@ export const pharmacyStockRouter = {
       expiringWithinDays: z.number().int().min(0).max(3650).optional(),
       quarantineOnly: z.boolean().default(false),
       includeZero: z.boolean().default(false),
-      cursor: z.object({ expiryDate: z.string(), batchId: z.string() }).optional(),
+      cursor: z.object({ expiryDate: z.iso.date(), batchId: z.string() }).optional(),
       limit: pageLimit,
     }),
   ).handler(async ({ context, input }) => {
