@@ -64,6 +64,9 @@ function PharmacySalesRoute() {
   const patchSearch = (patch: { from?: string; to?: string; sale?: string }) =>
     navigate({ replace: true, search: (previous) => ({ ...previous, ...patch }) });
 
+  const openSale = (saleId: string) =>
+    navigate({ search: (previous) => ({ ...previous, sale: saleId }) });
+
   // Today is the server's own default, so it leaves the URL rather than pinning it.
   const setRange = (range: { from?: string; to?: string }) =>
     patchSearch(
@@ -128,7 +131,7 @@ function PharmacySalesRoute() {
                           type="button"
                           aria-haspopup="dialog"
                           className="font-mono underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-                          onClick={() => void patchSearch({ sale: item.saleId })}
+                          onClick={() => void openSale(item.saleId)}
                         >
                           {item.invoiceNumber}
                         </button>
@@ -164,7 +167,7 @@ function PharmacySalesRoute() {
                     type="button"
                     aria-haspopup="dialog"
                     className="flex min-h-10 w-full items-start gap-2 px-3 py-2 text-left"
-                    onClick={() => void patchSearch({ sale: item.saleId })}
+                    onClick={() => void openSale(item.saleId)}
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-mono">{item.invoiceNumber}</span>
