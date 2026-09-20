@@ -75,7 +75,7 @@ export const billingWorklistRouter = {
     const search = input.query ? likePattern(input.query) : undefined;
     const threshold = new Date(Date.now() - settings.unbilledAlertHours * 3_600_000);
 
-    const [unbilledMatches, [openMoney], [collected]] = await Promise.all([
+    const [unbilledMatches, [toBill], [openMoney], [collected]] = await Promise.all([
       db
         .select({
           appointmentId: opdAppointments.id,
@@ -88,10 +88,6 @@ export const billingWorklistRouter = {
           chargeCount: sql<number>`count(*)::integer`,
           pendingValue: sql`sum(${charges.unitPrice} * ${charges.qty})::bigint`.mapWith(BigInt),
           oldestChargeAt: sql<Date>`min(${charges.createdAt})`,
-          matchCount: sql<number>`count(*) over()::integer`,
-          matchValue: sql`sum(sum(${charges.unitPrice} * ${charges.qty})) over()::bigint`.mapWith(
-            BigInt,
-          ),
         })
         .from(charges)
         .innerJoin(
@@ -133,6 +129,25 @@ export const billingWorklistRouter = {
         // Oldest first: the longest wait is the most likely to walk out unbilled.
         .orderBy(sql`min(${charges.createdAt}) asc`, asc(opdAppointments.id))
         .limit(input.limit + 1),
+      // The card is a desk total, not a search result. Keep it stable while the row list narrows.
+      db
+        .execute<{ count: number; total: string }>(sql`
+          select count(*)::int as "count",
+                 coalesce(sum(waiting.pending_value), 0)::bigint as "total"
+          from (
+            select sum(${charges.unitPrice} * ${charges.qty})::bigint as pending_value
+            from ${charges}
+            inner join ${opdAppointments}
+              on ${opdAppointments.orgId} = ${charges.orgId}
+             and ${opdAppointments.id} = ${charges.opdAppointmentId}
+            where ${charges.orgId} = ${scope.orgId}
+              and ${charges.status} = 'pending'
+              and ${opdAppointments.status} = 'checked_in'
+            group by ${opdAppointments.id}
+            having min(${charges.createdAt}) < ${threshold}
+          ) waiting
+        `)
+        .then((result) => result.rows),
       // One scan answers all four figures; four procedures would be four scans per poll.
       db
         .select({
@@ -170,19 +185,15 @@ export const billingWorklistRouter = {
         .then((result) => result.rows),
     ]);
 
-    const match = unbilledMatches[0];
     const hasMore = unbilledMatches.length > input.limit;
-
-    const unbilled = unbilledMatches
-      .slice(0, input.limit)
-      .map(({ matchCount: _count, matchValue: _value, ...row }) => row);
+    const unbilled = unbilledMatches.slice(0, input.limit);
 
     return {
       unbilled,
       hasMore,
       summary: {
-        toBillTotal: match?.matchValue ?? 0n,
-        toBillCount: match?.matchCount ?? 0,
+        toBillTotal: BigInt(toBill?.total ?? "0"),
+        toBillCount: toBill?.count ?? 0,
         collectedToday: BigInt(collected?.total ?? "0"),
         receiptCount: collected?.receiptCount ?? 0,
         outstanding: openMoney?.outstanding ?? 0n,
