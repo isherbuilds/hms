@@ -495,10 +495,17 @@ measured on realistic movement history before any projection is added.
 ### D042 — One migration baseline, and rules live in zod
 
 **Accepted 2026-09-18; evidence:
-[Hospital inventory models](./research/hospital-inventory-models.md).** No
-database retains this schema yet, so the applied history is squashed to one
-baseline migration under D022's exception, and the entry below records it. Four
-schema choices land with that baseline.
+[Hospital inventory models](./research/hospital-inventory-models.md).** Four
+schema choices land with this decision.
+
+**Amended 2026-09-21.** The squash to one baseline that this entry originally
+recorded rested on a false premise: production had already applied
+`0000_production_baseline` through `0003_windy_omega_red`, so D022 forbade it.
+Those four files and their snapshots are reinstated verbatim, and the schema
+below lands as `0004_pharmacy_stock`, generated against the `0003` snapshot and
+rehearsed on the production dump: the migrator applied only `0004`, the result
+matched the squashed baseline column for column, and a second run was a no-op.
+A future squash needs a new entry and an empty production, per D022.
 
 **Enum lists leave the database.** Every check of the form `column in ('a',
 'b', …)` is removed. Validity of a vocabulary is stated once, by the

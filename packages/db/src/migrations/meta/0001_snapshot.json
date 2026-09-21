@@ -1,6 +1,6 @@
 {
-  "id": "05d6cf2a-0adf-4b51-a6e7-05060c3ff7f9",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "a8578d9d-4f82-49a2-a0b0-164cccc4ec01",
+  "prevId": "05d6cf2a-0adf-4b51-a6e7-05060c3ff7f9",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1155,6 +1155,13 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
+        },
+        "custom_rate": {
+          "name": "custom_rate",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "tax_rate_percent": {
           "name": "tax_rate_percent",
