@@ -40,6 +40,7 @@ import { Route as OrgSlugPatientsPatientIdRouteImport } from './routes/$orgSlug/
 import { Route as OrgSlugPharmacyIndexRouteImport } from './routes/$orgSlug/pharmacy/index'
 import { Route as OrgSlugPharmacyItemsRouteImport } from './routes/$orgSlug/pharmacy/items'
 import { Route as OrgSlugPharmacyNewRouteImport } from './routes/$orgSlug/pharmacy/new'
+import { Route as OrgSlugPharmacyReceiveRouteImport } from './routes/$orgSlug/pharmacy/receive'
 import { Route as OrgSlugPharmacyStockRouteImport } from './routes/$orgSlug/pharmacy/stock'
 import { Route as OrgSlugReportsIndexRouteImport } from './routes/$orgSlug/reports/index'
 import { Route as OrgSlugReportsBalanceSheetRouteImport } from './routes/$orgSlug/reports/balance-sheet'
@@ -220,6 +221,11 @@ const OrgSlugPharmacyNewRoute = OrgSlugPharmacyNewRouteImport.update({
   path: '/new',
   getParentRoute: () => OrgSlugPharmacyRouteRoute,
 } as any)
+const OrgSlugPharmacyReceiveRoute = OrgSlugPharmacyReceiveRouteImport.update({
+  id: '/receive',
+  path: '/receive',
+  getParentRoute: () => OrgSlugPharmacyRouteRoute,
+} as any)
 const OrgSlugPharmacyStockRoute = OrgSlugPharmacyStockRouteImport.update({
   id: '/stock',
   path: '/stock',
@@ -372,6 +378,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/patients/$patientId': typeof OrgSlugPatientsPatientIdRoute
   '/$orgSlug/pharmacy/items': typeof OrgSlugPharmacyItemsRoute
   '/$orgSlug/pharmacy/new': typeof OrgSlugPharmacyNewRoute
+  '/$orgSlug/pharmacy/receive': typeof OrgSlugPharmacyReceiveRoute
   '/$orgSlug/pharmacy/stock': typeof OrgSlugPharmacyStockRoute
   '/$orgSlug/reports/balance-sheet': typeof OrgSlugReportsBalanceSheetRoute
   '/$orgSlug/reports/daily-collections': typeof OrgSlugReportsDailyCollectionsRoute
@@ -423,6 +430,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/patients/$patientId': typeof OrgSlugPatientsPatientIdRoute
   '/$orgSlug/pharmacy/items': typeof OrgSlugPharmacyItemsRoute
   '/$orgSlug/pharmacy/new': typeof OrgSlugPharmacyNewRoute
+  '/$orgSlug/pharmacy/receive': typeof OrgSlugPharmacyReceiveRoute
   '/$orgSlug/pharmacy/stock': typeof OrgSlugPharmacyStockRoute
   '/$orgSlug/reports/balance-sheet': typeof OrgSlugReportsBalanceSheetRoute
   '/$orgSlug/reports/daily-collections': typeof OrgSlugReportsDailyCollectionsRoute
@@ -479,6 +487,7 @@ export interface FileRoutesById {
   '/$orgSlug/patients/$patientId': typeof OrgSlugPatientsPatientIdRoute
   '/$orgSlug/pharmacy/items': typeof OrgSlugPharmacyItemsRoute
   '/$orgSlug/pharmacy/new': typeof OrgSlugPharmacyNewRoute
+  '/$orgSlug/pharmacy/receive': typeof OrgSlugPharmacyReceiveRoute
   '/$orgSlug/pharmacy/stock': typeof OrgSlugPharmacyStockRoute
   '/$orgSlug/reports/balance-sheet': typeof OrgSlugReportsBalanceSheetRoute
   '/$orgSlug/reports/daily-collections': typeof OrgSlugReportsDailyCollectionsRoute
@@ -536,6 +545,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/patients/$patientId'
     | '/$orgSlug/pharmacy/items'
     | '/$orgSlug/pharmacy/new'
+    | '/$orgSlug/pharmacy/receive'
     | '/$orgSlug/pharmacy/stock'
     | '/$orgSlug/reports/balance-sheet'
     | '/$orgSlug/reports/daily-collections'
@@ -587,6 +597,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/patients/$patientId'
     | '/$orgSlug/pharmacy/items'
     | '/$orgSlug/pharmacy/new'
+    | '/$orgSlug/pharmacy/receive'
     | '/$orgSlug/pharmacy/stock'
     | '/$orgSlug/reports/balance-sheet'
     | '/$orgSlug/reports/daily-collections'
@@ -642,6 +653,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/patients/$patientId'
     | '/$orgSlug/pharmacy/items'
     | '/$orgSlug/pharmacy/new'
+    | '/$orgSlug/pharmacy/receive'
     | '/$orgSlug/pharmacy/stock'
     | '/$orgSlug/reports/balance-sheet'
     | '/$orgSlug/reports/daily-collections'
@@ -909,6 +921,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugPharmacyNewRouteImport
       parentRoute: typeof OrgSlugPharmacyRouteRoute
     }
+    '/$orgSlug/pharmacy/receive': {
+      id: '/$orgSlug/pharmacy/receive'
+      path: '/receive'
+      fullPath: '/$orgSlug/pharmacy/receive'
+      preLoaderRoute: typeof OrgSlugPharmacyReceiveRouteImport
+      parentRoute: typeof OrgSlugPharmacyRouteRoute
+    }
     '/$orgSlug/pharmacy/stock': {
       id: '/$orgSlug/pharmacy/stock'
       path: '/stock'
@@ -1069,6 +1088,7 @@ declare module '@tanstack/react-router' {
 interface OrgSlugPharmacyRouteRouteChildren {
   OrgSlugPharmacyItemsRoute: typeof OrgSlugPharmacyItemsRoute
   OrgSlugPharmacyNewRoute: typeof OrgSlugPharmacyNewRoute
+  OrgSlugPharmacyReceiveRoute: typeof OrgSlugPharmacyReceiveRoute
   OrgSlugPharmacyStockRoute: typeof OrgSlugPharmacyStockRoute
   OrgSlugPharmacyIndexRoute: typeof OrgSlugPharmacyIndexRoute
 }
@@ -1076,6 +1096,7 @@ interface OrgSlugPharmacyRouteRouteChildren {
 const OrgSlugPharmacyRouteRouteChildren: OrgSlugPharmacyRouteRouteChildren = {
   OrgSlugPharmacyItemsRoute: OrgSlugPharmacyItemsRoute,
   OrgSlugPharmacyNewRoute: OrgSlugPharmacyNewRoute,
+  OrgSlugPharmacyReceiveRoute: OrgSlugPharmacyReceiveRoute,
   OrgSlugPharmacyStockRoute: OrgSlugPharmacyStockRoute,
   OrgSlugPharmacyIndexRoute: OrgSlugPharmacyIndexRoute,
 }

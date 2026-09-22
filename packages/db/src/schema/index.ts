@@ -60,6 +60,8 @@ export * from "./stock-movements";
 
 export * from "./goods-receipts";
 
+export * from "./goods-receipt-lines";
+
 export * from "./pharmacy-sales";
 
 export * from "./pharmacy-returns";

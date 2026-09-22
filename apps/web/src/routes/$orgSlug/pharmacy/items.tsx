@@ -17,7 +17,7 @@ import { useState } from "react";
 import { Watch, useFormContext } from "react-hook-form";
 import { z } from "zod";
 
-import { FormDialog } from "@/components/form-dialog";
+import { FormSheet } from "@/components/form-sheet";
 import { ControlledField, TextField } from "@/components/form-fields";
 import {
   ListState,
@@ -258,10 +258,10 @@ function PharmacyItemsRoute() {
       </PageBody>
 
       {creating ? (
-        <ProductDialog orgSlug={orgSlug} product={null} onClose={() => setCreating(false)} />
+        <ProductSheet orgSlug={orgSlug} product={null} onClose={() => setCreating(false)} />
       ) : null}
       {editing ? (
-        <ProductDialog
+        <ProductSheet
           key={editing.productId}
           orgSlug={orgSlug}
           product={editing}
@@ -272,7 +272,7 @@ function PharmacyItemsRoute() {
   );
 }
 
-function ProductDialog({
+function ProductSheet({
   orgSlug,
   product,
   onClose,
@@ -285,12 +285,11 @@ function ProductDialog({
   const lockedSold = product?.catalogItemId != null;
 
   return (
-    <FormDialog
+    <FormSheet
       title={product ? "Edit product" : "Add product"}
       description="Name, pack and tax details carry onto every sale of this product."
       submitLabel={product ? "Save changes" : "Add product"}
       schema={productSchema}
-      contentClassName="max-w-xl"
       defaultValues={
         product
           ? {
@@ -394,7 +393,7 @@ function ProductDialog({
       />
 
       <CatalogFields />
-    </FormDialog>
+    </FormSheet>
   );
 }
 

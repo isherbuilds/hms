@@ -4,6 +4,7 @@ import { user } from "@hms/db/schema/auth";
 import { catalogItems } from "@hms/db/schema/catalog-items";
 import { departments } from "@hms/db/schema/departments";
 import { file } from "@hms/db/schema/file";
+import { goodsReceiptLines } from "@hms/db/schema/goods-receipt-lines";
 import { goodsReceipts } from "@hms/db/schema/goods-receipts";
 import { PRODUCT_SCHEDULES, STOCK_UNITS, products } from "@hms/db/schema/products";
 import { stockBatches } from "@hms/db/schema/stock-batches";
@@ -13,6 +14,8 @@ import { and, asc, desc, eq, exists, ilike, inArray, like, ne, or, sql } from "d
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { formatDecimal } from "../core/money";
+import { BILL_ROUND_OFF_LIMIT, PERCENT_PATTERN, receiptLineCost } from "../core/receipt-math";
 import { businessDate } from "../lib/business-date";
 import { conflict, impossible } from "../lib/conflict";
 import { uniqueViolationConstraint } from "../lib/db-errors";
@@ -63,6 +66,17 @@ const batchLine = z.object({
   batchNumber: z.string().trim().min(1).max(50),
   expiryDate: expiryMonth.transform(monthEnd),
   mrp: money,
+});
+
+// How the supplier's bill prices a line. Quantities are stock units; `rate` covers
+// `packSize` of them, so a bill priced per strip needs no rounding.
+const lineCost = z.object({
+  freeQty: z.number().int().nonnegative(),
+  packSize: z.number().int().positive(),
+  rate: money,
+  discountPercent: z.string().regex(PERCENT_PATTERN),
+  gstPercent: z.string().regex(PERCENT_PATTERN),
+  hsnCode: z.string().trim().max(20).optional(),
 });
 
 // Drizzle renders a single-table projection unqualified, so a bare `stock_batches.id`
@@ -688,7 +702,10 @@ export const pharmacyStockRouter = {
         // count sheet.
         fileId: z.string().optional(),
         note,
-        lines: z.array(batchLine.extend({ qty: z.number().int().positive() })).min(1),
+        billTotal: money.optional(),
+        lines: z
+          .array(batchLine.extend({ qty: z.number().int().positive(), cost: lineCost.optional() }))
+          .min(1),
       })
       .superRefine((value, context) => {
         if (!value.opening && !value.supplierName) {
@@ -712,6 +729,57 @@ export const pharmacyStockRouter = {
             code: "custom",
             path: ["supplierName"],
             message: "Opening stock does not have supplier details",
+          });
+        }
+
+        // A delivery is priced line by line against its bill; an opening count is not.
+        if (value.opening) {
+          if (value.billTotal !== undefined || value.lines.some((line) => line.cost)) {
+            context.addIssue({
+              code: "custom",
+              path: ["billTotal"],
+              message: "Opening stock is not priced",
+            });
+          }
+
+          return;
+        }
+
+        if (value.billTotal === undefined || value.lines.some((line) => !line.cost)) {
+          context.addIssue({
+            code: "custom",
+            path: ["billTotal"],
+            message: "Price every line and enter the bill total",
+          });
+
+          return;
+        }
+
+        let net = 0n;
+
+        for (const [index, line] of value.lines.entries()) {
+          if (!line.cost) return;
+
+          if (line.qty % line.cost.packSize !== 0) {
+            context.addIssue({
+              code: "custom",
+              path: ["lines", index, "qty"],
+              message: "Quantity must be whole priced units",
+            });
+
+            return;
+          }
+
+          net += receiptLineCost({ qty: line.qty, ...line.cost }).net;
+        }
+
+        const roundOff = value.billTotal - net;
+
+        if (roundOff > BILL_ROUND_OFF_LIMIT || roundOff < -BILL_ROUND_OFF_LIMIT) {
+          context.addIssue({
+            code: "custom",
+            path: ["billTotal"],
+            message: "The lines do not add up to the bill total",
           });
         }
       }),
@@ -756,6 +824,7 @@ export const pharmacyStockRouter = {
         receivedOn: input.receivedOn,
         fileId: input.fileId ?? null,
         note: input.note ?? null,
+        billTotal: input.billTotal ?? null,
         receivedBy: scope.userId,
         createdAt: now,
       });
@@ -767,8 +836,35 @@ export const pharmacyStockRouter = {
 
         if (!batch) throw impossible("a resolved receipt batch vanished before its movement");
 
-        wanted.set(batch.id, (wanted.get(batch.id) ?? 0) + line.qty);
+        wanted.set(batch.id, (wanted.get(batch.id) ?? 0) + line.qty + (line.cost?.freeQty ?? 0));
       }
+
+      const priced = input.lines.flatMap((line) => {
+        const batch = resolved.get(batchKey(line));
+
+        if (!batch) throw impossible("a resolved receipt batch vanished before its line");
+
+        if (!line.cost) return [];
+
+        return [
+          {
+            id: Bun.randomUUIDv7(),
+            orgId: scope.orgId,
+            receiptId,
+            batchId: batch.id,
+            qty: line.qty,
+            freeQty: line.cost.freeQty,
+            packSize: line.cost.packSize,
+            rate: line.cost.rate,
+            discountPercent: line.cost.discountPercent,
+            gstPercent: line.cost.gstPercent,
+            hsnCode: line.cost.hsnCode || null,
+            ...receiptLineCost({ qty: line.qty, ...line.cost }),
+          },
+        ];
+      });
+
+      if (priced.length > 0) await tx.insert(goodsReceiptLines).values(priced);
 
       const batchIds = [...wanted.keys()];
 
@@ -821,6 +917,7 @@ export const pharmacyStockRouter = {
       meta: {
         opening: input.opening,
         supplierName: input.supplierName ?? null,
+        billTotal: input.billTotal === undefined ? null : formatDecimal(input.billTotal),
         lines: input.lines.length,
       },
     });
