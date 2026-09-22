@@ -1,10 +1,6 @@
-import { DECIMAL_PATTERN, parseDecimal } from "@hms/api/core/money";
-import { expiryMonth } from "@hms/api/lib/schemas";
 import { Button } from "@hms/ui/components/button";
-import { Checkbox } from "@hms/ui/components/checkbox";
 import { DropdownMenuCheckboxItem } from "@hms/ui/components/dropdown-menu";
 import { FormControl } from "@hms/ui/components/form";
-import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import {
   Table,
@@ -15,10 +11,10 @@ import {
   TableRow,
 } from "@hms/ui/components/table";
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { CalendarClockIcon, CircleDotIcon } from "lucide-react";
 import { Fragment, useRef, useState } from "react";
-import { useFieldArray, useFormContext, useWatch, Watch } from "react-hook-form";
+import { useFormContext, Watch } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "sonner";
 
@@ -41,12 +37,11 @@ import {
   Panel,
   SearchInput,
 } from "@/components/page";
-import { ProductPicker } from "@/components/product-picker";
 import { numberText } from "@/lib/form-schema";
 import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
-import { formatDateTime, formatDay, orgToday, useOrgDateTime } from "@/lib/org-datetime";
-import { openOrgFile, uploadOrgFile } from "@/lib/org-files";
+import { formatDateTime, formatDay, useOrgDateTime } from "@/lib/org-datetime";
+import { openOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
 import { errorMessage, loadRouteQuery } from "@/lib/orpc-error";
 import { requireOrgPermission } from "@/lib/route-permission";
@@ -143,7 +138,6 @@ function PharmacyStockRoute() {
   const canReceive = useCan(orgSlug, { pharmacy: ["receive"] });
 
   const field = useRef<HTMLDivElement>(null);
-  const [receiving, setReceiving] = useState(false);
 
   const setFilters = (patch: StockFilters) =>
     navigate({ replace: true, search: (previous) => ({ ...previous, ...patch }) });
@@ -185,7 +179,11 @@ function PharmacyStockRoute() {
       <PageHeader
         title="Pharmacy stock"
         action={
-          canReceive ? <Button onClick={() => setReceiving(true)}>Receive goods</Button> : null
+          canReceive ? (
+            <Button render={<Link to="/$orgSlug/pharmacy/receive" params={{ orgSlug }} />}>
+              Receive goods
+            </Button>
+          ) : null
         }
       />
       <PharmacyTabs orgSlug={orgSlug} />
@@ -240,10 +238,6 @@ function PharmacyStockRoute() {
           filters={{ q, expiring, quarantine, zero }}
         />
       </PageBody>
-
-      {receiving ? (
-        <ReceiveGoodsDialog orgSlug={orgSlug} onClose={() => setReceiving(false)} />
-      ) : null}
     </>
   );
 }
@@ -473,45 +467,6 @@ function BatchMovements({ orgSlug, batchId }: { orgSlug: string; batchId: string
   );
 }
 
-const receiveSchema = z
-  .object({
-    opening: z.boolean(),
-    supplierName: z.string().trim().max(200),
-    supplierReference: z.string().trim().max(100),
-    receivedOn: z.iso.date("Use a valid date"),
-    sheet: z.custom<File | undefined>((value) => value === undefined || value instanceof File),
-    note: z.string().trim().max(500),
-    lines: z
-      .array(
-        z.object({
-          productId: z.string().min(1, "Choose a product"),
-          productName: z.string(),
-          batchNumber: z.string().trim().min(1, "Batch number is required").max(50),
-          expiryDate: expiryMonth,
-          mrp: z.string().regex(DECIMAL_PATTERN, "Amount like 20 or 20.50").transform(parseDecimal),
-          qty: numberText(z.number().int().min(1, "At least 1")),
-        }),
-      )
-      .min(1),
-  })
-  .superRefine((value, context) => {
-    if (!value.opening && value.supplierName === "") {
-      context.addIssue({
-        code: "custom",
-        path: ["supplierName"],
-        message: "Supplier is required",
-      });
-    }
-
-    if (value.opening && value.sheet === undefined) {
-      context.addIssue({
-        code: "custom",
-        path: ["sheet"],
-        message: "Attach the signed count sheet",
-      });
-    }
-  });
-
 const adjustSchema = z
   .object({
     reason: z.enum(ADJUST_REASONS),
@@ -544,181 +499,6 @@ const adjustSchema = z
   });
 
 const BUCKET_REASONS = ["writeoff", "breakage", "count_correction"];
-
-/** The picker is a controlled widget, so the id is the field and the name rides beside it. */
-function ProductLineField({ orgSlug, path }: { orgSlug: string; path: string }) {
-  const { setValue } = useFormContext();
-  const productName = String(useWatch({ name: `${path}.productName` }) ?? "");
-
-  return (
-    <ControlledField
-      name={`${path}.productId`}
-      label="Product"
-      className="sm:col-span-2"
-      render={(field) => (
-        <ProductPicker
-          orgSlug={orgSlug}
-          value={field.value ? { productId: String(field.value), name: productName } : null}
-          onChange={(product) => {
-            field.onChange(product?.productId ?? "");
-            setValue(`${path}.productName`, product?.name ?? "");
-          }}
-        />
-      )}
-    />
-  );
-}
-
-const emptyLine = {
-  productId: "",
-  productName: "",
-  batchNumber: "",
-  expiryDate: "",
-  mrp: "",
-  qty: "",
-};
-
-/** The batch rows a receipt is made of. */
-function BatchLines({ orgSlug }: { orgSlug: string }) {
-  const { control } = useFormContext();
-  const rows = useFieldArray({ control, name: "lines", keyName: "fieldKey" });
-
-  return (
-    <div className="flex flex-col gap-3">
-      {rows.fields.map((row, index) => (
-        <div key={row.fieldKey} className="grid gap-2 border-t border-border pt-3 sm:grid-cols-2">
-          <ProductLineField orgSlug={orgSlug} path={`lines.${index}`} />
-          <TextField name={`lines.${index}.batchNumber`} label="Batch number" />
-          <TextField name={`lines.${index}.expiryDate`} label="Expiry month" type="month" />
-          <TextField name={`lines.${index}.mrp`} label="MRP" inputMode="decimal" />
-          <TextField name={`lines.${index}.qty`} label="Quantity" inputMode="numeric" />
-          {rows.fields.length > 1 ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              className="justify-self-start"
-              onClick={() => rows.remove(index)}
-            >
-              Remove row
-            </Button>
-          ) : null}
-        </div>
-      ))}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="self-start"
-        onClick={() => rows.append(emptyLine)}
-      >
-        Add line
-      </Button>
-    </div>
-  );
-}
-
-function ReceiveGoodsDialog({ orgSlug, onClose }: { orgSlug: string; onClose: () => void }) {
-  const { timeZone } = useOrgDateTime();
-
-  return (
-    <FormDialog
-      title="Receive goods"
-      description="Record a delivery, or the cutover count stock starts from, as batches on the shelf."
-      submitLabel="Receive goods"
-      schema={receiveSchema}
-      contentClassName="max-w-2xl"
-      defaultValues={{
-        opening: false,
-        supplierName: "",
-        supplierReference: "",
-        receivedOn: orgToday(timeZone),
-        sheet: undefined,
-        note: "",
-        lines: [emptyLine],
-      }}
-      success="Stock received"
-      onClose={onClose}
-      run={async (values) => {
-        const fileId = values.sheet ? await uploadOrgFile(orgSlug, values.sheet) : undefined;
-
-        return orpc.pharmacy.receiveGoods.call({
-          orgSlug,
-          opening: values.opening,
-          supplierName: values.opening ? undefined : values.supplierName,
-          supplierReference: values.opening ? undefined : values.supplierReference || undefined,
-          receivedOn: values.receivedOn,
-          fileId,
-          note: values.note || undefined,
-          lines: values.lines.map((line) => ({
-            productId: line.productId,
-            batchNumber: line.batchNumber,
-            expiryDate: line.expiryDate,
-            mrp: line.mrp,
-            qty: line.qty,
-          })),
-        });
-      }}
-    >
-      <ControlledField
-        name="opening"
-        label="Opening stock"
-        description="The cutover count: no supplier, and every batch it names must be untouched."
-        className="flex flex-wrap items-center gap-2"
-        render={(field) => (
-          <FormControl>
-            <Checkbox checked={field.value} onCheckedChange={field.onChange} />
-          </FormControl>
-        )}
-      />
-      <ReceiptSourceFields />
-      <BatchLines orgSlug={orgSlug} />
-      <TextField name="note" label="Note" multiline />
-    </FormDialog>
-  );
-}
-
-/** A delivery names its supplier; an opening count keeps its signed sheet instead. */
-function ReceiptSourceFields() {
-  const { control } = useFormContext();
-
-  return (
-    <Watch
-      control={control}
-      name="opening"
-      exact
-      render={(opening) => (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {opening ? null : (
-            <>
-              <TextField name="supplierName" label="Supplier" />
-              <TextField name="supplierReference" label="Supplier invoice (optional)" />
-            </>
-          )}
-          <TextField name="receivedOn" label={opening ? "Counted on" : "Received on"} type="date" />
-          {opening ? (
-            <ControlledField
-              name="sheet"
-              label="Signed count sheet"
-              render={(field) => (
-                <FormControl>
-                  <Input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    name={field.name}
-                    ref={field.ref}
-                    onBlur={field.onBlur}
-                    onChange={(event) => field.onChange(event.target.files?.[0])}
-                  />
-                </FormControl>
-              )}
-            />
-          ) : null}
-        </div>
-      )}
-    />
-  );
-}
 
 function AdjustDialog({
   orgSlug,

@@ -20,6 +20,7 @@ import { addPendingCatalogCharge } from "../support/billing";
 import { resetTestDatabase } from "../support/database";
 import { shiftLocalMinute } from "../support/time";
 import { uniqueSuffix } from "../support/unique";
+import { UNPRICED } from "../support/pharmacy";
 
 const RECEIVED_ON = "2026-09-01";
 
@@ -683,6 +684,7 @@ const GUARDED_CALLS = {
       ...claim,
       supplierName: "Intrusion",
       receivedOn: RECEIVED_ON,
+      billTotal: 0n,
       lines: [
         {
           productId: "missing",
@@ -690,6 +692,7 @@ const GUARDED_CALLS = {
           expiryDate: "2030-01",
           mrp: 100n,
           qty: 1,
+          cost: UNPRICED,
         },
       ],
     }),
@@ -1093,6 +1096,7 @@ test("pharmacy stock is invisible from another org", async () => {
     orgSlug: alpha.slug,
     supplierName: "Alpha Supplier",
     receivedOn: RECEIVED_ON,
+    billTotal: 0n,
     lines: [
       {
         productId: product.productId,
@@ -1100,6 +1104,7 @@ test("pharmacy stock is invisible from another org", async () => {
         expiryDate: "2030-01",
         mrp: 100n,
         qty: 5,
+        cost: UNPRICED,
       },
     ],
   });

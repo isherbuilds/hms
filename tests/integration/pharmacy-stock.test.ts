@@ -2,12 +2,14 @@ import { beforeAll, expect, test } from "bun:test";
 
 import { db } from "@hms/db";
 import { file } from "@hms/db/schema/file";
+import { goodsReceiptLines } from "@hms/db/schema/goods-receipt-lines";
 import { goodsReceipts } from "@hms/db/schema/goods-receipts";
 import { eq } from "drizzle-orm";
 
 import { createOrganization, createTestUser } from "../support/auth";
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
+import { UNPRICED } from "../support/pharmacy";
 import { uniqueSuffix } from "../support/unique";
 
 beforeAll(async () => {
@@ -68,6 +70,7 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
     supplierName: "Metro Distributors",
     supplierReference: "INV-9001",
     receivedOn: RECEIVED_ON,
+    billTotal: 0n,
     lines: [
       {
         productId: product.productId,
@@ -75,6 +78,7 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
         expiryDate: FAR_EXPIRY,
         mrp: 12_00n,
         qty: 40,
+        cost: UNPRICED,
       },
       // A second line on the same batch aggregates into one movement.
       {
@@ -83,6 +87,7 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
         expiryDate: FAR_EXPIRY,
         mrp: 12_00n,
         qty: 10,
+        cost: UNPRICED,
       },
     ],
   });
@@ -109,6 +114,7 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
       orgSlug: org.slug,
       supplierName: "Metro Distributors",
       receivedOn: RECEIVED_ON,
+      billTotal: 0n,
       lines: [
         {
           productId: product.productId,
@@ -116,12 +122,74 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
           expiryDate: "2032-01",
           mrp: 12_00n,
           qty: 5,
+          cost: UNPRICED,
         },
       ],
     }),
     "CONFLICT",
     "a conflicting batch expiry",
   );
+});
+
+test("a priced delivery stores its bill arithmetic and shelves the free units", async () => {
+  const owner = await createTestUser("pharmacy-priced-owner");
+  const org = await createOrganization(owner, "pharmacy-priced");
+  const api = clientFor(owner);
+  const product = await api.pharmacy.createProduct(productInput(org.slug, "Priced Tablet"));
+
+  // 10 strips + 1 free at ₹76.19 a strip, 5% trade discount, 5% GST.
+  const line = {
+    productId: product.productId,
+    batchNumber: "P-1",
+    expiryDate: FAR_EXPIRY,
+    mrp: 10_00n,
+    qty: 100,
+    cost: {
+      freeQty: 10,
+      packSize: 10,
+      rate: 76_19n,
+      discountPercent: "5",
+      gstPercent: "5",
+      hsnCode: "3004",
+    },
+  };
+
+  await expectORPCCode(
+    api.pharmacy.receiveGoods({
+      orgSlug: org.slug,
+      supplierName: "Metro Distributors",
+      receivedOn: RECEIVED_ON,
+      billTotal: 770_00n,
+      lines: [line],
+    }),
+    "BAD_REQUEST",
+    "a bill total the lines do not reach",
+  );
+
+  const received = await api.pharmacy.receiveGoods({
+    orgSlug: org.slug,
+    supplierName: "Metro Distributors",
+    receivedOn: RECEIVED_ON,
+    billTotal: 760_00n,
+    lines: [line],
+  });
+
+  const [stored] = await db
+    .select()
+    .from(goodsReceiptLines)
+    .where(eq(goodsReceiptLines.receiptId, received.receiptId));
+
+  expect(stored).toMatchObject({
+    gross: 761_90n,
+    discount: 38_10n,
+    taxable: 723_80n,
+    gst: 36_19n,
+    net: 759_99n,
+    unitCost: 6_91n,
+  });
+
+  const { items: onHand } = await api.pharmacy.stockOnHand({ orgSlug: org.slug });
+  expect(onHand).toMatchObject([{ batchNumber: "P-1", shelfQty: 110 }]);
 });
 
 test("an opening receipt carries its count sheet and refuses a batch that already moved", async () => {
@@ -283,6 +351,7 @@ test("a receipt refuses two definitions of the same batch without writing either
       orgSlug: org.slug,
       supplierName: "Metro Distributors",
       receivedOn: RECEIVED_ON,
+      billTotal: 0n,
       lines: [
         {
           productId: product.productId,
@@ -290,6 +359,7 @@ test("a receipt refuses two definitions of the same batch without writing either
           expiryDate: FAR_EXPIRY,
           mrp: 10_00n,
           qty: 2,
+          cost: UNPRICED,
         },
         {
           productId: product.productId,
@@ -297,6 +367,7 @@ test("a receipt refuses two definitions of the same batch without writing either
           expiryDate: FAR_EXPIRY,
           mrp: 11_00n,
           qty: 3,
+          cost: UNPRICED,
         },
       ],
     }),
@@ -334,6 +405,7 @@ test("stock search returns only products with sellable shelf stock", async () =>
     orgSlug: org.slug,
     supplierName: "Metro Distributors",
     receivedOn: RECEIVED_ON,
+    billTotal: 0n,
     lines: [
       {
         productId: expired.productId,
@@ -341,6 +413,7 @@ test("stock search returns only products with sellable shelf stock", async () =>
         expiryDate: "2020-01",
         mrp: 10_00n,
         qty: 5,
+        cost: UNPRICED,
       },
       {
         productId: scheduleX.productId,
@@ -348,6 +421,7 @@ test("stock search returns only products with sellable shelf stock", async () =>
         expiryDate: FAR_EXPIRY,
         mrp: 20_00n,
         qty: 5,
+        cost: UNPRICED,
       },
       {
         productId: sellable.productId,
@@ -355,6 +429,7 @@ test("stock search returns only products with sellable shelf stock", async () =>
         expiryDate: FAR_EXPIRY,
         mrp: 30_00n,
         qty: 5,
+        cost: UNPRICED,
       },
     ],
   });
@@ -388,6 +463,7 @@ test("an internal issue names its department and is refused without one", async 
     orgSlug: org.slug,
     supplierName: "Metro Distributors",
     receivedOn: RECEIVED_ON,
+    billTotal: 0n,
     lines: [
       {
         productId: gloves.productId,
@@ -395,6 +471,7 @@ test("an internal issue names its department and is refused without one", async 
         expiryDate: FAR_EXPIRY,
         mrp: 0n,
         qty: 30,
+        cost: UNPRICED,
       },
     ],
   });
@@ -442,6 +519,7 @@ test("quarantine and release move stock between buckets and a bucket cannot go b
     orgSlug: org.slug,
     supplierName: "Metro Distributors",
     receivedOn: RECEIVED_ON,
+    billTotal: 0n,
     lines: [
       {
         productId: product.productId,
@@ -449,6 +527,7 @@ test("quarantine and release move stock between buckets and a bucket cannot go b
         expiryDate: FAR_EXPIRY,
         mrp: 8_00n,
         qty: 20,
+        cost: UNPRICED,
       },
     ],
   });
@@ -528,6 +607,7 @@ test("a product's stock unit is fixed once it has a batch and the catalog refuse
     orgSlug: org.slug,
     supplierName: "Metro Distributors",
     receivedOn: RECEIVED_ON,
+    billTotal: 0n,
     lines: [
       {
         productId: product.productId,
@@ -535,6 +615,7 @@ test("a product's stock unit is fixed once it has a batch and the catalog refuse
         expiryDate: FAR_EXPIRY,
         mrp: 20_00n,
         qty: 4,
+        cost: UNPRICED,
       },
     ],
   });
@@ -590,6 +671,7 @@ test("pharmacy stock ids from another organization are not found", async () => {
     orgSlug: home.slug,
     supplierName: "Metro Distributors",
     receivedOn: RECEIVED_ON,
+    billTotal: 0n,
     lines: [
       {
         productId: product.productId,
@@ -597,6 +679,7 @@ test("pharmacy stock ids from another organization are not found", async () => {
         expiryDate: FAR_EXPIRY,
         mrp: 9_00n,
         qty: 6,
+        cost: UNPRICED,
       },
     ],
   });
@@ -615,6 +698,7 @@ test("pharmacy stock ids from another organization are not found", async () => {
       orgSlug: other.slug,
       supplierName: "Metro Distributors",
       receivedOn: RECEIVED_ON,
+      billTotal: 0n,
       lines: [
         {
           productId: product.productId,
@@ -622,6 +706,7 @@ test("pharmacy stock ids from another organization are not found", async () => {
           expiryDate: FAR_EXPIRY,
           mrp: 9_00n,
           qty: 1,
+          cost: UNPRICED,
         },
       ],
     }),

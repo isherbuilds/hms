@@ -88,7 +88,10 @@ this spec. Nothing in the code depends on an answer beyond what is written.
    invoice; goods go to quarantine and a supervisor releases or writes them
    off.
 4. **Receiving.** Assumed: the pharmacist receives deliveries with the
-   supplier's invoice; HMS records supplier name, reference, and batches.
+   supplier's invoice; HMS records supplier name, bill number, bill total, and
+   each line as the bill prints it: batch, billed and free quantity, rate,
+   discount, GST and MRP (revised 2026-09-23 on the owner's instruction, after
+   comparing ERPNext, OpenMRS and Indian pharmacy software).
 5. **Prescriptions.** Assumed: Schedule H1 is stocked and sold with prescriber
    and patient name recorded; Schedule X is not stocked and is refused.
 6. **Legal entity and paper.** Assumed: the pharmacy invoices under the
@@ -125,8 +128,9 @@ this spec. Nothing in the code depends on an answer beyond what is written.
 8. As a **supervising pharmacist**, I want to release quarantined stock to the
    shelf or write it off, so that returned goods are inspected before sale.
 9. As a **pharmacist**, I want to receive a delivery as batches with quantity,
-   expiry, MRP, and the supplier's reference, so that new stock enters by the
-   front door and not as a count correction.
+   expiry, MRP, free quantity, rate, discount and GST checked against the
+   supplier's bill total, so that new stock enters by the front door with its
+   cost, and a mistyped line shows before it is saved.
 10. As a **supervising pharmacist**, I want a reason-coded adjustment
     (breakage, expiry write-off, count correction, internal issue, hold in
     quarantine) with an explanation, so that a stock difference is explained,
@@ -353,13 +357,25 @@ pharmacy_return | adjustment`), `sourceId`, `departmentId` (nullable composite
   Lines are aggregated by batch before the check, so two lines on one batch
   cannot each pass alone. Shared code lives in
   `packages/api/src/lib/stock.ts`.
-- **`goods_receipts`** (minimal receiving; no purchase order, supplier ledger,
-  or purchase price): `id`, `orgId`, `opening` (boolean, default false),
+- **`goods_receipts`** (no purchase order or supplier ledger): `id`, `orgId`,
+  `opening` (boolean, default false),
   `supplierName` (nullable), `supplierReference` (nullable), `receivedOn` (a
   `date`: the day named on the document, not an instant),
-  `fileId` (nullable composite FK to `file`), `note` (nullable), `receivedBy`,
+  `fileId` (nullable composite FK to `file`), `note` (nullable), `billTotal`
+  (paise; null on an opening count), `receivedBy`,
   `createdAt`. Lines create batches as needed and one movement each
-  (`sourceType = "goods_receipt"`). The purchasing spec extends this table.
+  (`sourceType = "goods_receipt"`); the movement adds billed and free units.
+- **`goods_receipt_lines`** (one per priced line of a supplier delivery):
+  `receiptId`, `batchId`, `qty` and `freeQty` (stock units), `packSize` (stock
+  units the rate covers), `rate` (PTR before discount and GST), `discountPercent`,
+  `gstPercent`, `hsnCode?`, and the stored results `gross`, `discount`,
+  `taxable`, `gst`, `net`, `unitCost`. `receiptLineCost` in
+  `packages/api/src/core/receipt-math.ts` is the one formula, shared with the
+  page: gross = qty × rate ÷ packSize; discount and GST round half-up; net =
+  taxable + GST; unit cost = net ÷ (qty + freeQty). GST is part of the cost
+  (owner decision, 2026-09-23); the GST amount is stored apart so the rule can
+  change if the chartered accountant confirms input tax credit on taxable
+  pharmacy sales.
   Opening stock is the same document with `opening` set: it names no supplier,
   keeps the signed count sheet in `fileId`, and posts `opening` movements, so a
   batch that already has a movement is refused (`CONFLICT`). A later count is a
@@ -443,10 +459,12 @@ pair). Audited.
 
 **`pharmacy.receiveGoods`** (`pharmacy:receive`) takes `opening` (default false),
 `supplierName?`, `supplierReference?`, `receivedOn` (`YYYY-MM-DD`), `fileId?`,
-`note?`, and
-lines `{ productId, batchNumber, expiryDate, mrp, qty }`
+`note?`, `billTotal?`, and
+lines `{ productId, batchNumber, expiryDate, mrp, qty, cost? }` where `cost` is
+`{ freeQty, packSize, rate, discountPercent, gstPercent, hsnCode? }`
 (min 1, positive qty). A receipt that is not an opening one must name its
-supplier. It verifies the file belongs to the org, is `ready`, and is a PDF or
+supplier, price every line, and give a bill total within ±₹0.99 of the lines'
+net sum (the bill's round-off); an opening one carries no pricing. It verifies the file belongs to the org, is `ready`, and is a PDF or
 image, creates the header, creates
 each batch that does not exist (refusing a conflicting expiry or MRP), and
 posts one movement per batch into the shelf: `receipt`, or `opening` when
@@ -503,14 +521,16 @@ includeZero? })` (`pharmacy:read`): every product's batches with `shelfQty` and
   `-outstanding` when negative).
 - `pharmacy.listSales({ from?, to?, cursor?, limit })` (`pharmacy:read`): sales
   newest first by `(createdAt, id)` with invoice number, buyer, grand total.
-- Reports label pharmacy figures as sales and revenue, never profit; there is
-  no cost basis until the purchasing spec.
+- Reports label pharmacy figures as sales and revenue, never profit. Receipt
+  lines record unit cost, but no report derives margin until the purchasing
+  spec decides valuation.
 
 ### UI
 
 Plain and standard: the existing list, Sheet, `useZodForm`, and `FormDialog`
-patterns; no motion on the sale path. The one shared addition is the list
-filter (`components/list-filter.tsx`, D043): the stock list needs product,
+patterns; product forms use `FormSheet` with fixed header and actions around a
+scrollable body. No motion on the sale path. The shared list
+filter (`components/list-filter.tsx`, D043) serves the stock list's product,
 expiry and bucket at once, which the toggle-pill row could not express, and the
 same control replaced the pill rows and period controls on the other lists so
 the console keeps one filter idiom.
@@ -530,9 +550,24 @@ the console keeps one filter idiom.
   basis, which owns discount, credit, payment lines and note. On success it
   returns to the sales list with the new sale open, where **Print** lives.
 - `/$orgSlug/pharmacy/stock`: batches with shelf and quarantine, filters
-  (product, expiring within 30/90 days, quarantine only); Sheets for
-  **Receive goods** (with an **opening stock** switch) and **Adjust** (which
-  needs `pharmacy:adjust`); a batch row expands to its movements.
+  (product, expiring within 30/90 days, quarantine only); a Sheet for **Adjust**
+  (which needs `pharmacy:adjust`); a batch row expands to its movements.
+  **Receive goods** links to its own page.
+- `/$orgSlug/pharmacy/receive` (`pharmacy:receive`): a page, not a dialog,
+  laid out as a ledger that follows the supplier bill (the Ledger prototype,
+  promoted 2026-09-23). The delivery details (supplier, bill number, bill
+  total, date and bill copy, or the **opening stock count** with its signed
+  sheet) sit above one line per product and batch. A line's first row names
+  the stock — product, batch, expiry, billed quantity, count as packs or loose
+  units; its second row prices it — free quantity, rate, discount %, GST %,
+  MRP, HSN and the computed line total with cost per unit, shown as an error
+  when it reaches the MRP. An opening count asks only the MRP. Picking a
+  product fills GST % and HSN from its counter tax. The footer totals taxable,
+  GST and lines and states whether they match the bill total. **Back to
+  stock** returns through the unsaved-delivery confirmation. The page converts
+  packs with `unitsPerPack`, so the receipt stores stock units and the MRP per
+  unit. **New product** opens a Sheet without leaving the delivery and selects
+  the created product on the line.
 - `/$orgSlug/pharmacy/items`: product master list and create/edit Sheet
   (`pharmacy:manageItems`).
 - Navigation: one **Pharmacy** entry in the Care group gated on
@@ -611,9 +646,10 @@ the console keeps one filter idiom.
 
 ## Out of Scope
 
-- Purchase orders, supplier accounts and ledger, purchase price, stock
-  valuation, inventory asset, and cost of goods sold. The purchasing spec
-  extends `goods_receipts`. Reports never present pharmacy revenue as profit.
+- Purchase orders, supplier accounts and ledger, supplier GSTIN and the
+  CGST/SGST/IGST split, rejected quantity, freight and other landed costs,
+  stock valuation, inventory asset, and cost of goods sold. The purchasing spec
+  builds on `goods_receipt_lines`. Reports never present pharmacy revenue as profit.
 - Fractional units and pack splitting beyond the Stage 0 conversion.
 - Prescription-driven dispensing (a digital prescription that becomes lines).
 - Typed IPD and ward issues against an Admission (the interim path is
@@ -630,11 +666,17 @@ the console keeps one filter idiom.
   prescription reference; the paper register continues until the print ships.
 - Near-expiry colour at the sale line; the batch list shows expiry.
 - Partial payment for a walk-in without a Patient: refused.
+- Purchase GST as input tax credit. Unit cost includes GST for now; a hospital
+  that is GST-registered with taxable pharmacy sales may instead claim it. When
+  such a hospital pilots, add an organization setting that keeps GST out of
+  `unitCost` (taxable ÷ units) and records it for credit. Stored lines already
+  keep `taxable` and `gst`, so past receipts can be restated without re-entry.
 - Stock valuation and opening valuation. The count document retains the sheet
   so a later dated valuation cutover has its evidence.
 - Chartered accountant and licensing adviser sign-off on the inclusive-MRP
-  presentation, document label, licence particulars on the print, and the
-  GST registration used. These sit on the go-live checklist in Operations.
+  presentation, document label, licence particulars on the print, the
+  GST registration used, and whether purchase GST is claimed as input credit
+  or kept in unit cost. These sit on the go-live checklist in Operations.
 - A Daily Collections breakdown by stream.
 - A maintained balance column. The sum with a `(orgId, batchId, bucket)` index
   is measured on realistic movement history before any projection is added.

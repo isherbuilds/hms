@@ -36,6 +36,13 @@
       "when": 1789970733694,
       "tag": "0004_pharmacy_stock",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790104176638,
+      "tag": "0005_cheerful_talkback",
+      "breakpoints": true
     }
   ]
 }

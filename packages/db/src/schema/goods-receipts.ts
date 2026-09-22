@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   date,
   foreignKey,
@@ -12,8 +13,8 @@ import {
 import { organization, user } from "./auth";
 import { file } from "./file";
 
-// Minimal receiving: no purchase order, supplier ledger or purchase price. Lines create
-// batches as needed and one movement each; the purchasing spec extends this.
+// Receiving without purchase orders or a supplier ledger. A supplier delivery prices each
+// line in `goods_receipt_lines`; batches are created as needed with one movement each.
 // An opening receipt is the same document with `opening` set: no supplier, the retained
 // count sheet in `fileId`, and batches that have no movement history yet.
 export const goodsReceipts = pgTable(
@@ -32,6 +33,8 @@ export const goodsReceipts = pgTable(
     // The supplier's delivery note, or the signed count sheet for an opening receipt.
     fileId: text("file_id"),
     note: text("note"),
+    // The grand total printed on the supplier's bill, in paise; null for opening stock.
+    billTotal: bigint("bill_total", { mode: "bigint" }),
     receivedBy: text("received_by")
       .notNull()
       .references(() => user.id),

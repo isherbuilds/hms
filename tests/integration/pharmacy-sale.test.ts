@@ -15,6 +15,7 @@ import { createOrganization, createTestUser } from "../support/auth";
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
 import { uniqueSuffix } from "../support/unique";
+import { UNPRICED } from "../support/pharmacy";
 
 const RECEIVED_ON = "2026-09-01";
 
@@ -102,6 +103,7 @@ async function createPharmacyFixture(seed: string) {
       orgSlug: organization.slug,
       supplierName: `${seed} Supplier`,
       receivedOn: RECEIVED_ON,
+      billTotal: 0n,
       lines: [
         {
           productId,
@@ -109,6 +111,7 @@ async function createPharmacyFixture(seed: string) {
           expiryDate: line.expiryDate ?? futureExpiry(),
           mrp: line.mrp ?? MRP,
           qty: line.qty,
+          cost: UNPRICED,
         },
       ],
     });
