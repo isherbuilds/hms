@@ -1,5 +1,5 @@
 import { DECIMAL_PATTERN, parseDecimal } from "@hms/api/core/money";
-import { PERCENT_PATTERN } from "@hms/api/core/receipt-math";
+import { PERCENT_PATTERN, exactToPaise } from "@hms/api/core/receipt-math";
 import { expiryMonth } from "@hms/api/lib/schemas";
 import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
@@ -22,6 +22,7 @@ import { NewProductSheet } from "@/components/pharmacy-new-product-sheet";
 import { PageBody, PageHeader, Panel } from "@/components/page";
 import { ProductPicker, type PickedProduct } from "@/components/product-picker";
 import { useZodForm } from "@/hooks/use-zod-form";
+import { numberText } from "@/lib/form-schema";
 import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { orgToday, useOrgDateTime } from "@/lib/org-datetime";
@@ -32,12 +33,10 @@ import {
   approximateUnitCost,
   billSummary,
   costAtOrAboveMrp,
-  formatReceiptExact,
   packSizeOf,
   type ReceiptRowText,
   rowCost,
   stockQuantities,
-  wholeCount,
 } from "@/lib/receipt-lines";
 import { requireOrgPermission } from "@/lib/route-permission";
 
@@ -89,12 +88,7 @@ const receiptLineSchema = (today: string) =>
       unitsPerPack: z.number().int().min(1),
       batchNumber: z.string().trim().min(1, "Type the batch number").max(50),
       expiryDate: expiryMonth,
-      count: z
-        .string()
-        .refine((value) => wholeText.test(value.trim()), "Enter a whole number")
-        .refine((value) => wholeCount(value) !== null, "Too large")
-        .transform(Number)
-        .refine((value) => value >= 1, "At least 1"),
+      count: numberText(z.number().int().min(1, "At least 1")),
       loose: z.boolean(),
       price: z.string().regex(DECIMAL_PATTERN, "A price like 84 or 84.20"),
       free: z.string().trim(),
@@ -137,20 +131,6 @@ const receiptSchema = (today: string) =>
       const issue = (path: (string | number)[], message: string) =>
         context.addIssue({ code: "custom", path, message });
 
-      value.lines.forEach((line, index) => {
-        const row = rowText(line);
-
-        if (!stockQuantities(row, true)) {
-          issue(["lines", index, "count"], "Too large");
-        } else if (
-          !value.opening &&
-          wholeCount(line.free || "0") !== null &&
-          !stockQuantities(row)
-        ) {
-          issue(["lines", index, "free"], "Too large");
-        }
-      });
-
       if (value.opening) return;
 
       if (value.supplierName === "") issue(["supplierName"], "Type who delivered this");
@@ -158,8 +138,6 @@ const receiptSchema = (today: string) =>
       value.lines.forEach((line, index) => {
         if (line.free !== "" && !wholeText.test(line.free)) {
           issue(["lines", index, "free"], "Enter a whole number");
-        } else if (line.free !== "" && wholeCount(line.free) === null) {
-          issue(["lines", index, "free"], "Too large");
         }
 
         if (!DECIMAL_PATTERN.test(line.rate)) issue(["lines", index, "rate"], "A rate like 76.19");
@@ -684,7 +662,7 @@ function BatchRow({
           <div className="flex min-w-0 flex-col gap-1 tabular-nums md:items-end md:text-right">
             <span className="text-muted-foreground">Line total</span>
             <span className="py-1.5 font-medium">
-              {cost ? formatReceiptExact(cost.net, currency) : "—"}
+              {cost ? formatMoney(exactToPaise(cost.net), currency) : "—"}
             </span>
             {unitCost !== null ? (
               <span className={overMrp ? "text-destructive" : "text-muted-foreground"}>
@@ -704,16 +682,11 @@ function ReceiptTotals({ orgSlug, opening }: { orgSlug: string; opening: boolean
   const { control } = useFormContext<ReceiptInput, unknown, Receipt>();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const [lines, billTotal] = useWatch({ control, name: ["lines", "billTotal"] });
-  let quantity: number | null = 0;
+  let quantity = 0;
 
   for (const line of lines) {
     const quantities = stockQuantities(rowText(line), opening);
-
-    if (!quantities) {
-      quantity = null;
-    } else if (quantity !== null) {
-      quantity += quantities.qty + quantities.freeQty;
-    }
+    quantity += quantities ? quantities.qty + quantities.freeQty : 0;
   }
 
   const summary = opening ? null : billSummary(lines.map(rowText), billTotal);
@@ -721,22 +694,15 @@ function ReceiptTotals({ orgSlug, opening }: { orgSlug: string; opening: boolean
   return (
     <div className="flex flex-col gap-1 tabular-nums">
       <p className="font-medium">
-        {lines.length} batch{lines.length === 1 ? "" : "es"} ·{" "}
-        {quantity === null ? "— stock units" : `${quantity} stock unit${quantity === 1 ? "" : "s"}`}
+        {lines.length} batch{lines.length === 1 ? "" : "es"} · {quantity} stock unit
+        {quantity === 1 ? "" : "s"}
       </p>
       {summary ? (
         <>
           <p className="text-muted-foreground">
-            Taxable {formatReceiptExact(summary.taxable, currency)} · GST{" "}
-            {formatReceiptExact(summary.gst, currency)} · Net{" "}
-            {formatReceiptExact(summary.exactNet, currency)}
-          </p>
-          <p className="text-muted-foreground">
-            Bill total{" "}
-            {billTotal && DECIMAL_PATTERN.test(billTotal)
-              ? formatMoney(parseDecimal(billTotal), currency)
-              : "—"}
-            {" · "}Lines to the paisa {formatMoney(summary.net, currency)}
+            Taxable {formatMoney(exactToPaise(summary.taxable), currency)} · GST{" "}
+            {formatMoney(exactToPaise(summary.gst), currency)} · Lines{" "}
+            {formatMoney(summary.net, currency)}
           </p>
           {summary.roundOff === null ? (
             <p className="text-muted-foreground">

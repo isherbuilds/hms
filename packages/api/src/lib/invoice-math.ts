@@ -51,19 +51,9 @@ type InvoiceLine = {
   taxCode: string | null;
 };
 
-export type PriceBasis = "exclusive" | "inclusive";
-
-export type InvoiceRounding = "paise" | "rupee";
+export type InvoiceStream = "opd" | "pharmacy";
 
 export class InvoiceDiscountExceededError extends Error {}
-
-export function priceBasisFor(stream: "opd" | "pharmacy"): PriceBasis {
-  return stream === "pharmacy" ? "inclusive" : "exclusive";
-}
-
-export function invoiceRoundingFor(stream: "opd" | "pharmacy"): InvoiceRounding {
-  return stream === "pharmacy" ? "rupee" : "paise";
-}
 
 function gcd(left: bigint, right: bigint): bigint {
   while (right !== 0n) {
@@ -76,9 +66,11 @@ function gcd(left: bigint, right: bigint): bigint {
 export function computeInvoiceLines(
   charges: ChargeInput[],
   discountPaise: bigint,
-  basis: PriceBasis,
-  rounding: InvoiceRounding,
+  stream: InvoiceStream,
 ) {
+  // Pharmacy MRP carries its tax and its document total rounds to whole rupees;
+  // OPD prices are tax-exclusive and total to the paisa.
+  const inclusive = stream === "pharmacy";
   let commonUnits = 1n;
 
   const preparedLines = charges.map((charge) => {
@@ -149,15 +141,17 @@ export function computeInvoiceLines(
     const netPaise = lineSubtotal - allocatedDiscount;
     const rate = parseDecimal(charge.taxRatePercent);
 
-    // Inclusive (pharmacy MRP): the net amount already contains the tax, so it is the
-    // gross and the taxable value is extracted from it. Exclusive: the net is taxable.
-    const taxableValuePaise =
-      basis === "inclusive" ? divideHalfUp(netPaise * 10_000n, 10_000n + rate) : netPaise;
+    // Inclusive: the net amount already contains the tax, so it is the gross and the
+    // taxable value is extracted from it. Exclusive: the net is taxable.
+    const taxableValuePaise = inclusive
+      ? divideHalfUp(netPaise * 10_000n, 10_000n + rate)
+      : netPaise;
 
-    const taxAmountPaise =
-      basis === "inclusive" ? netPaise - taxableValuePaise : divideHalfUp(netPaise * rate, 10_000n);
+    const taxAmountPaise = inclusive
+      ? netPaise - taxableValuePaise
+      : divideHalfUp(netPaise * rate, 10_000n);
 
-    const grossPaise = basis === "inclusive" ? netPaise : netPaise + taxAmountPaise;
+    const grossPaise = inclusive ? netPaise : netPaise + taxAmountPaise;
 
     taxTotalPaise += taxAmountPaise;
     preRoundPaise += grossPaise;
@@ -178,8 +172,7 @@ export function computeInvoiceLines(
     };
   });
 
-  const grandTotal =
-    rounding === "rupee" ? divideHalfUp(preRoundPaise, 100n) * 100n : preRoundPaise;
+  const grandTotal = inclusive ? divideHalfUp(preRoundPaise, 100n) * 100n : preRoundPaise;
 
   return {
     lines,

@@ -701,7 +701,6 @@ export function OpdIntakeForm({
         : {
             currency,
             subtotal: ZERO,
-            rounding: "paise",
             discountAmount: ZERO,
             taxTotal: ZERO,
             roundOff: ZERO,
@@ -870,7 +869,7 @@ export function OpdIntakeForm({
               <ClientOnly fallback={null}>
                 <SettlementOverlay
                   quote={quoteState.data}
-                  basis="exclusive"
+                  stream="opd"
                   availableCredit={settlement}
                   description={`${settlementPatient.name} · walk-in now`}
                   label="Confirm walk-in"

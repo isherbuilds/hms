@@ -289,8 +289,7 @@ export const opdRouter = {
         taxCode: item.taxCode,
       })),
       input.discountAmount,
-      "exclusive",
-      "paise",
+      "opd",
     );
 
     return {
@@ -307,7 +306,6 @@ export const opdRouter = {
         };
       }),
       subtotal: computed.subtotal,
-      rounding: "paise" as const,
       discountAmount: input.discountAmount,
       taxTotal: computed.taxTotal,
       roundOff: computed.roundOff,

@@ -1,4 +1,4 @@
-import { computeInvoiceLines, invoiceRoundingFor } from "@hms/api/lib/invoice-math";
+import { computeInvoiceLines } from "@hms/api/lib/invoice-math";
 import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
 import { Input } from "@hms/ui/components/input";
@@ -211,10 +211,7 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
   const add = (line: Omit<SaleLine, "qty">) =>
     setCart((current) => [...current, { ...line, qty: 1 }]);
 
-  // MRP carries the tax, so the pharmacy basis is inclusive. The overlay owns the
-  // discount, so the desk only ever quotes the undiscounted bill.
-  const rounding = invoiceRoundingFor("pharmacy");
-
+  // The overlay owns the discount, so the desk only ever quotes the undiscounted bill.
   const computed = computeInvoiceLines(
     cart.map((line) => ({
       chargeId: line.batchId,
@@ -226,8 +223,7 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
       taxCode: null,
     })),
     ZERO,
-    "inclusive",
-    rounding,
+    "pharmacy",
   );
 
   const displayLines = cart.map((line, index) => {
@@ -246,7 +242,6 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
       source: "service" as const,
     })),
     subtotal: computed.subtotal,
-    rounding,
     discountAmount: ZERO,
     taxTotal: computed.taxTotal,
     roundOff: computed.roundOff,
@@ -518,7 +513,7 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
             <ClientOnly fallback={null}>
               <SettlementOverlay
                 quote={quote}
-                basis="inclusive"
+                stream="pharmacy"
                 availableCredit={settlement}
                 fullPayment={buyerKind !== "patient" || !patient}
                 description={`${buyerLabel} · pharmacy counter`}

@@ -20,7 +20,6 @@ test("selected services produce an immediate client-side financial preview", () 
   ).toMatchObject({
     currency: "INR",
     subtotal: 200_00n,
-    rounding: "paise",
     discountAmount: 0n,
     taxTotal: 36_00n,
     roundOff: 0n,
@@ -55,7 +54,7 @@ test("a discount updates tax and payable locally from the trusted quote", () => 
     "INR",
   );
 
-  expect(applyDiscount(quote, 10_00n, "exclusive")).toMatchObject({
+  expect(applyDiscount(quote, 10_00n, "opd")).toMatchObject({
     subtotal: 100_00n,
     discountAmount: 10_00n,
     taxTotal: 16_20n,
