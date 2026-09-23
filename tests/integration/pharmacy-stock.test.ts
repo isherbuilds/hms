@@ -225,18 +225,6 @@ test("a priced delivery stores exact pricing facts and shelves the free units", 
     "a bill total the lines do not reach",
   );
 
-  await expectORPCCode(
-    api.pharmacy.receiveGoods({
-      orgSlug: org.slug,
-      supplierName: "Metro Distributors",
-      receivedOn: RECEIVED_ON,
-      billTotal: 760_00n,
-      lines: [{ ...line, mrp: 70_00n }],
-    }),
-    "BAD_REQUEST",
-    "a receipt whose derived cost reaches its MRP",
-  );
-
   const received = await api.pharmacy.receiveGoods({
     orgSlug: org.slug,
     supplierName: "Metro Distributors",

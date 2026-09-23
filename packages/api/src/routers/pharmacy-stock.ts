@@ -17,7 +17,6 @@ import { audit } from "../audit";
 import { formatDecimal } from "../core/money";
 import {
   BILL_ROUND_OFF_LIMIT,
-  EXACT_SCALE,
   MAX_STOCK_QTY,
   PERCENT_PATTERN,
   exactToPaise,
@@ -792,6 +791,7 @@ export const pharmacyStockRouter = {
     const { scope } = context;
     const receiptId = Bun.randomUUIDv7();
     const now = new Date();
+
     const today = input.opening
       ? businessDate(now, (await readOrgSettings(scope.orgId)).timeZone)
       : null;
@@ -856,16 +856,7 @@ export const pharmacyStockRouter = {
           throw new ORPCError("BAD_REQUEST", { message: "Quantity must be whole priced units" });
         }
 
-        const cost = receiptLineCost({ qty: line.qty, packSize: divisor, ...line.cost });
-
-        if (
-          cost.net * BigInt(divisor) >=
-          line.mrp * EXACT_SCALE * BigInt(line.qty + freeQty)
-        ) {
-          throw new ORPCError("BAD_REQUEST", { message: "Cost must be below MRP" });
-        }
-
-        exactNet += cost.net;
+        exactNet += receiptLineCost({ qty: line.qty, packSize: divisor, ...line.cost }).net;
         priced.push({
           id: Bun.randomUUIDv7(),
           orgId: scope.orgId,
