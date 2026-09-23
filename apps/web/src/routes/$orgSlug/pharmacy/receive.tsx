@@ -426,6 +426,11 @@ function ReceiveGoodsRoute() {
                   <ControlledField
                     name="attachment"
                     label={opening ? "Signed count sheet" : "Bill copy (optional)"}
+                    description={
+                      opening
+                        ? "Photo or PDF of the count sheet, signed by whoever counted"
+                        : "Photo or PDF of the supplier's bill"
+                    }
                     render={(field) => (
                       <FormControl>
                         <Input
@@ -565,7 +570,7 @@ function BatchRow({
     : null;
 
   return (
-    <div className="relative grid min-w-0 grid-cols-2 gap-3 border-b border-border/60 p-3 last:border-b-0 md:grid-cols-4 lg:grid-cols-7 lg:gap-2">
+    <div className="grid min-w-0 grid-cols-2 gap-3 border-b border-border/60 p-3 last:border-b-0 md:grid-cols-4 lg:grid-cols-7 lg:gap-2">
       <ControlledField
         name={`lines.${index}.productId`}
         label={`Product ${index + 1}`}
@@ -625,15 +630,16 @@ function BatchRow({
           </FormControl>
         )}
       />
-      <div className="absolute top-2 right-2 lg:static lg:flex lg:items-end lg:justify-end">
+      <div className="order-last flex items-end lg:order-none lg:justify-end">
         <Button
           type="button"
-          variant="ghost"
-          size="icon-xs"
+          variant="destructive"
+          className="w-full lg:w-8 lg:min-w-0 lg:px-0"
           aria-label={`Remove ${line.productName || `batch ${index + 1}`}`}
           onClick={onRemove}
         >
-          <Trash2Icon />
+          <Trash2Icon data-icon="inline-start" />
+          <span className="lg:hidden">Remove</span>
         </Button>
       </div>
 

@@ -81,8 +81,8 @@ function SaleLines({
   const removeButton = (line: SaleLine) => (
     <Button
       type="button"
-      size="icon-xs"
-      variant="ghost"
+      size="icon-sm"
+      variant="destructive"
       aria-label={`Remove ${line.productName}`}
       onClick={() => onRemove(line.batchId)}
     >

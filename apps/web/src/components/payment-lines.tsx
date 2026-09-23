@@ -62,8 +62,8 @@ export function PaymentLine({
         <Button
           type="button"
           size="icon"
-          variant="ghost"
-          className="col-start-3 text-muted-foreground hover:text-destructive"
+          variant="destructive"
+          className="col-start-3"
           disabled={disabled}
           aria-label={removeLabel}
           onClick={onRemove}

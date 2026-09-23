@@ -155,8 +155,8 @@ export function ServiceLines({
                 <TableCell>
                   <Button
                     type="button"
-                    size="icon-xs"
-                    variant="ghost"
+                    size="icon-sm"
+                    variant="destructive"
                     aria-label={`Remove ${line.description}`}
                     onClick={() => onRemove(line.key, line.editable)}
                   >
@@ -231,8 +231,8 @@ export function ServiceLines({
                 )}
                 <Button
                   type="button"
-                  size="icon-xs"
-                  variant="ghost"
+                  size="icon-sm"
+                  variant="destructive"
                   aria-label={`Remove ${line.description}`}
                   onClick={() => onRemove(line.key, line.editable)}
                 >

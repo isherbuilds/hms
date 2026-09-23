@@ -319,8 +319,8 @@ function PrescriptionDocuments({
                     {canEdit ? (
                       <Button
                         type="button"
-                        size="icon-xs"
-                        variant="ghost"
+                        size="icon-sm"
+                        variant="destructive"
                         aria-label={`Remove ${prescription.name}`}
                         disabled={removingId !== null}
                         onClick={() => void remove(prescription.id)}
