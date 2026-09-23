@@ -8,6 +8,7 @@ import { Form, FormControl } from "@hms/ui/components/form";
 import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
+import { cn } from "@hms/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link, useBlocker, useNavigate } from "@tanstack/react-router";
 import { PlusIcon, Trash2Icon } from "lucide-react";
@@ -570,7 +571,12 @@ function BatchRow({
     : null;
 
   return (
-    <div className="grid min-w-0 grid-cols-2 gap-3 border-b border-border/60 p-3 last:border-b-0 md:grid-cols-4 lg:grid-cols-7 lg:gap-2">
+    <div
+      className={cn(
+        "grid min-w-0 grid-cols-2 gap-3 border-b border-border/60 p-3 last:border-b-0 md:grid-cols-4 lg:gap-2",
+        opening ? "lg:grid-cols-[repeat(7,minmax(0,1fr))_auto]" : "lg:grid-cols-7",
+      )}
+    >
       <ControlledField
         name={`lines.${index}.productId`}
         label={`Product ${index + 1}`}
@@ -630,7 +636,7 @@ function BatchRow({
           </FormControl>
         )}
       />
-      <div className="order-last flex items-end lg:order-none lg:justify-end">
+      <div className={cn("order-last flex items-end lg:justify-end", !opening && "lg:order-none")}>
         <Button
           type="button"
           variant="destructive"
