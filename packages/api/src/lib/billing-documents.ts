@@ -22,8 +22,6 @@ import {
   documentNumber,
   InvoiceDiscountExceededError,
   fiscalYearLabel,
-  invoiceRoundingFor,
-  priceBasisFor,
 } from "./invoice-math";
 import {
   postJournalEntries,
@@ -285,21 +283,16 @@ export async function issueInvoiceTx(
     });
   }
 
-  const computed = (() => {
-    try {
-      return computeInvoiceLines(
-        pendingCharges,
-        args.discountAmount,
-        priceBasisFor(parent.stream),
-        invoiceRoundingFor(parent.stream),
-      );
-    } catch (error) {
-      if (!(error instanceof InvoiceDiscountExceededError)) throw error;
-      throw new ORPCError("BAD_REQUEST", {
-        message: "The charges changed. Review the invoice and try again",
-      });
-    }
-  })();
+  let computed: ReturnType<typeof computeInvoiceLines>;
+
+  try {
+    computed = computeInvoiceLines(pendingCharges, args.discountAmount, parent.stream);
+  } catch (error) {
+    if (!(error instanceof InvoiceDiscountExceededError)) throw error;
+    throw new ORPCError("BAD_REQUEST", {
+      message: "The charges changed. Review the invoice and try again",
+    });
+  }
 
   const categoryByChargeId = new Map(
     pendingCharges.map((charge) => [charge.chargeId, charge.revenueCategory]),

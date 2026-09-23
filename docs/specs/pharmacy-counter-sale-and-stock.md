@@ -281,9 +281,10 @@ that tolerates a pharmacy invoice.
 
 ### Tax-inclusive arithmetic
 
-`computeInvoiceLines(charges, discountPaise, basis, rounding)` takes
-`basis: "exclusive" | "inclusive"` and `rounding: "paise" | "rupee"`
-(`invoiceRoundingFor(stream)` selects paise for OPD and rupee for Pharmacy).
+`computeInvoiceLines(charges, discountPaise, stream)` takes
+`stream: "opd" | "pharmacy"`, which selects both behaviours: pharmacy prices
+are tax-inclusive and the document total rounds half-up to whole rupees; OPD
+prices are tax-exclusive and the total stays exact to the paisa.
 A price is `unitPrice` paise per `priceUnits` stock units; each exact line
 subtotal is `qty × unitPrice / priceUnits`, never a rounded unit or line
 price. With `L = lcm(priceUnits)` and
@@ -506,9 +507,7 @@ mrp, cost?: { freeQty, rate, discountPercent, gstPercent, hsnCode? } }]`
 as printed. The client sends no `packSize`: the server derives the divisor
 from the locked product (`unitsPerPack` for `"pack"`, 1 for `"unit"`),
 stores it as batch `mrpUnits` and receipt-line `packSize`, and requires a
-priced line's billed qty to divide by it. `qty`, `freeQty`, their sum, and
-the movement qty aggregated per batch across repeated lines must each be
-at most 2,147,483,647; free qty need not be ≤ billed qty. A non-opening
+priced line's billed qty to divide by it. Free qty need not be ≤ billed qty. A non-opening
 receipt names its supplier, prices every line, and reconciles the rounded
 sum of exact line nets against the printed bill total within ±₹0.99.
 An opening receipt carries no cost pricing. The command verifies the file
@@ -611,12 +610,12 @@ the console keeps one filter idiom.
   sheet) sit above one line per product and batch. A line's first row names
   the stock — product, batch, expiry, billed quantity, count as packs or loose
   units; its second row prices it — free quantity, rate, discount %, GST %,
-  MRP, HSN and the computed exact line total with derived cost per unit,
+  MRP, HSN and the line total with derived cost per unit,
   shown as an error when it reaches the MRP. An opening count asks only the
   printed MRP and refuses expired batches. Picking a product fills GST % and
-  HSN from its counter tax. The footer totals taxable, GST and exact lines
-  and states whether their sum rounded once matches the printed bill total
-  within ±₹0.99. **Back to stock** returns through the unsaved-delivery
+  HSN from its counter tax. Line totals and the footer's taxable, GST and
+  lines totals are shown to the paisa; the footer states whether the rounded
+  sum of the lines matches the printed bill total within ±₹0.99. **Back to stock** returns through the unsaved-delivery
   confirmation. The page converts packs with `unitsPerPack`; the receipt
   stores stock-unit quantities and the MRP with its printed `mrpUnits`
   denominator, never a rounded per-unit MRP. **New product** opens a Sheet
@@ -638,8 +637,8 @@ the console keeps one filter idiom.
   accountant holds no pharmacy write; the matrix gains the `pharmacist` column.
 - **Integration, `tests/integration/pharmacy-stock.test.ts`**: a receipt
   retains printed pack MRP and exact line facts, allows separate priced lines
-  for a batch while aggregating movements, reconciles only the bill total,
-  and refuses aggregate quantity overflow; a second arrival with a different
+  for a batch while aggregating movements, and reconciles only the bill
+  total; a second arrival with a different
   expiry or non-equivalent MRP is refused; an opening receipt records its count
   sheet and refuses touched or expired batches; an internal issue names its
   department and is refused without one; quarantine and release move quantity

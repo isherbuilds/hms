@@ -17,7 +17,6 @@ import { audit } from "../audit";
 import { formatDecimal } from "../core/money";
 import {
   BILL_ROUND_OFF_LIMIT,
-  MAX_STOCK_QTY,
   PERCENT_PATTERN,
   exactToPaise,
   receiptLineCost,
@@ -77,7 +76,7 @@ const batchLine = z.object({
 
 // Quantities are stock units; the locked product determines the priced-unit divisor.
 const lineCost = z.object({
-  freeQty: z.number().int().min(0).max(MAX_STOCK_QTY),
+  freeQty: z.number().int().min(0),
   rate: money,
   discountPercent: z.string().regex(PERCENT_PATTERN),
   gstPercent: z.string().regex(PERCENT_PATTERN),
@@ -112,6 +111,8 @@ type ResolvedBatch = {
   mrpUnits: number;
 };
 
+type ResolvedLine = { batch: ResolvedBatch; divisor: number };
+
 const batchKey = (line: { productId: string; batchNumber: string }) =>
   `${line.productId}\0${line.batchNumber}`;
 
@@ -122,7 +123,7 @@ const batchKey = (line: { productId: string; batchNumber: string }) =>
 async function resolveBatches(
   tx: DbTransaction,
   args: { orgId: string; now: Date; lines: readonly BatchRequest[] },
-): Promise<{ resolved: Map<string, ResolvedBatch>; unitsPerPack: Map<string, number> }> {
+): Promise<ResolvedLine[]> {
   const { orgId } = args;
   const productIds = [...new Set(args.lines.map((line) => line.productId))];
 
@@ -164,6 +165,7 @@ async function resolveBatches(
   const byKey = new Map(existing.map((batch) => [batchKey(batch), batch]));
   const resolved = new Map<string, ResolvedBatch>();
   const created: (typeof stockBatches.$inferInsert)[] = [];
+  const lines: ResolvedLine[] = [];
 
   for (const line of args.lines) {
     const lineKey = batchKey(line);
@@ -183,6 +185,7 @@ async function resolveBatches(
         });
       }
 
+      lines.push({ batch: canonical, divisor });
       continue;
     }
 
@@ -199,6 +202,7 @@ async function resolveBatches(
       }
 
       resolved.set(lineKey, match);
+      lines.push({ batch: match, divisor });
       continue;
     }
 
@@ -215,13 +219,14 @@ async function resolveBatches(
 
     created.push(batch);
     resolved.set(lineKey, batch);
+    lines.push({ batch, divisor });
   }
 
   if (created.length > 0) {
     await tx.insert(stockBatches).values(created);
   }
 
-  return { resolved, unitsPerPack };
+  return lines;
 }
 
 export const pharmacyStockRouter = {
@@ -729,7 +734,7 @@ export const pharmacyStockRouter = {
         lines: z
           .array(
             batchLine.extend({
-              qty: z.number().int().positive().max(MAX_STOCK_QTY),
+              qty: z.number().int().positive(),
               cost: lineCost.optional(),
             }),
           )
@@ -807,7 +812,7 @@ export const pharmacyStockRouter = {
         }
       }
 
-      const { resolved, unitsPerPack } = await resolveBatches(tx, {
+      const resolvedLines = await resolveBatches(tx, {
         orgId: scope.orgId,
         now,
         lines: input.lines,
@@ -817,35 +822,13 @@ export const pharmacyStockRouter = {
       const priced: (typeof goodsReceiptLines.$inferInsert)[] = [];
       let exactNet = 0n;
 
-      for (const line of input.lines) {
-        const batch = resolved.get(batchKey(line));
-
-        if (!batch) throw impossible("a resolved receipt batch vanished before its movement");
-
+      for (const [index, line] of input.lines.entries()) {
+        const { batch, divisor } = resolvedLines[index]!;
         const freeQty = line.cost?.freeQty ?? 0;
-        const quantity = line.qty + freeQty;
 
-        if (quantity > MAX_STOCK_QTY) {
-          throw new ORPCError("BAD_REQUEST", {
-            message: "Receipt line quantity exceeds stock limit.",
-          });
-        }
-
-        const total = (wanted.get(batch.id) ?? 0) + quantity;
-
-        if (total > MAX_STOCK_QTY) {
-          throw new ORPCError("BAD_REQUEST", {
-            message: "Batch receipt quantity exceeds stock limit.",
-          });
-        }
-
-        wanted.set(batch.id, total);
+        wanted.set(batch.id, (wanted.get(batch.id) ?? 0) + line.qty + freeQty);
 
         if (!line.cost) continue;
-        const packUnits = unitsPerPack.get(line.productId);
-
-        if (packUnits === undefined) throw impossible("a locked receipt product vanished");
-        const divisor = line.pricedPer === "pack" ? packUnits : 1;
 
         if (line.qty % divisor !== 0) {
           throw new ORPCError("BAD_REQUEST", { message: "Quantity must be whole priced units" });
@@ -929,7 +912,7 @@ export const pharmacyStockRouter = {
         })),
       });
 
-      return [...resolved.values()].map((batch) => ({
+      return [...new Set(resolvedLines.map(({ batch }) => batch))].map((batch) => ({
         batchId: batch.id,
         productId: batch.productId,
         batchNumber: batch.batchNumber,

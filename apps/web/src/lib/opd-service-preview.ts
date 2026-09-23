@@ -1,9 +1,4 @@
-import {
-  computeInvoiceLines,
-  invoiceRoundingFor,
-  type InvoiceRounding,
-  type PriceBasis,
-} from "@hms/api/lib/invoice-math";
+import { computeInvoiceLines, type InvoiceStream } from "@hms/api/lib/invoice-math";
 
 export type WalkInQuote = {
   currency: string;
@@ -20,7 +15,6 @@ export type WalkInQuote = {
     gross: bigint;
   }>;
   subtotal: bigint;
-  rounding: InvoiceRounding;
   discountAmount: bigint;
   taxTotal: bigint;
   roundOff: bigint;
@@ -43,11 +37,11 @@ function attachLineMetadata<T extends object>(
   });
 }
 
-/** `basis` is the quote's own tax treatment: pharmacy MRP is inclusive, services are not. */
+/** `stream` sets the quote's tax treatment and total rounding. */
 export function applyDiscount(
   quote: WalkInQuote,
   discountAmount: bigint,
-  basis: PriceBasis,
+  stream: InvoiceStream,
 ): WalkInQuote {
   const computed = computeInvoiceLines(
     quote.lines.map((line) => ({
@@ -60,8 +54,7 @@ export function applyDiscount(
       taxCode: line.taxCode,
     })),
     discountAmount,
-    basis,
-    quote.rounding,
+    stream,
   );
 
   return {
@@ -97,8 +90,7 @@ export function servicePreview(services: PreviewService[], currency: string): Wa
     taxCode: null,
   }));
 
-  const rounding = invoiceRoundingFor("opd");
-  const computed = computeInvoiceLines(previewLines, 0n, "exclusive", rounding);
+  const computed = computeInvoiceLines(previewLines, 0n, "opd");
 
   return {
     currency,
@@ -108,7 +100,6 @@ export function servicePreview(services: PreviewService[], currency: string): Wa
       "Computed preview line has no source line",
     ),
     subtotal: computed.subtotal,
-    rounding,
     discountAmount: 0n,
     taxTotal: computed.taxTotal,
     roundOff: computed.roundOff,

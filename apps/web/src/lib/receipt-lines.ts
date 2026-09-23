@@ -2,19 +2,14 @@ import { DECIMAL_PATTERN, divideHalfUp, parseDecimal } from "@hms/api/core/money
 import {
   BILL_ROUND_OFF_LIMIT,
   EXACT_SCALE,
-  MAX_STOCK_QTY,
   PERCENT_PATTERN,
   type ReceiptCost,
   exactToPaise,
-  formatExact,
   receiptLineCost,
 } from "@hms/api/core/receipt-math";
 
-import { formatMoney } from "./money";
-
 // Bigint arithmetic for the receive page lives here: the React Compiler drops bigint
 // literals inside components.
-const groupedWhole = new Intl.NumberFormat("en-IN");
 
 /** A receipt row as typed: counts and prices in the bill's unit, pack or loose. */
 export type ReceiptRowText = {
@@ -33,38 +28,19 @@ export function packSizeOf(row: Pick<ReceiptRowText, "unitsPerPack" | "loose">) 
   return row.loose || row.unitsPerPack === 1 ? 1 : row.unitsPerPack;
 }
 
-/** Invalid or out-of-range counts must never reach bigint arithmetic or the render tree. */
-export function wholeCount(value: string): number | null {
-  if (!/^\d+$/.test(value.trim())) return null;
-  const count = Number(value);
-
-  return Number.isSafeInteger(count) && count <= MAX_STOCK_QTY ? count : null;
+function wholeCount(value: string): number | null {
+  return /^\d+$/.test(value.trim()) ? Number(value) : null;
 }
 
-/** Counts typed in packs or loose units, bounded by the stock column's integer limit. */
+/** Counts typed in packs or loose units, as stock units. */
 export function stockQuantities(row: ReceiptRowText, opening = false) {
   const count = wholeCount(row.count);
   const free = opening || row.free.trim() === "" ? 0 : wholeCount(row.free);
   const packSize = packSizeOf(row);
 
-  if (
-    count === null ||
-    free === null ||
-    !Number.isSafeInteger(packSize) ||
-    packSize < 1 ||
-    packSize > MAX_STOCK_QTY
-  ) {
-    return null;
-  }
+  if (count === null || free === null) return null;
 
-  const qty = count * packSize;
-  const freeQty = free * packSize;
-
-  if (qty > MAX_STOCK_QTY || freeQty > MAX_STOCK_QTY || qty + freeQty > MAX_STOCK_QTY) {
-    return null;
-  }
-
-  return { qty, freeQty, packSize };
+  return { qty: count * packSize, freeQty: free * packSize, packSize };
 }
 
 /** The line's exact bill arithmetic once every figure it needs is typed; otherwise null. */
@@ -111,20 +87,10 @@ export function approximateUnitCost(row: ReceiptRowText, cost: ReceiptCost): big
   return divideHalfUp(cost.net, EXACT_SCALE * BigInt(quantities.qty + quantities.freeQty));
 }
 
-/** Currency display without passing fractional paise through Intl's two-place rounding. */
-export function formatReceiptExact(exact: bigint, currency: string): string {
-  const [whole, fraction] = formatExact(exact).split(".");
-  const grouped = groupedWhole.format(BigInt(whole));
-
-  return formatMoney(0n, currency).replace("0.00", `${grouped}.${fraction}`);
-}
-
 export type BillSummary = {
-  /** Exact amounts, in paise/EXACT_SCALE, for display with formatExact. */
+  /** Exact amounts, in paise/EXACT_SCALE. */
   taxable: bigint;
   gst: bigint;
-  /** Exact sum of line nets, in paise/EXACT_SCALE. */
-  exactNet: bigint;
   /** Rounded once after summing every exact line net. */
   net: bigint;
   /** Every line priced, so `net` is the whole bill. */
@@ -161,7 +127,6 @@ export function billSummary(rows: readonly ReceiptRowText[], billTotal: string):
   return {
     taxable,
     gst,
-    exactNet,
     net,
     complete,
     roundOff,

@@ -7,7 +7,6 @@ import {
   derivePartialCredit,
   documentNumber,
   fiscalYearLabel,
-  invoiceRoundingFor,
   splitGst,
 } from "@hms/api/lib/invoice-math";
 
@@ -24,9 +23,7 @@ const charge = (chargeId: string, unitPrice: string, taxRatePercent = "0", qty =
 const sumMoney = (values: bigint[]) => values.reduce((sum, value) => sum + value, 0n);
 
 test("computes a single line without a discount", () => {
-  expect(
-    computeInvoiceLines([charge("consult", "100.00", "18.00", 2)], 0n, "exclusive", "paise"),
-  ).toEqual({
+  expect(computeInvoiceLines([charge("consult", "100.00", "18.00", 2)], 0n, "opd")).toEqual({
     lines: [
       {
         chargeId: "consult",
@@ -54,8 +51,7 @@ test("allocates a rounding remainder while keeping line and header sums exact", 
   const result = computeInvoiceLines(
     [charge("a", "1.00"), charge("b", "1.00"), charge("c", "1.00")],
     1n,
-    "exclusive",
-    "paise",
+    "opd",
   );
 
   expect(result.lines.map((line) => line.allocatedDiscount)).toEqual([1n, 0n, 0n]);
@@ -69,8 +65,7 @@ test("folds the allocation remainder into the largest line", () => {
   const result = computeInvoiceLines(
     [charge("small-a", "1.00"), charge("largest", "3.00"), charge("small-b", "1.00")],
     2n,
-    "exclusive",
-    "paise",
+    "opd",
   );
 
   expect(result.lines.map((line) => line.allocatedDiscount)).toEqual([0n, 2n, 0n]);
@@ -85,8 +80,7 @@ test("rounds tax half-up independently across multiple rates", () => {
       charge("eighteen", "10.00", "18"),
     ],
     0n,
-    "exclusive",
-    "paise",
+    "opd",
   );
 
   expect(result.lines.map((line) => line.taxAmount)).toEqual([0n, 13n, 120n, 180n]);
@@ -95,17 +89,14 @@ test("rounds tax half-up independently across multiple rates", () => {
 });
 
 test("rejects a discount greater than the subtotal", () => {
-  expect(() =>
-    computeInvoiceLines([charge("a", "10.00")], parseDecimal("10.01"), "exclusive", "paise"),
-  ).toThrow();
+  expect(() => computeInvoiceLines([charge("a", "10.00")], parseDecimal("10.01"), "opd")).toThrow();
 });
 
 test("full-line credits reproduce the exact invoice header totals", () => {
   const invoice = computeInvoiceLines(
     [charge("a", "17.35", "5", 2), charge("b", "8.99", "12"), charge("c", "2.50", "18", 3)],
     0n,
-    "exclusive",
-    "paise",
+    "opd",
   );
 
   expect(sumMoney(invoice.lines.map((line) => line.taxableValue))).toBe(invoice.subtotal);
@@ -114,7 +105,7 @@ test("full-line credits reproduce the exact invoice header totals", () => {
 });
 
 test("extracts tax from an inclusive price with no discount", () => {
-  const result = computeInvoiceLines([charge("mrp", "112.00", "12")], 0n, "inclusive", "paise");
+  const result = computeInvoiceLines([charge("mrp", "112.00", "12")], 0n, "pharmacy");
 
   expect(result.lines.map((line) => [line.taxableValue, line.taxAmount, line.gross])).toEqual([
     [10_000n, 1_200n, 11_200n],
@@ -123,7 +114,7 @@ test("extracts tax from an inclusive price with no discount", () => {
 });
 
 test("extracts tax from the discounted inclusive amount", () => {
-  const result = computeInvoiceLines([charge("mrp", "112.00", "12")], 1_200n, "inclusive", "paise");
+  const result = computeInvoiceLines([charge("mrp", "112.00", "12")], 1_200n, "pharmacy");
 
   expect(result.lines.map((line) => [line.taxableValue, line.taxAmount, line.gross])).toEqual([
     [8_929n, 1_071n, 10_000n],
@@ -132,7 +123,7 @@ test("extracts tax from the discounted inclusive amount", () => {
 });
 
 test("leaves a zero-rated inclusive line untaxed", () => {
-  const result = computeInvoiceLines([charge("mrp", "50.00", "0")], 0n, "inclusive", "paise");
+  const result = computeInvoiceLines([charge("mrp", "50.00", "0")], 0n, "pharmacy");
 
   expect(result.lines.map((line) => [line.taxableValue, line.taxAmount, line.gross])).toEqual([
     [5_000n, 0n, 5_000n],
@@ -141,12 +132,7 @@ test("leaves a zero-rated inclusive line untaxed", () => {
 });
 
 test("a fully discounted inclusive line is worth nothing", () => {
-  const result = computeInvoiceLines(
-    [charge("mrp", "112.00", "12")],
-    11_200n,
-    "inclusive",
-    "paise",
-  );
+  const result = computeInvoiceLines([charge("mrp", "112.00", "12")], 11_200n, "pharmacy");
 
   expect(result.lines.map((line) => [line.taxableValue, line.taxAmount, line.gross])).toEqual([
     [0n, 0n, 0n],
@@ -158,8 +144,7 @@ test("splits an inclusive discount across two rates and extracts each line's tax
   const result = computeInvoiceLines(
     [charge("twelve", "112.00", "12"), charge("five", "105.00", "5")],
     1_000n,
-    "inclusive",
-    "paise",
+    "pharmacy",
   );
 
   expect(result.lines.map((line) => line.allocatedDiscount)).toEqual([516n, 484n]);
@@ -178,8 +163,7 @@ test("allocates fractional strip prices by largest remainder without line roundi
       { ...charge("c", "76.19", "0", 4), priceUnits: 10 },
     ],
     0n,
-    "inclusive",
-    "rupee",
+    "pharmacy",
   );
 
   expect(result.lines.map((line) => line.lineSubtotal)).toEqual([2_286n, 2_286n, 3_047n]);
@@ -190,13 +174,10 @@ test("allocates fractional strip prices by largest remainder without line roundi
 });
 
 test("rounds only the inclusive pharmacy document total to rupees, with halves up", () => {
-  expect(invoiceRoundingFor("pharmacy")).toBe("rupee");
-  expect(invoiceRoundingFor("opd")).toBe("paise");
-
-  const quote = computeInvoiceLines([charge("a", "122.86", "12")], 0n, "inclusive", "rupee");
+  const quote = computeInvoiceLines([charge("a", "122.86", "12")], 0n, "pharmacy");
   expect([quote.subtotal, quote.roundOff, quote.grandTotal]).toEqual([12_286n, 14n, 12_300n]);
 
-  const half = computeInvoiceLines([charge("b", "122.50")], 0n, "inclusive", "rupee");
+  const half = computeInvoiceLines([charge("b", "122.50")], 0n, "pharmacy");
   expect([half.roundOff, half.grandTotal]).toEqual([50n, 12_300n]);
 });
 

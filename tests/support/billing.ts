@@ -104,8 +104,7 @@ export async function settlePendingCharges(
       taxCode: charge.taxCode,
     })),
     discountAmount,
-    "exclusive",
-    "paise",
+    "opd",
   );
 
   return api.billing.settleCharges({

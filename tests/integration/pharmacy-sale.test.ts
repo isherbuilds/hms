@@ -48,8 +48,7 @@ function expectedTotals(
       },
     ],
     discount,
-    "inclusive",
-    "rupee",
+    "pharmacy",
   );
 }
 
