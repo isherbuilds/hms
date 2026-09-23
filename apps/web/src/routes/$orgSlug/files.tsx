@@ -141,7 +141,7 @@ function FilesRoute() {
             onQueryChange={setQuery}
           />
         </ListToolbar>
-        <Panel label="Library" footer={<LoadMore query={files} shown={items.length} />}>
+        <Panel grow footer={<LoadMore query={files} shown={items.length} />}>
           <ListState
             query={files}
             errorTitle="Could not load files"

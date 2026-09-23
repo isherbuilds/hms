@@ -312,7 +312,7 @@ function BillingIndexRoute() {
                   </TableHeader>
                   <TableBody>
                     {rows.map((row) => (
-                      <TableRow key={row.key}>
+                      <TableRow key={row.key} className="relative">
                         <TableCell className="max-w-0">
                           {row.appointmentId ? (
                             <Link
@@ -322,7 +322,7 @@ function BillingIndexRoute() {
                                 appointmentId: row.appointmentId,
                               }}
                               title={row.patientName}
-                              className="block truncate text-left font-medium capitalize underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                              className="relative z-10 block truncate text-left font-medium capitalize underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                             >
                               {row.patientName}
                             </Link>
@@ -345,7 +345,7 @@ function BillingIndexRoute() {
                             type="button"
                             aria-haspopup="dialog"
                             onClick={() => void openSheet(row)}
-                            className="block max-w-full text-left underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                            className="block max-w-full text-left underline-offset-4 after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                           >
                             <span className="block truncate font-mono" title={row.reference}>
                               {row.reference}
@@ -451,12 +451,12 @@ function BillingIndexRoute() {
                   </TableHeader>
                   <TableBody>
                     {refundData?.rows.map((row) => (
-                      <TableRow key={row.invoiceId}>
+                      <TableRow key={row.invoiceId} className="relative">
                         <TableCell className="font-mono whitespace-nowrap">
                           <Link
                             to="/$orgSlug/billing/invoices/$invoiceId"
                             params={{ orgSlug, invoiceId: row.invoiceId }}
-                            className="underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                            className="underline-offset-4 after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                           >
                             {row.invoiceNumber}
                           </Link>

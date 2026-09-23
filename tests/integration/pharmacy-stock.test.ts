@@ -2,7 +2,6 @@ import { beforeAll, expect, test } from "bun:test";
 
 import { MAX_STOCK_QTY } from "@hms/api/core/receipt-math";
 import { db } from "@hms/db";
-import { file } from "@hms/db/schema/file";
 import { goodsReceiptLines } from "@hms/db/schema/goods-receipt-lines";
 import { goodsReceipts } from "@hms/db/schema/goods-receipts";
 import { eq } from "drizzle-orm";
@@ -37,22 +36,6 @@ function productInput(orgSlug: string, name = "Paracetamol 500") {
     unitsPerPack: 10,
     manufacturer: "Acme Pharma",
   };
-}
-
-async function countSheet(orgId: string, userId: string): Promise<string> {
-  const id = `${orgId}/count-${uniqueSuffix()}.pdf`;
-
-  await db.insert(file).values({
-    id,
-    orgId,
-    userId,
-    name: "count-sheet.pdf",
-    mimeType: "application/pdf",
-    size: 1024,
-    status: "ready",
-  });
-
-  return id;
 }
 
 test("a receipt creates a batch with shelf stock and refuses a conflicting arrival", async () => {
@@ -107,9 +90,22 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
   expect(search).toHaveLength(1);
   expect(search[0]?.batches).toMatchObject([{ batchId, mrp: 12_00n, mrpUnits: 1, shelfQty: 50 }]);
 
-  const movements = await api.pharmacy.listMovements({ orgSlug: org.slug, batchId });
-  expect(movements).toHaveLength(1);
-  expect(movements[0]).toMatchObject({ bucket: "shelf", qty: 50, reason: "receipt" });
+  const { items: movements, nextCursor } = await api.pharmacy.listMovements({
+    orgSlug: org.slug,
+    batchId,
+  });
+
+  expect(nextCursor).toBeNull();
+  expect(movements).toMatchObject([
+    {
+      productName: "Paracetamol 500",
+      batchNumber: "B-100",
+      stockUnit: "tablet",
+      bucket: "shelf",
+      qty: 50,
+      reason: "receipt",
+    },
+  ]);
 
   // The same printed unit MRP may arrive expressed per pack; preserve the first snapshot.
   const repeated = await api.pharmacy.receiveGoods({
@@ -291,7 +287,7 @@ test("different rates on one batch retain both lines but make one stock movement
     { rate: 3n, packSize: 10 },
   ]);
 
-  const movements = await api.pharmacy.listMovements({
+  const { items: movements } = await api.pharmacy.listMovements({
     orgSlug: org.slug,
     batchId: received.batches[0]?.batchId ?? "",
   });
@@ -329,65 +325,13 @@ test("pack-priced receipts require whole packs from the locked product", async (
   );
 });
 
-test("an opening receipt carries its count sheet and refuses a batch that already moved", async () => {
+test("an opening receipt refuses expired and already-moved batches", async () => {
   const owner = await createTestUser("pharmacy-opening-owner");
   const org = await createOrganization(owner, "pharmacy-opening");
   const api = clientFor(owner);
 
   const product = await api.pharmacy.createProduct(productInput(org.slug, "Amoxicillin 250"));
-  const fileId = await countSheet(org.id, owner.user.id);
   const countedOn = "2026-04-01";
-  const pendingFileId = `${org.id}/pending-count-${uniqueSuffix()}.pdf`;
-
-  await db.insert(file).values({
-    id: pendingFileId,
-    orgId: org.id,
-    userId: owner.user.id,
-    name: "pending-count-sheet.pdf",
-    mimeType: "application/pdf",
-    size: 1024,
-  });
-
-  await expectORPCCode(
-    api.pharmacy.receiveGoods({
-      orgSlug: org.slug,
-      opening: true,
-      receivedOn: countedOn,
-      lines: [
-        {
-          productId: product.productId,
-          batchNumber: "C-MISSING-SHEET",
-          expiryDate: FAR_EXPIRY,
-          mrp: 30_00n,
-          pricedPer: "unit",
-          qty: 1,
-        },
-      ],
-    }),
-    "BAD_REQUEST",
-    "an opening receipt without its count sheet",
-  );
-
-  await expectORPCCode(
-    api.pharmacy.receiveGoods({
-      orgSlug: org.slug,
-      opening: true,
-      receivedOn: countedOn,
-      fileId: pendingFileId,
-      lines: [
-        {
-          productId: product.productId,
-          batchNumber: "C-PENDING-SHEET",
-          expiryDate: FAR_EXPIRY,
-          mrp: 30_00n,
-          pricedPer: "unit",
-          qty: 1,
-        },
-      ],
-    }),
-    "NOT_FOUND",
-    "an opening receipt with an unfinished count-sheet upload",
-  );
 
   await expectORPCCode(
     api.pharmacy.receiveGoods({
@@ -395,7 +339,6 @@ test("an opening receipt carries its count sheet and refuses a batch that alread
       opening: true,
       supplierName: "Not an opening supplier",
       receivedOn: countedOn,
-      fileId,
       lines: [
         {
           productId: product.productId,
@@ -416,7 +359,6 @@ test("an opening receipt carries its count sheet and refuses a batch that alread
       orgSlug: org.slug,
       opening: true,
       receivedOn: countedOn,
-      fileId,
       lines: [
         {
           productId: product.productId,
@@ -436,7 +378,6 @@ test("an opening receipt carries its count sheet and refuses a batch that alread
     orgSlug: org.slug,
     opening: true,
     receivedOn: countedOn,
-    fileId,
     note: "cutover count",
     lines: [
       {
@@ -460,33 +401,25 @@ test("an opening receipt carries its count sheet and refuses a batch that alread
   expect(receipt).toMatchObject({
     opening: true,
     supplierName: null,
-    fileId,
+    fileId: null,
     receivedOn: countedOn,
     receivedBy: owner.user.id,
   });
 
-  const movements = await api.pharmacy.listMovements({ orgSlug: org.slug, batchId });
+  const { items: movements } = await api.pharmacy.listMovements({ orgSlug: org.slug, batchId });
   expect(movements).toMatchObject([{ reason: "opening", bucket: "shelf", qty: 12 }]);
   expect(movements[0]?.createdByName).toBe(owner.user.name);
   expect(movements[0]?.receipt).toMatchObject({
     opening: true,
     supplierName: null,
     receivedOn: countedOn,
-    fileId,
   });
-
-  await expectORPCCode(
-    api.file.delete({ orgSlug: org.slug, key: fileId }),
-    "CONFLICT",
-    "deleting the retained count sheet",
-  );
 
   await expectORPCCode(
     api.pharmacy.receiveGoods({
       orgSlug: org.slug,
       opening: true,
       receivedOn: countedOn,
-      fileId,
       lines: [
         {
           productId: product.productId,
@@ -656,11 +589,10 @@ test("an internal issue names its department and is refused without one", async 
     note: "ward indent",
   });
 
-  const movements = await api.pharmacy.listMovements({ orgSlug: org.slug, batchId });
+  const { items: movements } = await api.pharmacy.listMovements({ orgSlug: org.slug, batchId });
   expect(movements[0]).toMatchObject({
     reason: "internal_issue",
     qty: -10,
-    departmentId: ward.id,
     departmentName: "Ward A",
   });
 
@@ -745,7 +677,7 @@ test("quarantine and release move stock between buckets and a bucket cannot go b
     { batchId, shelfQty: 17, quarantineQty: 3 },
   ]);
 
-  const movements = await api.pharmacy.listMovements({ orgSlug: org.slug, batchId });
+  const { items: movements } = await api.pharmacy.listMovements({ orgSlug: org.slug, batchId });
   // Newest first; the two rows of a release/quarantine pair share one timestamp and reason.
   expect(movements.map((movement) => movement.reason)).toEqual([
     "release",
@@ -857,13 +789,13 @@ test("pharmacy stock ids from another organization are not found", async () => {
   });
 
   const batchId = received.batches[0]?.batchId ?? "";
-  const fileId = await countSheet(home.id, owner.user.id);
 
   await expectORPCCode(
     api.pharmacy.listMovements({ orgSlug: other.slug, batchId }),
     "NOT_FOUND",
     "a foreign batch's movements",
   );
+  expect((await api.pharmacy.listMovements({ orgSlug: other.slug })).items).toEqual([]);
 
   await expectORPCCode(
     api.pharmacy.receiveGoods({
@@ -898,29 +830,6 @@ test("pharmacy stock ids from another organization are not found", async () => {
     }),
     "NOT_FOUND",
     "a foreign batch adjustment",
-  );
-
-  const otherProduct = await api.pharmacy.createProduct(productInput(other.slug, "Metformin 500"));
-
-  await expectORPCCode(
-    api.pharmacy.receiveGoods({
-      orgSlug: other.slug,
-      opening: true,
-      receivedOn: RECEIVED_ON,
-      fileId,
-      lines: [
-        {
-          productId: otherProduct.productId,
-          batchNumber: "F-1",
-          expiryDate: FAR_EXPIRY,
-          mrp: 9_00n,
-          pricedPer: "unit",
-          qty: 1,
-        },
-      ],
-    }),
-    "NOT_FOUND",
-    "a foreign count sheet",
   );
 
   expect((await api.pharmacy.stockOnHand({ orgSlug: other.slug })).items).toEqual([]);

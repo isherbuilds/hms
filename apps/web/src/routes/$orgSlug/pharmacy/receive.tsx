@@ -3,9 +3,7 @@ import { PERCENT_PATTERN, exactToPaise } from "@hms/api/core/receipt-math";
 import { expiryMonth } from "@hms/api/lib/schemas";
 import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
-import { Checkbox } from "@hms/ui/components/checkbox";
 import { Form, FormControl } from "@hms/ui/components/form";
-import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { cn } from "@hms/ui/lib/utils";
@@ -27,9 +25,7 @@ import { numberText } from "@/lib/form-schema";
 import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { orgToday, useOrgDateTime } from "@/lib/org-datetime";
-import { uploadOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
-import { errorMessage } from "@/lib/orpc-error";
 import {
   approximateUnitCost,
   billSummary,
@@ -71,11 +67,6 @@ function monthsUntil(expiry: string, today: string) {
   return (year - thisYear) * 12 + (month - thisMonth);
 }
 
-const attachment = z.custom<File | undefined>(
-  (value) => value === undefined || value instanceof File,
-  "Choose an image or PDF",
-);
-
 const wholeText = /^\d+$/;
 
 // Pricing is plain text here: an opening count carries none, so the receipt-level refine
@@ -116,19 +107,10 @@ const receiptSchema = (today: string) =>
       supplierReference: z.string().trim().max(100),
       receivedOn: z.iso.date("Use a valid date"),
       billTotal: z.string().trim(),
-      attachment,
       note: z.string().trim().max(500),
       lines: z.array(receiptLineSchema(today)).min(1, "Add at least one batch"),
     })
     .superRefine((value, context) => {
-      if (value.opening && value.attachment === undefined) {
-        context.addIssue({
-          code: "custom",
-          path: ["attachment"],
-          message: "Attach the signed sheet you counted from",
-        });
-      }
-
       const issue = (path: (string | number)[], message: string) =>
         context.addIssue({ code: "custom", path, message });
 
@@ -237,7 +219,6 @@ function ReceiveGoodsRoute() {
       supplierReference: "",
       receivedOn: orgToday(timeZone),
       billTotal: "",
-      attachment: undefined,
       note: "",
       lines: [blankLine()],
     },
@@ -245,16 +226,8 @@ function ReceiveGoodsRoute() {
 
   const lines = useFieldArray({ control: form.control, name: "lines", keyName: "fieldKey" });
   const [newProductLine, setNewProductLine] = useState<number | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const opening = useWatch({ control: form.control, name: "opening" });
   const dirty = form.formState.isDirty;
-  const locked = submitting;
-
-  const blocker = useBlocker({
-    shouldBlockFn: () => dirty || locked,
-    enableBeforeUnload: dirty || locked,
-    withResolver: true,
-  });
 
   const receive = useMutation(
     orpc.pharmacy.receiveGoods.mutationOptions({
@@ -273,57 +246,48 @@ function ReceiveGoodsRoute() {
     }),
   );
 
-  const submit = form.handleSubmit(async (values: Receipt) => {
-    setSubmitting(true);
+  const locked = receive.isPending;
 
-    let fileId: string | undefined;
+  const blocker = useBlocker({
+    shouldBlockFn: () => dirty || locked,
+    enableBeforeUnload: dirty || locked,
+    withResolver: true,
+  });
 
-    try {
-      fileId = values.attachment ? await uploadOrgFile(orgSlug, values.attachment) : undefined;
-    } catch (error) {
-      toast.error(errorMessage(error, "Could not attach that file"));
-      setSubmitting(false);
+  const submit = form.handleSubmit((values: Receipt) => {
+    receive.mutate({
+      orgSlug,
+      opening: values.opening,
+      supplierName: values.opening ? undefined : values.supplierName,
+      supplierReference: values.opening ? undefined : values.supplierReference || undefined,
+      receivedOn: values.receivedOn,
+      billTotal: values.opening ? undefined : parseDecimal(values.billTotal),
+      note: values.note || undefined,
+      lines: values.lines.map((line) => {
+        const row = rowText(line);
+        const quantities = stockQuantities(row, values.opening);
 
-      return;
-    }
+        if (!quantities) throw new Error("A validated receipt line exceeds stock limits");
 
-    receive.mutate(
-      {
-        orgSlug,
-        opening: values.opening,
-        supplierName: values.opening ? undefined : values.supplierName,
-        supplierReference: values.opening ? undefined : values.supplierReference || undefined,
-        receivedOn: values.receivedOn,
-        billTotal: values.opening ? undefined : parseDecimal(values.billTotal),
-        fileId,
-        note: values.note || undefined,
-        lines: values.lines.map((line) => {
-          const row = rowText(line);
-          const quantities = stockQuantities(row, values.opening);
-
-          if (!quantities) throw new Error("A validated receipt line exceeds stock limits");
-
-          return {
-            productId: line.productId,
-            batchNumber: line.batchNumber,
-            expiryDate: line.expiryDate,
-            qty: quantities.qty,
-            pricedPer: quantities.packSize === 1 ? ("unit" as const) : ("pack" as const),
-            mrp: parseDecimal(line.price),
-            cost: values.opening
-              ? undefined
-              : {
-                  freeQty: quantities.freeQty,
-                  rate: parseDecimal(line.rate),
-                  discountPercent: line.discount,
-                  gstPercent: line.gst,
-                  hsnCode: line.hsn || undefined,
-                },
-          };
-        }),
-      },
-      { onSettled: () => setSubmitting(false) },
-    );
+        return {
+          productId: line.productId,
+          batchNumber: line.batchNumber,
+          expiryDate: line.expiryDate,
+          qty: quantities.qty,
+          pricedPer: quantities.packSize === 1 ? ("unit" as const) : ("pack" as const),
+          mrp: parseDecimal(line.price),
+          cost: values.opening
+            ? undefined
+            : {
+                freeQty: quantities.freeQty,
+                rate: parseDecimal(line.rate),
+                discountPercent: line.discount,
+                gstPercent: line.gst,
+                hsnCode: line.hsn || undefined,
+              },
+        };
+      }),
+    });
   });
 
   const fillLine = (index: number, product: PickedProduct | null) => {
@@ -370,9 +334,9 @@ function ReceiveGoodsRoute() {
         }
       />
 
-      <PageBody className="mx-auto w-full max-w-6xl">
+      <PageBody width="max-w-6xl">
         <Form {...form}>
-          <form noValidate className="flex min-w-0 flex-col gap-4" onSubmit={submit}>
+          <form noValidate className="flex min-w-0 flex-col gap-6" onSubmit={submit}>
             <fieldset disabled={locked} className="contents">
               <section aria-labelledby="delivery-heading" className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -386,19 +350,30 @@ function ReceiveGoodsRoute() {
                         : "Work down the supplier bill. Use one line for each product and batch."}
                     </p>
                   </div>
-                  <ControlledField
-                    name="opening"
-                    label="Opening stock count"
-                    className="flex grid-cols-[auto_1fr] items-center gap-x-2"
-                    render={(field) => (
-                      <FormControl>
-                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
-                      </FormControl>
-                    )}
-                  />
+                  <div
+                    role="group"
+                    aria-label="Receive as"
+                    className="flex w-fit gap-0.5 rounded-md border border-border p-0.5"
+                  >
+                    {[
+                      { label: "Supplier", value: false },
+                      { label: "Opening", value: true },
+                    ].map((mode) => (
+                      <Button
+                        key={mode.label}
+                        type="button"
+                        size="xs"
+                        variant={opening === mode.value ? "default" : "ghost"}
+                        aria-pressed={opening === mode.value}
+                        onClick={() => form.setValue("opening", mode.value, { shouldDirty: true })}
+                      >
+                        {mode.label}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {opening ? null : (
                     <>
                       <TextField
@@ -424,27 +399,6 @@ function ReceiveGoodsRoute() {
                     label={opening ? "Counted on" : "Received on"}
                     type="date"
                   />
-                  <ControlledField
-                    name="attachment"
-                    label={opening ? "Signed count sheet" : "Bill copy (optional)"}
-                    description={
-                      opening
-                        ? "Photo or PDF of the count sheet, signed by whoever counted"
-                        : "Photo or PDF of the supplier's bill"
-                    }
-                    render={(field) => (
-                      <FormControl>
-                        <Input
-                          type="file"
-                          accept="image/*,application/pdf"
-                          name={field.name}
-                          ref={field.ref}
-                          onBlur={field.onBlur}
-                          onChange={(event) => field.onChange(event.target.files?.[0])}
-                        />
-                      </FormControl>
-                    )}
-                  />
                 </div>
               </section>
 
@@ -456,6 +410,23 @@ function ReceiveGoodsRoute() {
                   </span>
                 }
                 minHeight="min-h-0"
+                footer={
+                  <div className="flex flex-wrap items-center gap-2 px-1 pt-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => lines.append(blankLine())}
+                    >
+                      <PlusIcon data-icon="inline-start" />
+                      Add batch
+                    </Button>
+                    {canManageItems ? (
+                      <Button type="button" variant="link" size="sm" onClick={openNewProduct}>
+                        New product
+                      </Button>
+                    ) : null}
+                  </div>
+                }
               >
                 <div className="flex min-w-0 flex-col">
                   {lines.fields.map((line, index) => (
@@ -482,27 +453,18 @@ function ReceiveGoodsRoute() {
                 ) : null}
               </Panel>
 
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" onClick={() => lines.append(blankLine())}>
-                  <PlusIcon data-icon="inline-start" />
-                  Add batch
-                </Button>
-                {canManageItems ? (
-                  <Button type="button" variant="ghost" onClick={openNewProduct}>
-                    New product
-                  </Button>
-                ) : null}
-              </div>
-
-              <TextField
-                name="note"
-                label="Note (optional)"
-                placeholder="Anything the stock team should know"
-              />
-
-              <div className="flex flex-wrap items-end justify-between gap-3 border-t border-border pt-4">
-                <ReceiptTotals orgSlug={orgSlug} opening={opening} />
-                <SubmitButton isSubmitting={locked}>Receive goods</SubmitButton>
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,36rem)_1fr]">
+                <TextField
+                  name="note"
+                  label="Note (optional)"
+                  placeholder="Anything the stock team should know"
+                  multiline
+                  className="[&_textarea]:min-h-20"
+                />
+                <div className="flex flex-wrap items-end justify-between gap-3 lg:flex-col lg:justify-end">
+                  <ReceiptTotals orgSlug={orgSlug} opening={opening} />
+                  <SubmitButton isSubmitting={locked}>Receive goods</SubmitButton>
+                </div>
               </div>
             </fieldset>
           </form>
@@ -573,7 +535,7 @@ function BatchRow({
   return (
     <div
       className={cn(
-        "grid min-w-0 grid-cols-2 gap-3 border-b border-border/60 p-3 last:border-b-0 md:grid-cols-4 lg:gap-2",
+        "grid min-w-0 grid-cols-2 gap-x-3 gap-y-4 border-b border-border p-4 last:border-b-0 md:grid-cols-4",
         opening ? "lg:grid-cols-[repeat(7,minmax(0,1fr))_auto]" : "lg:grid-cols-7",
       )}
     >
@@ -611,31 +573,31 @@ function BatchRow({
         inputMode="numeric"
         description={quantity && line.stockUnit ? countOf(quantity, line.stockUnit) : undefined}
       />
-      <ControlledField
-        name={`lines.${index}.loose`}
-        label="Count as"
-        render={(field) => (
-          <FormControl>
-            <NativeSelect
-              name={field.name}
-              ref={field.ref}
-              onBlur={field.onBlur}
-              value={field.value ? "loose" : "packs"}
-              onChange={(event) => field.onChange(event.target.value === "loose")}
-              disabled={!line.productId}
-            >
-              <option value="packs" disabled={line.unitsPerPack === 1}>
-                {line.unitsPerPack > 1 && line.stockUnit
-                  ? `Packs of ${line.unitsPerPack}`
-                  : "Packs"}
-              </option>
-              <option value="loose">
-                Loose {line.stockUnit ? unitsWord(line.stockUnit) : "units"}
-              </option>
-            </NativeSelect>
-          </FormControl>
-        )}
-      />
+      {line.unitsPerPack > 1 ? (
+        <ControlledField
+          name={`lines.${index}.loose`}
+          label="Count as"
+          render={(field) => (
+            <FormControl>
+              <NativeSelect
+                name={field.name}
+                ref={field.ref}
+                onBlur={field.onBlur}
+                value={field.value ? "loose" : "packs"}
+                onChange={(event) => field.onChange(event.target.value === "loose")}
+                disabled={!line.productId}
+              >
+                <option value="packs">Packs of {line.unitsPerPack}</option>
+                <option value="loose">
+                  Loose {line.stockUnit ? unitsWord(line.stockUnit) : "units"}
+                </option>
+              </NativeSelect>
+            </FormControl>
+          )}
+        />
+      ) : (
+        <span className="self-end py-2 text-muted-foreground">{line.stockUnit || "unit"}</span>
+      )}
       <div className={cn("order-last flex items-end lg:justify-end", !opening && "lg:order-none")}>
         <Button
           type="button"
@@ -710,7 +672,7 @@ function ReceiptTotals({ orgSlug, opening }: { orgSlug: string; opening: boolean
   const summary = opening ? null : billSummary(lines.map(rowText), billTotal);
 
   return (
-    <div className="flex flex-col gap-1 tabular-nums">
+    <div className="flex flex-col gap-1 tabular-nums lg:items-end lg:text-right">
       <p className="font-medium">
         {lines.length} batch{lines.length === 1 ? "" : "es"} · {quantity} stock unit
         {quantity === 1 ? "" : "s"}
@@ -730,7 +692,7 @@ function ReceiptTotals({ orgSlug, opening }: { orgSlug: string; opening: boolean
             </p>
           ) : (
             <p
-              className="flex flex-wrap items-center gap-2"
+              className="flex flex-wrap items-center gap-2 lg:justify-end"
               role={summary.matches ? undefined : "alert"}
             >
               <Badge variant={summary.matches ? "muted" : "destructive"}>

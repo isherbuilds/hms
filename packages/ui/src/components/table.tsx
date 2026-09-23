@@ -47,7 +47,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-8 px-3 text-left align-middle text-[0.6875rem] font-medium tracking-wide text-muted-foreground uppercase whitespace-nowrap",
+        "h-8 px-3 text-left align-middle font-medium whitespace-nowrap text-muted-foreground",
         className,
       )}
       {...props}
@@ -59,7 +59,8 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
   return (
     <td
       data-slot="table-cell"
-      className={cn("px-3 py-2.5 align-middle tabular-nums", className)}
+      // One row height everywhere: a monogram row and a two-line cell both land on 44px.
+      className={cn("h-11 px-3 py-1 align-middle tabular-nums", className)}
       {...props}
     />
   );

@@ -102,7 +102,7 @@ function PharmacySalesRoute() {
           />
         </ListToolbar>
 
-        <Panel label="Sales" grow footer={<LoadMore query={sales} shown={items.length} />}>
+        <Panel grow footer={<LoadMore query={sales} shown={items.length} />}>
           <ListState
             query={sales}
             errorTitle="Could not load pharmacy sales"
@@ -122,7 +122,7 @@ function PharmacySalesRoute() {
                 </TableHeader>
                 <TableBody>
                   {items.map((item) => (
-                    <TableRow key={item.saleId}>
+                    <TableRow key={item.saleId} className="relative">
                       <TableCell className="whitespace-nowrap">
                         {formatBusinessDate(item.businessDate)}
                       </TableCell>
@@ -130,7 +130,7 @@ function PharmacySalesRoute() {
                         <button
                           type="button"
                           aria-haspopup="dialog"
-                          className="font-mono underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                          className="font-mono underline-offset-4 after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                           onClick={() => void openSale(item.saleId)}
                         >
                           {item.invoiceNumber}
@@ -143,7 +143,7 @@ function PharmacySalesRoute() {
                             to="/$orgSlug/patients/$patientId"
                             params={{ orgSlug, patientId: item.patientId }}
                             search={{ tab: "billing" }}
-                            className="underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                            className="relative underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                           >
                             Patient record
                           </Link>

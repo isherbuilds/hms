@@ -33,7 +33,7 @@ export function SelectedPatientChip({
 }) {
   return (
     <div className="flex min-h-10 items-center gap-2 rounded-md bg-muted px-3">
-      <Monogram label={patient.name} />
+      <Monogram label={patient.name} seed={patient.id} kind="patient" />
       <span className="flex min-w-0 flex-col leading-tight">
         <span className="truncate font-medium capitalize">{patient.name}</span>
         <span className="truncate font-mono text-muted-foreground">{patient.mrn}</span>

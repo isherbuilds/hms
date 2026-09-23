@@ -94,7 +94,7 @@ function PayersRoute() {
       />
       <SettingsTabs orgSlug={orgSlug} />
       <PageBody>
-        <Panel label="Payers">
+        <Panel grow>
           <ListState
             query={payers}
             errorTitle="Could not load payers"

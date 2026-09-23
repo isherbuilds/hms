@@ -679,6 +679,8 @@ const GUARDED_CALLS = {
   "pharmacy.stockOnHand": (api, claim) => api.pharmacy.stockOnHand({ ...claim }),
   "pharmacy.listMovements": (api, claim) =>
     api.pharmacy.listMovements({ ...claim, batchId: "missing" }),
+  "pharmacy.lookupMedicine": (api, claim) =>
+    api.pharmacy.lookupMedicine({ ...claim, q: "intrusion" }),
   "pharmacy.receiveGoods": (api, claim) =>
     api.pharmacy.receiveGoods({
       ...claim,

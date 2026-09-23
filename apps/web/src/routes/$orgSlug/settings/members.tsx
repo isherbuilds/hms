@@ -261,6 +261,7 @@ function MemberResults({ orgSlug, q }: { orgSlug: string; q: string }) {
     <>
       <Panel
         label="People"
+        grow
         action={
           <span className="shrink-0 tabular-nums">
             {people.length === MEMBER_PAGE_LIMIT
@@ -345,20 +346,23 @@ function MemberResults({ orgSlug, q }: { orgSlug: string; q: string }) {
                               ))}
                             </DropdownMenuGroup>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              disabled={removeMember.isPending}
-                              onClick={() =>
-                                confirm({
-                                  title: "Remove from organization?",
-                                  description: `${person.name || person.email} loses access to this organization immediately. Their audit history is kept.`,
-                                  confirmLabel: "Remove",
-                                  run: () => removeMember.mutate({ orgSlug, memberId: person.id }),
-                                })
-                              }
-                            >
-                              Remove from organization
-                            </DropdownMenuItem>
+                            <DropdownMenuGroup>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                disabled={removeMember.isPending}
+                                onClick={() =>
+                                  confirm({
+                                    title: "Remove from organization?",
+                                    description: `${person.name || person.email} loses access to this organization immediately. Their audit history is kept.`,
+                                    confirmLabel: "Remove",
+                                    run: () =>
+                                      removeMember.mutate({ orgSlug, memberId: person.id }),
+                                  })
+                                }
+                              >
+                                Remove from organization
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       ) : null}

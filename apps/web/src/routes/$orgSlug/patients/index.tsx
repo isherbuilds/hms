@@ -30,6 +30,7 @@ import {
   Panel,
   SearchInput,
 } from "@/components/page";
+import { Monogram } from "@/components/monogram";
 import { PatientSheet } from "@/components/patient-sheet";
 import { useCan } from "@/lib/membership";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
@@ -70,7 +71,7 @@ function PatientResults({ orgSlug, filters }: { orgSlug: string; filters: Patien
   const items = patients.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
-    <Panel label="Registry" footer={<LoadMore query={patients} shown={items.length} />}>
+    <Panel grow footer={<LoadMore query={patients} shown={items.length} />}>
       <ListState
         query={patients}
         errorTitle="Could not load patients"
@@ -98,15 +99,16 @@ function PatientResults({ orgSlug, filters }: { orgSlug: string; filters: Patien
               </TableHeader>
               <TableBody>
                 {items.map((patient) => (
-                  <TableRow key={patient.id}>
+                  <TableRow key={patient.id} className="relative">
                     <TableCell className="font-mono">{patient.mrn}</TableCell>
                     <TableCell>
                       <Link
                         to="/$orgSlug/patients/$patientId"
                         params={{ orgSlug, patientId: patient.id }}
-                        className="font-medium capitalize underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                        className="inline-flex items-center gap-2 font-medium capitalize underline-offset-4 after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                       >
-                        {patient.name}
+                        <Monogram label={patient.name} seed={patient.id} kind="patient" />
+                        <span>{patient.name}</span>
                       </Link>
                     </TableCell>
                     <TableCell className="font-mono tabular-nums">{patient.phone}</TableCell>
@@ -131,7 +133,8 @@ function PatientResults({ orgSlug, filters }: { orgSlug: string; filters: Patien
                   params={{ orgSlug, patientId: patient.id }}
                   className="block min-h-10 border-b px-3 py-2 text-xs"
                 >
-                  <div className="flex min-w-0 items-baseline gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Monogram label={patient.name} seed={patient.id} kind="patient" />
                     <span className="shrink-0 font-mono">{patient.mrn}</span>
                     <span className="min-w-0 truncate font-medium capitalize">{patient.name}</span>
                   </div>

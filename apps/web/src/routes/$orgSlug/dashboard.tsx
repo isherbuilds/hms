@@ -362,7 +362,10 @@ function DashboardRoute() {
                   </thead>
                   <tbody>
                     {queue.data.items.map((appointment) => (
-                      <tr key={appointment.id} className="border-t border-border">
+                      <tr
+                        key={appointment.id}
+                        className="relative border-t border-border [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/40"
+                      >
                         <td className="py-2 font-mono tabular-nums text-muted-foreground">
                           {appointment.tokenNumber}
                         </td>
@@ -370,7 +373,7 @@ function DashboardRoute() {
                           <Link
                             to="/$orgSlug/opd/$appointmentId"
                             params={{ orgSlug, appointmentId: appointment.id }}
-                            className="capitalize [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                            className="capitalize after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                           >
                             {appointment.patientName}
                           </Link>

@@ -19,6 +19,7 @@ import { z } from "zod";
 
 import { FormSheet } from "@/components/form-sheet";
 import { ControlledField, TextField } from "@/components/form-fields";
+import { MedicineNameField } from "@/components/medicine-name-field";
 import { productTaxCode, validateSoldProduct } from "@/components/pharmacy-new-product-sheet";
 import {
   ListState,
@@ -148,7 +149,7 @@ function PharmacyItemsRoute() {
           />
         </ListToolbar>
 
-        <Panel label="Products" footer={<LoadMore query={products} shown={items.length} />}>
+        <Panel grow footer={<LoadMore query={products} shown={items.length} />}>
           <ListState
             query={products}
             errorTitle="Could not load products"
@@ -325,7 +326,7 @@ function ProductSheet({
       }}
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        <TextField name="name" label="Name" />
+        <MedicineNameField orgSlug={orgSlug} label="Name" productId={product?.productId} />
         <TextField name="genericName" label="Generic name (optional)" />
         <TextField name="manufacturer" label="Manufacturer (optional)" />
         <TextField name="form" label="Form (optional)" placeholder="tablet" />

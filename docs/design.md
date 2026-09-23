@@ -71,8 +71,8 @@ A dense data surface. `text-xs` is the body size, not a small size.
 
 | Size                      | Where                                                                   |
 | ------------------------- | ----------------------------------------------------------------------- |
-| `text-[0.6875rem]` (11px) | `Badge` and `TableHead` primitives only: dense status/column labels     |
-| `text-xs` (12px)          | Default: table cells, labels, body copy, buttons, inputs                |
+| `text-[0.6875rem]` (11px) | `Badge` primitive only: dense status labels                             |
+| `text-xs` (12px)          | Default: table cells and column labels, body copy, buttons, inputs      |
 | `text-sm` (14px)          | Page and section titles                                                 |
 | `text-base` (16px)        | Dialog and Sheet task titles                                            |
 | `text-lg` (18px)          | Public pages and a chart's fixed-height interactive readout             |
@@ -138,14 +138,15 @@ Theme tokens only: `bg-background`, `bg-card`, `bg-muted`, `text-foreground`,
 
 Light `--muted-foreground` is `oklch(0.5 0 0)` so secondary text clears 4.5:1 on the canvas, card, and muted tray.
 
-- **Four documented exceptions.** Print documents use `bg-white text-black
+- **Five documented exceptions.** Print documents use `bg-white text-black
 border-black` because paper is white with black ink in every theme; the login
   context panel is a fixed dark surface in both themes; the landing page's wash
   (`components/landing/wash.tsx`) is a decorative gradient pinned to its light
   values in both themes, because a wash that inverts becomes a different object
   and because a bright stage carrying a dark app window is the effect it exists
-  for — it sits behind product screenshots only, never behind type; and clinical
-  severity uses the named tokens below.
+  for — it sits behind product screenshots only, never behind type; clinical
+  severity uses the named tokens below; and identity monograms use the four fixed
+  pastel pairs below to distinguish records.
 - **Clinical severity** is the one place hue carries meaning beyond tenancy
   state: `--clinical-alert` for what is dangerous about a patient (allergies, a
   balance still owed), `--clinical-note` for what is chronic (medical history),
@@ -157,7 +158,13 @@ border-black` because paper is white with black ink in every theme; the login
 - **Billing work state** uses `--pending` for Charges not yet invoiced and
   `--overdue` for an unpaid Invoice older than seven days. These tokens appear
   through labelled `Badge` variants; neither is a general accent colour.
-- **Colour means one thing: state.** `text-destructive` for a failure the user must
+- **Monogram colour carries identity, not status.** A patient ID, organization
+  slug, or user email selects one of four muted duotone pairs (teal, indigo,
+  rose, ochre) in `components/monogram.tsx`. Patients show initials;
+  organizations and users show distinct symbols. Each uses `rounded` corners
+  and stays legible at `size-6` in both themes. Do not use the pair for patient
+  facts.
+- **Elsewhere, colour means state.** `text-destructive` for a failure the user must
   act on. Status is carried by a `Badge`, never by colour alone — the word is
   always present.
 
@@ -173,9 +180,10 @@ Lucide only. Never a second icon set.
 
 A bare icon button needs `aria-label`. An icon beside text needs nothing.
 
-**Where there is no picture, there is a `Monogram`** — the initials square used
-for an organization, a member and a patient. One size (`size-6`), two tones. A
-second hand-rolled initials box is the bug, not a style choice.
+**Where there is no picture, there is a `Monogram`** — a pastel identity square
+for an organization, a member, or a patient. One size (`size-6`), with initials
+for patients and symbols for organizations and users. A second hand-rolled
+identity box is the bug, not a style choice.
 
 ## 7. Sidebar
 
@@ -262,12 +270,23 @@ style choice.
   `FilterChips` for what is applied, and `DateSubmenu`/`DateFilter` for the
   business-date presets and custom range.
 - **`Panel` / `PanelEmpty`** — the muted tray, label row, raised card, optional
-  footer, and centered empty copy used by every list. `grow` fills the page for
-  the one list on an operational desk.
+  footer, and centered empty copy used by every list. `grow` fills the page on
+  every page whose body is one list, so its footer sits at the same bottom edge
+  everywhere; pages that stack several panels leave them at their rows. A
+  single-list page drops `label` when the page title already names the list:
+  from `md` the table's column labels sit on the tray in the label row's place.
+  A panel with an `action`, or one of several on a page, keeps its label.
 - **`ListState`** — the only pending, error, retry, and empty-state branch for a
   list.
 - **`LoadMore`** — the count and the only control that grows a cursor list. It
   belongs in the panel footer.
+
+**Choice controls.** Use a dropdown menu for actions and short option lists,
+including the list filter's checkbox submenus. Use a popover when the anchored
+surface contains interactive content such as the custom date calendar. Use a
+combobox when someone must type to find and choose a record; use autocomplete
+when the text remains editable and suggestions only help complete it. Keep
+menu rows inset within their popup and group related items before a separator.
 
 **List grammar.** Every list page puts `ListToolbar`, with search first and
 filters after it, above a `Panel`. Search is temporary client state. It applies
@@ -289,6 +308,13 @@ there, or uses `max-w-0` with an inner `truncate` `div` and a `title` when it
 is secondary. Identifiers stay whole: when one can outgrow the row, the table is
 `table-fixed` with declared column widths and the identifier cell wraps with
 `break-all`.
+
+**Row activation.** A row that opens one record is one target: its primary
+link or button carries `after:absolute after:inset-0` inside a `relative` row,
+and any second control in the row is `relative` so it stays on top (`z-10` when
+it comes before the primary control). A row edited in place keeps its explicit
+buttons and has no row target, so a stray click at the counter cannot open an
+editor. Read-only rows are not clickable.
 
 A new bespoke layout wrapper is a signal that one of these is missing a prop.
 

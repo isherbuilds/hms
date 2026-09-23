@@ -7,6 +7,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuSub,
@@ -30,7 +31,7 @@ import { datePresets, dateRangeLabel } from "@/lib/date-presets";
 import { validateReportPeriod } from "@/lib/report-presentation";
 
 // The menu of a filter button that has no search field to borrow its width from.
-const MENU_WIDTH = "w-52 p-1";
+const MENU_WIDTH = "w-52";
 
 // Keep react-day-picker out of every list route until the optional custom range opens.
 const Calendar = lazy(() =>
@@ -48,7 +49,7 @@ function filterTrigger(active: boolean, disabled: boolean) {
       data-active={active || undefined}
       className="text-muted-foreground data-active:text-foreground data-popup-open:text-foreground"
     >
-      <ListFilterIcon className="size-3.5" />
+      <ListFilterIcon data-icon="inline-start" />
     </Button>
   );
 }
@@ -75,9 +76,9 @@ export function FilterMenu({
         <DropdownMenuContent
           anchor={anchor}
           align={anchor ? "end" : "start"}
-          className={anchor ? "p-1" : MENU_WIDTH}
+          className={anchor ? undefined : MENU_WIDTH}
         >
-          {children}
+          <DropdownMenuGroup>{children}</DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
     </ClientOnly>
@@ -96,11 +97,11 @@ export function FilterSubmenu({
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
-        <Icon className="text-muted-foreground" />
+        <Icon />
         {label}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className={`max-h-72 ${MENU_WIDTH}`}>
-        {children}
+        <DropdownMenuGroup>{children}</DropdownMenuGroup>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   );
@@ -209,7 +210,7 @@ function DateFilterItems({
           {preset.label}
         </DropdownMenuCheckboxItem>
       ))}
-      <DropdownMenuSeparator className="my-1" />
+      <DropdownMenuSeparator />
       {/* An Item, not a CheckboxItem: it hands over to the calendar, so the menu closes
           behind it instead of staying open under the popover. */}
       <DropdownMenuItem onClick={onCustom}>
@@ -270,13 +271,15 @@ export function DateFilter({
         <DropdownMenu>
           <DropdownMenuTrigger render={button} />
           <DropdownMenuContent align="start" className={MENU_WIDTH}>
-            <DateFilterItems
-              today={today}
-              from={from}
-              to={to}
-              onChange={onChange}
-              onCustom={() => setCustomOpen(true)}
-            />
+            <DropdownMenuGroup>
+              <DateFilterItems
+                today={today}
+                from={from}
+                to={to}
+                onChange={onChange}
+                onCustom={() => setCustomOpen(true)}
+              />
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </ClientOnly>

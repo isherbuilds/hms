@@ -582,3 +582,28 @@ applies: every stored money column is `bigint` paise.
 strip price on loose-unit sales; storing fractional-paise numeric amounts
 creates a second money representation instead of retaining exact price and
 receipt facts.
+
+### D045 — Receive goods without an attachment
+
+**Accepted 2026-09-23 on the owner's instruction; amends D042.** Neither
+opening counts nor supplier deliveries attach a signed count sheet or bill
+copy. Requiring a document adds friction during cutover, and the uploaded
+evidence was not used in the receiving workflow. The `goods_receipts.file_id`
+column remains nullable for existing receipts and their retained files;
+new receipts leave it null. There is no destructive migration.
+
+### D046 — Medicine-name suggestions assist, not define, the product master
+
+**Accepted 2026-09-23 on the owner's instruction.** Product names retain the
+case staff enter, with internal whitespace collapsed; no normalized-name column
+is added. The product form warns about likely duplicate names but does not
+prevent saving them. Staff can request suggestions from Tata 1mg's public
+autocomplete while typing. The server proxies the request because browsers
+cannot read that endpoint without an `Access-Control-Allow-Origin` header;
+it sends only the search text, never tenant or user identity. Staff confirm
+suggestions before copying them into the organization's own product row.
+MRP, tax and schedule are never imported.
+
+**Consequence:** this is an unofficial endpoint, which can change or block
+requests, and 1mg's terms restrict automated access. The owner accepted that
+risk. Failure leaves manual entry available without blocking the form.

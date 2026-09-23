@@ -1,5 +1,13 @@
 import type { AppRouter } from "@hms/api/routers/index";
 import { buttonVariants } from "@hms/ui/components/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@hms/ui/components/table";
 import { cn } from "@hms/ui/lib/utils";
 import type { RouterClient } from "@orpc/server";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
@@ -51,12 +59,7 @@ export function OpdFollowUps({ orgSlug, search }: { orgSlug: string; search: str
   const rows = followUps.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
-    <Panel
-      label="Follow-ups"
-      minHeight="min-h-64"
-      grow
-      footer={<LoadMore query={followUps} shown={rows.length} />}
-    >
+    <Panel minHeight="min-h-64" grow footer={<LoadMore query={followUps} shown={rows.length} />}>
       <ListState
         query={followUps}
         errorTitle="Could not load follow-ups"
@@ -64,27 +67,40 @@ export function OpdFollowUps({ orgSlug, search }: { orgSlug: string; search: str
         empty="No treatment plans need a follow-up."
       >
         <>
-          <div className="hidden flex-col divide-y md:flex">
-            {rows.map((row) => (
-              <FollowUpDesktopRow
-                key={row.id}
-                row={row}
-                orgSlug={orgSlug}
-                currency={currency}
-                canBook={canBook}
-              />
-            ))}
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Patient</TableHead>
+                  <TableHead>Plan</TableHead>
+                  <TableHead>Next sitting</TableHead>
+                  <TableHead className="text-right">Credit</TableHead>
+                  {canBook ? <TableHead className="w-28" /> : null}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <FollowUpDesktopRow
+                    key={row.id}
+                    row={row}
+                    orgSlug={orgSlug}
+                    currency={currency}
+                    canBook={canBook}
+                  />
+                ))}
+              </TableBody>
+            </Table>
           </div>
           <ul role="list" className="md:hidden">
             {rows.map((row) => (
-              <li key={row.id} className="border-b px-3 py-2 last:border-b-0">
+              <li key={row.id} className="relative border-b px-3 py-2 last:border-b-0">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <Link
                       to="/$orgSlug/patients/$patientId"
                       params={{ orgSlug, patientId: row.patientId }}
                       search={{ tab: "treatment" }}
-                      className="block truncate font-medium capitalize"
+                      className="block truncate font-medium capitalize after:absolute after:inset-0"
                     >
                       {row.patientName}
                     </Link>
@@ -97,7 +113,7 @@ export function OpdFollowUps({ orgSlug, search }: { orgSlug: string; search: str
                       aria-label={`Book a sitting for ${row.patientName}`}
                       className={cn(
                         buttonVariants({ size: "icon-xs", variant: "ghost" }),
-                        "shrink-0",
+                        "relative shrink-0",
                       )}
                       to="/$orgSlug/opd/new"
                       params={{ orgSlug }}
@@ -140,48 +156,55 @@ function FollowUpDesktopRow({
   canBook: boolean;
 }) {
   return (
-    <article className="flex flex-wrap items-center gap-x-4 gap-y-2 p-3">
-      <div className="min-w-52 flex-1">
+    <TableRow className="relative">
+      <TableCell className="max-w-0">
         <Link
           to="/$orgSlug/patients/$patientId"
           params={{ orgSlug, patientId: row.patientId }}
           search={{ tab: "treatment" }}
-          className="font-medium capitalize underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+          title={row.patientName}
+          className="block truncate font-medium capitalize underline-offset-4 after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
         >
           {row.patientName}
         </Link>
-        <p className="text-muted-foreground">
+        <p className="truncate font-mono text-muted-foreground">
           {row.patientMrn} · {row.patientPhone}
         </p>
-      </div>
-      <div className="min-w-52 flex-1">
-        <p className="font-medium">{row.label}</p>
-        <p className="text-muted-foreground">
+      </TableCell>
+      <TableCell className="max-w-0">
+        <p className="truncate font-medium" title={row.label}>
+          {row.label}
+        </p>
+        <p className="truncate text-muted-foreground">
           <span className="capitalize">{practitionerDisplayName(row.practitionerName)}</span> ·{" "}
           {row.sittingsDone} {row.sittingsDone === 1 ? "sitting" : "sittings"}
           {lastSittingLabel(row.lastSittingOn)}
         </p>
-      </div>
-      <div className="min-w-44">
-        <p>{row.nextSittingOn ? formatBusinessDate(row.nextSittingOn) : "Date not set"}</p>
-        <p className="max-w-64 truncate text-muted-foreground">
+      </TableCell>
+      <TableCell className="max-w-0">
+        <p className="whitespace-nowrap">
+          {row.nextSittingOn ? formatBusinessDate(row.nextSittingOn) : "Date not set"}
+        </p>
+        <p className="truncate text-muted-foreground" title={row.nextSittingNote ?? undefined}>
           {row.nextSittingNote ?? "No follow-up note"}
         </p>
-      </div>
-      <p className="min-w-28 text-right tabular-nums text-muted-foreground">
-        Credit {formatMoney(row.creditHeld, currency)}
-      </p>
+      </TableCell>
+      <TableCell className="text-right whitespace-nowrap text-muted-foreground">
+        {formatMoney(row.creditHeld, currency)}
+      </TableCell>
       {canBook ? (
-        <Link
-          className={cn(buttonVariants({ size: "sm", variant: "outline" }), "shrink-0")}
-          to="/$orgSlug/opd/new"
-          params={{ orgSlug }}
-          search={{ patientId: row.patientId, treatmentPlanId: row.id }}
-        >
-          <CalendarPlusIcon />
-          Book sitting
-        </Link>
+        <TableCell className="text-right">
+          <Link
+            className={cn(buttonVariants({ size: "xs", variant: "outline" }), "relative")}
+            to="/$orgSlug/opd/new"
+            params={{ orgSlug }}
+            search={{ patientId: row.patientId, treatmentPlanId: row.id }}
+          >
+            <CalendarPlusIcon data-icon="inline-start" />
+            Book sitting
+          </Link>
+        </TableCell>
       ) : null}
-    </article>
+    </TableRow>
   );
 }
