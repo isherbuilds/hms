@@ -2,6 +2,7 @@ import { DECIMAL_PATTERN, divideHalfUp, parseDecimal } from "@hms/api/core/money
 import {
   BILL_ROUND_OFF_LIMIT,
   EXACT_SCALE,
+  MAX_STOCK_QTY,
   PERCENT_PATTERN,
   type ReceiptCost,
   exactToPaise,
@@ -28,8 +29,12 @@ export function packSizeOf(row: Pick<ReceiptRowText, "unitsPerPack" | "loose">) 
   return row.loose || row.unitsPerPack === 1 ? 1 : row.unitsPerPack;
 }
 
-function wholeCount(value: string): number | null {
-  return /^\d+$/.test(value.trim()) ? Number(value) : null;
+export function wholeCount(value: string): number | null {
+  if (!/^\d+$/.test(value.trim())) return null;
+
+  const count = Number(value);
+
+  return Number.isSafeInteger(count) && count <= MAX_STOCK_QTY ? count : null;
 }
 
 /** Counts typed in packs or loose units, as stock units. */
@@ -38,9 +43,18 @@ export function stockQuantities(row: ReceiptRowText, opening = false) {
   const free = opening || row.free.trim() === "" ? 0 : wholeCount(row.free);
   const packSize = packSizeOf(row);
 
-  if (count === null || free === null) return null;
+  if (count === null || free === null || !Number.isSafeInteger(packSize) || packSize < 1) {
+    return null;
+  }
 
-  return { qty: count * packSize, freeQty: free * packSize, packSize };
+  const qty = count * packSize;
+  const freeQty = free * packSize;
+
+  if (qty > MAX_STOCK_QTY || freeQty > MAX_STOCK_QTY || qty + freeQty > MAX_STOCK_QTY) {
+    return null;
+  }
+
+  return { qty, freeQty, packSize };
 }
 
 /** The line's exact bill arithmetic once every figure it needs is typed; otherwise null. */
@@ -85,6 +99,39 @@ export function approximateUnitCost(row: ReceiptRowText, cost: ReceiptCost): big
   if (!quantities || quantities.qty + quantities.freeQty === 0) return null;
 
   return divideHalfUp(cost.net, EXACT_SCALE * BigInt(quantities.qty + quantities.freeQty));
+}
+
+/** Allocate the once-rounded receipt total across rows so displayed lines reconcile. */
+export function allocateReceiptLineTotals(
+  rows: readonly ReceiptRowText[],
+): Array<bigint | null> {
+  const lines = rows.map((row, index) => {
+    const cost = rowCost(row);
+
+    return cost
+      ? {
+          index,
+          exact: cost.net,
+          paise: cost.net / EXACT_SCALE,
+          remainder: cost.net % EXACT_SCALE,
+        }
+      : null;
+  });
+  const valid = lines.filter((line) => line !== null);
+  const rounded = exactToPaise(valid.reduce((sum, line) => sum + line.exact, 0n));
+  let remainder = rounded - valid.reduce((sum, line) => sum + line.paise, 0n);
+
+  const ranked = [...valid].sort((a, b) =>
+    a.remainder === b.remainder ? a.index - b.index : a.remainder > b.remainder ? -1 : 1,
+  );
+
+  for (const line of ranked) {
+    if (remainder === 0n) break;
+    line.paise += 1n;
+    remainder -= 1n;
+  }
+
+  return lines.map((line) => line?.paise ?? null);
 }
 
 export type BillSummary = {
