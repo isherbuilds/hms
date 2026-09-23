@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { boolean, pgTable, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
 
-import { organization } from "./auth";
+import { orgIdColumn } from "./auth";
 
 const ACCOUNT_TYPES = ["asset", "liability", "equity", "income", "expense"] as const;
 
@@ -11,9 +11,7 @@ export const accounts = pgTable(
   "accounts",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     code: text("code").notNull(),
     name: text("name").notNull(),
     type: text("type", { enum: ACCOUNT_TYPES }).notNull(),

@@ -105,7 +105,7 @@ export function PaymentBalance({
   }
 
   return (
-    <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={onFill}>
+    <Button type="button" size="xs" variant="ghost" disabled={disabled} onClick={onFill}>
       <span className="tabular-nums">Fill {formatMoney(remaining, currency)}</span>
     </Button>
   );
@@ -141,7 +141,7 @@ export function PaymentLineFields() {
           </FormControl>
         )}
       />
-      <TextField name="amount" label="Amount" inputMode="decimal" />
+      <TextField name="amount" label="Amount" inputMode="decimal" className="tabular-nums" />
       <Watch
         control={control}
         name="method"

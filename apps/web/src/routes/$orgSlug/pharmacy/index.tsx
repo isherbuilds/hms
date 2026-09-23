@@ -1,19 +1,18 @@
 import { buttonVariants } from "@hms/ui/components/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hms/ui/components/table";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { PlusIcon } from "lucide-react";
 import { z } from "zod";
 
 import { DateFilter } from "@/components/list-filter";
-import { ListState, ListToolbar, LoadMore, PageBody, PageHeader, Panel } from "@/components/page";
+import {
+  DataList,
+  ListState,
+  ListToolbar,
+  LoadMore,
+  PageBody,
+  PageHeader,
+  Panel,
+} from "@/components/page";
 import { PharmacySaleSheet } from "@/components/pharmacy-sale-sheet";
 import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
@@ -83,7 +82,6 @@ function PharmacySalesRoute() {
         action={
           canSell ? (
             <Link className={buttonVariants()} to="/$orgSlug/pharmacy/new" params={{ orgSlug }}>
-              <PlusIcon data-icon="inline-start" />
               <span className="sm:hidden">New</span>
               <span className="hidden sm:inline">New sale</span>
             </Link>
@@ -107,86 +105,47 @@ function PharmacySalesRoute() {
             query={sales}
             errorTitle="Could not load pharmacy sales"
             isEmpty={items.length === 0}
-            empty="No sales in this range."
+            empty="No sales in this range"
           >
-            <div className="hidden md:block">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Invoice</TableHead>
-                    <TableHead>Buyer</TableHead>
-                    <TableHead>Patient</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((item) => (
-                    <TableRow key={item.saleId} className="relative">
-                      <TableCell className="whitespace-nowrap">
-                        {formatBusinessDate(item.businessDate)}
-                      </TableCell>
-                      <TableCell>
-                        <button
-                          type="button"
-                          aria-haspopup="dialog"
-                          className="font-mono underline-offset-4 after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-                          onClick={() => void openSale(item.saleId)}
-                        >
-                          {item.invoiceNumber}
-                        </button>
-                      </TableCell>
-                      <TableCell className="capitalize">{item.buyerName}</TableCell>
-                      <TableCell>
-                        {item.patientId ? (
-                          <Link
-                            to="/$orgSlug/patients/$patientId"
-                            params={{ orgSlug, patientId: item.patientId }}
-                            search={{ tab: "billing" }}
-                            className="relative underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-                          >
-                            Patient record
-                          </Link>
-                        ) : (
-                          <span className="text-muted-foreground">Walk-in</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatMoney(item.grandTotal, currency)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-
-            <ul className="md:hidden">
-              {items.map((item) => (
-                <li key={item.saleId} className="border-b border-border/60 last:border-b-0">
-                  <button
-                    type="button"
-                    aria-haspopup="dialog"
-                    className="flex min-h-10 w-full items-start gap-2 px-3 py-2 text-left"
-                    onClick={() => void openSale(item.saleId)}
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono">{item.invoiceNumber}</span>
-                      <span className="mt-1 block truncate text-muted-foreground capitalize">
-                        {item.buyerName}
-                      </span>
+            <DataList
+              columns={[
+                {
+                  head: "Invoice",
+                  cell: (item) => <span className="font-mono">{item.invoiceNumber}</span>,
+                },
+                {
+                  head: "Date",
+                  cell: (item) => (
+                    <span className="whitespace-nowrap">
+                      {formatBusinessDate(item.businessDate)}
                     </span>
-                    <span className="shrink-0 text-right">
-                      <span className="block font-medium tabular-nums">
-                        {formatMoney(item.grandTotal, currency)}
-                      </span>
-                      <span className="mt-1 block whitespace-nowrap text-muted-foreground">
-                        {formatBusinessDate(item.businessDate)}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+                  ),
+                },
+                {
+                  head: "Buyer",
+                  cell: (item) => <span className="capitalize">{item.buyerName}</span>,
+                },
+                {
+                  head: "Patient",
+                  cell: (item) =>
+                    item.patientId ? (
+                      <span className="capitalize">{item.buyerName}</span>
+                    ) : (
+                      <span className="text-muted-foreground">Walk-in</span>
+                    ),
+                },
+                {
+                  head: "Total",
+                  cell: (item) => (
+                    <span className="tabular-nums">{formatMoney(item.grandTotal, currency)}</span>
+                  ),
+                  className: "text-right",
+                },
+              ]}
+              rows={items}
+              rowKey={(item) => item.saleId}
+              onActivate={(item) => void openSale(item.saleId)}
+            />
           </ListState>
         </Panel>
       </PageBody>

@@ -88,14 +88,11 @@ export function OpdTreatmentPanel({
   const editable = canEdit && openPlan !== undefined;
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border bg-card p-3 print:hidden">
+    <section className="flex flex-col gap-3 rounded-lg border bg-card p-4 print:hidden">
       <header className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="font-medium">Treatment</h2>
-          <p className="text-muted-foreground">Course work delivered at this sitting.</p>
-        </div>
+        <h2 className="min-h-6 text-xs text-muted-foreground">Treatment</h2>
         {!planId && canLink ? (
-          <Button size="sm" onClick={() => setAction("new")}>
+          <Button size="xs" onClick={() => setAction("new")}>
             New plan
           </Button>
         ) : null}
@@ -135,7 +132,7 @@ export function OpdTreatmentPanel({
               ))}
             </NativeSelect>
             <Button
-              size="sm"
+              size="xs"
               variant="outline"
               disabled={!selectedPlanId || link.isPending}
               onClick={() => link.mutate({ orgSlug, appointmentId, planId: selectedPlanId })}
@@ -149,8 +146,8 @@ export function OpdTreatmentPanel({
       ) : plan ? (
         <>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-sm font-medium">{plan.label}</p>
-            <p className="text-muted-foreground">
+            <p className="font-medium">{plan.label}</p>
+            <p className="tabular-nums text-muted-foreground">
               {/* A visit not yet checked in is not a sitting; it would be the next one. */}
               Sitting{" "}
               {plan.sittings.findIndex((entry) => entry.id === appointmentId) + 1 ||

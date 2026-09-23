@@ -2,16 +2,14 @@ import { sql } from "drizzle-orm";
 import { bigint, check, foreignKey, index, pgTable, text } from "drizzle-orm/pg-core";
 
 import { accounts } from "./accounts";
-import { organization } from "./auth";
+import { orgIdColumn } from "./auth";
 import { journalEntries } from "./journal-entries";
 
 export const journalLines = pgTable(
   "journal_lines",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     entryId: text("entry_id").notNull(),
     accountId: text("account_id").notNull(),
     debit: bigint("debit", { mode: "bigint" })

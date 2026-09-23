@@ -17,3 +17,24 @@ export const REASON_LABELS: Record<MovementReason, string> = {
   count_correction: "Count correction",
   internal_issue: "Internal issue",
 };
+
+// Kept local so no @hms/db server module reaches the client bundle (hard rule 6).
+export const STOCK_UNITS = [
+  "tablet",
+  "capsule",
+  "ml",
+  "strip",
+  "bottle",
+  "vial",
+  "tube",
+  "piece",
+] as const;
+
+export const SCHEDULES = ["none", "h", "h1", "x"] as const;
+
+export const SCHEDULE_LABELS: Record<(typeof SCHEDULES)[number], string> = {
+  none: "No schedule",
+  h: "Schedule H",
+  h1: "Schedule H1",
+  x: "Schedule X",
+};

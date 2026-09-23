@@ -148,7 +148,7 @@ function SittingForField({ orgSlug }: { orgSlug: string }) {
   if (!patient || !patientRecord.data?.openTreatmentPlans.length) return null;
 
   return (
-    <FormSection title="Sitting for" description="Optional treatment plan link">
+    <FormSection title="Sitting for">
       <RegisteredFormField
         name="treatmentPlanId"
         render={({ field }) => (
@@ -584,7 +584,9 @@ function FinancialAside({
               <span className="tabular-nums">{previewTime || "—"}</span>
             </SummaryRow>
             <SummaryRow term="Services">
-              {serviceCount === 0 ? "None" : `${serviceCount} queued`}
+              <span className="tabular-nums">
+                {serviceCount === 0 ? "None" : `${serviceCount} queued`}
+              </span>
             </SummaryRow>
           </dl>
         ) : null}
@@ -617,11 +619,16 @@ function IntakeFooter({
     <footer className="absolute inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card p-3 lg:hidden">
       <div className="min-w-0">
         <p className="truncate text-muted-foreground">
-          {when === "now"
-            ? `Payable · ${lineCount} line${lineCount === 1 ? "" : "s"}`
-            : "Appointment time"}
+          {when === "now" ? (
+            <>
+              Payable · <span className="tabular-nums">{lineCount}</span> line
+              {lineCount === 1 ? "" : "s"}
+            </>
+          ) : (
+            "Appointment time"
+          )}
         </p>
-        <p className="truncate text-sm font-medium tabular-nums group-aria-busy/quote:opacity-50">
+        <p className="truncate text-xs font-medium tabular-nums group-aria-busy/quote:opacity-50">
           {when !== "now"
             ? previewTime || "Choose a time"
             : quoteState.error
@@ -844,7 +851,7 @@ export function OpdIntakeForm({
 
                 <SittingForField orgSlug={orgSlug} />
 
-                <FormSection title="Services" description="Optional for Now and Later">
+                <FormSection title="Services">
                   <ServicesFields orgSlug={orgSlug} currency={currency} quoteState={quoteState} />
                 </FormSection>
               </div>
@@ -888,7 +895,7 @@ export function OpdIntakeForm({
       {blocker.status === "blocked" ? (
         <ConfirmDialog
           title="Discard unsaved appointment?"
-          description="This appointment has changes that have not been saved."
+          description="Unsaved changes will be discarded."
           confirmLabel="Discard changes"
           open
           onConfirm={blocker.proceed}

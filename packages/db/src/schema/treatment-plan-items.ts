@@ -12,7 +12,7 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 import { CATALOG_CATEGORIES, catalogItems } from "./catalog-items";
 import { treatmentPlans } from "./treatment-plans";
 
@@ -22,9 +22,7 @@ export const treatmentPlanItems = pgTable(
   "treatment_plan_items",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     treatmentPlanId: text("treatment_plan_id").notNull(),
     catalogItemId: text("catalog_item_id").notNull(),
     description: text("description").notNull(),

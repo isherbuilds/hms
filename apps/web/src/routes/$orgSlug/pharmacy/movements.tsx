@@ -1,19 +1,19 @@
 import { Button } from "@hms/ui/components/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hms/ui/components/table";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { toast } from "sonner";
 
 import { FilterChips } from "@/components/list-filter";
-import { ListState, ListToolbar, LoadMore, PageBody, PageHeader, Panel } from "@/components/page";
+import {
+  DataList,
+  ListState,
+  ListToolbar,
+  LoadMore,
+  PageBody,
+  PageHeader,
+  Panel,
+} from "@/components/page";
 import { formatDateTime, formatDay, useOrgDateTime } from "@/lib/org-datetime";
 import { openOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
@@ -80,79 +80,57 @@ function PharmacyMovementsRoute() {
             query={movements}
             errorTitle="Could not load stock movements"
             isEmpty={rows.length === 0}
-            empty={batchId ? "No movements on this batch." : "No stock movements yet."}
+            empty={batchId ? "No movements for this batch" : "No stock movements yet"}
           >
-            <div className="hidden md:block">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>When</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Reason</TableHead>
-                    <TableHead>Bucket</TableHead>
-                    <TableHead className="text-right">Qty</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>By</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((movement) => (
-                    <TableRow key={movement.id}>
-                      <TableCell className="whitespace-nowrap">
-                        {formatDateTime(movement.createdAt, timeZone)}
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-medium">{movement.productName}</span>
-                        <span className="block font-mono text-muted-foreground">
-                          {movement.batchNumber}
-                        </span>
-                      </TableCell>
-                      <TableCell>{REASON_LABELS[movement.reason]}</TableCell>
-                      <TableCell>{movement.bucket}</TableCell>
-                      <TableCell className="whitespace-nowrap text-right tabular-nums">
-                        {movement.qty} {movement.stockUnit}
-                      </TableCell>
-                      <TableCell>{movement.departmentName ?? "—"}</TableCell>
-                      <TableCell>
-                        <MovementSource orgSlug={orgSlug} movement={movement} />
-                      </TableCell>
-                      <TableCell className="capitalize">{movement.createdByName}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            <ul className="md:hidden">
-              {rows.map((movement) => (
-                <li
-                  key={movement.id}
-                  className="border-b border-border/60 px-3 py-2 last:border-b-0"
-                >
-                  <div className="flex min-w-0 items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{movement.productName}</p>
-                      <p className="mt-1 truncate font-mono text-muted-foreground">
-                        {movement.batchNumber} · {REASON_LABELS[movement.reason]}
-                      </p>
-                    </div>
-                    <p className="shrink-0 text-right font-medium tabular-nums">
+            <DataList
+              columns={[
+                {
+                  head: "Product",
+                  cell: (movement) => (
+                    <>
+                      <span>{movement.productName}</span>
+                      <span className="block font-mono text-muted-foreground">
+                        {movement.batchNumber}
+                      </span>
+                    </>
+                  ),
+                },
+                {
+                  head: "When",
+                  cell: (movement) => (
+                    <span className="whitespace-nowrap">
+                      {formatDateTime(movement.createdAt, timeZone)}
+                    </span>
+                  ),
+                },
+                {
+                  head: "Reason",
+                  cell: (movement) => REASON_LABELS[movement.reason],
+                  mobile: "title",
+                },
+                { head: "Bucket", cell: (movement) => movement.bucket },
+                {
+                  head: "Qty",
+                  cell: (movement) => (
+                    <span className="whitespace-nowrap tabular-nums">
                       {movement.qty} {movement.stockUnit}
-                    </p>
-                  </div>
-                  <p className="mt-1 text-muted-foreground">
-                    {formatDateTime(movement.createdAt, timeZone)} · {movement.bucket}
-                    {movement.departmentName ? ` · ${movement.departmentName}` : ""}
-                  </p>
-                  <div className="mt-1 text-muted-foreground">
-                    <MovementSource orgSlug={orgSlug} movement={movement} />
-                  </div>
-                  <p className="mt-1 text-muted-foreground capitalize">
-                    By {movement.createdByName}
-                  </p>
-                </li>
-              ))}
-            </ul>
+                    </span>
+                  ),
+                  className: "text-right",
+                },
+                { head: "Department", cell: (movement) => movement.departmentName ?? "—" },
+                {
+                  head: "Source",
+                  cell: (movement) => <MovementSource orgSlug={orgSlug} movement={movement} />,
+                },
+                {
+                  head: "By",
+                  cell: (movement) => <span className="capitalize">{movement.createdByName}</span>,
+                },
+              ]}
+              rows={rows}
+              rowKey={(movement) => movement.id}
+            />
           </ListState>
         </Panel>
       </PageBody>
@@ -175,8 +153,8 @@ function MovementSource({
   if (!receipt) return <span>{movement.note || "—"}</span>;
 
   return (
-    <div className="flex flex-col gap-0.5">
-      <div className="flex flex-wrap items-center gap-1">
+    <span className="flex flex-col gap-1">
+      <span className="flex flex-wrap items-center gap-1">
         <span>
           {receipt.opening
             ? "Opening count"
@@ -200,8 +178,8 @@ function MovementSource({
             {receipt.opening ? "Sheet" : "Delivery note"}
           </Button>
         ) : null}
-      </div>
+      </span>
       {movement.note ? <span>{movement.note}</span> : null}
-    </div>
+    </span>
   );
 }

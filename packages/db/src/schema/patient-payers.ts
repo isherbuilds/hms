@@ -1,6 +1,6 @@
 import { foreignKey, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
-import { organization } from "./auth";
+import { orgIdColumn } from "./auth";
 import { patients } from "./patients";
 import { payers } from "./payers";
 
@@ -8,9 +8,7 @@ export const patientPayers = pgTable(
   "patient_payers",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     patientId: text("patient_id").notNull(),
     payerId: text("payer_id").notNull(),
     policyNumber: text("policy_number"),

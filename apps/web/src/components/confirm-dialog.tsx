@@ -35,10 +35,10 @@ export function ConfirmDialog({
             <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" onClick={onCancel}>
+            <Button variant="ghost" autoFocus onClick={onCancel}>
               Cancel
             </Button>
-            <Button variant="destructive" autoFocus onClick={onConfirm}>
+            <Button variant="destructive" onClick={onConfirm}>
               {confirmLabel}
             </Button>
           </DialogFooter>

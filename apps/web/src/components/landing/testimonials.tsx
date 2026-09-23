@@ -78,7 +78,7 @@ export function LandingTestimonials() {
       </h2>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <figure className="relative flex flex-col justify-between gap-8 overflow-hidden rounded-2xl p-6 sm:gap-10 sm:p-8 lg:p-12">
+        <figure className="relative flex flex-col justify-between gap-8 overflow-hidden rounded-xl p-6 sm:gap-10 sm:p-8 lg:p-12">
           <Wash />
           {/* The wash never inverts, so everything drawn on it uses the pinned
               ink from `wash.tsx` rather than a theme token. */}

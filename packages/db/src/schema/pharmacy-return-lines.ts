@@ -10,7 +10,7 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 
-import { organization } from "./auth";
+import { orgIdColumn } from "./auth";
 import { invoiceLines } from "./invoice-lines";
 import { pharmacyReturns } from "./pharmacy-returns";
 import { stockBatches } from "./stock-batches";
@@ -21,9 +21,7 @@ export const pharmacyReturnLines = pgTable(
   "pharmacy_return_lines",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     returnId: text("return_id").notNull(),
     invoiceLineId: text("invoice_line_id").notNull(),
     batchId: text("batch_id").notNull(),

@@ -21,8 +21,10 @@ export function BarChart({
   if (data.length === 0 || max === 0) {
     return (
       <div className="flex flex-1 flex-col justify-end gap-2">
-        <p className="m-auto text-muted-foreground">Nothing collected in this period yet.</p>
-        <div className="flex items-end gap-0.5 border-b border-border" style={{ height: 24 }}>
+        <p className="flex flex-1 items-center justify-center text-muted-foreground">
+          Nothing collected in this period yet
+        </p>
+        <div className="flex items-end gap-1 border-b border-border" style={{ height: 24 }}>
           {(data.length > 0 ? data : Array.from({ length: 14 })).map((_, index) => (
             <span key={index} className="h-0.5 flex-1 rounded-t-sm bg-foreground/10" />
           ))}
@@ -43,7 +45,7 @@ export function BarChart({
       </div>
 
       <div
-        className="flex items-end gap-0.5 border-b border-border"
+        className="flex items-end gap-1 border-b border-border"
         style={{ height }}
         // `group`, not `img`: an img role hides the focusable day buttons from AT.
         role="group"
@@ -56,6 +58,7 @@ export function BarChart({
             type="button"
             // The hit target is the full column, not the drawn bar: a 2px bar would be unhoverable.
             className="group flex h-full flex-1 items-end"
+            data-focus-inset
             onMouseEnter={() => setActive(index)}
             onFocus={() => setActive(index)}
             onBlur={() => setActive(null)}
@@ -82,7 +85,7 @@ export function BarChart({
         ))}
       </div>
 
-      <div className="flex justify-between text-muted-foreground">
+      <div className="flex justify-between text-muted-foreground tabular-nums">
         <span>{data[0]?.label}</span>
         <span>{data.at(-1)?.label}</span>
       </div>

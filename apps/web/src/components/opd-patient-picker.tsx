@@ -1,13 +1,7 @@
 import { normalizePhone } from "@hms/api/lib/phone";
 import { Button } from "@hms/ui/components/button";
 import { Combobox } from "@hms/ui/components/combobox";
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
-} from "@hms/ui/components/empty";
+import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@hms/ui/components/empty";
 import { useQuery } from "@tanstack/react-query";
 import { SearchIcon } from "lucide-react";
 import { useRef, useState } from "react";
@@ -32,13 +26,13 @@ export function SelectedPatientChip({
   onClear: () => void;
 }) {
   return (
-    <div className="flex min-h-10 items-center gap-2 rounded-md bg-muted px-3">
+    <div className="flex min-h-10 items-center gap-2 bg-muted px-3">
       <Monogram label={patient.name} seed={patient.id} kind="patient" />
-      <span className="flex min-w-0 flex-col leading-tight">
+      <span className="flex min-w-0 flex-1 flex-col leading-tight">
         <span className="truncate font-medium capitalize">{patient.name}</span>
         <span className="truncate font-mono text-muted-foreground">{patient.mrn}</span>
       </span>
-      <Button type="button" size="sm" variant="ghost" className="ml-auto" onClick={onClear}>
+      <Button type="button" size="xs" variant="ghost" onClick={onClear}>
         Change
       </Button>
     </div>
@@ -117,10 +111,11 @@ function PatientSearchInput({
         <span className="min-w-0">
           <span className="block truncate font-medium capitalize">{match.name}</span>
           <span className="block truncate text-muted-foreground">
-            {match.mrn} · <span className="font-mono tabular-nums">{match.phone}</span>
+            <span className="font-mono">{match.mrn}</span> ·{" "}
+            <span className="font-mono tabular-nums">{match.phone}</span>
           </span>
         </span>
-        <span className="shrink-0 capitalize text-muted-foreground">
+        <span className="shrink-0 tabular-nums capitalize text-muted-foreground">
           {age}y · {match.sex}
         </span>
       </>
@@ -169,7 +164,6 @@ function PatientSearchInput({
               <Empty>
                 <EmptyHeader>
                   <EmptyTitle>No patient matches “{search}”</EmptyTitle>
-                  <EmptyDescription>No existing record uses these details.</EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
                   <Button type="button" onClick={openRegistration}>

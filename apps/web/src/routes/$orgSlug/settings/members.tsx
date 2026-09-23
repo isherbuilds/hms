@@ -9,7 +9,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@hms/ui/components/dialog";
-import { Form } from "@hms/ui/components/form";
+import { Form, FormControl } from "@hms/ui/components/form";
+import { NativeSelect } from "@hms/ui/components/native-select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -131,8 +132,7 @@ function InviteDialog({
           <DialogHeader>
             <DialogTitle>Invite someone to this organization</DialogTitle>
             <DialogDescription>
-              Nothing is emailed: share the link yourself. It lets the invited email create an
-              account or sign in, then join. Roles can be changed later.
+              Share this link with the invited email. They can create an account or sign in to join.
             </DialogDescription>
           </DialogHeader>
 
@@ -143,6 +143,7 @@ function InviteDialog({
                 label="Email address"
                 type="email"
                 placeholder="person@example.com"
+                autoFocus
                 disabled={invite.isPending}
               />
 
@@ -150,20 +151,16 @@ function InviteDialog({
                 name="role"
                 label="Role"
                 render={(field) => (
-                  <div role="group" aria-label="Role" className="flex gap-1">
-                    {ORG_ROLES.map((option) => (
-                      <Button
-                        key={option}
-                        type="button"
-                        variant={field.value === option ? "secondary" : "ghost"}
-                        size="sm"
-                        aria-pressed={field.value === option}
-                        onClick={() => field.onChange(option)}
-                      >
-                        {ROLE_LABELS[option]}
-                      </Button>
-                    ))}
-                  </div>
+                  <FormControl>
+                    <NativeSelect {...field} value={field.value ?? ""}>
+                      <option value="" disabled />
+                      {ORG_ROLES.map((option) => (
+                        <option key={option} value={option}>
+                          {ROLE_LABELS[option]}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </FormControl>
                 )}
               />
 
@@ -277,16 +274,11 @@ function MemberResults({ orgSlug, q }: { orgSlug: string; q: string }) {
           isEmpty={people.length === 0 && invitations.length === 0}
           empty={
             q ? (
-              <p className="max-w-sm">
-                Nobody matches “{q}”. Search covers names, email addresses and invitations.
-              </p>
+              <p>No matches for “{q}”</p>
             ) : (
               <div className="flex flex-col items-center gap-3">
                 <UsersIcon className="size-5 text-muted-foreground" />
-                <p className="max-w-sm">
-                  You are the only one here. Invite someone and share the link; they create their
-                  account from it.
-                </p>
+                <p>No members yet. Invite someone to get started</p>
                 <InviteAction orgSlug={orgSlug} compact />
               </div>
             )
@@ -437,11 +429,7 @@ function MemberDirectory({ orgSlug }: { orgSlug: string }) {
   return (
     <PageBody>
       <ListToolbar>
-        <SearchInput
-          label="Search members"
-          placeholder="Search by name or email"
-          onQueryChange={setQ}
-        />
+        <SearchInput label="Search members" placeholder="Name or email" onQueryChange={setQ} />
       </ListToolbar>
       <MemberResults orgSlug={orgSlug} q={q} />
     </PageBody>

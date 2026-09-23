@@ -1,6 +1,6 @@
 import { bigint, foreignKey, index, pgTable, text } from "drizzle-orm/pg-core";
 
-import { organization } from "./auth";
+import { orgIdColumn } from "./auth";
 import { creditNotes } from "./credit-notes";
 import { invoiceLines } from "./invoice-lines";
 
@@ -9,9 +9,7 @@ export const creditNoteLines = pgTable(
   "credit_note_lines",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     creditNoteId: text("credit_note_id").notNull(),
     invoiceLineId: text("invoice_line_id").notNull(),
     taxableValue: bigint("taxable_value", { mode: "bigint" }).notNull(),

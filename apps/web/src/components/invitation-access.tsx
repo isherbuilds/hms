@@ -126,7 +126,7 @@ function SignUpForm({ invitationId, email }: { invitationId: string; email: stri
     <Form {...form}>
       <form noValidate onSubmit={submit} className="flex flex-col gap-6">
         <FormFieldset className="flex flex-col gap-6">
-          <AuthField name="name" label="Name" autoComplete="name" />
+          <AuthField name="name" label="Name" autoComplete="name" autoFocus />
           <PasswordField autoComplete="new-password" />
           <AuthFormFooter>Create account</AuthFormFooter>
         </FormFieldset>

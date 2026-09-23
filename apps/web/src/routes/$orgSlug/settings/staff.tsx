@@ -1,4 +1,4 @@
-import { Button } from "@hms/ui/components/button";
+import { Button, buttonVariants } from "@hms/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -10,16 +10,8 @@ import {
 import { Form, FormControl } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hms/ui/components/table";
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -28,6 +20,7 @@ import { optionalNumberText, optionalText } from "@/lib/form-schema";
 
 import { ControlledField, TextField } from "@/components/form-fields";
 import {
+  DataList,
   ListState,
   ListToolbar,
   LoadMore,
@@ -58,6 +51,9 @@ const feeItemsQuery = (orgSlug: string) =>
 
 export const Route = createFileRoute("/$orgSlug/settings/staff")({
   head: () => ({ meta: [{ title: "Staff · HMS" }] }),
+  validateSearch: z.object({
+    view: z.enum(["practitioners", "departments"]).default("practitioners"),
+  }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     // Everyone may read the roster; only these roles may edit it, and this page is
     // nothing but the editor.
@@ -140,6 +136,7 @@ type PractitionerDialogState =
 
 function StaffRoute() {
   const { orgSlug } = Route.useParams();
+  const { view } = Route.useSearch();
   const { timeZone } = useOrgDateTime();
   const [departmentDialog, setDepartmentDialog] = useState<DepartmentDialogState>(null);
   const [practitionerDialog, setPractitionerDialog] = useState<PractitionerDialogState>(null);
@@ -170,159 +167,190 @@ function StaffRoute() {
 
   return (
     <>
-      <PageHeader title="Staff" />
+      <PageHeader
+        title="Staff"
+        action={
+          <Button
+            disabled={view === "practitioners" && !departments.data?.length}
+            onClick={() =>
+              view === "departments"
+                ? setDepartmentDialog({ mode: "create" })
+                : setPractitionerDialog({ mode: "create" })
+            }
+          >
+            {view === "departments" ? "New department" : "New practitioner"}
+          </Button>
+        }
+      />
       <SettingsTabs orgSlug={orgSlug} />
 
       <PageBody>
-        <Panel
-          label="Departments"
-          action={
-            <Button size="xs" onClick={() => setDepartmentDialog({ mode: "create" })}>
-              New department
-            </Button>
-          }
-        >
-          <ListState
-            query={departments}
-            errorTitle="Could not load departments"
-            isEmpty={departments.data?.length === 0}
-            empty="No departments yet. A department groups practitioners and carries the fee they consult at."
-          >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Default consult fee</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="w-16 text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {departments.data?.map((department) => (
-                  <TableRow key={department.id}>
-                    <TableCell className="font-medium">{department.name}</TableCell>
-                    <TableCell>
-                      {department.defaultConsultFeeItemId
-                        ? (catalogById.get(department.defaultConsultFeeItemId)?.name ?? "—")
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {formatDate(department.createdAt, timeZone)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        onClick={() => setDepartmentDialog({ mode: "edit", department })}
-                      >
-                        Edit
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </ListState>
-        </Panel>
-
-        <div className="flex flex-col gap-2">
-          <ListToolbar>
+        <ListToolbar>
+          {view === "practitioners" ? (
             <SearchInput
               label="Search practitioners"
-              placeholder="Search name or registration no."
+              placeholder="Name or registration number"
               onQueryChange={setQuery}
             />
-          </ListToolbar>
-          <Panel
-            label="Practitioners"
-            action={
-              <Button
-                size="xs"
-                disabled={!departments.data?.length}
-                onClick={() => setPractitionerDialog({ mode: "create" })}
+          ) : null}
+          <nav aria-label="Staff views" className="flex items-center gap-1">
+            {(["practitioners", "departments"] as const).map((item) => (
+              <Link
+                key={item}
+                to="/$orgSlug/settings/staff"
+                params={{ orgSlug }}
+                search={{ view: item }}
+                replace
+                className={buttonVariants({ variant: view === item ? "secondary" : "ghost" })}
               >
-                New practitioner
-              </Button>
-            }
-          >
+                {item === "practitioners" ? "Practitioners" : "Departments"}
+              </Link>
+            ))}
+          </nav>
+        </ListToolbar>
+        <Panel label={view === "practitioners" ? "Practitioners" : "Departments"} grow>
+          {view === "departments" ? (
+            <ListState
+              query={departments}
+              errorTitle="Could not load departments"
+              isEmpty={departments.data?.length === 0}
+              empty={
+                <div className="flex max-w-sm flex-col items-center gap-2">
+                  <p>No departments yet</p>
+                  <p>Add a department before adding practitioners.</p>
+                  <Button variant="outline" onClick={() => setDepartmentDialog({ mode: "create" })}>
+                    New department
+                  </Button>
+                </div>
+              }
+            >
+              <DataList
+                columns={[
+                  { head: "Name", cell: (department) => department.name },
+                  {
+                    head: "Default consult fee",
+                    cell: (department) =>
+                      department.defaultConsultFeeItemId
+                        ? (catalogById.get(department.defaultConsultFeeItemId)?.name ?? "—")
+                        : "—",
+                  },
+                  {
+                    head: "Created",
+                    cell: (department) => (
+                      <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+                        {formatDate(department.createdAt, timeZone)}
+                      </span>
+                    ),
+                  },
+                ]}
+                rows={departments.data ?? []}
+                rowKey={(department) => department.id}
+                action={(department) => (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => setDepartmentDialog({ mode: "edit", department })}
+                  >
+                    Edit
+                  </Button>
+                )}
+              />
+            </ListState>
+          ) : (
             <ListState
               query={practitioners}
               errorTitle="Could not load practitioners"
               isEmpty={practitioners.data?.length === 0}
               empty={
-                query
-                  ? "No practitioners match this search."
-                  : "No practitioners yet. Add the clinicians a patient can be booked with."
+                <div className="flex max-w-sm flex-col items-center gap-2">
+                  <p>{query ? "No matching practitioners" : "No practitioners yet"}</p>
+                  {!query && departments.isSuccess && departments.data.length === 0 ? (
+                    <>
+                      <p>Add a department before adding practitioners.</p>
+                      <Button
+                        variant="outline"
+                        onClick={() => setDepartmentDialog({ mode: "create" })}
+                      >
+                        New department
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
               }
             >
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Registration no.</TableHead>
-                    <TableHead>Linked account</TableHead>
-                    <TableHead>Consult fee item</TableHead>
-                    <TableHead>Follow-up fee item</TableHead>
-                    <TableHead className="w-16 text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {practitioners.data?.map((practitioner) => {
-                    const linkedMember = practitioner.memberUserId
-                      ? memberByUserId.get(practitioner.memberUserId)
-                      : undefined;
+              <DataList
+                columns={[
+                  {
+                    head: "Name",
+                    cell: (practitioner) => (
+                      <span className="capitalize">
+                        {practitionerDisplayName(practitioner.name)}
+                      </span>
+                    ),
+                  },
+                  {
+                    head: "Department",
+                    cell: (practitioner) =>
+                      departmentById.get(practitioner.departmentId)?.name ?? "—",
+                  },
+                  {
+                    head: "Registration no.",
+                    cell: (practitioner) => (
+                      <span className="font-mono text-muted-foreground">
+                        {practitioner.registrationNumber || "—"}
+                      </span>
+                    ),
+                    mobile: "title",
+                  },
+                  {
+                    head: "Linked account",
+                    cell: (practitioner) => {
+                      const linkedMember = practitioner.memberUserId
+                        ? memberByUserId.get(practitioner.memberUserId)
+                        : undefined;
 
-                    return (
-                      <TableRow key={practitioner.id}>
-                        <TableCell className="font-medium capitalize">
-                          {practitionerDisplayName(practitioner.name)}
-                        </TableCell>
-                        <TableCell>
-                          {departmentById.get(practitioner.departmentId)?.name ?? "—"}
-                        </TableCell>
-                        <TableCell className="font-mono text-muted-foreground">
-                          {practitioner.registrationNumber || "—"}
-                        </TableCell>
-                        <TableCell>
-                          {linkedMember ? (
-                            <div className="min-w-0">
-                              <div className="truncate">{linkedMember.name}</div>
-                              <div className="truncate text-muted-foreground">
-                                {linkedMember.email}
-                              </div>
-                            </div>
-                          ) : (
-                            "—"
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {practitioner.consultFeeItemId
-                            ? (catalogById.get(practitioner.consultFeeItemId)?.name ?? "—")
-                            : "—"}
-                        </TableCell>
-                        <TableCell>
-                          {practitioner.followUpFeeItemId
-                            ? (catalogById.get(practitioner.followUpFeeItemId)?.name ?? "—")
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            onClick={() => setPractitionerDialog({ mode: "edit", practitioner })}
-                          >
-                            Edit
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                      return linkedMember ? (
+                        <span className="block min-w-0">
+                          <span className="block truncate">{linkedMember.name}</span>
+                          <span className="block truncate text-muted-foreground">
+                            {linkedMember.email}
+                          </span>
+                        </span>
+                      ) : (
+                        "—"
+                      );
+                    },
+                  },
+                  {
+                    head: "Consult fee item",
+                    cell: (practitioner) =>
+                      practitioner.consultFeeItemId
+                        ? (catalogById.get(practitioner.consultFeeItemId)?.name ?? "—")
+                        : "—",
+                  },
+                  {
+                    head: "Follow-up fee item",
+                    cell: (practitioner) =>
+                      practitioner.followUpFeeItemId
+                        ? (catalogById.get(practitioner.followUpFeeItemId)?.name ?? "—")
+                        : "—",
+                  },
+                ]}
+                rows={practitioners.data ?? []}
+                rowKey={(practitioner) => practitioner.id}
+                action={(practitioner) => (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => setPractitionerDialog({ mode: "edit", practitioner })}
+                  >
+                    Edit
+                  </Button>
+                )}
+              />
             </ListState>
-          </Panel>
-        </div>
+          )}
+        </Panel>
       </PageBody>
 
       {departmentDialog ? (
@@ -408,11 +436,11 @@ function DepartmentDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{department ? "Edit department" : "New department"}</DialogTitle>
-          <DialogDescription>
-            {department
-              ? "Rename this department for every practitioner assigned to it."
-              : "Create a department before assigning practitioners."}
-          </DialogDescription>
+          {!department ? (
+            <DialogDescription>
+              Departments group practitioners and set a default consult fee
+            </DialogDescription>
+          ) : null}
         </DialogHeader>
         <Form {...form}>
           <form noValidate onSubmit={submit} className="flex flex-col gap-4">

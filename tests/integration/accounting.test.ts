@@ -20,7 +20,7 @@ import { createOrganization, createTestUser } from "../support/auth";
 import { addPendingCatalogCharge, settlePendingCharges } from "../support/billing";
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
-import { uniqueSuffix } from "../support/unique";
+import { sumMoney, uniqueSuffix } from "../support/unique";
 
 beforeAll(async () => {
   await resetTestDatabase();
@@ -41,10 +41,6 @@ function addDays(date: string, days: number): string {
   const instant = new Date(`${date}T12:00:00+05:30`);
 
   return reportDate(new Date(instant.getTime() + days * 86_400_000));
-}
-
-function sumMoney(values: bigint[]): bigint {
-  return values.reduce((total, value) => total + value, 0n);
 }
 
 type AccountingFixture = {

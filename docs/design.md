@@ -40,6 +40,18 @@ already-raised surface, such as a Sheet or popover.
 
 The shell groups related rows. Do not nest a shell inside a shell.
 
+Keep the muted tray and its inset card. Reduce the information shown at once
+before removing this framing. Billing separates open money, refunds, and held
+advances into routes. Patient billing opens on invoices; advance receipts expand
+below them. Staff keeps a compact panel (`min-h-48`) and a button-style view
+selector, so nested tab strips do not add parallel rules. Reports use a muted
+navigation panel with no extra rule above or below it.
+
+Organization settings use a left-aligned `max-w-5xl` content column. At `md`,
+section context occupies one column and its fields occupy two. On smaller screens
+they stack. A rule separates each group from the next; no trailing rule sits above Save.
+The scrollbar stays at the page edge; only the content has a width limit.
+
 **Do not tune these values per page.** If a shell is invisible, the token is
 wrong, not the page — fix `--muted` in `packages/ui/src/styles/globals.css`.
 
@@ -69,16 +81,16 @@ One scale. Five steps carry everything:
 
 A dense data surface. `text-xs` is the body size, not a small size.
 
-| Size                      | Where                                                                   |
-| ------------------------- | ----------------------------------------------------------------------- |
-| `text-[0.6875rem]` (11px) | `Badge` primitive only: dense status labels                             |
-| `text-xs` (12px)          | Default: table cells and column labels, body copy, buttons, inputs      |
-| `text-sm` (14px)          | Page and section titles                                                 |
-| `text-base` (16px)        | Dialog and Sheet task titles                                            |
-| `text-lg` (18px)          | Public pages and a chart's fixed-height interactive readout             |
-| `text-xl` (20px)          | Public pages only                                                       |
-| `text-2xl`/`text-3xl`     | The headline number on a dashboard stat card only                       |
-| `text-4xl`/`text-5xl`     | Display: marketing headlines on public pages only, never inside the app |
+| Size                      | Where                                                                                     |
+| ------------------------- | ----------------------------------------------------------------------------------------- |
+| `text-[0.6875rem]` (11px) | `Badge` primitive only: dense status labels                                               |
+| `text-xs` (12px)          | Default: table cells and column labels, body copy, buttons, inputs                        |
+| `text-sm` (14px)          | Page and section titles                                                                   |
+| `text-base` (16px)        | Dialog and Sheet task titles                                                              |
+| `text-lg` (18px)          | Public pages and a chart's fixed-height interactive readout                               |
+| `text-xl` (20px)          | Public pages only                                                                         |
+| `text-2xl`/`text-3xl`     | The headline number on a dashboard stat card; `text-3xl` also opens a public-page section |
+| `text-4xl`/`text-5xl`     | Display: marketing headlines on public pages only, never inside the app                   |
 
 - **Display sizes stop at the app's edge.** `text-4xl`/`text-5xl` exist so the
   public pages — `/` and the per-feature marketing routes — can carry a headline
@@ -202,9 +214,13 @@ content panel is the card that rises off it. The rail is not a card.
   hover or keyboard focus warms route code and query data without eagerly
   running every sidebar destination loader when the shell mounts.
 
-Keyboard focus is the global unlayered `:focus-visible` rule in `globals.css`;
-do not remove or replace it with component-only rings. Hover effects are gated
-to `(hover: hover) and (pointer: fine)`.
+Keyboard focus is the global unlayered `:focus-visible` rule in `globals.css`: a
+rounded 2.5px ring 2px off the element. Full-bleed targets flush against a
+clipping edge or neighbouring row (menu items, options, `data-focus-inset` rows)
+draw it inside; a tab whose box carries the strip underline puts the ring on an
+inner `data-focus-ring` label. Components add no focus rings or offsets of their
+own; do not remove or replace the rule. Hover effects are gated to
+`(hover: hover) and (pointer: fine)`.
 
 The skip link is the first focusable element and targets `#main` on every page root.
 
@@ -234,10 +250,11 @@ like the OPD record's Clinical and Billing — share one title and description, 
 switching tabs does not shift the layout. Section tabs over distinct pages, like
 Settings, keep their own titles.
 
-Page-header actions use the default 32 px control height (`icon` when icon-only),
-including secondary actions and operational date navigation. This keeps sibling
-pages aligned without route-specific height overrides. In-body section and row
-actions use `size="xs"`.
+Page-header and panel-label-row actions use the default 32 px control height
+(`icon` when icon-only), including secondary actions and operational date
+navigation. This keeps sibling pages aligned without route-specific height
+overrides. Row actions inside a list use `size="xs"`/`size="icon-xs"`; there is
+no `sm`.
 Creation actions are text-first. Labels such as `New`, `Add`, `Register`,
 `Invite`, and `Create` do not repeat their meaning with a leading plus icon.
 Button labels render in Title Case through the shared button primitive; routes
@@ -260,7 +277,16 @@ style choice.
 
 - **`ErrorNote`** — the one way a page reports a failed read.
 - **`PageTabs` / `PageTab`** — the one tab strip below `PageHeader`. `PageTab`
-  keeps typed route links, active state, and tab styling consistent.
+  keeps typed route links, active state, and tab styling consistent. All sub-navigation
+  starts at the left page gutter, including patient and OPD records, Settings,
+  Pharmacy, and Billing. It never inherits a centered content column. The index
+  link uses exact matching so it is not active on a child route.
+- **Patient sections** — Record, Visits, Billing, and Treatment are child routes.
+  The layout owns one live patient query; each child loads only its own data.
+  Account totals belong to Billing, so the other sections do not load the full
+  account. Record shows allergy and medical-history sections, followed by one patient details card containing contact, identity, guardian, and payer details. Patient and report content columns are centered within the page; their text stays left-aligned. The name
+  and MRN appear once in the compact identity strip, not again in PageHeader.
+  Allergy and medical-history sections retain their color tokens without an outer Clinical notes panel. Open money and Refunds due panels fill the remaining page height.
 - **`ListToolbar`** — the row above a list. Search comes first, followed by
   filters.
 - **`SearchInput`** — the one uncontrolled search box. It trims the query and
@@ -272,7 +298,7 @@ style choice.
 - **`Panel` / `PanelEmpty`** — the muted tray, label row, raised card, optional
   footer, and centered empty copy used by every list. `grow` fills the page on
   every page whose body is one list, so its footer sits at the same bottom edge
-  everywhere; pages that stack several panels leave them at their rows. A
+  everywhere; pages that stack several panels leave them at their rows. Patient visit details and advance receipts retain their disclosures. Non-growing panels within forms and disclosures use compact heights. A
   single-list page drops `label` when the page title already names the list:
   from `md` the table's column labels sit on the tray in the label row's place.
   A panel with an `action`, or one of several on a page, keeps its label.
@@ -280,6 +306,11 @@ style choice.
   list.
 - **`LoadMore`** — the count and the only control that grows a cursor list. It
   belongs in the panel footer.
+- **`DataList`** — one `columns` definition renders the table at `md` and the
+  compact row below it. The first column is the row name and target;
+  `mobile: "title"` shares its line, while other columns join with `·`.
+  `action` sits outside the target. A route never writes `<Table>` or an
+  `md:hidden` list.
 
 **Choice controls.** Use a dropdown menu for actions and short option lists,
 including the list filter's checkbox submenus. Use a popover when the anchored
@@ -323,8 +354,10 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
 - **A panel holds its height when empty.** An empty dashboard should read as a
   dashboard with nothing in it, not as a collapsed page. Panels declare a
   `min-h-*` so the layout is the same shape at 0 rows as at 20.
-- **Empty text states what would be here**, in `text-muted-foreground`: "The queue
-  is empty", not "No data".
+- **Empty text states what would be here**, in `text-muted-foreground`, as a
+  short label with no trailing period: "The queue is empty", not "No data". A
+  second sentence earns its place only by stating a consequence or rule the
+  reader cannot infer.
 - **Nothing stands in for data that has not arrived.** A page renders only the
   chrome it can build from route params: its header band. The data region stays
   empty until the data lands. The panel's `min-h-*` makes that blank region read

@@ -85,7 +85,7 @@ export function LandingHero() {
           instead of a silent zoom. The filename carries the capture height —
           830px, where the dashboard's last panel ends — so a recapture at a new
           ratio can never be served from cache against the old frame. */}
-      <div className="relative mt-8 w-full overflow-hidden rounded-xl p-4 sm:p-5 lg:p-8">
+      <div className="relative w-full overflow-hidden rounded-xl p-4 sm:p-6 lg:p-8">
         <Wash />
         <div
           role="img"

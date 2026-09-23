@@ -1,17 +1,11 @@
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hms/ui/components/table";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 
+import { BillingNav } from "@/components/billing-nav";
 import { AdvanceReceiptLink } from "@/components/advance-form";
 import {
+  DataList,
   ListState,
   ListToolbar,
   LoadMore,
@@ -64,11 +58,12 @@ function AdvancesHeldRoute() {
   return (
     <>
       <PageHeader title="Advances held" />
+      <BillingNav orgSlug={orgSlug} />
       <PageBody>
         <ListToolbar>
           <SearchInput
             label="Search advances held"
-            placeholder="Search patient or MRN"
+            placeholder="Patient or MRN"
             onQueryChange={setQuery}
           />
         </ListToolbar>
@@ -77,81 +72,59 @@ function AdvancesHeldRoute() {
             query={advances}
             errorTitle="Could not load advances held"
             isEmpty={rows.length === 0}
-            empty="No patient credit is being held."
+            empty="No advances held"
           >
-            <>
-              <div className="hidden md:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Patient</TableHead>
-                      <TableHead>Receipt</TableHead>
-                      <TableHead>Purpose</TableHead>
-                      <TableHead>Received</TableHead>
-                      <TableHead className="text-right">Credit held</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rows.map((row) => (
-                      <TableRow key={row.id} className="relative">
-                        <TableCell>
-                          <Link
-                            to="/$orgSlug/patients/$patientId"
-                            params={{ orgSlug, patientId: row.patientId }}
-                            search={{ tab: "billing" }}
-                            className="font-medium capitalize underline-offset-4 after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-                          >
-                            {row.patientName}
-                          </Link>
-                          <p className="font-mono text-muted-foreground">{row.patientMrn}</p>
-                        </TableCell>
-                        <TableCell>
-                          <AdvanceReceiptLink
-                            orgSlug={orgSlug}
-                            id={row.id}
-                            label={row.receiptNumber}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          {row.planStatus ? `${row.purpose} · ${row.planStatus}` : row.purpose}
-                        </TableCell>
-                        <TableCell>{formatBusinessDate(row.businessDate)}</TableCell>
-                        <TableCell className="text-right font-medium tabular-nums">
-                          {formatMoney(row.remaining, currency)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              <ul role="list" className="md:hidden">
-                {rows.map((row) => (
-                  <li key={row.id} className="border-b px-3 py-2 last:border-b-0">
-                    <div className="flex min-w-0 items-baseline justify-between gap-2">
-                      <Link
-                        to="/$orgSlug/patients/$patientId"
-                        params={{ orgSlug, patientId: row.patientId }}
-                        search={{ tab: "billing" }}
-                        className="min-w-0 truncate font-medium capitalize"
-                      >
-                        {row.patientName}
-                      </Link>
-                      <span className="shrink-0 font-medium tabular-nums">
-                        {formatMoney(row.remaining, currency)}
+            <DataList
+              columns={[
+                {
+                  head: "Patient",
+                  cell: (row) => (
+                    <>
+                      <span className="capitalize">{row.patientName}</span>
+                      <span className="block font-mono text-muted-foreground">
+                        {row.patientMrn}
                       </span>
-                    </div>
-                    <div className="flex min-w-0 items-baseline justify-between gap-2 text-muted-foreground">
-                      <span className="truncate font-mono">{row.patientMrn}</span>
-                      <AdvanceReceiptLink orgSlug={orgSlug} id={row.id} label={row.receiptNumber} />
-                    </div>
-                    <p className="truncate text-muted-foreground">
-                      {row.planStatus ? `${row.purpose} · ${row.planStatus}` : row.purpose}
-                      {` · ${formatBusinessDate(row.businessDate)}`}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </>
+                    </>
+                  ),
+                },
+                {
+                  head: "Receipt",
+                  mobile: "title",
+                  cell: (row) => <span className="font-mono">{row.receiptNumber}</span>,
+                },
+                {
+                  head: "Purpose",
+                  cell: (row) =>
+                    row.planStatus ? `${row.purpose} · ${row.planStatus}` : row.purpose,
+                },
+                {
+                  head: "Received",
+                  cell: (row) => (
+                    <span className="text-muted-foreground">
+                      {formatBusinessDate(row.businessDate)}
+                    </span>
+                  ),
+                },
+                {
+                  head: "Credit held",
+                  className: "text-right",
+                  cell: (row) => (
+                    <span className="font-medium tabular-nums">
+                      {formatMoney(row.remaining, currency)}
+                    </span>
+                  ),
+                },
+              ]}
+              rows={rows}
+              rowKey={(row) => row.id}
+              link={(row) => ({
+                to: "/$orgSlug/patients/$patientId/billing",
+                params: { orgSlug, patientId: row.patientId },
+              })}
+              action={(row) => (
+                <AdvanceReceiptLink orgSlug={orgSlug} id={row.id} label={row.receiptNumber} />
+              )}
+            />
           </ListState>
         </Panel>
       </PageBody>

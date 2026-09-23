@@ -1,24 +1,15 @@
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hms/ui/components/table";
 import { Button } from "@hms/ui/components/button";
 import { cn } from "@hms/ui/lib/utils";
-import { Link } from "@tanstack/react-router";
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 
 import { AdvanceForm, AdvanceReceiptLink, AdvanceRefundDialog } from "@/components/advance-form";
-import { ErrorNote, Panel, PanelEmpty } from "@/components/page";
+import { DataList, ErrorNote, Panel, PanelEmpty } from "@/components/page";
 import { useCan } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
 import { formatBusinessDate, formatDate, useOrgDateTime } from "@/lib/org-datetime";
 
-export type PatientAccount = {
+type PatientAccount = {
   invoices: {
     id: string;
     invoiceNumber: string;
@@ -83,7 +74,7 @@ export function PatientBilling({
 
   const refundLinks = (receipt: { id: string; currency: string }) =>
     refundsByReceipt.get(receipt.id)?.map((voucher) => (
-      <p key={voucher.id} className="text-muted-foreground">
+      <span key={voucher.id} className="block text-muted-foreground tabular-nums">
         <AdvanceReceiptLink
           orgSlug={orgSlug}
           id={receipt.id}
@@ -91,15 +82,15 @@ export function PatientBilling({
           label={`Refunded ${formatMoney(voucher.amount, receipt.currency)}`}
         />
         {` · ${formatBusinessDate(voucher.businessDate)}`}
-      </p>
+      </span>
     ));
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <section className="flex flex-wrap items-center gap-3">
         <p className="text-muted-foreground">Credit held</p>
         {account ? (
-          <p className="text-sm font-medium tabular-nums">
+          <p className="text-xs font-medium tabular-nums">
             {formatMoney(account.creditHeld, currency)}
           </p>
         ) : null}
@@ -112,107 +103,12 @@ export function PatientBilling({
 
       {error ? <ErrorNote title="Could not load billing" error={error} /> : null}
 
-      <Panel label="Advance receipts">
-        {account && account.advanceReceipts.length === 0 ? (
-          <PanelEmpty>No advance receipt has been recorded for this patient.</PanelEmpty>
-        ) : null}
-        {account && account.advanceReceipts.length > 0 ? (
-          <>
-            <div className="hidden md:block">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Receipt</TableHead>
-                    <TableHead>Purpose</TableHead>
-                    <TableHead>Issued</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">Available</TableHead>
-                    {canRefundAdvance ? <TableHead className="w-20" /> : null}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {account.advanceReceipts.map((receipt) => (
-                    <TableRow key={receipt.id}>
-                      <TableCell>
-                        <AdvanceReceiptLink
-                          orgSlug={orgSlug}
-                          id={receipt.id}
-                          label={receipt.receiptNumber}
-                        />
-                        {refundLinks(receipt)}
-                      </TableCell>
-                      <TableCell>{receipt.purpose}</TableCell>
-                      <TableCell>{formatBusinessDate(receipt.businessDate)}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatMoney(receipt.amount, receipt.currency)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatMoney(receipt.remaining, receipt.currency)}
-                      </TableCell>
-                      {canRefundAdvance ? (
-                        <TableCell>
-                          {receipt.remaining > ZERO ? (
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              onClick={() => setRefundReceipt(receipt)}
-                            >
-                              Refund
-                            </Button>
-                          ) : null}
-                        </TableCell>
-                      ) : null}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            <ul role="list" className="md:hidden">
-              {account.advanceReceipts.map((receipt) => (
-                <li key={receipt.id} className="border-b px-3 py-2 last:border-b-0">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <AdvanceReceiptLink
-                      orgSlug={orgSlug}
-                      id={receipt.id}
-                      label={receipt.receiptNumber}
-                    />
-                    <span className="shrink-0 font-medium tabular-nums">
-                      {formatMoney(receipt.remaining, receipt.currency)} available
-                    </span>
-                  </div>
-                  <p className="truncate">{receipt.purpose}</p>
-                  <div className="flex items-center justify-between gap-2 text-muted-foreground">
-                    <span>{formatBusinessDate(receipt.businessDate)}</span>
-                    <span className="tabular-nums">
-                      Received {formatMoney(receipt.amount, receipt.currency)}
-                    </span>
-                    {canRefundAdvance && receipt.remaining > ZERO ? (
-                      <Button size="xs" variant="ghost" onClick={() => setRefundReceipt(receipt)}>
-                        Refund
-                      </Button>
-                    ) : null}
-                  </div>
-                  {refundLinks(receipt)}
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : null}
-        {refundReceipt ? (
-          <AdvanceRefundDialog
-            orgSlug={orgSlug}
-            receipt={refundReceipt}
-            onClose={() => setRefundReceipt(null)}
-          />
-        ) : null}
-      </Panel>
-
       {account && firstInvoice ? (
         <section className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <p className="text-muted-foreground">{isRefundDue ? "Refund due" : "Outstanding"}</p>
           <p
             className={cn(
-              "text-sm font-medium tabular-nums",
+              "text-xs font-medium tabular-nums",
               isRefundDue
                 ? "text-destructive"
                 : account.openCount > 0
@@ -225,7 +121,7 @@ export function PatientBilling({
               firstInvoice.currency,
             )}
           </p>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground tabular-nums">
             {account.openCount === 0
               ? "every invoice is settled"
               : `across ${account.openCount} open ${account.openCount === 1 ? "invoice" : "invoices"}`}
@@ -233,67 +129,157 @@ export function PatientBilling({
         </section>
       ) : null}
 
-      <Panel label="Invoices">
-        {account && !firstInvoice ? (
-          <PanelEmpty>No invoice has been raised for this patient.</PanelEmpty>
-        ) : null}
+      <Panel grow label="Invoices">
+        {account && !firstInvoice ? <PanelEmpty>No invoices yet</PanelEmpty> : null}
         {account && firstInvoice ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Invoice</TableHead>
-                <TableHead>Issued</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Paid / credit</TableHead>
-                <TableHead className="text-right">Balance</TableHead>
-                <TableHead className="w-8" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {account.invoices.map((invoice) => {
-                const due = invoice.outstanding !== ZERO;
-
-                return (
-                  <TableRow key={invoice.id} className="relative">
-                    <TableCell className="font-mono whitespace-nowrap">
-                      <Link
-                        to="/$orgSlug/billing/invoices/$invoiceId"
-                        params={{ orgSlug, invoiceId: invoice.id }}
-                        className="underline-offset-4 after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-                      >
-                        {invoice.invoiceNumber}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {formatDate(invoice.createdAt, timeZone)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatMoney(invoice.grandTotal, invoice.currency)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {formatMoney(
-                        invoice.paymentsTotal + invoice.allocationsTotal,
-                        invoice.currency,
-                      )}
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        "text-right tabular-nums",
-                        due ? "text-clinical-alert" : "text-muted-foreground",
-                      )}
-                    >
-                      {formatMoney(invoice.outstanding, invoice.currency)}
-                    </TableCell>
-                    <TableCell>
-                      <ChevronRightIcon className="size-3.5 text-muted-foreground" />
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <DataList
+            rows={account.invoices}
+            rowKey={(invoice) => invoice.id}
+            link={(invoice) => ({
+              to: "/$orgSlug/billing/invoices/$invoiceId",
+              params: { orgSlug, invoiceId: invoice.id },
+            })}
+            columns={[
+              {
+                head: "Invoice",
+                cell: (invoice) => <span className="font-mono">{invoice.invoiceNumber}</span>,
+              },
+              {
+                head: "Issued",
+                cell: (invoice) => (
+                  <span className="whitespace-nowrap tabular-nums">
+                    {formatDate(invoice.createdAt, timeZone)}
+                  </span>
+                ),
+              },
+              {
+                head: "Total",
+                className: "text-right",
+                cell: (invoice) => (
+                  <span className="tabular-nums">
+                    {formatMoney(invoice.grandTotal, invoice.currency)}
+                  </span>
+                ),
+              },
+              {
+                head: "Paid / credit",
+                className: "text-right",
+                cell: (invoice) => (
+                  <span className="tabular-nums text-muted-foreground">
+                    {formatMoney(
+                      invoice.paymentsTotal + invoice.allocationsTotal,
+                      invoice.currency,
+                    )}
+                  </span>
+                ),
+              },
+              {
+                head: "Balance",
+                className: "text-right",
+                cell: (invoice) => (
+                  <span
+                    className={cn(
+                      "tabular-nums",
+                      invoice.outstanding !== ZERO
+                        ? "text-clinical-alert"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {formatMoney(invoice.outstanding, invoice.currency)}
+                  </span>
+                ),
+              },
+              {
+                head: "",
+                className: "w-8",
+                mobile: "hidden",
+                cell: () => <ChevronRightIcon className="size-3.5 text-muted-foreground" />,
+              },
+            ]}
+          />
         ) : null}
       </Panel>
+      <details className="group max-h-[50%] shrink-0 overflow-y-auto">
+        <summary
+          data-focus-inset
+          className="flex cursor-pointer list-none items-center gap-2 py-2 text-muted-foreground [&::-webkit-details-marker]:hidden"
+        >
+          <ChevronRightIcon aria-hidden="true" className="size-3.5 group-open:rotate-90" />
+          Advance receipts
+          {account ? (
+            <span className="tabular-nums">({account.advanceReceipts.length})</span>
+          ) : null}
+        </summary>
+        <Panel label="Advance receipts">
+          {account && account.advanceReceipts.length === 0 ? (
+            <PanelEmpty>No advance receipts yet</PanelEmpty>
+          ) : null}
+          {account && account.advanceReceipts.length > 0 ? (
+            <DataList
+              rows={account.advanceReceipts}
+              rowKey={(receipt) => receipt.id}
+              columns={[
+                {
+                  head: "Receipt",
+                  cell: (receipt) => (
+                    <>
+                      <AdvanceReceiptLink
+                        orgSlug={orgSlug}
+                        id={receipt.id}
+                        label={receipt.receiptNumber}
+                      />
+                      {refundLinks(receipt)}
+                    </>
+                  ),
+                },
+                { head: "Purpose", cell: (receipt) => receipt.purpose },
+                {
+                  head: "Issued",
+                  cell: (receipt) => (
+                    <span className="tabular-nums">{formatBusinessDate(receipt.businessDate)}</span>
+                  ),
+                },
+                {
+                  head: "Amount",
+                  className: "text-right",
+                  cell: (receipt) => (
+                    <span className="tabular-nums">
+                      {formatMoney(receipt.amount, receipt.currency)}
+                    </span>
+                  ),
+                },
+                {
+                  head: "Available",
+                  className: "text-right",
+                  mobile: "title",
+                  cell: (receipt) => (
+                    <span className="tabular-nums">
+                      {formatMoney(receipt.remaining, receipt.currency)}
+                    </span>
+                  ),
+                },
+              ]}
+              action={
+                canRefundAdvance
+                  ? (receipt) =>
+                      receipt.remaining > ZERO ? (
+                        <Button size="xs" variant="ghost" onClick={() => setRefundReceipt(receipt)}>
+                          Refund
+                        </Button>
+                      ) : null
+                  : undefined
+              }
+            />
+          ) : null}
+          {refundReceipt ? (
+            <AdvanceRefundDialog
+              orgSlug={orgSlug}
+              receipt={refundReceipt}
+              onClose={() => setRefundReceipt(null)}
+            />
+          ) : null}
+        </Panel>
+      </details>
     </div>
   );
 }

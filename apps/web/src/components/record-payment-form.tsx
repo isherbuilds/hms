@@ -165,7 +165,7 @@ export function RecordPaymentForm({
               <FormItem>
                 {/* `FormLabel` owns the association: `FormControl` overwrites a hand-written
                     id on its child, which would leave the label pointing at nothing. */}
-                <FormLabel className="text-muted-foreground">
+                <FormLabel className="text-muted-foreground tabular-nums">
                   Credit available {formatMoney(availableCredit, currency)}
                 </FormLabel>
                 <FormControl>
@@ -246,8 +246,8 @@ export function RecordPaymentForm({
                               <Input
                                 {...field}
                                 aria-label={`Payment ${index + 1} reference`}
+                                className="font-mono"
                                 disabled={pending}
-                                placeholder={`${methodLabel(method)} reference`}
                               />
                             </FormControl>
                             <FormMessage />
@@ -278,7 +278,7 @@ export function RecordPaymentForm({
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
-                  size="sm"
+                  size="xs"
                   variant="outline"
                   disabled={pending || lines.fields.length >= MAX_PAYMENT_LINES}
                   onClick={() => {

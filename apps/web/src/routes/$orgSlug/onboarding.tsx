@@ -23,26 +23,24 @@ function OrganizationOnboardingRoute() {
   return (
     <>
       <PageHeader title="Setup" />
-      <PageBody className="max-w-3xl">
-        <section aria-labelledby="setup-path">
-          <div className="mb-2 flex items-center justify-between gap-4">
-            <h2 id="setup-path" className="font-medium">
-              Setup path
-            </h2>
-            <span className="font-mono text-muted-foreground">{visibleSetup.length} available</span>
-          </div>
+      <PageBody width="max-w-3xl">
+        <section aria-label="Setup steps" className="flex flex-col gap-2">
+          <span className="text-muted-foreground tabular-nums">
+            {visibleSetup.length} available
+          </span>
           <div className="divide-y divide-border border-y border-border">
             {visibleSetup.map(({ label, description, to, icon: Icon }, index) => (
               <Link
                 key={to}
                 to={to}
                 params={{ orgSlug }}
+                data-focus-inset
                 className="group grid grid-cols-[2rem_1.25rem_minmax(0,1fr)_1rem] items-center gap-3 py-3"
               >
-                <span className="font-mono text-muted-foreground">
+                <span className="font-mono tabular-nums text-muted-foreground">
                   {String(index + 1).padStart(2, "0")}
                 </span>
-                <Icon className="size-4 text-muted-foreground" />
+                <Icon className="size-3.5 text-muted-foreground" />
                 <span className="flex min-w-0 flex-col gap-1">
                   <span className="font-medium">{label}</span>
                   <span className="text-muted-foreground">{description}</span>

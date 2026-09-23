@@ -1,4 +1,3 @@
-import { Button } from "@hms/ui/components/button";
 import {
   Table,
   TableBody,
@@ -9,11 +8,11 @@ import {
 } from "@hms/ui/components/table";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { DownloadIcon, PrinterIcon } from "lucide-react";
 import { z } from "zod";
 
 import { DateFilter } from "@/components/list-filter";
 import { ErrorNote, ListToolbar, PageBody, PageHeader } from "@/components/page";
+import { ReportActions } from "@/components/report-actions";
 import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
@@ -111,18 +110,7 @@ function TrialBalanceRoute() {
     <>
       <PageHeader
         title="Trial balance"
-        action={
-          <>
-            <Button disabled={!report.data} onClick={exportReport}>
-              <DownloadIcon data-icon="inline-start" />
-              Export Excel
-            </Button>
-            <Button variant="outline" disabled={!report.data} onClick={() => window.print()}>
-              <PrinterIcon data-icon="inline-start" />
-              Print / PDF
-            </Button>
-          </>
-        }
+        action={<ReportActions disabled={!report.data} onExport={exportReport} />}
       />
       <PageBody>
         <div className="print:hidden">
@@ -133,7 +121,7 @@ function TrialBalanceRoute() {
         {report.isPending ? null : report.isError ? (
           <ErrorNote title="Could not load the trial balance" error={report.error} />
         ) : (
-          <section data-report-print className="space-y-3">
+          <section data-report-print className="flex flex-col gap-3">
             <header className="border-b pb-2">
               <h1 className="text-sm font-medium">Trial balance</h1>
               <p className="text-muted-foreground">

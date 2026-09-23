@@ -56,7 +56,7 @@ export function FeaturePage({
             <div className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-b from-transparent to-background" />
           </div>
           <p className="text-sm text-muted-foreground">{eyebrow}</p>
-          <h1 className="-mt-3 max-w-3xl text-4xl leading-[1.05] font-medium tracking-tight text-balance sm:text-center sm:text-5xl">
+          <h1 className="max-w-3xl text-4xl leading-[1.05] font-medium tracking-tight text-balance sm:text-center sm:text-5xl">
             {title}
           </h1>
           <p className="max-w-lg text-lg text-muted-foreground text-pretty sm:text-center">
@@ -66,7 +66,7 @@ export function FeaturePage({
 
           {/* The screen whole, as the hero shows the dashboard: a phone visitor
               is evaluating desk software and gets the honest small picture. */}
-          <div className="relative mt-8 w-full overflow-hidden rounded-xl p-4 sm:p-5 lg:p-8">
+          <div className="relative w-full overflow-hidden rounded-xl p-4 sm:p-6 lg:p-8">
             <Wash />
             <ProductWindow
               name={shot}
@@ -85,7 +85,7 @@ export function FeaturePage({
             return (
               <div
                 key={crop.claim}
-                className={`grid items-center gap-4 rounded-2xl bg-muted p-2 sm:p-3 lg:gap-8 ${
+                className={`grid items-center gap-4 rounded-xl bg-muted p-2 sm:p-3 lg:gap-8 ${
                   textRight
                     ? "lg:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]"
                     : "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.75fr)]"
@@ -134,15 +134,15 @@ export function FeaturePage({
               <Link
                 key={feature.to}
                 to={feature.to}
-                className="group flex gap-4 rounded-xl border border-border p-5 transition-colors duration-100 ease-out hover:bg-muted"
+                className="group flex items-center gap-4 rounded-lg border border-border p-4 transition-colors duration-100 ease-out hover:bg-muted"
               >
-                <feature.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <span className="flex flex-col gap-1">
-                  <span className="text-sm font-medium">{feature.label}</span>
-                  <span className="text-xs text-muted-foreground">{feature.blurb}</span>
-                  <span className="mt-2 text-sm underline-offset-4 group-hover:underline">
-                    See it →
+                <feature.icon className="size-4 shrink-0 text-muted-foreground" />
+                <span className="flex flex-col gap-2">
+                  <span className="flex flex-col gap-1">
+                    <span className="text-sm font-medium">{feature.label}</span>
+                    <span className="text-xs text-muted-foreground">{feature.blurb}</span>
                   </span>
+                  <span className="text-sm underline-offset-4 group-hover:underline">See it →</span>
                 </span>
               </Link>
             ))}

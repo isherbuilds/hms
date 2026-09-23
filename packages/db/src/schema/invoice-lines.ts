@@ -12,7 +12,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organization } from "./auth";
+import { orgIdColumn } from "./auth";
 import { CATALOG_CATEGORIES } from "./catalog-items";
 import { charges } from "./charges";
 import { invoices } from "./invoices";
@@ -22,9 +22,7 @@ export const invoiceLines = pgTable(
   "invoice_lines",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     invoiceId: text("invoice_id").notNull(),
     chargeId: text("charge_id").notNull(),
     description: text("description").notNull(),

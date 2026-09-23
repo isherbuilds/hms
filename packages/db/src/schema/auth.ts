@@ -92,6 +92,12 @@ export const organization = pgTable(
   (table) => [uniqueIndex("organization_slug_uidx").on(table.slug)],
 );
 
+export function orgIdColumn() {
+  return text("org_id")
+    .notNull()
+    .references(() => organization.id, { onDelete: "cascade" });
+}
+
 export const member = pgTable(
   "member",
   {

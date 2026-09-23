@@ -115,7 +115,7 @@ export function SettlementFields({
       />
 
       <FieldSet>
-        <FieldLegend variant="label">Payment</FieldLegend>
+        <FieldLegend>Payment</FieldLegend>
         <FieldGroup className="gap-3">
           <PaymentLines removable={payments.length > 1}>
             {payments.map((payment, index) => {
@@ -211,7 +211,7 @@ export function SettlementFields({
           <div className="flex items-center gap-2">
             <Button
               type="button"
-              size="sm"
+              size="xs"
               variant="outline"
               disabled={pending || payments.length >= MAX_PAYMENT_LINES}
               onClick={() => {
@@ -248,7 +248,7 @@ export function SettlementFields({
           disabled={pending}
           aria-invalid={Boolean(noteProblem)}
           aria-describedby={noteProblem ? "settlement-note-error" : undefined}
-          placeholder="Add details for reconciliation or an outstanding balance"
+          placeholder="Reconciliation note or reason for balance"
           onBlur={(event) => onNoteChange(event.target.value)}
         />
         <FieldError id="settlement-note-error">{noteProblem?.message}</FieldError>

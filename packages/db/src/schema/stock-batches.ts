@@ -13,7 +13,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organization } from "./auth";
+import { orgIdColumn } from "./auth";
 import { products } from "./products";
 
 // Immutable once created: number, expiry and printed MRP per mrpUnits stock units
@@ -22,9 +22,7 @@ export const stockBatches = pgTable(
   "stock_batches",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     productId: text("product_id").notNull(),
     batchNumber: text("batch_number").notNull(),
     // The last day of the printed month.

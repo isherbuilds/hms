@@ -37,7 +37,7 @@ export function FinancialSummary({
         </div>
       ) : null}
       <Separator />
-      <div className="flex items-baseline justify-between pt-1 text-sm font-medium">
+      <div className="flex items-baseline justify-between pt-1 text-xs font-medium">
         <dt>Payable</dt>
         <dd className="tabular-nums">{formatMoney(quote.grandTotal, currency)}</dd>
       </div>

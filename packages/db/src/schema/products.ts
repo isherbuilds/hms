@@ -11,7 +11,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organization } from "./auth";
+import { orgIdColumn } from "./auth";
 import { catalogItems } from "./catalog-items";
 
 export const STOCK_UNITS = [
@@ -36,9 +36,7 @@ export const products = pgTable(
   "products",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     catalogItemId: text("catalog_item_id"),
     name: text("name").notNull(),
     genericName: text("generic_name"),

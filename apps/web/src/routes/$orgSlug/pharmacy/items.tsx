@@ -3,14 +3,6 @@ import { Button } from "@hms/ui/components/button";
 import { Checkbox } from "@hms/ui/components/checkbox";
 import { FormControl } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hms/ui/components/table";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
@@ -22,6 +14,7 @@ import { ControlledField, TextField } from "@/components/form-fields";
 import { MedicineNameField } from "@/components/medicine-name-field";
 import { productTaxCode, validateSoldProduct } from "@/components/pharmacy-new-product-sheet";
 import {
+  DataList,
   ListState,
   ListToolbar,
   LoadMore,
@@ -32,30 +25,10 @@ import {
 } from "@/components/page";
 import { numberText } from "@/lib/form-schema";
 import { orpc } from "@/lib/orpc";
+import { SCHEDULE_LABELS, SCHEDULES, STOCK_UNITS } from "@/lib/pharmacy-labels";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 import { PharmacyTabs } from "./route";
-
-// Kept local so no @hms/db server module reaches the client bundle (hard rule 6).
-const STOCK_UNITS = [
-  "tablet",
-  "capsule",
-  "ml",
-  "strip",
-  "bottle",
-  "vial",
-  "tube",
-  "piece",
-] as const;
-
-const SCHEDULES = ["none", "h", "h1", "x"] as const;
-
-const SCHEDULE_LABELS: Record<(typeof SCHEDULES)[number], string> = {
-  none: "No schedule",
-  h: "Schedule H",
-  h1: "Schedule H1",
-  x: "Schedule X",
-};
 
 const productListQuery = (orgSlug: string, query: string) =>
   orpc.pharmacy.listProducts.infiniteOptions({
@@ -144,7 +117,7 @@ function PharmacyItemsRoute() {
         <ListToolbar>
           <SearchInput
             label="Search products"
-            placeholder="Search name, code or generic"
+            placeholder="Name, code, or generic"
             onQueryChange={setQuery}
           />
         </ListToolbar>
@@ -154,93 +127,68 @@ function PharmacyItemsRoute() {
             query={products}
             errorTitle="Could not load products"
             isEmpty={items.length === 0}
-            empty={query ? "No product matches this search." : "No products yet."}
+            empty={query ? "No matching products" : "No products yet"}
           >
-            <div className="hidden md:block">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Generic</TableHead>
-                    <TableHead>Form</TableHead>
-                    <TableHead>Unit × pack</TableHead>
-                    <TableHead>Schedule</TableHead>
-                    <TableHead className="text-right">GST %</TableHead>
-                    <TableHead>HSN</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((item) => (
-                    <TableRow key={item.productId}>
-                      <TableCell className="font-mono">
-                        {item.code ?? (
-                          <span className="font-sans text-muted-foreground">Internal</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-medium">{item.name}</TableCell>
-                      <TableCell>{item.genericName || "—"}</TableCell>
-                      <TableCell>
-                        {[item.form, item.strength].filter(Boolean).join(" ") || "—"}
-                      </TableCell>
-                      <TableCell className="tabular-nums">
-                        {item.stockUnit} × {item.unitsPerPack}
-                      </TableCell>
-                      <TableCell>{SCHEDULE_LABELS[item.schedule]}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {item.taxRatePercent ?? "—"}
-                      </TableCell>
-                      <TableCell className="font-mono">{item.taxCode || "—"}</TableCell>
-                      <TableCell>
-                        {item.catalogItemId === null ? (
-                          <Badge variant="muted">Internal</Badge>
-                        ) : (
-                          <Badge variant={item.active ? "secondary" : "muted"}>
-                            {item.active ? "Active" : "Inactive"}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="xs" onClick={() => setEditing(item)}>
-                          Edit
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-
-            <ul className="md:hidden">
-              {items.map((item) => (
-                <li
-                  key={item.productId}
-                  className="flex min-w-0 items-start gap-2 border-b border-border/60 px-3 py-2 last:border-b-0"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{item.name}</p>
-                    <p className="mt-1 truncate text-muted-foreground">
-                      <span className="font-mono">{item.code ?? "Internal"}</span> ·{" "}
-                      {item.stockUnit} × {item.unitsPerPack} · {SCHEDULE_LABELS[item.schedule]}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {item.catalogItemId === null ? (
+            <DataList
+              columns={[
+                { head: "Name", cell: (item) => item.name },
+                {
+                  head: "Code",
+                  cell: (item) => (
+                    <span className="font-mono">
+                      {item.code ?? (
+                        <span className="font-sans text-muted-foreground">Internal</span>
+                      )}
+                    </span>
+                  ),
+                  mobile: "title",
+                },
+                { head: "Generic", cell: (item) => item.genericName || "—" },
+                {
+                  head: "Form",
+                  cell: (item) => [item.form, item.strength].filter(Boolean).join(" ") || "—",
+                },
+                {
+                  head: "Unit × pack",
+                  cell: (item) => (
+                    <span className="tabular-nums">
+                      {item.stockUnit} × {item.unitsPerPack}
+                    </span>
+                  ),
+                },
+                { head: "Schedule", cell: (item) => SCHEDULE_LABELS[item.schedule] },
+                {
+                  head: "GST %",
+                  cell: (item) => (
+                    <span className="tabular-nums">{item.taxRatePercent ?? "—"}</span>
+                  ),
+                  className: "text-right",
+                },
+                {
+                  head: "HSN",
+                  cell: (item) => <span className="font-mono">{item.taxCode || "—"}</span>,
+                },
+                {
+                  head: "Status",
+                  cell: (item) =>
+                    item.catalogItemId === null ? (
                       <Badge variant="muted">Internal</Badge>
                     ) : (
                       <Badge variant={item.active ? "secondary" : "muted"}>
                         {item.active ? "Active" : "Inactive"}
                       </Badge>
-                    )}
-                    <Button variant="ghost" size="xs" onClick={() => setEditing(item)}>
-                      Edit
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    ),
+                  mobile: "title",
+                },
+              ]}
+              rows={items}
+              rowKey={(item) => item.productId}
+              action={(item) => (
+                <Button variant="ghost" size="xs" onClick={() => setEditing(item)}>
+                  Edit
+                </Button>
+              )}
+            />
           </ListState>
         </Panel>
       </PageBody>

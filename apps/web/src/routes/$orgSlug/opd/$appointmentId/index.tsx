@@ -8,10 +8,10 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Trash2Icon, UploadIcon } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { toast } from "sonner";
 
 import { ErrorNote } from "@/components/page";
@@ -185,23 +185,19 @@ function PrescriptionDocuments({
   canEdit: boolean;
 }) {
   const { timeZone } = useOrgDateTime();
-  const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [removingId, setRemovingId] = useState<string | null>(null);
 
-  const refresh = () =>
-    Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: orpc.opd.get.key({ input: { orgSlug, appointmentId } }),
-      }),
-      // Uploads write file rows, so the files page must not keep its 60s-stale cache.
-      queryClient.invalidateQueries({
-        queryKey: orpc.file.list.key({ input: { orgSlug } }),
-      }),
-    ]);
+  const upload = useMutation({
+    mutationFn: async ({ file, mimeType }: { file: File; mimeType: string }) => {
+      const fileId = await uploadOrgFile(orgSlug, file, mimeType);
+      await orpc.opd.attachPrescription.call({ orgSlug, appointmentId, fileId });
+    },
+    onSuccess: () => {
+      toast.success("Prescription scan attached");
+    },
+  });
 
-  const upload = async (file: File) => {
+  const attach = (file: File) => {
     const mimeType = prescriptionMimeType(file);
 
     if (!mimeType) {
@@ -210,18 +206,7 @@ function PrescriptionDocuments({
       return;
     }
 
-    setUploading(true);
-
-    try {
-      const fileId = await uploadOrgFile(orgSlug, file, mimeType);
-      await orpc.opd.attachPrescription.call({ orgSlug, appointmentId, fileId });
-      await refresh();
-      toast.success("Prescription scan attached");
-    } catch (error) {
-      toast.error(errorMessage(error, "Could not attach prescription scan"));
-    }
-
-    setUploading(false);
+    upload.mutate({ file, mimeType });
   };
 
   const open = async (fileId: string) => {
@@ -232,19 +217,13 @@ function PrescriptionDocuments({
     }
   };
 
-  const remove = async (attachmentId: string) => {
-    setRemovingId(attachmentId);
-
-    try {
-      await orpc.opd.detachPrescription.call({ orgSlug, attachmentId });
-      await refresh();
+  const remove = useMutation({
+    mutationFn: (attachmentId: string) =>
+      orpc.opd.detachPrescription.call({ orgSlug, attachmentId }),
+    onSuccess: () => {
       toast.success("Prescription scan removed; the private file was kept");
-    } catch (error) {
-      toast.error(errorMessage(error, "Could not remove prescription scan"));
-    }
-
-    setRemovingId(null);
-  };
+    },
+  });
 
   return (
     // Printing this tab prints the token slip alone.
@@ -257,11 +236,12 @@ function PrescriptionDocuments({
               ref={inputRef}
               type="file"
               accept="image/*,application/pdf"
+              tabIndex={-1}
               className="sr-only"
               onChange={(event) => {
                 const file = event.target.files?.[0];
 
-                if (file) void upload(file);
+                if (file) attach(file);
                 event.target.value = "";
               }}
             />
@@ -269,11 +249,11 @@ function PrescriptionDocuments({
               type="button"
               size="xs"
               variant="outline"
-              disabled={uploading}
+              disabled={upload.isPending}
               onClick={() => inputRef.current?.click()}
             >
               <UploadIcon data-icon="inline-start" />
-              {uploading ? "Uploading…" : "Attach scan"}
+              {upload.isPending ? "Uploading…" : "Attach scan"}
             </Button>
           </>
         ) : null}
@@ -319,11 +299,11 @@ function PrescriptionDocuments({
                     {canEdit ? (
                       <Button
                         type="button"
-                        size="icon-sm"
+                        size="icon-xs"
                         variant="destructive"
                         aria-label={`Remove ${prescription.name}`}
-                        disabled={removingId !== null}
-                        onClick={() => void remove(prescription.id)}
+                        disabled={remove.isPending}
+                        onClick={() => remove.mutate(prescription.id)}
                       >
                         <Trash2Icon />
                       </Button>

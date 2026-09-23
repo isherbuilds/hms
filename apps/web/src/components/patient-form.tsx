@@ -157,10 +157,10 @@ function PatientPhoneDuplicateWarning({
   return matches.length > 0 ? (
     <div
       role="status"
-      className="animate-in rounded-lg border border-border bg-muted p-3 text-xs duration-150 fade-in-0 ease-out"
+      className="animate-in border-t border-border pt-3 text-xs duration-150 ease-out fade-in-0"
     >
-      <p className="flex items-center gap-2 font-medium text-foreground">
-        <AlertTriangleIcon className="size-4 shrink-0" />
+      <p className="flex items-center gap-2 font-medium text-foreground tabular-nums">
+        <AlertTriangleIcon className="size-3.5 shrink-0" />
         {matches.length} existing patient(s) with this phone
       </p>
       <ul className="flex flex-col gap-1 pt-2">
@@ -189,7 +189,7 @@ function PatientFormProblems() {
   const problems = Object.keys(errors).length;
 
   return problems > 0 ? (
-    <span className="min-w-0 truncate text-destructive">
+    <span className="min-w-0 truncate text-destructive tabular-nums">
       {problems} {problems === 1 ? "field needs" : "fields need"} fixing
     </span>
   ) : null;
@@ -243,7 +243,10 @@ function PatientFormFrame({
 function PatientFormSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <details className="group border-t border-border">
-      <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 text-xs marker:content-none">
+      <summary
+        data-focus-inset
+        className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 text-xs marker:content-none"
+      >
         {title}
         <ChevronDownIcon className="size-3.5 text-muted-foreground group-open:rotate-180" />
       </summary>
@@ -321,8 +324,16 @@ function SponsorFields({
       />
       {payerId ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <TextField name="sponsorPolicyNumber" label="Policy number" />
-          <TextField name="sponsorEmployeeNumber" label="Employee number" />
+          <TextField
+            name="sponsorPolicyNumber"
+            label="Policy number"
+            className="[&_input]:font-mono"
+          />
+          <TextField
+            name="sponsorEmployeeNumber"
+            label="Employee number"
+            className="[&_input]:font-mono"
+          />
         </div>
       ) : null}
     </div>
@@ -335,13 +346,13 @@ function EmergencyContactFields() {
 
   return (
     <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
-      <legend className="pr-2 text-sm font-medium">Emergency contact</legend>
+      <legend className="pr-2 text-xs font-medium">Emergency contact</legend>
       {/* Fills the fields rather than mirroring them at save time, so the desk sees
           and can correct what will be stored. */}
       <Button
         type="button"
         variant="outline"
-        size="sm"
+        size="xs"
         className="self-start"
         disabled={!guardian?.name || !guardian?.phone}
         onClick={() => {
@@ -373,7 +384,7 @@ function EmergencyContactFields() {
                       type="tel"
                       inputMode="numeric"
                       placeholder="Mobile number"
-                      className="pl-8"
+                      className="pl-8 font-mono"
                     />
                   </WithIcon>
                 </FormControl>
@@ -529,12 +540,7 @@ export function PatientForm({
           instead of lifted into its state — see `PatientSheet`. */}
       <PatientFormFrame ref={formRef} pending={pending} onCancel={onCancel} onSubmit={onSubmit}>
         <div className="flex flex-col gap-4">
-          <TextField
-            name="name"
-            label="Full name"
-            autoComplete="name"
-            placeholder="Enter the patient's name"
-          />
+          <TextField name="name" label="Full name" autoComplete="name" autoFocus />
 
           <RegisteredFormField
             name="phone"
@@ -549,7 +555,7 @@ export function PatientForm({
                       inputMode="numeric"
                       autoComplete="tel"
                       placeholder="Mobile number"
-                      className="pl-8"
+                      className="pl-8 font-mono"
                     />
                   </WithIcon>
                 </FormControl>
@@ -590,6 +596,7 @@ export function PatientForm({
                   <Input
                     {...field}
                     type="date"
+                    className="tabular-nums"
                     onChange={(event) => {
                       field.onChange(event);
 
@@ -613,7 +620,7 @@ export function PatientForm({
                     type="number"
                     min={0}
                     max={150}
-                    placeholder="Enter an estimated age"
+                    className="tabular-nums"
                     onChange={(event) => {
                       field.onChange(event);
 
@@ -660,6 +667,7 @@ export function PatientForm({
               label="Relation mobile number (optional)"
               type="tel"
               autoComplete="section-guardian tel"
+              className="[&_input]:font-mono"
               placeholder="Mobile number"
             />
 
@@ -673,13 +681,7 @@ export function PatientForm({
                   <FormLabel>Email</FormLabel>
                   <FormControl>
                     <WithIcon icon={MailIcon}>
-                      <Input
-                        {...field}
-                        type="email"
-                        autoComplete="email"
-                        placeholder="Enter email address"
-                        className="pl-8"
-                      />
+                      <Input {...field} type="email" autoComplete="email" className="pl-8" />
                     </WithIcon>
                   </FormControl>
                   <FormMessage />
@@ -700,13 +702,7 @@ export function PatientForm({
               )}
             />
 
-            <TextField
-              name="address"
-              label="Address"
-              multiline
-              rows={2}
-              placeholder="Enter address"
-            />
+            <TextField name="address" label="Address" multiline rows={2} />
           </PatientFormSection>
           <PatientFormSection title="Sponsor">
             <SponsorFields orgSlug={orgSlug} current={record?.sponsor?.payerId} />

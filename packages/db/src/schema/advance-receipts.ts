@@ -12,7 +12,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 import { patients } from "./patients";
 import { type PaymentMethod } from "./payment-methods";
 import { treatmentPlans } from "./treatment-plans";
@@ -21,9 +21,7 @@ export const advanceReceipts = pgTable(
   "advance_receipts",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     patientId: text("patient_id").notNull(),
     treatmentPlanId: text("treatment_plan_id"),
     method: text("method").$type<PaymentMethod>().notNull(),

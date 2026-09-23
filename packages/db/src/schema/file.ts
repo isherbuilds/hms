@@ -1,15 +1,13 @@
 import { pgTable, text, timestamp, bigint, index, unique } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 
 export const file = pgTable(
   "file",
   {
     id: text("id").primaryKey(),
     userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     name: text("name").notNull(),
     mimeType: text("mime_type"),
     size: bigint("size", { mode: "number" }).notNull(),

@@ -66,7 +66,7 @@ function BillingOpdAppointmentRoute() {
 
   return (
     <>
-      <BillingFreshness orgSlug={orgSlug} appointmentId={appointmentId} />
+      <StaleDataNotice dataUpdatedAt={invoices.dataUpdatedAt} />
       {refreshError ? (
         <ErrorNote
           title="Billing data could not refresh"
@@ -91,7 +91,7 @@ function BillingOpdAppointmentRoute() {
       <section className="flex flex-col gap-2">
         <h2 className="flex min-h-6 items-center text-muted-foreground">Charges</h2>
         {pending.length === 0 ? (
-          <p className="text-muted-foreground">No charge is waiting to be invoiced.</p>
+          <p className="text-muted-foreground">No pending charges</p>
         ) : (
           <ChargeCheckout
             orgSlug={orgSlug}
@@ -113,7 +113,7 @@ function BillingOpdAppointmentRoute() {
       <section className="flex flex-col gap-2 border-t border-border pt-4">
         <h2 className="flex min-h-6 items-center text-muted-foreground">Invoices</h2>
         {invoices.data.length === 0 ? (
-          <p className="text-muted-foreground">No invoice issued for this appointment yet.</p>
+          <p className="text-muted-foreground">No invoices yet</p>
         ) : (
           <div className="flex flex-col gap-3">
             {invoices.data.map((invoice) => (
@@ -134,13 +134,4 @@ function BillingOpdAppointmentRoute() {
       ) : null}
     </>
   );
-}
-
-function BillingFreshness({ orgSlug, appointmentId }: { orgSlug: string; appointmentId: string }) {
-  const { dataUpdatedAt } = useQuery({
-    ...orpc.billing.listInvoices.queryOptions({ input: { orgSlug, appointmentId } }),
-    enabled: false,
-  });
-
-  return <StaleDataNotice dataUpdatedAt={dataUpdatedAt} />;
 }

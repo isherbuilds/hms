@@ -11,7 +11,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 import { invoices } from "./invoices";
 import type { PaymentMethod } from "./payment-methods";
 
@@ -19,9 +19,7 @@ export const payments = pgTable(
   "payments",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     invoiceId: text("invoice_id").notNull(),
     method: text("method").$type<PaymentMethod>().notNull(),
     amount: bigint("amount", { mode: "bigint" }).notNull(),

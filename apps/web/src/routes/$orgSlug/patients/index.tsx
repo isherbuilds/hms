@@ -1,15 +1,7 @@
 import { Button } from "@hms/ui/components/button";
 import { DropdownMenuCheckboxItem } from "@hms/ui/components/dropdown-menu";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hms/ui/components/table";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { VenusAndMarsIcon } from "lucide-react";
 import { useRef } from "react";
 import { z } from "zod";
@@ -22,6 +14,7 @@ import {
   type ActiveFilter,
 } from "@/components/list-filter";
 import {
+  DataList,
   ListState,
   ListToolbar,
   LoadMore,
@@ -78,79 +71,61 @@ function PatientResults({ orgSlug, filters }: { orgSlug: string; filters: Patien
         isEmpty={items.length === 0}
         empty={
           filters.q
-            ? "No patients match this search."
+            ? "No matching patients"
             : filters.sex
-              ? "No patients match these filters."
-              : "No patients registered yet."
+              ? "No patients match these filters"
+              : "No patients yet"
         }
       >
-        <>
-          <div className="hidden md:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>MRN</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Sex</TableHead>
-                  <TableHead className="w-16 text-right">Age</TableHead>
-                  <TableHead>Created</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((patient) => (
-                  <TableRow key={patient.id} className="relative">
-                    <TableCell className="font-mono">{patient.mrn}</TableCell>
-                    <TableCell>
-                      <Link
-                        to="/$orgSlug/patients/$patientId"
-                        params={{ orgSlug, patientId: patient.id }}
-                        className="inline-flex items-center gap-2 font-medium capitalize underline-offset-4 after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-                      >
-                        <Monogram label={patient.name} seed={patient.id} kind="patient" />
-                        <span>{patient.name}</span>
-                      </Link>
-                    </TableCell>
-                    <TableCell className="font-mono tabular-nums">{patient.phone}</TableCell>
-                    <TableCell className="capitalize">{patient.sex}</TableCell>
-                    <TableCell className="text-right">
-                      {patientAgeLabel(patient.dateOfBirth, patient.dobEstimated, today)}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {formatDate(patient.createdAt, timeZone)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          <ul className="md:hidden">
-            {items.map((patient) => (
-              <li key={patient.id}>
-                <Link
-                  to="/$orgSlug/patients/$patientId"
-                  params={{ orgSlug, patientId: patient.id }}
-                  className="block min-h-10 border-b px-3 py-2 text-xs"
-                >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Monogram label={patient.name} seed={patient.id} kind="patient" />
-                    <span className="shrink-0 font-mono">{patient.mrn}</span>
-                    <span className="min-w-0 truncate font-medium capitalize">{patient.name}</span>
-                  </div>
-                  <p className="mt-1 truncate font-mono tabular-nums">{patient.phone}</p>
-                  <p className="mt-1 truncate text-muted-foreground">
-                    <span className="capitalize">{patient.sex}</span>
-                    {" · "}
-                    {patientAgeLabel(patient.dateOfBirth, patient.dobEstimated, today)}
-                    {" · "}
-                    {formatDate(patient.createdAt, timeZone)}
-                  </p>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </>
+        <DataList
+          columns={[
+            {
+              head: "Name",
+              cell: (patient) => (
+                <span className="inline-flex items-center gap-2 capitalize">
+                  <Monogram label={patient.name} seed={patient.id} kind="patient" />
+                  <span>{patient.name}</span>
+                </span>
+              ),
+            },
+            {
+              head: "MRN",
+              cell: (patient) => <span className="font-mono">{patient.mrn}</span>,
+              mobile: "title",
+            },
+            {
+              head: "Phone",
+              cell: (patient) => <span className="font-mono tabular-nums">{patient.phone}</span>,
+            },
+            {
+              head: "Sex",
+              cell: (patient) => <span className="capitalize">{patient.sex}</span>,
+            },
+            {
+              head: "Age",
+              cell: (patient) => (
+                <span className="tabular-nums">
+                  {patientAgeLabel(patient.dateOfBirth, patient.dobEstimated, today)}
+                </span>
+              ),
+              className: "w-16 text-right",
+            },
+            {
+              head: "Created",
+              cell: (patient) => (
+                <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+                  {formatDate(patient.createdAt, timeZone)}
+                </span>
+              ),
+            },
+          ]}
+          rows={items}
+          rowKey={(patient) => patient.id}
+          link={(patient) => ({
+            to: "/$orgSlug/patients/$patientId",
+            params: { orgSlug, patientId: patient.id },
+          })}
+        />
       </ListState>
     </Panel>
   );
@@ -223,7 +198,7 @@ function PatientsRoute() {
         <ListToolbar>
           <SearchInput
             label="Search patients"
-            placeholder="Search name, MRN, or phone"
+            placeholder="Name, MRN, or phone"
             value={q}
             fieldRef={field}
             onQueryChange={(next) => void setFilters({ q: next || undefined })}

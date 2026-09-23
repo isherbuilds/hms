@@ -9,14 +9,6 @@ import {
 } from "@hms/ui/components/dropdown-menu";
 import { FormControl } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hms/ui/components/table";
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute, Link } from "@tanstack/react-router";
 import { CalendarClockIcon, CircleDotIcon, MoreHorizontalIcon } from "lucide-react";
@@ -34,6 +26,7 @@ import {
   type ActiveFilter,
 } from "@/components/list-filter";
 import {
+  DataList,
   ListState,
   ListToolbar,
   LoadMore,
@@ -183,7 +176,7 @@ function PharmacyStockRoute() {
         <ListToolbar>
           <SearchInput
             label="Search stock"
-            placeholder="Search product, code or batch"
+            placeholder="Product, code, or batch"
             value={q}
             fieldRef={field}
             delay={150}
@@ -247,84 +240,66 @@ function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFil
           query={stock}
           errorTitle="Could not load pharmacy stock"
           isEmpty={rows.length === 0}
-          empty={filters.q ? "No batch matches this search." : "No stock matches these filters."}
+          empty={filters.q ? "No batch matches this search" : "No stock matches these filters"}
         >
-          <div className="hidden md:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Batch</TableHead>
-                  <TableHead>Expiry</TableHead>
-                  <TableHead className="text-right">MRP</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead className="text-right">Shelf</TableHead>
-                  <TableHead className="text-right">Quarantine</TableHead>
-                  <TableHead className="w-10">
-                    <span className="sr-only">Actions</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.batchId}>
-                    <TableCell className="font-medium">
-                      {row.name}{" "}
-                      {row.code === null ? (
-                        <span className="text-muted-foreground">Internal</span>
-                      ) : (
-                        <span className="font-mono text-muted-foreground">{row.code}</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-mono">{row.batchNumber}</TableCell>
-                    <TableCell className="whitespace-nowrap">{formatDay(row.expiryDate)}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatMoney(row.mrp, currency)}
-                      {row.mrpUnits > 1 ? ` / ${row.mrpUnits}` : ""}
-                    </TableCell>
-                    <TableCell>{row.stockUnit}</TableCell>
-                    <TableCell className="text-right tabular-nums">{row.shelfQty}</TableCell>
-                    <TableCell className="text-right tabular-nums">{row.quarantineQty}</TableCell>
-                    <TableCell className="text-right">
-                      <BatchActions
-                        orgSlug={orgSlug}
-                        row={row}
-                        onAdjust={canAdjust ? () => setAdjusting(row) : undefined}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          <ul className="md:hidden">
-            {rows.map((row) => (
-              <li key={row.batchId} className="border-b border-border/60 px-3 py-2 last:border-b-0">
-                <div className="flex min-w-0 items-start gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{row.name}</p>
-                    <p className="mt-1 truncate font-mono text-muted-foreground">
-                      {row.batchNumber} · {formatDay(row.expiryDate)}
-                    </p>
-                    <p className="mt-1 text-muted-foreground">
-                      MRP {formatMoney(row.mrp, currency)}
-                      {row.mrpUnits > 1 ? ` / ${row.mrpUnits}` : ""}
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right tabular-nums">
-                    <p className="font-medium">{row.shelfQty}</p>
-                    <p className="mt-1 text-muted-foreground">{row.quarantineQty} held</p>
-                  </div>
-                  <BatchActions
-                    orgSlug={orgSlug}
-                    row={row}
-                    onAdjust={canAdjust ? () => setAdjusting(row) : undefined}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
+          <DataList
+            columns={[
+              {
+                head: "Product",
+                cell: (row) => (
+                  <>
+                    {row.name}{" "}
+                    {row.code === null ? (
+                      <span className="text-muted-foreground">Internal</span>
+                    ) : (
+                      <span className="font-mono text-muted-foreground">{row.code}</span>
+                    )}
+                  </>
+                ),
+              },
+              {
+                head: "Batch",
+                cell: (row) => <span className="font-mono">{row.batchNumber}</span>,
+                mobile: "title",
+              },
+              {
+                head: "Expiry",
+                cell: (row) => (
+                  <span className="whitespace-nowrap">{formatDay(row.expiryDate)}</span>
+                ),
+              },
+              {
+                head: "MRP",
+                cell: (row) => (
+                  <span className="tabular-nums">
+                    {formatMoney(row.mrp, currency)}
+                    {row.mrpUnits > 1 ? ` / ${row.mrpUnits}` : ""}
+                  </span>
+                ),
+                className: "text-right",
+              },
+              { head: "Unit", cell: (row) => row.stockUnit },
+              {
+                head: "Shelf",
+                cell: (row) => <span className="tabular-nums">{row.shelfQty}</span>,
+                className: "text-right",
+              },
+              {
+                head: "Quarantine",
+                cell: (row) => <span className="tabular-nums">{row.quarantineQty}</span>,
+                className: "text-right",
+              },
+            ]}
+            rows={rows}
+            rowKey={(row) => row.batchId}
+            action={(row) => (
+              <BatchActions
+                orgSlug={orgSlug}
+                row={row}
+                onAdjust={canAdjust ? () => setAdjusting(row) : undefined}
+              />
+            )}
+          />
         </ListState>
       </Panel>
 

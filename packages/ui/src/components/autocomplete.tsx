@@ -3,6 +3,7 @@
 import { Autocomplete as AutocompletePrimitive } from "@base-ui/react/autocomplete";
 import * as React from "react";
 
+import { ITEM_CLASS } from "@hms/ui/components/combobox";
 import { Input } from "@hms/ui/components/input";
 import { cn } from "@hms/ui/lib/utils";
 
@@ -88,7 +89,7 @@ function Autocomplete<T>({
                   value={item}
                   onClick={() => onSelect(item)}
                   data-slot="autocomplete-item"
-                  className="relative flex min-h-8 cursor-default items-center rounded-md px-2 py-2 text-xs outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50"
+                  className={ITEM_CLASS}
                 >
                   {renderItem(item)}
                 </AutocompletePrimitive.Item>

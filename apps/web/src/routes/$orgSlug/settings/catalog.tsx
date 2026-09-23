@@ -23,14 +23,6 @@ import { DropdownMenuCheckboxItem } from "@hms/ui/components/dropdown-menu";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hms/ui/components/table";
-import {
   type InfiniteData,
   keepPreviousData,
   useInfiniteQuery,
@@ -39,7 +31,7 @@ import {
 } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
 import { CircleDotIcon, TagIcon } from "lucide-react";
-import { memo, useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -52,6 +44,7 @@ import {
   type ActiveFilter,
 } from "@/components/list-filter";
 import {
+  DataList,
   ListState,
   ListToolbar,
   LoadMore,
@@ -98,7 +91,7 @@ const catalogListQuery = (
       category: filters.category,
       activeOnly: filters.activeOnly,
       cursor,
-      limit: 50,
+      limit: 25,
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
@@ -222,17 +215,12 @@ function CatalogRoute() {
     }),
   );
 
-  const mutateToggle = toggleActive.mutate;
+  // Destructured so the compiler keys `toggleItem` (and every row's `action`) on the
+  // stable `mutate`, not on the mutation result that changes with each flip.
+  const { mutate: mutateToggle } = toggleActive;
 
-  const toggleItem = useCallback(
-    (item: CatalogItem) =>
-      mutateToggle({
-        orgSlug,
-        itemId: item.id,
-        active: !item.active,
-      }),
-    [mutateToggle, orgSlug],
-  );
+  const toggleItem = (item: CatalogItem) =>
+    mutateToggle({ orgSlug, itemId: item.id, active: !item.active });
 
   const catalog = useInfiniteQuery(
     catalogListQuery(orgSlug, {
@@ -282,7 +270,7 @@ function CatalogRoute() {
         <ListToolbar>
           <SearchInput
             label="Search catalog"
-            placeholder="Search code or name"
+            placeholder="Code or name"
             value={q}
             fieldRef={field}
             onQueryChange={(next) => void setFilters({ q: next || undefined })}
@@ -324,37 +312,81 @@ function CatalogRoute() {
             isEmpty={items.length === 0}
             empty={
               query
-                ? "No catalog items match this search."
+                ? "No matching catalog items"
                 : category || activeOnly
-                  ? "No catalog items match these filters."
-                  : "No catalog items yet."
+                  ? "No catalog items match these filters"
+                  : "No catalog items yet"
             }
           >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead className="text-right">Unit price</TableHead>
-                  <TableHead className="text-right">Tax %</TableHead>
-                  <TableHead>Tax code</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => (
-                  <CatalogRow
-                    key={item.id}
-                    item={item}
-                    pending={toggleActive.isPending && toggleActive.variables?.itemId === item.id}
-                    onToggle={toggleItem}
-                    onEdit={setEditing}
-                  />
-                ))}
-              </TableBody>
-            </Table>
+            <DataList
+              columns={[
+                {
+                  head: "Code",
+                  cell: (item) => <span className="font-mono">{item.code}</span>,
+                  mobile: "title",
+                },
+                { head: "Name", cell: (item) => <span className="font-medium">{item.name}</span> },
+                { head: "Category", cell: (item) => CATEGORY_LABELS[item.category] },
+                {
+                  head: "Unit price",
+                  cell: (item) => (
+                    <span className="tabular-nums">
+                      {formatDecimal(item.unitPrice)}
+                      {item.customRate ? (
+                        <span className="text-muted-foreground"> default</span>
+                      ) : null}
+                    </span>
+                  ),
+                  className: "text-right",
+                },
+                {
+                  head: "Tax %",
+                  cell: (item) => <span className="tabular-nums">{item.taxRatePercent}</span>,
+                  className: "text-right",
+                },
+                {
+                  head: "Tax code",
+                  cell: (item) => <span className="font-mono">{item.taxCode || "—"}</span>,
+                },
+                {
+                  head: "Status",
+                  cell: (item) => (
+                    <Badge variant={item.active ? "secondary" : "muted"}>
+                      {item.active ? "Active" : "Inactive"}
+                    </Badge>
+                  ),
+                  mobile: "title",
+                },
+              ]}
+              rows={items}
+              rowKey={(item) => item.id}
+              busy={(item) => toggleActive.isPending && toggleActive.variables?.itemId === item.id}
+              action={(item, busy) => {
+                const category = item.category;
+
+                return (
+                  <div className="flex items-center justify-end gap-2">
+                    <Checkbox
+                      checked={item.active}
+                      disabled={busy || category === "pharmacy"}
+                      aria-label={`Set ${item.name} ${item.active ? "inactive" : "active"}`}
+                      onCheckedChange={() => toggleItem(item)}
+                    />
+                    {category === "pharmacy" ? (
+                      <span className="text-muted-foreground">Pharmacy → Items</span>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => setEditing({ ...item, category })}
+                      >
+                        Edit
+                      </Button>
+                    )}
+                  </div>
+                );
+              }}
+            />
           </ListState>
         </Panel>
       </PageBody>
@@ -380,57 +412,6 @@ function CatalogRoute() {
     </>
   );
 }
-
-const CatalogRow = memo(function CatalogRow({
-  item,
-  pending,
-  onToggle,
-  onEdit,
-}: {
-  item: CatalogItem;
-  pending: boolean;
-  onToggle: (item: CatalogItem) => void;
-  onEdit: (item: EditableCatalogItem) => void;
-}) {
-  // A const narrows inside the click closure; `item.category` would not.
-  const category = item.category;
-
-  return (
-    <TableRow>
-      <TableCell className="font-mono">{item.code}</TableCell>
-      <TableCell className="font-medium">{item.name}</TableCell>
-      <TableCell>{CATEGORY_LABELS[item.category]}</TableCell>
-      <TableCell className="text-right tabular-nums">
-        {formatDecimal(item.unitPrice)}
-        {item.customRate ? <span className="text-muted-foreground"> default</span> : null}
-      </TableCell>
-      <TableCell className="text-right tabular-nums">{item.taxRatePercent}</TableCell>
-      <TableCell className="font-mono">{item.taxCode || "—"}</TableCell>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            checked={item.active}
-            disabled={pending || item.category === "pharmacy"}
-            aria-label={`Set ${item.name} ${item.active ? "inactive" : "active"}`}
-            onCheckedChange={() => onToggle(item)}
-          />
-          <Badge variant={item.active ? "secondary" : "muted"}>
-            {item.active ? "Active" : "Inactive"}
-          </Badge>
-        </div>
-      </TableCell>
-      <TableCell className="text-right">
-        {category === "pharmacy" ? (
-          <span className="text-muted-foreground">Pharmacy → Items</span>
-        ) : (
-          <Button variant="ghost" size="xs" onClick={() => onEdit({ ...item, category })}>
-            Edit
-          </Button>
-        )}
-      </TableCell>
-    </TableRow>
-  );
-});
 
 type CatalogItemDialogProps =
   | {
@@ -526,17 +507,17 @@ function CatalogItemDialog(props: CatalogItemDialogProps) {
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>{item ? "Edit catalog item" : "New catalog item"}</DialogTitle>
-            <DialogDescription>
-              {item
-                ? "Update pricing and tax details."
-                : "Add a billable service to this organization's catalog."}
-            </DialogDescription>
+            {!item ? (
+              <DialogDescription>
+                Billable services appear in the organization's catalog
+              </DialogDescription>
+            ) : null}
           </DialogHeader>
 
           <Form {...form}>
             <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <TextField name="name" label="Name" disabled={isPending} />
+                <TextField name="name" label="Name" autoFocus disabled={isPending} />
                 <TextField name="code" label="Code" disabled={isPending} />
                 <RegisteredFormField
                   name="category"
