@@ -1,15 +1,36 @@
 import { Button } from "@hms/ui/components/button";
 import { Input } from "@hms/ui/components/input";
 import { SidebarTrigger } from "@hms/ui/components/sidebar";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@hms/ui/components/table";
 import { cn } from "@hms/ui/lib/utils";
-import { createLink } from "@tanstack/react-router";
+import { Link, createLink, type LinkOptions } from "@tanstack/react-router";
 import { SearchIcon } from "lucide-react";
-import { useEffect, useRef, type ComponentProps, type ReactNode, type Ref } from "react";
+import { memo, useEffect, useRef, type ComponentProps, type ReactNode, type Ref } from "react";
 
 import { useDebouncedCallback } from "@/hooks/use-debounced-value";
 import { errorMessage } from "@/lib/orpc-error";
 
-export function PageHeader({ title, action }: { title: string; action?: ReactNode }) {
+/**
+ * The page's single 48 px title band. `description` is durable context — `MRN ·
+ * Name` on a record, a short phrase elsewhere — never data that changes with the
+ * view (docs/design.md §8). It stacks under the title inside the same band.
+ */
+export function PageHeader({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: ReactNode;
+  action?: ReactNode;
+}) {
   return (
     <div
       data-slot="page-header"
@@ -17,7 +38,12 @@ export function PageHeader({ title, action }: { title: string; action?: ReactNod
     >
       <SidebarTrigger className="print:hidden lg:hidden" />
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <h1 className="min-w-0 truncate text-sm font-medium">{title}</h1>
+        <div className="flex min-w-0 flex-col">
+          <h1 className="min-w-0 truncate text-sm/5 font-medium">{title}</h1>
+          {description && (
+            <p className="min-w-0 truncate text-xs/4 text-muted-foreground">{description}</p>
+          )}
+        </div>
         {action && <div className="ml-auto flex shrink-0 items-center gap-2">{action}</div>}
       </div>
     </div>
@@ -106,7 +132,7 @@ export function PageTabs({
     <nav aria-label={label} className="shrink-0 border-b border-border print:hidden">
       <div
         className={cn(
-          "-mb-px flex min-h-10 gap-1 overflow-x-auto overflow-y-hidden px-4",
+          "-mb-px flex min-h-10 gap-1 overflow-x-auto overflow-y-hidden px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
           className,
         )}
       >
@@ -116,8 +142,11 @@ export function PageTabs({
   );
 }
 
+// The anchor fills the strip and carries the underline, so the focus ring goes on
+// the label inside it: rounded, padded, and clear of both strip rules.
 export const PageTab = createLink(function PageTabAnchor({
   className,
+  children,
   ref,
   ...props
 }: ComponentProps<"a">) {
@@ -125,13 +154,192 @@ export const PageTab = createLink(function PageTabAnchor({
     <a
       ref={ref}
       className={cn(
-        "flex shrink-0 items-center border-b-2 border-transparent px-2 text-xs text-muted-foreground [@media(hover:hover)_and_(pointer:fine)]:hover:text-foreground data-[status=active]:border-foreground data-[status=active]:font-medium data-[status=active]:text-foreground",
+        "flex shrink-0 items-center rounded-none border-b-2 border-transparent text-xs text-muted-foreground [@media(hover:hover)_and_(pointer:fine)]:hover:text-foreground data-[status=active]:border-foreground data-[status=active]:font-medium data-[status=active]:text-foreground",
         className,
       )}
       {...props}
-    />
+    >
+      <span data-focus-ring className="rounded-md px-2 py-1">
+        {children}
+      </span>
+    </a>
   );
 });
+
+/**
+ * One list, two shapes (docs/design.md §8). The same `columns` render a `Table`
+ * at `md` and one compact row per record below it: the first column is the
+ * row's name and carries its link or activation, `title` columns share its
+ * line, the rest are joined with `·` beneath, `hidden` ones are dropped.
+ * `action` is the right-aligned last column on the table and sits outside the
+ * row target on the compact row.
+ */
+export type Column<T> = {
+  head: ReactNode;
+  cell: (row: T) => ReactNode;
+  /** Heading and cell: alignment or width. Typography belongs in `cell`. */
+  className?: string;
+  mobile?: "title" | "hidden";
+};
+
+type DataListProps<T> = {
+  columns: Column<T>[];
+  rows: readonly T[];
+  rowKey: (row: T) => string;
+  /** The route the row opens. */
+  link?: (row: T) => LinkOptions;
+  /** The overlay the row opens. */
+  onActivate?: (row: T) => void;
+  /** Row controls, rendered outside the row target. */
+  action?: (row: T, busy: boolean) => ReactNode;
+  /** Per-row pending state, read here so only that row re-renders while it saves. */
+  busy?: (row: T) => boolean;
+};
+
+export function DataList<T>({
+  columns,
+  rows,
+  rowKey,
+  link,
+  onActivate,
+  action,
+  busy,
+}: DataListProps<T>) {
+  const shape = (compact: boolean) =>
+    rows.map((row) => (
+      <DataRow
+        key={rowKey(row)}
+        row={row}
+        compact={compact}
+        columns={columns}
+        link={link}
+        onActivate={onActivate}
+        action={action}
+        busy={busy?.(row) ?? false}
+      />
+    ));
+
+  return (
+    <>
+      <div className="hidden md:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {columns.map((column, index) => (
+                <TableHead key={index} className={column.className}>
+                  {column.head}
+                </TableHead>
+              ))}
+              {action && <TableHead className="w-16 text-right">Action</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>{shape(false)}</TableBody>
+        </Table>
+      </div>
+      <ul className="md:hidden">{shape(true)}</ul>
+    </>
+  );
+}
+
+// SAFETY: `memo` erases the type parameter; the cast restores the same generic signature the
+// wrapped function declares, so every call site is still checked against its `T`.
+const DataRow = memo(function DataRow<T>({
+  row,
+  compact,
+  columns,
+  link,
+  onActivate,
+  action,
+  busy,
+}: Omit<DataListProps<T>, "rows" | "rowKey" | "busy"> & {
+  row: T;
+  compact: boolean;
+  busy: boolean;
+}) {
+  const target = (className: string, children: ReactNode) =>
+    link ? (
+      <Link
+        {...link(row)}
+        className={className}
+        data-focus-floor={compact ? undefined : "off"}
+        data-focus-inset
+      >
+        {children}
+      </Link>
+    ) : onActivate ? (
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        onClick={() => onActivate(row)}
+        className={cn("text-left", className)}
+        data-focus-floor={compact ? undefined : "off"}
+        data-focus-inset
+      >
+        {children}
+      </button>
+    ) : (
+      children
+    );
+
+  const targeted = Boolean(link || onActivate);
+
+  if (!compact) {
+    return (
+      <TableRow className={targeted ? "relative" : undefined}>
+        {columns.map((column, index) => (
+          <TableCell key={index} className={column.className}>
+            {index === 0 && targeted
+              ? target(
+                  "font-medium underline-offset-4 after:absolute after:inset-0 after:rounded-md focus-visible:after:outline-[2.5px] focus-visible:after:outline-offset-[-2.5px] focus-visible:after:outline-(--focus-ring) [@media(hover:hover)_and_(pointer:fine)]:hover:underline",
+                  column.cell(row),
+                )
+              : column.cell(row)}
+          </TableCell>
+        ))}
+        {action && <TableCell className="relative z-10 text-right">{action(row, busy)}</TableCell>}
+      </TableRow>
+    );
+  }
+
+  const [name, ...rest] = columns;
+  const titles = rest.filter((column) => column.mobile === "title");
+  const meta = rest.filter((column) => column.mobile === undefined);
+
+  return (
+    <li className="flex min-w-0 items-start border-b text-xs">
+      {target(
+        "flex min-h-10 min-w-0 flex-1 flex-col gap-1 px-3 py-2",
+        <>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate font-medium">{name.cell(row)}</span>
+            {titles.map((column, index) => (
+              <span key={index} className="shrink-0">
+                {column.cell(row)}
+              </span>
+            ))}
+          </span>
+          {meta.length > 0 && (
+            <span className="truncate text-muted-foreground">
+              {meta.map((column, index) => (
+                <span key={index}>
+                  {index > 0 && " · "}
+                  {column.cell(row)}
+                </span>
+              ))}
+            </span>
+          )}
+        </>,
+      )}
+      {action && <div className="shrink-0 py-2 pr-3">{action(row, busy)}</div>}
+    </li>
+  );
+}) as <T>(
+  props: Omit<DataListProps<T>, "rows" | "rowKey" | "busy"> & {
+    row: T;
+    compact: boolean;
+    busy: boolean;
+  },
+) => ReactNode;
 
 /**
  * One titled band of a full-page form. The card owns the border; the last section

@@ -10,25 +10,7 @@ import { MedicineNameField } from "@/components/medicine-name-field";
 import type { PickedProduct } from "@/components/product-picker";
 import { numberText } from "@/lib/form-schema";
 import { orpc } from "@/lib/orpc";
-
-// Kept local so no @hms/db server module reaches the client bundle (hard rule 6).
-const STOCK_UNITS = [
-  "tablet",
-  "capsule",
-  "ml",
-  "strip",
-  "bottle",
-  "vial",
-  "tube",
-  "piece",
-] as const;
-
-const SCHEDULES = [
-  ["none", "No schedule"],
-  ["h", "Schedule H"],
-  ["h1", "Schedule H1"],
-  ["x", "Schedule X"],
-] as const;
+import { SCHEDULE_LABELS, SCHEDULES, STOCK_UNITS } from "@/lib/pharmacy-labels";
 
 /** The optional HSN entered for a sold product, shared with the Products form. */
 export const productTaxCode = z.string().trim().max(20);
@@ -61,7 +43,7 @@ const newProductSchema = z
     manufacturer: z.string().trim().max(200),
     unitsPerPack: numberText(z.number().int().min(1, "At least 1 per pack")),
     stockUnit: z.enum(STOCK_UNITS),
-    schedule: z.enum(["none", "h", "h1", "x"]),
+    schedule: z.enum(SCHEDULES),
     sold: z.boolean(),
     code: z.string().trim().max(20),
     taxRatePercent: z.string().trim(),
@@ -168,9 +150,9 @@ export function NewProductSheet({
         render={(field) => (
           <FormControl>
             <NativeSelect {...field}>
-              {SCHEDULES.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
+              {SCHEDULES.map((schedule) => (
+                <option key={schedule} value={schedule}>
+                  {SCHEDULE_LABELS[schedule]}
                 </option>
               ))}
             </NativeSelect>

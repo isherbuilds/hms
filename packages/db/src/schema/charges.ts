@@ -12,20 +12,15 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 import { CATALOG_CATEGORIES, catalogItems } from "./catalog-items";
 import { invoices } from "./invoices";
 import { opdAppointments } from "./opd-appointments";
 import { pharmacySales } from "./pharmacy-sales";
 
-export const CHARGE_SOURCE_TYPES = [
-  "consult_fee",
-  "catalog",
-  "treatment_plan",
-  "pharmacy_batch",
-] as const;
+const CHARGE_SOURCE_TYPES = ["consult_fee", "catalog", "treatment_plan", "pharmacy_batch"] as const;
 
-export const CHARGE_STATUSES = ["pending", "invoiced", "voided"] as const;
+const CHARGE_STATUSES = ["pending", "invoiced", "voided"] as const;
 
 // Description, price, tax and revenue category are snapshotted at creation, so
 // later catalog changes never alter existing care.
@@ -33,9 +28,7 @@ export const charges = pgTable(
   "charges",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     opdAppointmentId: text("opd_appointment_id"),
     pharmacySaleId: text("pharmacy_sale_id"),
     catalogItemId: text("catalog_item_id").notNull(),

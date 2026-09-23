@@ -18,7 +18,7 @@ import { createOrganization, createTestUser, joinOrganization } from "../support
 import { clientFor, eventually, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
 import { shiftLocalMinute } from "../support/time";
-import { uniqueSuffix } from "../support/unique";
+import { sumMoney, uniqueSuffix } from "../support/unique";
 
 beforeAll(async () => {
   await resetTestDatabase();
@@ -124,13 +124,9 @@ async function journalFor(orgId: string, sourceType: string, sourceId: string) {
   return { entries, lines };
 }
 
-function moneyTotal(values: bigint[]) {
-  return values.reduce((sum, value) => sum + value, 0n);
-}
-
 function expectBalanced(lines: Array<{ debit: bigint; credit: bigint }>) {
-  expect(moneyTotal(lines.map((line) => line.debit))).toBe(
-    moneyTotal(lines.map((line) => line.credit)),
+  expect(sumMoney(lines.map((line) => line.debit))).toBe(
+    sumMoney(lines.map((line) => line.credit)),
   );
 }
 

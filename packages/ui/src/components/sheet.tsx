@@ -11,7 +11,7 @@ function Sheet({ ...props }: SheetPrimitive.Root.Props) {
 
 const sheetVariants = cva(
   // The outer radius carries the 8px border, so the inner panel corner lands on --radius-md.
-  "fixed z-50 flex flex-col overflow-hidden overscroll-contain rounded-[calc(var(--radius-md)+8px)] border-8 border-muted bg-popover text-xs/relaxed text-popover-foreground shadow-lg transition duration-150 ease-out data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none",
+  "fixed z-50 flex flex-col overflow-hidden overscroll-contain rounded-[calc(var(--radius-md)+8px)] border-8 border-muted bg-popover text-xs/relaxed text-popover-foreground shadow-lg transition-[transform,opacity] duration-150 ease-out data-ending-style:opacity-0 data-starting-style:opacity-0",
   {
     variants: {
       side: {
@@ -39,7 +39,7 @@ function SheetContent({
     <SheetPrimitive.Portal>
       <SheetPrimitive.Backdrop
         data-slot="sheet-overlay"
-        className="fixed inset-0 z-50 bg-black/10 transition-opacity duration-150 supports-backdrop-filter:backdrop-blur-xs data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none"
+        className="fixed inset-0 z-50 bg-black/10 transition-opacity duration-150 ease-out supports-backdrop-filter:backdrop-blur-xs data-ending-style:opacity-0 data-starting-style:opacity-0"
       />
       <SheetPrimitive.Popup
         data-slot="sheet-content"
@@ -58,7 +58,7 @@ function SheetContent({
             render={
               <Button
                 variant="ghost"
-                size="icon-sm"
+                size="icon-xs"
                 className="absolute top-3 right-3 text-muted-foreground"
               />
             }

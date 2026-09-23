@@ -131,8 +131,9 @@ function SaleBody({ orgSlug, saleId }: { orgSlug: string; saleId: string }) {
 
       <div className="flex flex-col gap-4 overflow-y-auto p-4 text-xs">
         <div className="flex flex-col gap-1">
-          <span className="font-mono text-muted-foreground">
-            {data.invoice.invoiceNumber} · {formatBusinessDate(data.invoice.businessDate)}
+          <span className="text-muted-foreground">
+            <span className="font-mono">{data.invoice.invoiceNumber}</span> ·{" "}
+            {formatBusinessDate(data.invoice.businessDate)}
           </span>
           {data.sale.buyerPhone ? (
             <span className="font-mono text-muted-foreground">{data.sale.buyerPhone}</span>
@@ -144,7 +145,7 @@ function SaleBody({ orgSlug, saleId }: { orgSlug: string; saleId: string }) {
               {data.sale.prescriptionReference ? ` · ${data.sale.prescriptionReference}` : ""}
             </span>
           ) : null}
-          <span className="text-sm font-medium tabular-nums">
+          <span className="text-xs font-medium tabular-nums">
             {formatMoney(data.invoice.grandTotal, currency)}
           </span>
           {data.invoice.roundOff !== ZERO ? (
@@ -246,7 +247,6 @@ function SaleBody({ orgSlug, saleId }: { orgSlug: string; saleId: string }) {
 
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            size="sm"
             variant="outline"
             nativeButton={false}
             render={
@@ -264,12 +264,7 @@ function SaleBody({ orgSlug, saleId }: { orgSlug: string; saleId: string }) {
             Print
           </Button>
           {canReturn && returnable.length > 0 ? (
-            <Button
-              size="sm"
-              className="ml-auto"
-              aria-haspopup="dialog"
-              onClick={() => setReturning(true)}
-            >
+            <Button className="ml-auto" aria-haspopup="dialog" onClick={() => setReturning(true)}>
               Return
             </Button>
           ) : null}
@@ -340,12 +335,15 @@ function ReturnLines({ lines }: { lines: ReturnableLine[] }) {
           />
           <TextField
             name={`lines.${index}.qty`}
-            label={`${line.description} (${line.remaining} sold)`}
+            label={
+              <>
+                {line.description} (<span className="tabular-nums">{line.remaining}</span> sold)
+              </>
+            }
             type="number"
             min={0}
             max={line.remaining}
-            step={1}
-            className="flex-1"
+            className="flex-1 tabular-nums"
             inputMode="numeric"
           />
         </div>

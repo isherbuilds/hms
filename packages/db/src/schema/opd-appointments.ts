@@ -12,7 +12,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 import { departments } from "./departments";
 import { patients } from "./patients";
 import { practitioners } from "./practitioners";
@@ -27,9 +27,7 @@ export const opdAppointments = pgTable(
   "opd_appointments",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     patientId: text("patient_id"),
     treatmentPlanId: text("treatment_plan_id"),
     callerName: text("caller_name"),

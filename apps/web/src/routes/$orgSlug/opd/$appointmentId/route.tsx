@@ -137,7 +137,7 @@ function OpdRecordLayout() {
       <>
         <PageHeader title="Outpatient appointment" />
         <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
-        <PageBody className="mx-auto w-full max-w-5xl" />
+        <PageBody className="w-full max-w-5xl" />
       </>
     );
   }
@@ -152,9 +152,10 @@ function OpdRecordLayout() {
       <div className={cn("contents", isClinical && "print:hidden")}>
         <PageHeader
           title="Outpatient appointment"
+          description={<OpdRecordDescription orgSlug={orgSlug} record={record} />}
           action={
             <>
-              <RecordFreshness orgSlug={orgSlug} appointmentId={appointmentId} />
+              <StaleDataNotice dataUpdatedAt={detail.dataUpdatedAt} />
               {isClinical ? (
                 <Button
                   disabled={record.appointment.tokenNumber == null || !record.patient}
@@ -170,11 +171,8 @@ function OpdRecordLayout() {
         <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
       </div>
 
-      <PageBody className="mx-auto w-full max-w-5xl">
+      <PageBody className="w-full max-w-5xl">
         <div className={cn("contents", isClinical && "print:hidden")}>
-          <p className="truncate text-muted-foreground">
-            <OpdRecordDescription orgSlug={orgSlug} record={record} />
-          </p>
           <OpdRecordSummary
             record={record}
             action={
@@ -191,15 +189,6 @@ function OpdRecordLayout() {
       </PageBody>
     </OpdRecordContext.Provider>
   );
-}
-
-function RecordFreshness({ orgSlug, appointmentId }: { orgSlug: string; appointmentId: string }) {
-  const { dataUpdatedAt } = useQuery({
-    ...orpc.opd.get.queryOptions({ input: { orgSlug, appointmentId } }),
-    enabled: false,
-  });
-
-  return <StaleDataNotice dataUpdatedAt={dataUpdatedAt} />;
 }
 
 // Declared here and mounted only while the clinical tab is open; the cashier has none.
@@ -309,7 +298,7 @@ function OpdRecordTabs({ orgSlug, appointmentId }: { orgSlug: string; appointmen
   const visible = OPD_TABS.filter(({ permission }) => authorize(roles, permission));
 
   return (
-    <PageTabs label="Outpatient appointment sections" className="mx-auto w-full max-w-5xl">
+    <PageTabs label="Outpatient appointment sections">
       {visible.map(({ to, label }) => (
         <PageTab
           key={to}
@@ -356,14 +345,22 @@ function OpdRecordDescription({ orgSlug, record }: { orgSlug: string; record: Op
 
   return (
     <>
-      {appointment.tokenNumber != null ? `Token ${appointment.tokenNumber} · ` : "Booked · "}
+      {appointment.tokenNumber != null ? (
+        <>
+          Token <span className="font-mono">{appointment.tokenNumber}</span>
+        </>
+      ) : (
+        "Booked"
+      )}
+      {" · "}
       {patient ? (
         <Link
           to="/$orgSlug/patients/$patientId"
           params={{ orgSlug, patientId: patient.id }}
           className="underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
         >
-          {`${patient.mrn} · `}
+          <span className="font-mono">{patient.mrn}</span>
+          {" · "}
           <span className="capitalize">{patient.name}</span>
         </Link>
       ) : (
@@ -373,7 +370,8 @@ function OpdRecordDescription({ orgSlug, record }: { orgSlug: string; record: Op
           ) : (
             "Unnamed caller"
           )}
-          {` · ${appointment.callerPhone ?? "No phone"}`}
+          {" · "}
+          <span className="font-mono">{appointment.callerPhone ?? "No phone"}</span>
         </span>
       )}
     </>
@@ -404,7 +402,7 @@ function OpdRecordSummary({ record, action }: { record: OpdRecordIdentity; actio
       <dl className="grid min-w-0 flex-1 grid-cols-2 gap-4 sm:grid-cols-3">
         <div className="flex flex-col gap-1">
           <dt className="text-muted-foreground">Token</dt>
-          <dd className="font-mono text-sm font-medium tabular-nums">
+          <dd className="font-mono font-medium tabular-nums">
             {appointment.tokenNumber ?? "Pending"}
           </dd>
         </div>
@@ -448,10 +446,12 @@ function OpdRecordFacts({ record }: { record: OpdRecordIdentity }) {
             ) : null}
           </p>
           <p className="text-muted-foreground">
-            {patient.mrn} · {patient.phone}
+            <span className="font-mono">{patient.mrn}</span>
+            {" · "}
+            <span className="font-mono">{patient.phone}</span>
           </p>
           <p className="capitalize text-muted-foreground">
-            {age} · {patient.sex}
+            <span className="tabular-nums">{age}</span> · {patient.sex}
           </p>
         </div>
       ) : (
@@ -460,7 +460,7 @@ function OpdRecordFacts({ record }: { record: OpdRecordIdentity }) {
           <p className={appointment.callerName ? "font-medium capitalize" : "font-medium"}>
             {appointment.callerName ?? "Unnamed caller"}
           </p>
-          <p className="text-muted-foreground">{appointment.callerPhone ?? "No phone"}</p>
+          <p className="font-mono text-muted-foreground">{appointment.callerPhone ?? "No phone"}</p>
           <p className="text-muted-foreground">The patient record is linked at check-in.</p>
         </div>
       )}

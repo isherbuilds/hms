@@ -1,15 +1,13 @@
 import { boolean, pgTable, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
 
-import { organization } from "./auth";
+import { orgIdColumn } from "./auth";
 import type { PayerType } from "./payer-types";
 
 export const payers = pgTable(
   "payers",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     name: text("name").notNull(),
     type: text("type").$type<PayerType>().notNull(),
     active: boolean("active").default(true).notNull(),

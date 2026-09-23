@@ -3,14 +3,6 @@ import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
 import { Input } from "@hms/ui/components/input";
 import { SubmitButton } from "@hms/ui/components/submit-button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hms/ui/components/table";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ClientOnly, useBlocker, useNavigate } from "@tanstack/react-router";
 import { Trash2Icon } from "lucide-react";
@@ -25,7 +17,7 @@ import {
   type SelectedPatient,
 } from "@/components/opd-patient-picker";
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
-import { FormSection, Panel } from "@/components/page";
+import { DataList, FormSection, Panel } from "@/components/page";
 import { PharmacyBatchPicker, type SaleLine } from "@/components/pharmacy-batch-picker";
 import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
@@ -81,7 +73,7 @@ function SaleLines({
   const removeButton = (line: SaleLine) => (
     <Button
       type="button"
-      size="icon-sm"
+      size="icon-xs"
       variant="destructive"
       aria-label={`Remove ${line.productName}`}
       onClick={() => onRemove(line.batchId)}
@@ -91,83 +83,59 @@ function SaleLines({
   );
 
   if (lines.length === 0) {
-    return <p className="text-muted-foreground">Nothing added yet</p>;
+    return <p className="text-muted-foreground">No batches in this sale</p>;
   }
 
   return (
-    <>
-      <div className="hidden overflow-hidden rounded-lg ring-1 ring-border md:block">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Product</TableHead>
-              <TableHead>Batch</TableHead>
-              <TableHead>Expiry</TableHead>
-              <TableHead className="w-20">Qty</TableHead>
-              <TableHead className="text-right">MRP</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
-              <TableHead className="w-10">
-                <span className="sr-only">Actions</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {lines.map((line) => (
-              <TableRow key={line.batchId}>
-                <TableCell>
-                  <p className="font-medium capitalize">{line.productName}</p>
-                  <p className="font-mono text-muted-foreground">{line.code}</p>
-                </TableCell>
-                <TableCell className="font-mono">{line.batchNumber}</TableCell>
-                <TableCell className="whitespace-nowrap">
-                  {formatBusinessDate(line.expiryDate)}
-                </TableCell>
-                <TableCell>{qtyField(line)}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatMoney(line.mrp, currency)}
-                  {line.mrpUnits > 1 ? ` / ${line.mrpUnits}` : ""}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatMoney(line.lineSubtotal, currency)}
-                </TableCell>
-                <TableCell>{removeButton(line)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      <div className="grid gap-2 md:hidden">
-        {lines.map((line) => (
-          <article
-            key={line.batchId}
-            className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-lg border border-border p-3"
-          >
-            <div className="min-w-0">
-              <p className="truncate font-medium capitalize">{line.productName}</p>
-              <div className="flex flex-wrap gap-1 pt-2">
+    <DataList
+      columns={[
+        {
+          head: "Product",
+          cell: (line) => (
+            <span className="block">
+              <span className="block capitalize">{line.productName}</span>
+              <span className="block font-mono text-muted-foreground">{line.code}</span>
+              <span className="flex flex-wrap gap-1">
                 <Badge variant="muted" className="font-mono">
                   {line.batchNumber}
                 </Badge>
                 <Badge variant="outline">Expires {formatBusinessDate(line.expiryDate)}</Badge>
-              </div>
-            </div>
-            <div className="grid justify-items-end gap-2">
-              <span className="font-medium tabular-nums">
-                {formatMoney(line.lineSubtotal, currency)}
               </span>
-              <div className="flex items-end gap-2">
-                <label className="grid justify-items-end gap-1 text-muted-foreground">
-                  Qty
-                  {qtyField(line)}
-                </label>
-                {removeButton(line)}
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
-    </>
+            </span>
+          ),
+        },
+        { head: "Batch", cell: (line) => <span className="font-mono">{line.batchNumber}</span> },
+        {
+          head: "Expiry",
+          cell: (line) => (
+            <span className="whitespace-nowrap">{formatBusinessDate(line.expiryDate)}</span>
+          ),
+        },
+        { head: "Qty", cell: (line) => qtyField(line), className: "w-20" },
+        {
+          head: "MRP",
+          cell: (line) => (
+            <span className="tabular-nums">
+              {formatMoney(line.mrp, currency)}
+              {line.mrpUnits > 1 ? ` / ${line.mrpUnits}` : ""}
+            </span>
+          ),
+          className: "text-right",
+        },
+        {
+          head: "Amount",
+          cell: (line) => (
+            <span className="font-medium tabular-nums">
+              {formatMoney(line.lineSubtotal, currency)}
+            </span>
+          ),
+          className: "text-right",
+        },
+      ]}
+      rows={lines}
+      rowKey={(line) => line.batchId}
+      action={(line) => removeButton(line)}
+    />
   );
 }
 
@@ -382,7 +350,6 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                         Name <span className="sr-only">required</span>
                         <Input
                           value={walkInName}
-                          placeholder="Customer name"
                           aria-invalid={attempted && walkInName.trim() === ""}
                           onChange={(event) => setWalkInName(event.target.value)}
                         />
@@ -392,7 +359,6 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                         <Input
                           value={walkInPhone}
                           inputMode="tel"
-                          placeholder="Optional"
                           onChange={(event) => setWalkInPhone(event.target.value)}
                         />
                       </label>
@@ -458,7 +424,6 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                         For whom
                         <Input
                           value={forName}
-                          placeholder="Who it is for"
                           onChange={(event) => setForName(event.target.value)}
                         />
                       </label>
@@ -467,7 +432,6 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                         <Input
                           value={prescriberName}
                           aria-invalid={scheduleH1 && attempted && prescriberName.trim() === ""}
-                          placeholder="Prescribing doctor"
                           onChange={(event) => setPrescriberName(event.target.value)}
                         />
                       </label>
@@ -475,7 +439,6 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                         Prescription reference
                         <Input
                           value={prescriptionReference}
-                          placeholder="Slip or note number"
                           onChange={(event) => setPrescriptionReference(event.target.value)}
                         />
                       </label>
@@ -498,9 +461,10 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
           <footer className="absolute inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card p-3 lg:hidden">
             <div className="min-w-0">
               <p className="truncate text-muted-foreground">
-                Payable · {cart.length} line{cart.length === 1 ? "" : "s"}
+                Payable · <span className="tabular-nums">{cart.length}</span> line
+                {cart.length === 1 ? "" : "s"}
               </p>
-              <p className="truncate text-sm font-medium tabular-nums">
+              <p className="truncate text-xs font-medium tabular-nums">
                 {formatMoney(quote.grandTotal, currency)}
               </p>
             </div>

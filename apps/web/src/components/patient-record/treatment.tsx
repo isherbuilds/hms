@@ -4,7 +4,7 @@ import type { RouterClient } from "@orpc/server";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { ErrorNote } from "@/components/page";
+import { ListState, Panel } from "@/components/page";
 import { PlanItemRow } from "@/components/treatment-plan-item";
 import { ReasonDialog, type ReasonTarget } from "@/components/treatment-dialogs";
 import { useCan } from "@/lib/membership";
@@ -32,28 +32,26 @@ export function PatientTreatment({
   );
 
   return (
-    <div className="flex flex-col gap-4">
-      <p className="text-muted-foreground">
-        Courses of care and their delivered work. Start a plan from the patient's visit.
-      </p>
-      {plans.isError ? (
-        <ErrorNote title="Could not load treatment plans" error={plans.error} />
-      ) : null}
-      {plans.data?.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-4 text-muted-foreground">
-          No treatment plan has been created for this patient.
-        </p>
-      ) : null}
-      {plans.data?.map((plan) => (
-        <PlanCard
-          key={plan.id}
-          plan={plan}
-          orgSlug={orgSlug}
-          currency={currency}
-          canEdit={canEdit}
-        />
-      ))}
-    </div>
+    <Panel grow label="Treatment plans">
+      <ListState
+        query={plans}
+        errorTitle="Could not load treatment plans"
+        isEmpty={plans.data?.length === 0}
+        empty="No treatment plans yet"
+      >
+        <div className="flex flex-col gap-4 p-3">
+          {plans.data?.map((plan) => (
+            <PlanCard
+              key={plan.id}
+              plan={plan}
+              orgSlug={orgSlug}
+              currency={currency}
+              canEdit={canEdit}
+            />
+          ))}
+        </div>
+      </ListState>
+    </Panel>
   );
 }
 
@@ -93,7 +91,7 @@ function PlanCard({
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <div>
           <dt className="text-muted-foreground">Sittings</dt>
-          <dd>{plan.sittings.length}</dd>
+          <dd className="tabular-nums">{plan.sittings.length}</dd>
         </div>
         <div>
           <dt className="text-muted-foreground">{plan.status === "open" ? "Next" : "Status"}</dt>
@@ -107,7 +105,7 @@ function PlanCard({
         </div>
         <div>
           <dt className="text-muted-foreground">Quoted</dt>
-          <dd>{formatMoney(plan.quotedTotal, currency)}</dd>
+          <dd className="tabular-nums">{formatMoney(plan.quotedTotal, currency)}</dd>
         </div>
       </dl>
       {plan.status === "open" && plan.nextSittingNote ? (

@@ -63,7 +63,7 @@ function Body({
           </span>
           <span className="flex items-center gap-2">
             <span
-              className={`text-sm font-medium tabular-nums ${
+              className={`text-xs font-medium tabular-nums ${
                 row.state === "stale"
                   ? "text-destructive"
                   : row.state === "late"
@@ -98,7 +98,6 @@ function Body({
               Nothing is owed until the invoice is issued.
             </span>
             <Button
-              size="sm"
               className="ml-auto"
               nativeButton={false}
               render={
@@ -124,7 +123,6 @@ function Body({
           ) : null}
           {row.appointmentId ? (
             <Button
-              size="sm"
               variant="outline"
               className="ml-auto"
               nativeButton={false}

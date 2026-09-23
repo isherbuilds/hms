@@ -74,7 +74,6 @@ function StatCard({
   icon: Icon,
   value,
   note,
-  trailing,
   pending,
   queue,
   orgSlug,
@@ -83,13 +82,17 @@ function StatCard({
   icon: LucideIcon;
   value: ReactNode;
   note: ReactNode;
-  trailing?: ReactNode;
   pending?: boolean;
-  queue?: StatQueueLink;
+  queue: StatQueueLink;
   orgSlug: string;
 }) {
-  const body = (
-    <>
+  return (
+    <Link
+      to="/$orgSlug/opd"
+      params={{ orgSlug }}
+      search={queue}
+      className="flex flex-col rounded-xl bg-muted p-1 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/70"
+    >
       <div className="flex h-9 items-center gap-2 px-3 text-muted-foreground">
         <Icon className="size-3.5 shrink-0" />
         <span className="min-w-0 truncate">{label}</span>
@@ -101,30 +104,12 @@ function StatCard({
               {value}
             </span>
           )}
-          {trailing}
         </div>
         <div className="flex items-center justify-between gap-2 text-muted-foreground">
           <span className="min-w-0 truncate">{note}</span>
-          {queue && <ArrowRightIcon className="size-3.5 shrink-0" />}
+          <ArrowRightIcon className="size-3.5 shrink-0" />
         </div>
       </div>
-    </>
-  );
-
-  const shell = "flex flex-col rounded-xl bg-muted p-1";
-
-  if (!queue) {
-    return <div className={shell}>{body}</div>;
-  }
-
-  return (
-    <Link
-      to="/$orgSlug/opd"
-      params={{ orgSlug }}
-      search={queue}
-      className={`${shell} [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/70`}
-    >
-      {body}
     </Link>
   );
 }
@@ -292,7 +277,7 @@ function DashboardRoute() {
                   query={today}
                   errorTitle="Could not load today's counts"
                   isEmpty={mixTotal === 0}
-                  empty={`No appointments ${dayLabel}.`}
+                  empty={`No appointments ${dayLabel}`}
                 >
                   {mixTotal > 0 && (
                     <>
@@ -347,7 +332,7 @@ function DashboardRoute() {
               query={queue}
               errorTitle="Could not load the waiting queue"
               isEmpty={queue.data?.items.length === 0}
-              empty="The queue is empty."
+              empty="The queue is empty"
             >
               {queue.data && queue.data.items.length > 0 && (
                 <table className="w-full text-left">
@@ -373,7 +358,8 @@ function DashboardRoute() {
                           <Link
                             to="/$orgSlug/opd/$appointmentId"
                             params={{ orgSlug, appointmentId: appointment.id }}
-                            className="capitalize after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                            className="capitalize after:absolute after:inset-0 after:rounded-md focus-visible:after:outline-[2.5px] focus-visible:after:outline-offset-[-2.5px] focus-visible:after:outline-(--focus-ring) [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                            data-focus-floor="off"
                           >
                             {appointment.patientName}
                           </Link>

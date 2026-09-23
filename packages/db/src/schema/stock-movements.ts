@@ -11,7 +11,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 import { departments } from "./departments";
 import { stockBatches } from "./stock-batches";
 
@@ -48,9 +48,7 @@ export const stockMovements = pgTable(
   "stock_movements",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     batchId: text("batch_id").notNull(),
     bucket: text("bucket", { enum: STOCK_BUCKETS }).notNull(),
     qty: integer("qty").notNull(),

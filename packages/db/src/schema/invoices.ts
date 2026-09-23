@@ -12,7 +12,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 import { opdAppointments } from "./opd-appointments";
 import { patients } from "./patients";
 import { pharmacySales } from "./pharmacy-sales";
@@ -25,9 +25,7 @@ export const invoices = pgTable(
   "invoices",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     stream: text("stream", { enum: INVOICE_STREAMS }).notNull().default("opd"),
     opdAppointmentId: text("opd_appointment_id"),
     pharmacySaleId: text("pharmacy_sale_id"),

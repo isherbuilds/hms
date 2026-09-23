@@ -7,3 +7,7 @@ export function uniqueSuffix(): string {
 
   return sequence.toString(36);
 }
+
+export function sumMoney(values: readonly bigint[]): bigint {
+  return values.reduce((sum, value) => sum + value, 0n);
+}

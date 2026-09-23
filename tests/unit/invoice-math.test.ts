@@ -10,6 +10,8 @@ import {
   splitGst,
 } from "@hms/api/lib/invoice-math";
 
+import { sumMoney } from "../support/unique";
+
 const charge = (chargeId: string, unitPrice: string, taxRatePercent = "0", qty = 1) => ({
   chargeId,
   description: `Charge ${chargeId}`,
@@ -19,8 +21,6 @@ const charge = (chargeId: string, unitPrice: string, taxRatePercent = "0", qty =
   taxRatePercent,
   taxCode: null,
 });
-
-const sumMoney = (values: bigint[]) => values.reduce((sum, value) => sum + value, 0n);
 
 test("computes a single line without a discount", () => {
   expect(computeInvoiceLines([charge("consult", "100.00", "18.00", 2)], 0n, "opd")).toEqual({

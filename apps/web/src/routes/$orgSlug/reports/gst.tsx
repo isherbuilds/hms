@@ -1,4 +1,3 @@
-import { Button } from "@hms/ui/components/button";
 import {
   Table,
   TableBody,
@@ -9,11 +8,11 @@ import {
 } from "@hms/ui/components/table";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { DownloadIcon, PrinterIcon } from "lucide-react";
 import { z } from "zod";
 
 import { DateFilter } from "@/components/list-filter";
 import { ErrorNote, ListToolbar, PageBody, PageHeader } from "@/components/page";
+import { ReportActions } from "@/components/report-actions";
 import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
@@ -163,18 +162,7 @@ function GstReportRoute() {
     <>
       <PageHeader
         title="GST register"
-        action={
-          <>
-            <Button disabled={!report.data} onClick={exportReport}>
-              <DownloadIcon data-icon="inline-start" />
-              Export Excel
-            </Button>
-            <Button variant="outline" disabled={!report.data} onClick={() => window.print()}>
-              <PrinterIcon data-icon="inline-start" />
-              Print / PDF
-            </Button>
-          </>
-        }
+        action={<ReportActions disabled={!report.data} onExport={exportReport} />}
       />
       <PageBody>
         <div className="print:hidden">
@@ -182,12 +170,11 @@ function GstReportRoute() {
             <DateFilter today={today} from={from} to={to} maxDays={366} onChange={setRange} />
           </ListToolbar>
         </div>
-        <p className="text-muted-foreground">CGST/SGST split assumes intra-state supply.</p>
 
         {report.isPending ? null : report.isError ? (
           <ErrorNote title="Could not load the GST outward register" error={report.error} />
         ) : (
-          <section data-report-print className="space-y-4">
+          <section data-report-print className="flex flex-col gap-4">
             <header className="border-b pb-2">
               <h1 className="text-sm font-medium">GST outward register</h1>
               <p className="text-muted-foreground">
@@ -195,8 +182,8 @@ function GstReportRoute() {
               </p>
             </header>
 
-            <section className="space-y-2">
-              <h2 className="font-medium uppercase tracking-wide">Documents</h2>
+            <section className="flex flex-col gap-2">
+              <h2 className="min-h-6 text-muted-foreground">Documents</h2>
               <div className="overflow-x-auto ring-1 ring-border">
                 <Table>
                   <TableHeader>
@@ -264,8 +251,8 @@ function GstReportRoute() {
             </section>
 
             <div className="grid gap-3 lg:grid-cols-2">
-              <section className="space-y-2">
-                <h2 className="font-medium uppercase tracking-wide">Rate summary</h2>
+              <section className="flex flex-col gap-2">
+                <h2 className="min-h-6 text-muted-foreground">Rate summary</h2>
                 <div className="overflow-x-auto ring-1 ring-border">
                   <Table>
                     <TableHeader>
@@ -317,8 +304,8 @@ function GstReportRoute() {
                 </div>
               </section>
 
-              <section className="space-y-2">
-                <h2 className="font-medium uppercase tracking-wide">HSN/SAC summary</h2>
+              <section className="flex flex-col gap-2">
+                <h2 className="min-h-6 text-muted-foreground">HSN/SAC summary</h2>
                 <div className="overflow-x-auto ring-1 ring-border">
                   <Table>
                     <TableHeader>

@@ -67,7 +67,7 @@ export function ServicePicker({
               id="service-search"
               name="service-search"
               className="pl-8"
-              placeholder="Search service code, name or category"
+              placeholder="Service code, name, or category"
               aria-label="Search services"
               disabled
             />
@@ -100,7 +100,7 @@ export function ServicePicker({
               id: "service-search",
               name: "service-search",
               autoComplete: "off",
-              placeholder: "Search service code, name or category",
+              placeholder: "Service code, name, or category",
               autoFocus: box > 0,
               onFocus: () => {
                 if (typed().length > 0) search.setOpen(true);

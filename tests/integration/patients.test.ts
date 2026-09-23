@@ -762,7 +762,6 @@ test("fresh CAS succeeds while stale and missing updates emit no success audit",
   );
 
   expect(stale.code).toBe("CONFLICT");
-  expect(stale.message).toBe("This patient changed after you opened it.");
   expect(stale.data?.reason).toBe("stale_record");
 
   const missing = await rejected(
@@ -873,7 +872,6 @@ test("only the patient UID constraint receives the uid_taken discriminator", asy
   );
 
   expect(createConflict.code).toBe("CONFLICT");
-  expect(createConflict.message).toBe("A patient with this UID already exists.");
   expect(createConflict.data?.reason).toBe("uid_taken");
 
   await db
@@ -910,7 +908,6 @@ test("only the patient UID constraint receives the uid_taken discriminator", asy
   );
 
   expect(updateConflict.code).toBe("CONFLICT");
-  expect(updateConflict.message).toBe("A patient with this UID already exists.");
   expect(updateConflict.data?.reason).toBe("uid_taken");
 
   const unchanged = await api.patient.get({

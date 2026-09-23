@@ -88,7 +88,7 @@ export function PharmacyBatchPicker({
             id="stock-search"
             name="stock-search"
             className="pl-8"
-            placeholder="Search name, code or generic"
+            placeholder="Name, code, or generic"
             aria-label="Search stock"
             disabled
           />
@@ -113,7 +113,7 @@ export function PharmacyBatchPicker({
             id: "stock-search",
             name: "stock-search",
             autoComplete: "off",
-            placeholder: "Search name, code or generic",
+            placeholder: "Name, code, or generic",
             autoFocus: box > 0,
             onFocus: () => {
               if (typed().length > 0) search.setOpen(true);
@@ -132,8 +132,9 @@ export function PharmacyBatchPicker({
                     </Badge>
                   )}
                 </span>
-                <span className="font-mono text-muted-foreground">
-                  {batch.batchNumber} · expires {formatBusinessDate(batch.expiryDate)}
+                <span className="text-muted-foreground">
+                  <span className="font-mono">{batch.batchNumber}</span> · expires{" "}
+                  {formatBusinessDate(batch.expiryDate)}
                 </span>
               </span>
               <span className="grid justify-items-end">

@@ -16,11 +16,11 @@ import { ErrorNote } from "@/components/page";
 // A box outline around an underline field looks wrong, so these opt out of the
 // global focus floor (`data-focus-floor="off"`) and the bottom border carries
 // the indicator instead: same 2px rule throughout, foreground colour on focus so
-// nothing shifts. `rounded-none` beats the base `:focus-visible` radius, which
-// would otherwise curl the ends of the rule up while the field is focused.
+// nothing shifts. `rounded-none` keeps the input's radius from curling the ends
+// of the rule.
 // `text-base` below `md` keeps iOS from zooming on focus.
 const underline =
-  "h-10 w-full rounded-none border-0 border-b-2 border-input bg-transparent px-0 text-base transition-colors duration-150 ease-out outline-none placeholder:text-muted-foreground/70 focus:border-foreground disabled:opacity-60 aria-invalid:border-destructive md:text-sm";
+  "h-10 w-full rounded-none border-0 border-b-2 border-input bg-transparent px-0 text-base transition-colors duration-150 ease-out outline-none placeholder:text-muted-foreground focus:border-foreground disabled:opacity-60 aria-invalid:border-destructive md:text-sm";
 
 export function AuthField({
   name,
@@ -63,6 +63,7 @@ export function EmailField({ readOnly = false }: { readOnly?: boolean }) {
       label="Email"
       type="email"
       readOnly={readOnly}
+      autoFocus={!readOnly}
       autoComplete="username"
       placeholder="you@hospital.in"
     />
@@ -86,8 +87,10 @@ export function AuthFormFooter({ children }: { children: ReactNode }) {
 
 export function PasswordField({
   autoComplete,
+  autoFocus,
 }: {
   autoComplete: "current-password" | "new-password";
+  autoFocus?: boolean;
 }) {
   const [reveal, setReveal] = useState(false);
 
@@ -97,6 +100,7 @@ export function PasswordField({
       label="Password"
       type={reveal ? "text" : "password"}
       autoComplete={autoComplete}
+      autoFocus={autoFocus}
       placeholder="••••••••"
       className="pr-9"
     >
@@ -104,7 +108,7 @@ export function PasswordField({
         type="button"
         onClick={() => setReveal((value) => !value)}
         aria-label={reveal ? "Hide password" : "Show password"}
-        className="absolute top-1/2 right-0 flex size-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground"
+        className="absolute top-1/2 right-0 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground"
       >
         {reveal ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
       </button>

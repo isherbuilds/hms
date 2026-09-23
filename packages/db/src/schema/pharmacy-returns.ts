@@ -1,6 +1,6 @@
 import { foreignKey, index, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 import { creditNotes } from "./credit-notes";
 import { invoices } from "./invoices";
 import { pharmacySales } from "./pharmacy-sales";
@@ -20,9 +20,7 @@ export const pharmacyReturns = pgTable(
   "pharmacy_returns",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     pharmacySaleId: text("pharmacy_sale_id").notNull(),
     invoiceId: text("invoice_id").notNull(),
     creditNoteId: text("credit_note_id"),

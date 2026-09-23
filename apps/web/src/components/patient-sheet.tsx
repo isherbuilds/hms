@@ -7,7 +7,7 @@ import { PatientForm, type EditablePatient } from "@/components/patient-form";
 
 const DISCARD = {
   title: "Discard unsaved changes?",
-  description: "The patient record has changes that have not been saved.",
+  description: "Unsaved changes will be discarded.",
   confirmLabel: "Discard changes",
 };
 
@@ -81,7 +81,15 @@ export function PatientSheet({
         <Sheet open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
           <SheetContent ref={panel}>
             <SheetHeader>
-              <SheetTitle>{patient ? `Edit ${patient.mrn}` : "Register patient"}</SheetTitle>
+              <SheetTitle>
+                {patient ? (
+                  <>
+                    Edit <span className="font-mono">{patient.mrn}</span>
+                  </>
+                ) : (
+                  "Register patient"
+                )}
+              </SheetTitle>
             </SheetHeader>
             <PatientForm
               // Every open builds its form from the props it had then, so reopening after a

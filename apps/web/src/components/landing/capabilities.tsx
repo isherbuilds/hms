@@ -28,7 +28,7 @@ export function LandingCapabilities() {
           <Link
             key={feature.to}
             to={feature.to}
-            className="group flex flex-col overflow-hidden rounded-2xl bg-muted p-2 transition-colors duration-100 ease-out hover:bg-accent"
+            className="group flex flex-col overflow-hidden rounded-lg bg-muted p-2 transition-colors duration-100 ease-out hover:bg-accent"
           >
             {/* The thumbnail repeats the card's own label, so it is decorative
                 to a screen reader; the link's name is the text below. */}
@@ -42,10 +42,10 @@ export function LandingCapabilities() {
                 className="relative"
               />
             </div>
-            <div className="flex flex-col gap-1 px-4 py-5">
+            <div className="flex flex-col gap-2 px-4 py-4">
               <span className="text-sm font-medium">{feature.label}</span>
               <span className="text-xs text-muted-foreground">{feature.blurb}</span>
-              <span className="mt-2 text-sm underline-offset-4 group-hover:underline">
+              <span className="text-sm underline-offset-4 group-hover:underline">
                 See it in the product →
               </span>
             </div>

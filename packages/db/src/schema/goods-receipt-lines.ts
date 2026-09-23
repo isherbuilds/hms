@@ -11,7 +11,7 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 
-import { organization } from "./auth";
+import { orgIdColumn } from "./auth";
 import { goodsReceipts } from "./goods-receipts";
 import { stockBatches } from "./stock-batches";
 
@@ -21,9 +21,7 @@ export const goodsReceiptLines = pgTable(
   "goods_receipt_lines",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     receiptId: text("receipt_id").notNull(),
     batchId: text("batch_id").notNull(),
     // Stock units: billed, and free under a scheme such as 10+1.

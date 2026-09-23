@@ -141,14 +141,16 @@ function SettingsRoute() {
     <>
       <PageHeader title="Organization" />
       <SettingsTabs orgSlug={orgSlug} />
-      <PageBody className="max-w-2xl">
-        {settings.isError && <ErrorNote title="Could not load settings" error={settings.error} />}
+      <PageBody>
+        <div className="flex w-full max-w-5xl flex-col gap-4">
+          {settings.isError && <ErrorNote title="Could not load settings" error={settings.error} />}
 
-        {settings.data && (
-          // Keyed by tenant: switching organizations remounts the form instead of carrying
-          // dirty state across.
-          <SettingsForm key={orgSlug} orgSlug={orgSlug} defaults={settings.data} />
-        )}
+          {settings.data && (
+            // Keyed by tenant: switching organizations remounts the form instead of carrying
+            // dirty state across.
+            <SettingsForm key={orgSlug} orgSlug={orgSlug} defaults={settings.data} />
+          )}
+        </div>
       </PageBody>
     </>
   );
@@ -177,79 +179,92 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
         {/* Frozen while saving: `onSuccess` resets to the saved row, which would
             otherwise discard anything typed during the request. */}
         <fieldset disabled={update.isPending} className="contents">
-          <section className="flex flex-col gap-3">
-            <h2 className="text-xs font-medium text-muted-foreground">Organization</h2>
-            <TextField
-              name="legalName"
-              label="Legal name"
-              placeholder="As it should appear on invoices"
-            />
-            <TextField
-              name="address"
-              label="Address"
-              multiline
-              rows={3}
-              placeholder="Printed under the legal name"
-            />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <TextField name="taxId" label="Tax id (GSTIN/PAN)" />
-              {/* Hand-written: `TextField`'s `className` places the row, so it cannot also
+          <section aria-labelledby="organization-details" className="grid gap-4 md:grid-cols-3">
+            <div className="flex flex-col gap-1">
+              <h2 id="organization-details" className="min-h-6 text-xs text-muted-foreground">
+                Organization details
+              </h2>
+              <p className="max-w-xs leading-relaxed text-muted-foreground">
+                Hospital identity and regional settings used on your documents.
+              </p>
+            </div>
+            <div className="flex min-w-0 flex-col gap-3 md:col-span-2">
+              <TextField
+                name="legalName"
+                label="Legal name"
+                placeholder="e.g. Mercy General Hospital"
+              />
+              <TextField name="address" label="Address" multiline rows={3} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField name="taxId" label="Tax id (GSTIN/PAN)" />
+                {/* Hand-written: `TextField`'s `className` places the row, so it cannot also
                   carry the control's own class. */}
+                <RegisteredFormField
+                  name="currency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Currency</FormLabel>
+                      <FormControl>
+                        <Input {...field} maxLength={3} readOnly className="uppercase" />
+                      </FormControl>
+                      <FormDescription>
+                        Fixed for this organization so historical amounts keep one meaning.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
               <RegisteredFormField
-                name="currency"
+                name="timeZone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Currency</FormLabel>
+                    <FormLabel>Time zone</FormLabel>
                     <FormControl>
-                      <Input {...field} maxLength={3} readOnly className="uppercase" />
+                      <NativeSelect {...field}>
+                        {/* Keep a stored zone selectable even when this browser's canonical list omits it. */}
+                        {defaults.timeZone && !supportedTimeZones.includes(defaults.timeZone) ? (
+                          <option value={defaults.timeZone}>{defaults.timeZone}</option>
+                        ) : null}
+                        {supportedTimeZones.map((timeZone) => (
+                          <option key={timeZone} value={timeZone}>
+                            {timeZone}
+                          </option>
+                        ))}
+                      </NativeSelect>
                     </FormControl>
                     <FormDescription>
-                      Fixed for this organization so historical amounts keep one meaning.
+                      Used for queues, numbering, and reports. Changes apply to new records only.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
-            <RegisteredFormField
-              name="timeZone"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Time zone</FormLabel>
-                  <FormControl>
-                    <NativeSelect {...field}>
-                      {/* Keep a stored zone selectable even when this browser's canonical list omits it. */}
-                      {defaults.timeZone && !supportedTimeZones.includes(defaults.timeZone) ? (
-                        <option value={defaults.timeZone}>{defaults.timeZone}</option>
-                      ) : null}
-                      {supportedTimeZones.map((timeZone) => (
-                        <option key={timeZone} value={timeZone}>
-                          {timeZone}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  </FormControl>
-                  <FormDescription>
-                    Sets the local date used for queues, numbering, and reports. Changing it applies
-                    to new records; existing ones keep their date.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
           </section>
 
-          <section className="flex flex-col gap-3">
-            <h2 className="text-xs font-medium text-muted-foreground">Document numbering</h2>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <TextField name="mrnPrefix" label="MRN prefix" />
-              <TextField name="invoicePrefix" label="Invoice prefix" />
-              <TextField name="pharmacyInvoicePrefix" label="Pharmacy invoice prefix" />
-              <TextField name="receiptPrefix" label="Receipt prefix" />
-              <TextField name="creditNotePrefix" label="Credit note prefix" />
-              <TextField name="advanceReceiptPrefix" label="Advance receipt prefix" />
+          <section
+            aria-labelledby="document-numbering"
+            className="grid gap-4 border-t border-border pt-6 md:grid-cols-3"
+          >
+            <div className="flex flex-col gap-1">
+              <h2 id="document-numbering" className="min-h-6 text-xs text-muted-foreground">
+                Document numbering
+              </h2>
+              <p className="max-w-xs leading-relaxed text-muted-foreground">
+                Prefixes identify each document type. Use different prefixes for OPD and pharmacy
+                invoices.
+              </p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-3 md:col-span-2">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField name="mrnPrefix" label="MRN prefix" />
+                <TextField name="invoicePrefix" label="Invoice prefix" />
+                <TextField name="pharmacyInvoicePrefix" label="Pharmacy invoice prefix" />
+                <TextField name="receiptPrefix" label="Receipt prefix" />
+                <TextField name="creditNotePrefix" label="Credit note prefix" />
+                <TextField name="advanceReceiptPrefix" label="Advance receipt prefix" />
+              </div>
               <RegisteredFormField
                 name="fiscalYearStartMonth"
                 render={({ field }) => (
@@ -268,6 +283,22 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                   </FormItem>
                 )}
               />
+            </div>
+          </section>
+
+          <section
+            aria-labelledby="visit-defaults"
+            className="grid gap-4 border-t border-border pt-6 md:grid-cols-3"
+          >
+            <div className="flex flex-col gap-1">
+              <h2 id="visit-defaults" className="min-h-6 text-xs text-muted-foreground">
+                Visit defaults
+              </h2>
+              <p className="max-w-xs leading-relaxed text-muted-foreground">
+                Follow-up eligibility and reminders for unbilled visits.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 md:col-span-2">
               <TextField
                 name="followUpValidityDays"
                 label="Follow-up validity (days)"
@@ -275,7 +306,7 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                 min={1}
                 max={365}
                 step={1}
-                description="Consult within this many days of the last appointment bills the follow-up fee."
+                description="Follow-up fee applies within this many days of the last appointment."
               />
               <TextField
                 name="unbilledAlertHours"
@@ -284,13 +315,13 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                 min={1}
                 max={168}
                 step={1}
-                description="Checked-in visits with charges older than this appear as unbilled"
+                description="Checked-in visits with older charges appear as unbilled."
               />
             </div>
           </section>
         </fieldset>
 
-        <div>
+        <div className="flex justify-end">
           <SettingsSubmitButton pending={update.isPending} />
         </div>
       </form>

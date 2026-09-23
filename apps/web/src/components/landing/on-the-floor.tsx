@@ -25,8 +25,8 @@ const PHONES = [
 export function LandingOnTheFloor() {
   return (
     <section className="mx-auto w-full max-w-[84rem] px-5 pt-8 [contain-intrinsic-size:auto_700px] [content-visibility:auto] sm:px-6 sm:pt-16">
-      <div className="grid items-center gap-6 rounded-2xl bg-muted p-2 sm:p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] lg:gap-8">
-        <div className="flex flex-col gap-3 px-4 py-5 sm:px-6 sm:py-6 lg:px-10">
+      <div className="grid items-center gap-6 rounded-xl bg-muted p-2 sm:p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] lg:gap-8">
+        <div className="flex flex-col gap-3 px-4 py-4 sm:px-6 sm:py-6 lg:px-10">
           <span className="text-xs text-muted-foreground">On the floor</span>
           <h2 className="text-2xl font-medium tracking-tight text-balance">
             The queue fits in a pocket
@@ -41,7 +41,7 @@ export function LandingOnTheFloor() {
             same crop-don't-shrink rule the desktop shots follow. */}
         <div className="relative flex h-[22rem] justify-center overflow-hidden rounded-xl px-4 pt-8 sm:h-[26rem] lg:h-[30rem] lg:pt-12">
           <Wash />
-          <div className="relative flex items-start gap-3 sm:gap-5">
+          <div className="relative flex items-start gap-3 sm:gap-4">
             {PHONES.map((phone, i) => (
               <div
                 key={phone.key}

@@ -2,17 +2,9 @@ import { authorize } from "@hms/auth/access";
 import { Badge } from "@hms/ui/components/badge";
 import { Button, buttonVariants } from "@hms/ui/components/button";
 import { DropdownMenuCheckboxItem } from "@hms/ui/components/dropdown-menu";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hms/ui/components/table";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { ClientOnly, Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { CircleDotIcon, PlusIcon } from "lucide-react";
+import { CircleDotIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { z } from "zod";
 
@@ -29,6 +21,7 @@ import {
   type ActiveFilter,
 } from "@/components/list-filter";
 import {
+  DataList,
   ListState,
   ListToolbar,
   LoadMore,
@@ -109,47 +102,41 @@ export const Route = createFileRoute("/$orgSlug/opd/")({
   component: OpdRoute,
 });
 
-function OpdStatusCell({
+function OpdCheckInAction({
   orgSlug,
   appointmentId,
   patientId,
   callerName,
   callerPhone,
-  status,
 }: {
   orgSlug: string;
   appointmentId: string;
   patientId: string | null;
   callerName: string | null;
   callerPhone: string | null;
-  status: "booked" | "checked_in" | "cancelled" | "no_show";
 }) {
   const [checkingIn, setCheckingIn] = useState(false);
   const checkIn = useOpdCheckIn();
   // Cashiers and accountants read the queue; checking in needs `opd:update`.
   const canUpdate = useCan(orgSlug, { opd: ["update"] });
 
+  if (!canUpdate) return null;
+
   return (
     <>
-      {status === "booked" && canUpdate ? (
-        <Button
-          size="xs"
-          className="relative"
-          disabled={checkIn.isPending}
-          onClick={() => {
-            if (patientId) {
-              checkIn.mutate({ orgSlug, appointmentId });
-            } else {
-              setCheckingIn(true);
-            }
-          }}
-        >
-          Check in
-        </Button>
-      ) : (
-        <OpdAppointmentStatusBadge status={status} />
-      )}
-
+      <Button
+        size="xs"
+        disabled={checkIn.isPending}
+        onClick={() => {
+          if (patientId) {
+            checkIn.mutate({ orgSlug, appointmentId });
+          } else {
+            setCheckingIn(true);
+          }
+        }}
+      >
+        Check in
+      </Button>
       <ClientOnly fallback={null}>
         {checkingIn ? (
           <CheckInOpdAppointmentDialog
@@ -179,7 +166,6 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
 
   return (
     <Panel
-      minHeight="min-h-64"
       grow
       // Polling stops once a second page loads, so the notice and Refresh sit with Load more.
       footer={
@@ -207,137 +193,100 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
         isEmpty={items.length === 0}
         empty={
           search
-            ? "No appointments match this search."
-            : `No appointments ${dateRangeLabel(today, from, to, "Today").toLowerCase()}.`
+            ? "No matching appointments"
+            : `No appointments ${dateRangeLabel(today, from, to, "Today").toLowerCase()}`
         }
       >
-        <>
-          <div className="hidden md:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-16">Token</TableHead>
-                  <TableHead>Patient</TableHead>
-                  <TableHead className="w-20">Time</TableHead>
-                  <TableHead>Practitioner</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Balance</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((appointment) => (
-                  <TableRow key={appointment.id} className="relative">
-                    <TableCell>
-                      {appointment.tokenNumber === null ? (
-                        <span className="text-muted-foreground">·</span>
-                      ) : (
-                        <span className="font-mono text-sm font-semibold">
-                          {appointment.tokenNumber}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="max-w-0">
-                      <Link
-                        to="/$orgSlug/opd/$appointmentId"
-                        params={{ orgSlug, appointmentId: appointment.id }}
-                        title={
-                          appointment.patientName ?? appointment.callerName ?? "Unnamed caller"
-                        }
-                        className="block truncate text-left font-medium capitalize underline-offset-4 after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-                      >
-                        {appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
-                      </Link>
-                      <p
-                        className="truncate text-muted-foreground"
-                        title={appointment.patientMrn ?? appointment.callerPhone ?? "No phone"}
-                      >
-                        {appointment.patientMrn ?? appointment.callerPhone ?? "No phone"}
-                      </p>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {formatTime(appointment.dayOrderAt ?? appointment.createdAt, timeZone)}
-                    </TableCell>
-                    <TableCell className="max-w-0">
-                      <div
-                        className="truncate capitalize"
-                        title={practitionerDisplayName(appointment.practitionerName)}
-                      >
-                        {practitionerDisplayName(appointment.practitionerName)}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <OpdStatusCell
-                        orgSlug={orgSlug}
-                        appointmentId={appointment.id}
-                        patientId={appointment.patientId}
-                        callerName={appointment.callerName}
-                        callerPhone={appointment.callerPhone}
-                        status={appointment.status}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {appointment.balanceDue > ZERO ? (
-                        <Badge variant="destructive">
-                          {formatMoney(appointment.balanceDue, currency)} due
-                        </Badge>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          <ul className="md:hidden">
-            {items.map((appointment) => (
-              <li key={appointment.id} className="border-b text-xs">
-                <div className="flex min-w-0 items-start">
-                  <Link
-                    to="/$orgSlug/opd/$appointmentId"
-                    params={{ orgSlug, appointmentId: appointment.id }}
+        <DataList
+          columns={[
+            {
+              head: "Patient",
+              cell: (appointment) => (
+                <span className="inline-flex max-w-full items-center gap-2">
+                  <span
+                    className="truncate capitalize"
                     title={appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
-                    className="block min-h-10 min-w-0 flex-1 px-3 py-2 underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                   >
-                    <span className="flex min-w-0 items-center gap-2">
-                      {appointment.tokenNumber === null ? (
-                        <span className="shrink-0 font-mono text-muted-foreground">·</span>
-                      ) : (
-                        <span className="shrink-0 font-mono font-semibold">
-                          {appointment.tokenNumber}
-                        </span>
-                      )}
-                      <span className="min-w-0 flex-1 truncate font-medium capitalize">
-                        {appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
-                      </span>
-                    </span>
-                    <span className="mt-1 block truncate text-muted-foreground">
-                      {formatTime(appointment.dayOrderAt ?? appointment.createdAt, timeZone)}
-                      {" · "}
-                      <span className="capitalize">
-                        {practitionerDisplayName(appointment.practitionerName)}
-                      </span>
-                    </span>
-                    {appointment.balanceDue > ZERO ? (
-                      <span className="mt-1 block font-medium text-destructive">
-                        {formatMoney(appointment.balanceDue, currency)} due
-                      </span>
-                    ) : null}
-                  </Link>
-                  <div className="shrink-0 py-2 pr-3">
-                    <OpdStatusCell
-                      orgSlug={orgSlug}
-                      appointmentId={appointment.id}
-                      patientId={appointment.patientId}
-                      callerName={appointment.callerName}
-                      callerPhone={appointment.callerPhone}
-                      status={appointment.status}
-                    />
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </>
+                    {appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
+                  </span>
+                  <span
+                    className="truncate font-mono text-muted-foreground"
+                    title={appointment.patientMrn ?? appointment.callerPhone ?? "No phone"}
+                  >
+                    {appointment.patientMrn ?? appointment.callerPhone ?? "No phone"}
+                  </span>
+                </span>
+              ),
+              className: "max-w-0",
+            },
+            {
+              head: "Token",
+              cell: (appointment) =>
+                appointment.tokenNumber === null ? (
+                  <span className="text-muted-foreground">·</span>
+                ) : (
+                  <span className="font-mono font-medium tabular-nums">
+                    {appointment.tokenNumber}
+                  </span>
+                ),
+              className: "w-16",
+              mobile: "title",
+            },
+            {
+              head: "Time",
+              cell: (appointment) => (
+                <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+                  {formatTime(appointment.dayOrderAt ?? appointment.createdAt, timeZone)}
+                </span>
+              ),
+              className: "w-20",
+            },
+            {
+              head: "Practitioner",
+              cell: (appointment) => (
+                <span
+                  className="block truncate capitalize"
+                  title={practitionerDisplayName(appointment.practitionerName)}
+                >
+                  {practitionerDisplayName(appointment.practitionerName)}
+                </span>
+              ),
+              className: "max-w-0",
+            },
+            {
+              head: "Status",
+              cell: (appointment) => <OpdAppointmentStatusBadge status={appointment.status} />,
+              mobile: "title",
+            },
+            {
+              head: "Balance",
+              cell: (appointment) =>
+                appointment.balanceDue > ZERO ? (
+                  <Badge variant="destructive" className="tabular-nums">
+                    {formatMoney(appointment.balanceDue, currency)} due
+                  </Badge>
+                ) : null,
+              className: "text-right",
+            },
+          ]}
+          rows={items}
+          rowKey={(appointment) => appointment.id}
+          link={(appointment) => ({
+            to: "/$orgSlug/opd/$appointmentId",
+            params: { orgSlug, appointmentId: appointment.id },
+          })}
+          action={(appointment) =>
+            appointment.status === "booked" ? (
+              <OpdCheckInAction
+                orgSlug={orgSlug}
+                appointmentId={appointment.id}
+                patientId={appointment.patientId}
+                callerName={appointment.callerName}
+                callerPhone={appointment.callerPhone}
+              />
+            ) : null
+          }
+        />
       </ListState>
     </Panel>
   );
@@ -414,9 +363,7 @@ function OpdDeskView({
       <ListToolbar>
         <SearchInput
           label="Search outpatient"
-          placeholder={
-            followUps ? "Search patient, MRN or phone" : "Search name, MRN, phone or token"
-          }
+          placeholder={followUps ? "Patient, MRN, or phone" : "Name, MRN, phone, or token"}
           value={filters.q}
           fieldRef={field}
           onQueryChange={(next) => void setFilters({ q: next || undefined })}
@@ -476,7 +423,6 @@ function OpdDeskView({
 function NewAppointmentLink({ orgSlug }: { orgSlug: string }) {
   return (
     <Link className={buttonVariants()} to="/$orgSlug/opd/new" params={{ orgSlug }}>
-      <PlusIcon data-icon="inline-start" />
       <span className="sm:hidden">New</span>
       <span className="hidden sm:inline">New appointment</span>
     </Link>

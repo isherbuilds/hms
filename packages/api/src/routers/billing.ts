@@ -283,22 +283,25 @@ export const billingRouter = {
       .superRefine(requirePaymentReference),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
-    const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
-    const advanceId = Bun.randomUUIDv7();
 
-    const [patient] = await db
-      .select({
-        id: patients.id,
-        name: patients.name,
-        mrn: patients.mrn,
-        phone: patients.phone,
-        address: patients.address,
-        guardianRelation: patients.guardianRelation,
-        guardianName: patients.guardianName,
-      })
-      .from(patients)
-      .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, input.patientId)))
-      .limit(1);
+    const [{ settings, now, fiscalYear }, [patient]] = await Promise.all([
+      billingDocumentContext(scope.orgId),
+      db
+        .select({
+          id: patients.id,
+          name: patients.name,
+          mrn: patients.mrn,
+          phone: patients.phone,
+          address: patients.address,
+          guardianRelation: patients.guardianRelation,
+          guardianName: patients.guardianName,
+        })
+        .from(patients)
+        .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, input.patientId)))
+        .limit(1),
+    ]);
+
+    const advanceId = Bun.randomUUIDv7();
 
     if (!patient) {
       throw new ORPCError("NOT_FOUND", { message: "That patient no longer exists." });

@@ -9,7 +9,7 @@ import { SubmitButton } from "@hms/ui/components/submit-button";
 import { cn } from "@hms/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link, useBlocker, useNavigate } from "@tanstack/react-router";
-import { PlusIcon, Trash2Icon } from "lucide-react";
+import { Trash2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useFieldArray, useFormContext, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -336,15 +336,15 @@ function ReceiveGoodsRoute() {
 
       <PageBody width="max-w-6xl">
         <Form {...form}>
-          <form noValidate className="flex min-w-0 flex-col gap-6" onSubmit={submit}>
+          <form noValidate className="flex min-w-0 flex-col gap-4" onSubmit={submit}>
             <fieldset disabled={locked} className="contents">
               <section aria-labelledby="delivery-heading" className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+                  <div className="flex flex-col gap-1">
                     <h2 id="delivery-heading" className="text-sm font-medium">
                       Delivery details
                     </h2>
-                    <p className="pt-1 text-muted-foreground">
+                    <p className="text-muted-foreground">
                       {opening
                         ? "Enter each batch you counted on the shelf."
                         : "Work down the supplier bill. Use one line for each product and batch."}
@@ -353,7 +353,7 @@ function ReceiveGoodsRoute() {
                   <div
                     role="group"
                     aria-label="Receive as"
-                    className="flex w-fit gap-0.5 rounded-md border border-border p-0.5"
+                    className="flex w-fit gap-1 rounded-md border border-border p-1"
                   >
                     {[
                       { label: "Supplier", value: false },
@@ -376,15 +376,11 @@ function ReceiveGoodsRoute() {
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {opening ? null : (
                     <>
-                      <TextField
-                        name="supplierName"
-                        label="Supplier"
-                        placeholder="Name on the bill"
-                      />
+                      <TextField name="supplierName" label="Supplier" placeholder="Supplier name" />
                       <TextField
                         name="supplierReference"
                         label="Bill number"
-                        placeholder="Printed on the bill"
+                        placeholder="Bill number"
                       />
                       <TextField
                         name="billTotal"
@@ -416,12 +412,12 @@ function ReceiveGoodsRoute() {
                       type="button"
                       variant="outline"
                       onClick={() => lines.append(blankLine())}
+                      size="xs"
                     >
-                      <PlusIcon data-icon="inline-start" />
                       Add batch
                     </Button>
                     {canManageItems ? (
-                      <Button type="button" variant="link" size="sm" onClick={openNewProduct}>
+                      <Button type="button" variant="link" size="xs" onClick={openNewProduct}>
                         New product
                       </Button>
                     ) : null}
@@ -457,7 +453,7 @@ function ReceiveGoodsRoute() {
                 <TextField
                   name="note"
                   label="Note (optional)"
-                  placeholder="Anything the stock team should know"
+                  placeholder="Optional note for the stock team"
                   multiline
                   className="[&_textarea]:min-h-20"
                 />
@@ -641,7 +637,7 @@ function BatchRow({
           <TextField name={`lines.${index}.hsn`} label="HSN" placeholder="3004" />
           <div className="flex min-w-0 flex-col gap-1 tabular-nums md:items-end md:text-right">
             <span className="text-muted-foreground">Line total</span>
-            <span className="py-1.5 font-medium">
+            <span className="py-2 font-medium">
               {cost ? formatMoney(exactToPaise(cost.net), currency) : "—"}
             </span>
             {unitCost !== null ? (

@@ -49,7 +49,7 @@ known.
 | Treatment plan     | OPD visit Treatment panel         | Treatment plan / `treatmentPlan`    | One course of quoted work for one Patient and Practitioner, named by its items                                                             |
 | Sitting            | OPD and Treatment surfaces        | Plan-linked OPD Appointment         | One attendance in a Treatment plan; the count is derived from linked appointments                                                          |
 | Follow-ups         | `/$orgSlug/opd?status=follow-ups` | Treatment follow-up read model      | Open plans without a booked sitting, due or undated, ordered by the requested next date; a Status filter of the OPD desk, not its own page |
-| Advance Receipt    | Patient Billing tab               | Advance receipt / `advanceReceipt`  | Money held for future services; it is Credit and a liability until allocation                                                              |
+| Advance Receipt    | Patient Billing route             | Advance receipt / `advanceReceipt`  | Money held for future services; it is Credit and a liability until allocation                                                              |
 | Credit             | Patient and settlement views      | Unallocated advance balance         | What is left of a Patient's Advance Receipts; the cashier applies it to an Invoice                                                         |
 | Post to this visit | OPD visit Treatment panel         | `treatment.postToVisit`             | Turns one quoted plan item into a Charge on the sitting that delivered it                                                                  |
 | Reports            | `/$orgSlug/reports`               | Report/read model                   | Reproducible views over source records; never another write model                                                                          |
@@ -178,6 +178,12 @@ Registration keeps name, phone, sex, and birth date or age visible. Native
 disclosure sections hold Contacts, Personal details, Sponsor, and Medical
 details. They start closed, retain draft values when closed, and open when a
 contained field has a validation error.
+
+The patient record has separate Record, Visits, Billing, and Treatment routes.
+Record opens with clinical notes and contact details; identity, guardian, and
+payer details are expandable. Billing owns the account totals, invoices, and
+expandable advance receipt history. The hospital Billing section separates open
+money, refunds due, and advances held into their own routes.
 
 A patient can have a relation (S/o, D/o, W/o, H/o, or C/o) and name, with an
 optional mobile number. The registration and edit form can copy this person into

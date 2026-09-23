@@ -10,7 +10,7 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 import { file } from "./file";
 
 // Receiving without purchase orders or a supplier ledger. A supplier delivery prices each
@@ -21,9 +21,7 @@ export const goodsReceipts = pgTable(
   "goods_receipts",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     opening: boolean("opening").default(false).notNull(),
     supplierName: text("supplier_name"),
     supplierReference: text("supplier_reference"),

@@ -1,4 +1,3 @@
-import { Button } from "@hms/ui/components/button";
 import {
   Table,
   TableBody,
@@ -9,12 +8,12 @@ import {
 } from "@hms/ui/components/table";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { DownloadIcon, PrinterIcon } from "lucide-react";
 import { z } from "zod";
 
 import { OPD_STATUS_LABELS, OpdAppointmentStatusBadge } from "@/components/opd-appointment";
 import { DateFilter } from "@/components/list-filter";
 import { ErrorNote, ListToolbar, PageBody, PageHeader } from "@/components/page";
+import { ReportActions } from "@/components/report-actions";
 import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
@@ -143,18 +142,7 @@ function OpdRegisterRoute() {
     <>
       <PageHeader
         title="OPD register"
-        action={
-          <>
-            <Button disabled={!report.data} onClick={exportReport}>
-              <DownloadIcon data-icon="inline-start" />
-              Export Excel
-            </Button>
-            <Button variant="outline" disabled={!report.data} onClick={() => window.print()}>
-              <PrinterIcon data-icon="inline-start" />
-              Print / PDF
-            </Button>
-          </>
-        }
+        action={<ReportActions disabled={!report.data} onExport={exportReport} />}
       />
       <PageBody>
         <div className="print:hidden">
@@ -165,7 +153,7 @@ function OpdRegisterRoute() {
         {report.isPending ? null : report.isError ? (
           <ErrorNote title="Could not load the OPD register" error={report.error} />
         ) : (
-          <section data-report-print className="space-y-4">
+          <section data-report-print className="flex flex-col gap-4">
             <header className="border-b pb-2">
               <h1 className="text-sm font-medium">OPD register</h1>
               <p className="text-muted-foreground">

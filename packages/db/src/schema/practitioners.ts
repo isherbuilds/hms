@@ -10,7 +10,7 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 import { catalogItems } from "./catalog-items";
 import { departments } from "./departments";
 
@@ -21,9 +21,7 @@ export const practitioners = pgTable(
   "practitioners",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     name: text("name").notNull(),
     departmentId: text("department_id").notNull(),
     registrationNumber: text("registration_number"),

@@ -54,11 +54,11 @@ export function LandingClosing() {
         id="contact"
         className="mx-auto w-full max-w-336 scroll-mt-16 px-5 pt-20 sm:px-6 sm:pt-28"
       >
-        <div className="relative overflow-hidden rounded-2xl px-6 py-14 sm:px-16 sm:py-16">
+        <div className="relative overflow-hidden rounded-xl px-6 py-14 sm:px-16 sm:py-16">
           <Wash />
           {/* The wash never inverts, so everything drawn on it uses the pinned
               ink from `wash.tsx` rather than a theme token. */}
-          <div className="relative flex flex-col items-center gap-5 text-center">
+          <div className="relative flex flex-col items-center gap-4 text-center">
             <h2
               className={`max-w-2xl text-3xl font-medium tracking-tight text-balance sm:text-4xl ${ON_WASH}`}
             >
@@ -67,7 +67,7 @@ export function LandingClosing() {
             <p className={`max-w-md text-lg text-pretty ${ON_WASH_MUTED}`}>
               One hospital, one afternoon of setup, and the desk is on it the next day.
             </p>
-            <div className="mt-1 flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-center">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-center">
               {/* Same pairing as the hero: the walkthrough is the primary ask,
                   because "Open your hospital" is a login wall to anyone
                   without an account. */}
@@ -95,7 +95,7 @@ export function LandingClosing() {
 
       <footer className="mx-auto w-full max-w-336 px-5 pt-20 sm:px-6 sm:pt-24">
         <div className="grid gap-10 border-t border-border pt-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-4">
             <p className="max-w-xs text-sm text-pretty">
               One system, from the first token of the morning to the last rupee of the day.
             </p>

@@ -59,7 +59,7 @@ export function AdvanceForm({
 
   return (
     <>
-      <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
+      <Button type="button" variant="outline" onClick={() => setOpen(true)}>
         Take advance
       </Button>
       {open ? (

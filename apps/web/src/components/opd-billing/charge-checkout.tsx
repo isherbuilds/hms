@@ -143,9 +143,9 @@ export function ChargeCheckout({
     <div
       className={cn("grid gap-4", canSettle && "lg:grid-cols-[minmax(0,3fr)_minmax(18rem,2fr)]")}
     >
-      <section className="min-w-0">
+      <section className="flex min-w-0 flex-col gap-3">
         {chargesChanged ? (
-          <div className="mb-3 flex items-center justify-between gap-3 border-l-2 border-destructive pl-3">
+          <div className="flex items-center justify-between gap-3 border-l-2 border-destructive pl-3">
             <p className="text-destructive">
               Charges changed on another terminal. Your reviewed total is preserved.
             </p>

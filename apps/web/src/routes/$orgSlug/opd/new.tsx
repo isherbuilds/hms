@@ -4,7 +4,6 @@ import { z } from "zod";
 
 import { OpdIntakeForm } from "@/components/opd-intake-form";
 import { PageBody, PageHeader } from "@/components/page";
-import { formatBusinessDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
 import { requireOrgPermission } from "@/lib/route-permission";
@@ -59,7 +58,6 @@ export const Route = createFileRoute("/$orgSlug/opd/new")({
 function NewOpdAppointmentRoute() {
   const { orgSlug } = Route.useParams();
   const { seedPatient, seedTreatmentPlanId } = Route.useLoaderData();
-  const { today } = useOrgDateTime();
 
   const departments = useSuspenseQuery(
     orpc.staff.listDepartments.queryOptions({ input: { orgSlug } }),
@@ -73,7 +71,6 @@ function NewOpdAppointmentRoute() {
     <>
       <PageHeader title="Appointment" />
       <PageBody className="mx-auto w-full max-w-6xl pb-24 lg:pb-4">
-        <p className="text-muted-foreground">{formatBusinessDate(today)}</p>
         <OpdIntakeForm
           // The seed only feeds the form's defaults, so a new `?patientId` remounts it.
           key={`${seedPatient?.id ?? ""}:${seedTreatmentPlanId ?? ""}`}

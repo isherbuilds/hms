@@ -1,14 +1,12 @@
 import { date, index, pgTable, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 
 export const journalEntries = pgTable(
   "journal_entries",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     entryDate: date("entry_date", { mode: "string" }).notNull(),
     sourceType: text("source_type").notNull(),
     sourceId: text("source_id").notNull(),

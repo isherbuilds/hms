@@ -50,10 +50,9 @@ export function BillingDocumentRoute(props: BillingDocumentRouteProps) {
   );
 }
 
-// The header names the paper, not the page: which document this is and who it is
-// for, so a re-print can be checked against the patient in front of the counter
-// without reading the PDF. The PDF renderer picks the same numbers server-side; a
-// mismatch here would only mislabel the header, never the document.
+// The header identifies the paper and patient for a counter-side reprint check.
+// The PDF renderer picks the same numbers server-side; a mismatch here only
+// mislabels the header, never the document.
 function documentNumber(data: InvoiceBundle, request: BillingDocumentRequest) {
   switch (request.kind) {
     case "invoice":
@@ -96,13 +95,23 @@ function BillingDocumentView({
   return (
     <>
       <div className="contents lg:hidden">
-        <PageHeader title={number ? `${kind} ${number}` : kind} />
-        {patient ? (
-          <p className="shrink-0 truncate px-4 py-2 text-xs text-muted-foreground">
-            <span className="capitalize">{patient.patientName}</span>
-            {patient.patientMrn ? ` · MRN ${patient.patientMrn}` : null}
-          </p>
-        ) : null}
+        <PageHeader
+          title={kind}
+          description={
+            number || patient ? (
+              <>
+                {number ? <span className="font-mono">{number}</span> : null}
+                {number && patient ? " · " : null}
+                {patient?.patientMrn ? (
+                  <>
+                    <span className="font-mono">{patient.patientMrn}</span> ·{" "}
+                  </>
+                ) : null}
+                {patient ? <span className="capitalize">{patient.patientName}</span> : null}
+              </>
+            ) : undefined
+          }
+        />
       </div>
       <iframe title={kind} src={pdfUrl} className="min-h-0 w-full flex-1 border-0" />
     </>

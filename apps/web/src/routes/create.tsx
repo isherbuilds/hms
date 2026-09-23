@@ -108,9 +108,9 @@ function CreateOrganizationForm() {
   return (
     <Form {...form}>
       <form noValidate onSubmit={submit} className="flex flex-col gap-6">
-        <div>
+        <div className="flex flex-col gap-1">
           <h2 className="text-sm font-medium">Organization details</h2>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          <p className="text-xs leading-5 text-muted-foreground">
             Creation is restricted to the deployment&apos;s founding operator.
           </p>
         </div>
@@ -143,7 +143,12 @@ function OrganizationNameField({ onNameChange }: { onNameChange: (name: string) 
         <FormItem>
           <FormLabel className="text-xs font-medium">Organization name</FormLabel>
           <FormControl>
-            <Input {...field} placeholder="Mercy General Hospital" autoComplete="organization" />
+            <Input
+              {...field}
+              placeholder="Mercy General Hospital"
+              autoComplete="organization"
+              autoFocus
+            />
           </FormControl>
           <FormMessage />
         </FormItem>
@@ -156,7 +161,7 @@ function OrganizationSlugField({ onSlugEdit }: { onSlugEdit: () => void }) {
   const { control, setValue } = useFormContext();
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
+    <div className="flex flex-col gap-2">
       <RegisteredFormField
         name="organizationSlug"
         rules={{

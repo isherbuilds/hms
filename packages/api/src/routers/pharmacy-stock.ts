@@ -504,7 +504,6 @@ export const pharmacyStockRouter = {
     const found = await db
       .select({
         productId: products.id,
-        catalogItemId: catalogItems.id,
         name: products.name,
         code: catalogItems.code,
         genericName: products.genericName,
@@ -602,7 +601,6 @@ export const pharmacyStockRouter = {
     const rows = await db
       .select({
         batchId: stockBatches.id,
-        productId: stockBatches.productId,
         name: products.name,
         code: catalogItems.code,
         stockUnit: products.stockUnit,

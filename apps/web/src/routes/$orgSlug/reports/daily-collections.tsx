@@ -1,4 +1,3 @@
-import { Button } from "@hms/ui/components/button";
 import {
   Table,
   TableBody,
@@ -9,11 +8,11 @@ import {
 } from "@hms/ui/components/table";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { DownloadIcon, PrinterIcon } from "lucide-react";
 import { z } from "zod";
 
 import { DateFilter } from "@/components/list-filter";
 import { ErrorNote, ListToolbar, PageBody, PageHeader } from "@/components/page";
+import { ReportActions } from "@/components/report-actions";
 import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
@@ -137,18 +136,7 @@ function DailyCollectionsRoute() {
     <>
       <PageHeader
         title="Daily collections"
-        action={
-          <>
-            <Button disabled={!report.data} onClick={exportReport}>
-              <DownloadIcon data-icon="inline-start" />
-              Export Excel
-            </Button>
-            <Button variant="outline" disabled={!report.data} onClick={() => window.print()}>
-              <PrinterIcon data-icon="inline-start" />
-              Print / PDF
-            </Button>
-          </>
-        }
+        action={<ReportActions disabled={!report.data} onExport={exportReport} />}
       />
       <PageBody>
         <div className="print:hidden">
@@ -159,7 +147,7 @@ function DailyCollectionsRoute() {
         {report.isPending ? null : report.isError ? (
           <ErrorNote title="Could not load daily collections" error={report.error} />
         ) : (
-          <section data-report-print className="space-y-4">
+          <section data-report-print className="flex flex-col gap-4">
             <header className="border-b pb-2">
               <h1 className="text-sm font-medium">Daily collections</h1>
               <p className="text-muted-foreground">
@@ -237,8 +225,8 @@ function DailyCollectionsRoute() {
               </Table>
             </div>
 
-            <section className="max-w-xl space-y-2">
-              <h2 className="font-medium uppercase tracking-wide">By method</h2>
+            <section className="flex max-w-xl flex-col gap-2">
+              <h2 className="min-h-6 text-muted-foreground">By method</h2>
               <div className="ring-1 ring-border">
                 <Table>
                   <TableHeader>

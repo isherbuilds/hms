@@ -12,7 +12,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organization } from "./auth";
+import { orgIdColumn } from "./auth";
 
 export const CATALOG_CATEGORIES = [
   "consultation",
@@ -35,9 +35,7 @@ export const catalogItems = pgTable(
   "catalog_items",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     name: text("name").notNull(),
     code: text("code").notNull(),
     category: text("category", { enum: CATALOG_CATEGORIES }).notNull(),

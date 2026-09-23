@@ -86,33 +86,40 @@ export const pharmacyRouter = {
   ).handler(async ({ context, input }) => {
     const { scope } = context;
 
-    const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
+    const [{ settings, now, fiscalYear }, buyer] = await Promise.all([
+      billingDocumentContext(scope.orgId),
+      (async () => {
+        if (!("patientId" in input.buyer)) {
+          return {
+            id: null,
+            name: input.buyer.name,
+            mrn: null,
+            phone: input.buyer.phone ?? null,
+          };
+        }
+
+        const [patient] = await db
+          .select({
+            id: patients.id,
+            name: patients.name,
+            mrn: patients.mrn,
+            phone: patients.phone,
+          })
+          .from(patients)
+          .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, input.buyer.patientId)))
+          .limit(1);
+
+        if (!patient) {
+          throw new ORPCError("NOT_FOUND", { message: "That patient no longer exists." });
+        }
+
+        return patient;
+      })(),
+    ]);
+
     const today = businessDate(now, settings.timeZone);
     const saleId = Bun.randomUUIDv7();
     const invoiceId = Bun.randomUUIDv7();
-
-    const buyer = await (async () => {
-      if (!("patientId" in input.buyer)) {
-        return {
-          id: null,
-          name: input.buyer.name,
-          mrn: null,
-          phone: input.buyer.phone ?? null,
-        };
-      }
-
-      const [patient] = await db
-        .select({ id: patients.id, name: patients.name, mrn: patients.mrn, phone: patients.phone })
-        .from(patients)
-        .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, input.buyer.patientId)))
-        .limit(1);
-
-      if (!patient) {
-        throw new ORPCError("NOT_FOUND", { message: "That patient no longer exists." });
-      }
-
-      return patient;
-    })();
 
     if (input.applyCredit > 0n && buyer.id === null) {
       throw new ORPCError("BAD_REQUEST", {
@@ -864,7 +871,6 @@ export const pharmacyRouter = {
     const items = await db
       .select({
         saleId: pharmacySales.id,
-        invoiceId: invoices.id,
         invoiceNumber: invoices.invoiceNumber,
         businessDate: invoices.businessDate,
         buyerName: pharmacySales.buyerName,

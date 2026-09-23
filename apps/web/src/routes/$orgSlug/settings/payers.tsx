@@ -21,14 +21,6 @@ import {
 } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hms/ui/components/table";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
@@ -36,7 +28,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { TextField } from "@/components/form-fields";
-import { ListState, PageBody, PageHeader, Panel } from "@/components/page";
+import { DataList, ListState, PageBody, PageHeader, Panel } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
@@ -99,38 +91,34 @@ function PayersRoute() {
             query={payers}
             errorTitle="Could not load payers"
             isEmpty={rows.length === 0}
-            empty="No payers yet."
+            empty="No payers yet"
           >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  {canUpdate ? <TableHead className="text-right">Action</TableHead> : null}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((payer) => (
-                  <TableRow key={payer.id}>
-                    <TableCell className="font-medium">{payer.name}</TableCell>
-                    <TableCell>{PAYER_TYPE_LABELS[payer.type]}</TableCell>
-                    <TableCell>
-                      <Badge variant={payer.active ? "secondary" : "muted"}>
-                        {payer.active ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    {canUpdate ? (
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="xs" onClick={() => setEditing(payer)}>
-                          Edit
-                        </Button>
-                      </TableCell>
-                    ) : null}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataList
+              columns={[
+                { head: "Name", cell: (payer) => payer.name },
+                { head: "Type", cell: (payer) => PAYER_TYPE_LABELS[payer.type] },
+                {
+                  head: "Status",
+                  cell: (payer) => (
+                    <Badge variant={payer.active ? "secondary" : "muted"}>
+                      {payer.active ? "Active" : "Inactive"}
+                    </Badge>
+                  ),
+                  mobile: "title",
+                },
+              ]}
+              rows={rows}
+              rowKey={(payer) => payer.id}
+              action={
+                canUpdate
+                  ? (payer) => (
+                      <Button variant="ghost" size="xs" onClick={() => setEditing(payer)}>
+                        Edit
+                      </Button>
+                    )
+                  : undefined
+              }
+            />
           </ListState>
         </Panel>
       </PageBody>
@@ -234,16 +222,14 @@ function PayerDialog(props: PayerDialogProps) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{payer ? "Edit payer" : "New payer"}</DialogTitle>
-            <DialogDescription>
-              {payer
-                ? "Update the payer name, type, or availability."
-                : "Add an organization that can sponsor patient care."}
-            </DialogDescription>
+            {!payer ? (
+              <DialogDescription>Organizations that sponsor patient care</DialogDescription>
+            ) : null}
           </DialogHeader>
           <Form {...form}>
             <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <TextField name="name" label="Name" disabled={isPending} />
+                <TextField name="name" label="Name" autoFocus disabled={isPending} />
                 <RegisteredFormField
                   name="type"
                   render={({ field }) => (

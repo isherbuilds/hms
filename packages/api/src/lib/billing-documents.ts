@@ -92,7 +92,7 @@ export async function lockInvoice(
   return invoice;
 }
 
-export async function applyPatientCreditTx(
+async function applyPatientCreditTx(
   tx: DbTransaction,
   args: {
     scope: { orgId: string; userId: string };

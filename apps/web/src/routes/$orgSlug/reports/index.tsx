@@ -1,7 +1,8 @@
 import { authorize } from "@hms/auth/access";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { ChevronRightIcon } from "lucide-react";
 
-import { PageBody, PageHeader } from "@/components/page";
+import { PageBody, PageHeader, Panel } from "@/components/page";
 import { useMembership } from "@/lib/membership";
 import { REPORT_LINKS } from "@/lib/navigation";
 
@@ -12,35 +13,45 @@ export const Route = createFileRoute("/$orgSlug/reports/")({
 
 function ReportsIndexRoute() {
   const { orgSlug } = Route.useParams();
-  // The sidebar and settings strip filter the same way; this hub was the one list
-  // that offered destinations it could not open.
   const roles = useMembership(orgSlug, (membership) => membership.roles);
   const visible = REPORT_LINKS.filter(({ permission }) => authorize(roles, permission));
 
   return (
     <>
       <PageHeader title="Reports" />
-      <PageBody>
-        <p className="text-muted-foreground">
+      <PageBody width="max-w-4xl">
+        <Panel label="Available reports">
+          <nav aria-label="Available reports">
+            <ul className="divide-y divide-border">
+              {visible.map(({ to, icon: Icon, label, description }) => (
+                <li key={to}>
+                  <Link
+                    to={to}
+                    params={{ orgSlug }}
+                    data-focus-inset
+                    className="flex items-start gap-3 px-3 py-4 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted"
+                  >
+                    <Icon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="flex min-w-0 flex-1 flex-col gap-1">
+                      <span className="font-medium">{label}</span>
+                      <span className="text-pretty leading-relaxed text-muted-foreground">
+                        {description}
+                      </span>
+                    </span>
+                    <ChevronRightIcon
+                      aria-hidden="true"
+                      className="size-3.5 shrink-0 self-center text-muted-foreground"
+                    />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </Panel>
+        <p className="max-w-2xl text-pretty leading-relaxed text-muted-foreground">
           These reports cover transactions recorded in this HMS. Opening balances, non-billing
           activity, and final accounts remain in the accountant's books.
         </p>
-        <div className="grid gap-3 lg:grid-cols-3">
-          {visible.map(({ to, label, description, icon: Icon }) => (
-            <Link
-              key={to}
-              to={to}
-              params={{ orgSlug }}
-              className="flex min-h-28 flex-col gap-2 p-3 ring-1 ring-border [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/40"
-            >
-              <span className="flex items-center gap-2 font-medium">
-                <Icon className="size-3.5" />
-                {label}
-              </span>
-              <span className="text-muted-foreground">{description}</span>
-            </Link>
-          ))}
-        </div>
       </PageBody>
     </>
   );

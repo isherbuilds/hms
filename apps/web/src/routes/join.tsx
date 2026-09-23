@@ -108,17 +108,17 @@ function OrganizationPicker({ userId }: { userId: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
+      <div className="flex flex-col gap-1">
         <h2 className="text-sm font-medium">Choose where to continue</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Review an invitation or open an existing organization.
         </p>
       </div>
       {pending.length > 0 && (
-        <section aria-labelledby="pending-invitations">
+        <section aria-labelledby="pending-invitations" className="flex flex-col gap-2">
           <h3
             id="pending-invitations"
-            className="mb-2 font-mono text-xs tracking-widest text-muted-foreground"
+            className="font-mono text-xs tracking-widest text-muted-foreground"
           >
             INVITATIONS
           </h3>
@@ -133,7 +133,7 @@ function OrganizationPicker({ userId }: { userId: string }) {
                 <Link
                   to="/join"
                   search={{ invitation: invitation.id }}
-                  className={buttonVariants({ size: "sm" })}
+                  className={buttonVariants({ size: "xs" })}
                 >
                   <ArrowRightIcon />
                   Review invitation
@@ -144,10 +144,10 @@ function OrganizationPicker({ userId }: { userId: string }) {
         </section>
       )}
       {organizations.length > 0 && (
-        <section aria-labelledby="your-organizations">
+        <section aria-labelledby="your-organizations" className="flex flex-col gap-2">
           <h3
             id="your-organizations"
-            className="mb-2 font-mono text-xs tracking-widest text-muted-foreground"
+            className="font-mono text-xs tracking-widest text-muted-foreground"
           >
             YOUR ORGANIZATIONS
           </h3>
@@ -173,9 +173,9 @@ function OrganizationPicker({ userId }: { userId: string }) {
         </section>
       )}
       {pending.length === 0 && organizations.length === 0 && (
-        <div className="border-l-2 border-border pl-3">
+        <div className="flex flex-col gap-1 border-l-2 border-border pl-3">
           <p className="text-xs font-medium">No organization access yet</p>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          <p className="text-xs leading-5 text-muted-foreground">
             Ask an administrator to invite this account, then return using the invitation link.
           </p>
         </div>

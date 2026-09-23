@@ -1,7 +1,7 @@
 import { boolean, date, pgTable, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 import type { EmergencyContactRelation, GuardianRelation } from "./patient-relations";
 
 export const PATIENT_SEX = ["male", "female", "other", "unknown"] as const;
@@ -10,9 +10,7 @@ export const patients = pgTable(
   "patients",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     mrn: text("mrn").notNull(),
     name: text("name").notNull(),
     phone: text("phone").notNull(),

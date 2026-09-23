@@ -181,7 +181,6 @@ export function LandingNav() {
 
         <div className="flex items-center gap-2 justify-self-end">
           <Button
-            size="sm"
             variant="outline"
             className="hidden font-normal normal-case sm:inline-flex"
             nativeButton={false}
@@ -190,7 +189,6 @@ export function LandingNav() {
             Contact us
           </Button>
           <Button
-            size="sm"
             className="font-normal normal-case"
             nativeButton={false}
             render={<Link to="/login" />}
@@ -217,7 +215,7 @@ export function LandingNav() {
           strip showing keeps the page obviously still there, and `overscroll-auto`
           lets a flick past the menu's end carry on scrolling it. */}
       {menu ? (
-        <div className="absolute inset-x-0 top-14 max-h-[calc(100svh-8rem)] animate-in overflow-y-auto overscroll-auto rounded-b-2xl border-b border-border bg-background shadow-lg duration-200 ease-out fade-in slide-in-from-top-2 motion-reduce:animate-none md:hidden">
+        <div className="absolute inset-x-0 top-14 max-h-[calc(100svh-8rem)] animate-in overflow-y-auto overscroll-auto rounded-b-xl border-b border-border bg-background shadow-lg duration-150 ease-out fade-in slide-in-from-top-2 motion-reduce:animate-none md:hidden">
           <nav className="flex flex-col gap-6 px-5 py-6 text-sm" aria-label="Main">
             {SHELVES.map((shelf) => (
               <div key={shelf.name} className="flex flex-col gap-1">
@@ -229,7 +227,7 @@ export function LandingNav() {
                     onClick={() => setMenu(false)}
                     className="flex gap-3 rounded-lg p-3 transition-colors duration-100 ease-out hover:bg-muted"
                   >
-                    <item.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <item.icon className="size-4 shrink-0 self-start text-muted-foreground" />
                     <span className="flex flex-col gap-0.5">
                       <span className="font-normal">{item.label}</span>
                       <span className="text-xs text-muted-foreground">{item.blurb}</span>

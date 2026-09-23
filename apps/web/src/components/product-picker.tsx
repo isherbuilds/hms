@@ -100,7 +100,7 @@ export function ProductPicker({
           aria-describedby={ariaDescribedBy}
           aria-invalid={ariaInvalid}
           aria-label={ariaLabel}
-          placeholder="Search product"
+          placeholder="Product name or code"
           disabled
         />
       }
@@ -129,7 +129,7 @@ export function ProductPicker({
           "aria-describedby": ariaDescribedBy,
           "aria-invalid": ariaInvalid,
           "aria-label": ariaLabel,
-          placeholder: "Search product",
+          placeholder: "Product name or code",
           autoComplete: "off",
         }}
         itemClassName="px-3 py-2"

@@ -131,15 +131,19 @@ export function InvoiceAccount({
           <Link
             to="/$orgSlug/billing/invoices/$invoiceId"
             params={{ orgSlug, invoiceId: invoice.id }}
-            className="font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+            className="font-mono font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
           >
             {invoice.invoiceNumber}
           </Link>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground tabular-nums">
             Total {formatMoney(invoice.grandTotal, invoice.currency)} · Paid / credit{" "}
             {formatMoney(invoice.paymentsTotal + invoice.allocationsTotal, invoice.currency)}
           </p>
-          <p className={isRefundDue ? "font-medium text-destructive" : "font-medium"}>
+          <p
+            className={
+              isRefundDue ? "font-medium text-destructive tabular-nums" : "font-medium tabular-nums"
+            }
+          >
             {isRefundDue
               ? `Refund due ${formatMoney(-invoice.outstanding, invoice.currency)}`
               : `Outstanding ${formatMoney(invoice.outstanding, invoice.currency)}`}
@@ -197,12 +201,12 @@ export function InvoiceAccount({
                 to="/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId"
                 params={{ orgSlug, invoiceId: invoice.id, paymentId: payment.id }}
               >
-                Receipt {payment.receiptNumber}
+                Receipt <span className="font-mono">{payment.receiptNumber}</span>
               </Link>
             ))}
             {detail.data.creditNotes.map((note) => (
               <Link
-                key={note.id}
+                className="font-mono"
                 to="/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId"
                 params={{ orgSlug, invoiceId: invoice.id, creditNoteId: note.id }}
               >
@@ -214,6 +218,7 @@ export function InvoiceAccount({
                 key={refund.id}
                 to="/$orgSlug/billing/invoices/$invoiceId/refund/$refundId"
                 params={{ orgSlug, invoiceId: invoice.id, refundId: refund.id }}
+                className="font-mono"
               >
                 {refund.refundNumber}
               </Link>
@@ -292,9 +297,7 @@ function PaymentDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Record payment</DialogTitle>
-          <DialogDescription>
-            Record funds received against this invoice. Split across up to four methods.
-          </DialogDescription>
+          <DialogDescription>Split this payment across up to four methods.</DialogDescription>
         </DialogHeader>
         <RecordPaymentForm
           orgSlug={orgSlug}
@@ -389,7 +392,7 @@ function CreditLines({
             {lines.map((line, index) => (
               <TableRow key={line.id}>
                 <TableCell>{line.description}</TableCell>
-                <TableCell>{formatMoney(line.gross, currency)}</TableCell>
+                <TableCell className="text-right">{formatMoney(line.gross, currency)}</TableCell>
                 <TableCell>
                   <FormField
                     control={control}
@@ -456,7 +459,7 @@ function RefundDialog({
   return (
     <FormDialog
       title="Record refund"
-      description="Return an available credit-note amount."
+      description="Refund an available credit-note balance."
       submitLabel="Record refund"
       schema={refundSchema}
       defaultValues={{ creditNoteId: "", method: "cash", amount: "", reference: "" }}

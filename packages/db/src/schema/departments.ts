@@ -1,6 +1,6 @@
 import { foreignKey, pgTable, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
 
-import { organization } from "./auth";
+import { orgIdColumn } from "./auth";
 import { catalogItems } from "./catalog-items";
 
 // No delete path — departments are renamed, not removed.
@@ -8,9 +8,7 @@ export const departments = pgTable(
   "departments",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     name: text("name").notNull(),
     defaultConsultFeeItemId: text("default_consult_fee_item_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

@@ -11,7 +11,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 import { advanceReceipts } from "./advance-receipts";
 import { creditNotes } from "./credit-notes";
 import { invoices } from "./invoices";
@@ -21,9 +21,7 @@ export const refunds = pgTable(
   "refunds",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     invoiceId: text("invoice_id"),
     creditNoteId: text("credit_note_id"),
     advanceReceiptId: text("advance_receipt_id"),

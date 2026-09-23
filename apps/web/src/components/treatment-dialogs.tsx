@@ -314,7 +314,7 @@ function ProcedureSearch({
           ...inputProps,
           name: "catalogItemId",
           autoComplete: "off",
-          placeholder: "Search procedure code or name",
+          placeholder: "Procedure code or name",
         }}
         itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-3"
         renderItem={(item) => (
@@ -363,11 +363,12 @@ function ItemFields({ orgSlug }: { orgSlug: string }) {
           <FormItem className="sm:col-span-2">
             <FormLabel>Procedure</FormLabel>
             {field.value ? (
-              <div className="flex items-center gap-3 rounded-md border px-3 py-2">
+              <div className="flex items-center gap-3 border-b px-3 py-2">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{field.value.name}</span>
-                  <span className="font-mono text-muted-foreground">
-                    {field.value.code} · {formatDecimal(field.value.unitPrice)}
+                  <span className="text-muted-foreground">
+                    <span className="font-mono">{field.value.code}</span> ·{" "}
+                    <span className="tabular-nums">{formatDecimal(field.value.unitPrice)}</span>
                   </span>
                 </span>
                 <Button

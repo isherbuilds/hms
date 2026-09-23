@@ -31,7 +31,7 @@ function LoginRoute() {
           aria-hidden
           className="pointer-events-none absolute -bottom-32 -left-20 size-80 rounded-full bg-indigo-500/15 blur-3xl"
         />
-        <div className="relative flex w-full flex-col justify-end gap-2 p-8">
+        <div className="relative flex w-full flex-col justify-end gap-2 p-6">
           <p className="max-w-md text-xl leading-snug font-medium tracking-tight text-white">
             From the first token of the morning to the day-close, one ledger.
           </p>
@@ -41,7 +41,7 @@ function LoginRoute() {
         </div>
       </div>
 
-      <div className="flex w-full flex-col items-center justify-center p-8 lg:w-1/2">
+      <div className="flex w-full flex-col items-center justify-center p-6 lg:w-1/2">
         <div className="flex h-full w-full max-w-sm flex-col">
           <div className="flex flex-1 flex-col justify-center gap-6">
             <div className="flex flex-col gap-1 text-center">

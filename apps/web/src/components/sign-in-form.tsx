@@ -37,7 +37,7 @@ export function SignInForm({ email, onSuccess }: { email?: string; onSuccess?: (
       <form noValidate onSubmit={submit} className="flex flex-col gap-6">
         <FormFieldset className="flex flex-col gap-6">
           <EmailField readOnly={email !== undefined} />
-          <PasswordField autoComplete="current-password" />
+          <PasswordField autoComplete="current-password" autoFocus={email !== undefined} />
           <AuthFormFooter>Sign in</AuthFormFooter>
         </FormFieldset>
         <p className="text-center text-xs text-muted-foreground">

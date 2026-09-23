@@ -19,21 +19,10 @@ import { ErrorNote, ListState, LoadMore, Panel } from "@/components/page";
 import { formatMoney, ZERO } from "@/lib/money";
 import { formatBusinessDate, formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { formatFileSize, openOrgFile } from "@/lib/org-files";
+import { patientVisitsQuery } from "@/lib/patient-queries";
 import { orpc } from "@/lib/orpc";
 import { errorMessage } from "@/lib/orpc-error";
 import { practitionerDisplayName } from "@/lib/practitioner-name";
-
-const visitsQuery = (orgSlug: string, patientId: string) =>
-  orpc.patient.visits.infiniteOptions({
-    input: (cursor: { businessDate: string; id: string } | undefined) => ({
-      orgSlug,
-      patientId,
-      cursor,
-      limit: 20,
-    }),
-    initialPageParam: undefined,
-    getNextPageParam: (page) => page.nextCursor ?? undefined,
-  });
 
 function VisitPanel({
   orgSlug,
@@ -63,7 +52,7 @@ function VisitPanel({
       <section className="flex flex-col gap-1">
         <p className="min-h-6 text-xs text-muted-foreground">Prescriptions and reports</p>
         {prescriptions.length === 0 ? (
-          <p className="text-muted-foreground">Nothing attached.</p>
+          <p className="text-muted-foreground">No files attached</p>
         ) : (
           <ul className="flex flex-col gap-1">
             {prescriptions.map((file) => (
@@ -86,7 +75,7 @@ function VisitPanel({
                     <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
                   )}
                   <span className="min-w-0 flex-1 truncate">{file.name}</span>
-                  <span className="shrink-0 text-muted-foreground">
+                  <span className="shrink-0 text-muted-foreground tabular-nums">
                     {formatFileSize(file.size)}
                   </span>
                 </button>
@@ -99,7 +88,7 @@ function VisitPanel({
       <section className="flex flex-col gap-1">
         <p className="min-h-6 text-xs text-muted-foreground">Charges</p>
         {billable.length === 0 ? (
-          <p className="text-muted-foreground">Nothing was charged for this visit.</p>
+          <p className="text-muted-foreground">No charges for this visit</p>
         ) : (
           <Table>
             <TableHeader>
@@ -132,7 +121,7 @@ function VisitPanel({
         >
           Open visit record
         </Link>
-        <p className="text-muted-foreground">
+        <p className="text-muted-foreground tabular-nums">
           Created {formatDateTime(detail.data.appointment.createdAt, timeZone)}
         </p>
       </div>
@@ -169,6 +158,7 @@ function VisitAccordionRow({
         type="button"
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
+        data-focus-inset
         className={cn(
           "flex w-full items-center gap-3 px-3 py-2 text-left transition-colors",
           "[@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted",
@@ -176,11 +166,11 @@ function VisitAccordionRow({
       >
         <ChevronDownIcon
           className={cn(
-            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ease-out",
+            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-out",
             open ? "rotate-0" : "-rotate-90",
           )}
         />
-        <span className="w-24 shrink-0 whitespace-nowrap">
+        <span className="w-24 shrink-0 whitespace-nowrap tabular-nums">
           {formatBusinessDate(visit.businessDate)}
         </span>
         <span className="w-16 shrink-0 font-mono text-muted-foreground tabular-nums">
@@ -193,7 +183,7 @@ function VisitAccordionRow({
           </span>
         </span>
         {visit.prescriptionCount > 0 ? (
-          <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
+          <span className="flex shrink-0 items-center gap-1 text-muted-foreground tabular-nums">
             <PaperclipIcon className="size-3.5" />
             {visit.prescriptionCount}
           </span>
@@ -209,21 +199,11 @@ function VisitAccordionRow({
         </span>
       </button>
 
-      <div
-        data-open={open || undefined}
-        className={cn(
-          "grid grid-rows-[0fr] transition-[grid-template-rows] duration-200 ease-out",
-          "data-open:grid-rows-[1fr] motion-reduce:transition-none",
-        )}
-      >
-        <div className="overflow-hidden">
-          <div className="px-3 pt-1 pb-4 pl-9">
-            {open ? (
-              <VisitPanel orgSlug={orgSlug} appointmentId={visit.id} currency={currency} />
-            ) : null}
-          </div>
+      {open ? (
+        <div className="px-3 pt-1 pb-4 pl-9">
+          <VisitPanel orgSlug={orgSlug} appointmentId={visit.id} currency={currency} />
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -237,11 +217,12 @@ export function PatientVisits({
   patientId: string;
   currency: string;
 }) {
-  const visits = useInfiniteQuery(visitsQuery(orgSlug, patientId));
+  const visits = useInfiniteQuery(patientVisitsQuery(orgSlug, patientId));
   const rows = visits.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
     <Panel
+      grow
       label="Visits · open a row to see its files and charges"
       footer={<LoadMore query={visits} shown={rows.length} />}
     >
@@ -249,7 +230,7 @@ export function PatientVisits({
         query={visits}
         errorTitle="Could not load visits"
         isEmpty={rows.length === 0}
-        empty="This patient has no visits yet."
+        empty="No visits yet"
       >
         {rows.map((visit) => (
           <VisitAccordionRow key={visit.id} orgSlug={orgSlug} visit={visit} currency={currency} />

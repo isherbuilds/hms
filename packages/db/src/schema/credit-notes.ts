@@ -11,7 +11,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 import { invoices } from "./invoices";
 
 // The only correction path for an issued invoice. Header total is the sum of
@@ -20,9 +20,7 @@ export const creditNotes = pgTable(
   "credit_notes",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     invoiceId: text("invoice_id").notNull(),
     creditNoteNumber: text("credit_note_number").notNull(),
     fiscalYear: text("fiscal_year").notNull(),

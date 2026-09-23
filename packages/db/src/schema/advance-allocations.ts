@@ -11,16 +11,14 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { advanceReceipts } from "./advance-receipts";
-import { organization, user } from "./auth";
+import { orgIdColumn, user } from "./auth";
 import { invoices } from "./invoices";
 
 export const advanceAllocations = pgTable(
   "advance_allocations",
   {
     id: text("id").primaryKey(),
-    orgId: text("org_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
+    orgId: orgIdColumn(),
     advanceReceiptId: text("advance_receipt_id").notNull(),
     invoiceId: text("invoice_id").notNull(),
     amount: bigint("amount", { mode: "bigint" }).notNull(),
