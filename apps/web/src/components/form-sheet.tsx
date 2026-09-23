@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import type { z } from "zod";
 
 import { useZodForm } from "@/hooks/use-zod-form";
-import { closeOnConflict } from "@/lib/orpc-error";
+import { closeOnConflict, errorReason } from "@/lib/orpc-error";
 
 /** Mount per open; the fields scroll while the title and actions stay in reach. */
 export function FormSheet<T extends z.ZodType<FieldValues, FieldValues>, R>({
@@ -49,7 +49,10 @@ export function FormSheet<T extends z.ZodType<FieldValues, FieldValues>, R>({
       onClose();
       toast.success(success);
     },
-    onError: closeOnConflict(onClose),
+    onError: (error) => {
+      if (errorReason(error) === "duplicate") return;
+      closeOnConflict(onClose)(error);
+    },
   });
 
   return (

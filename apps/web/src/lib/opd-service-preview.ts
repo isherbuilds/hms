@@ -1,4 +1,9 @@
-import { computeInvoiceLines, type PriceBasis } from "@hms/api/lib/invoice-math";
+import {
+  computeInvoiceLines,
+  invoiceRoundingFor,
+  type InvoiceRounding,
+  type PriceBasis,
+} from "@hms/api/lib/invoice-math";
 
 export type WalkInQuote = {
   currency: string;
@@ -8,14 +13,17 @@ export type WalkInQuote = {
     description: string;
     category: string;
     qty: number;
+    priceUnits: number;
     unitPrice: bigint;
     taxRatePercent: string;
     taxCode: string | null;
     gross: bigint;
   }>;
   subtotal: bigint;
+  rounding: InvoiceRounding;
   discountAmount: bigint;
   taxTotal: bigint;
+  roundOff: bigint;
   grandTotal: bigint;
 };
 
@@ -47,11 +55,13 @@ export function applyDiscount(
       description: line.description,
       qty: line.qty,
       unitPrice: line.unitPrice,
+      priceUnits: line.priceUnits,
       taxRatePercent: line.taxRatePercent,
       taxCode: line.taxCode,
     })),
     discountAmount,
     basis,
+    quote.rounding,
   );
 
   return {
@@ -60,6 +70,7 @@ export function applyDiscount(
     subtotal: computed.subtotal,
     discountAmount,
     taxTotal: computed.taxTotal,
+    roundOff: computed.roundOff,
     grandTotal: computed.grandTotal,
   };
 }
@@ -81,11 +92,13 @@ export function servicePreview(services: PreviewService[], currency: string): Wa
     source: "service" as const,
     qty: service.qty,
     unitPrice: service.unitPrice,
+    priceUnits: 1,
     taxRatePercent: service.taxRatePercent,
     taxCode: null,
   }));
 
-  const computed = computeInvoiceLines(previewLines, 0n, "exclusive");
+  const rounding = invoiceRoundingFor("opd");
+  const computed = computeInvoiceLines(previewLines, 0n, "exclusive", rounding);
 
   return {
     currency,
@@ -95,8 +108,10 @@ export function servicePreview(services: PreviewService[], currency: string): Wa
       "Computed preview line has no source line",
     ),
     subtotal: computed.subtotal,
+    rounding,
     discountAmount: 0n,
     taxTotal: computed.taxTotal,
+    roundOff: computed.roundOff,
     grandTotal: computed.grandTotal,
   };
 }

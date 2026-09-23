@@ -7,6 +7,7 @@ the split of Pharmacy into a sale half (this spec) and a purchasing half
 (a later spec). Revised 2026-09-18 after an external review, then simplified
 the same day on the owner's instruction to keep the design simple and
 standard; the simplifications are listed under "Simplifications adopted".
+Revised 2026-09-23 for exact printed prices and document-only rounding (D044).
 Evidence: [Pharmacy reference flows](../research/pharmacy-reference-flows.md)
 and the [research ledger](../research/README.md#adopted-findings) (D027).
 Supersedes: none. Closes D025 (invoice granularity) in Slice 1.
@@ -206,8 +207,8 @@ share moves out of `routers/billing.ts` into
 transaction and never reads a care record:
 
 - `lockInvoice(tx, orgId, invoiceId)`: locks the invoice row only; returns
-  `{ id, invoiceNumber, grandTotal, patientId, stream, treatmentPlanId }` where
-  `treatmentPlanId` comes from a **left** join to the OPD Appointment.
+  `{ id, invoiceNumber, grandTotal, roundOff, patientId, stream, treatmentPlanId }`
+  where `treatmentPlanId` comes from a **left** join to the OPD Appointment.
 - `applyPatientCreditTx(tx, { scope, invoice, amount, now, timeZone })`:
   unchanged body; refuses (`CONFLICT`) when `amount > 0` and
   `invoice.patientId` is null.
@@ -216,17 +217,20 @@ fiscalYear, invoiceId })` where `parent` is
   `{ stream: "opd", opdAppointmentId, patient: { id, name, mrn, phone, address, guardian } }`
   or `{ stream: "pharmacy", pharmacySaleId, patient: { id: string | null, name, mrn: string | null, phone: string | null, address: null, guardian: null } }`.
   It locks and reads the parent's pending charges, computes lines with the
-  stream's basis, numbers from `invoice:${fy}` or `invoice:pharmacy:${fy}`
-  with `invoicePrefix` or `pharmacyInvoicePrefix`, inserts invoice and lines,
-  marks charges invoiced, posts the journal. The OPD appointment lock, status
-  and revision checks, and revision bump stay in `settleInvoiceTx` in
+  stream's basis and rounding, numbers from `invoice:${fy}` or
+  `invoice:pharmacy:${fy}` with `invoicePrefix` or `pharmacyInvoicePrefix`,
+  inserts invoice and lines, marks charges invoiced, posts the journal
+  including the signed round-off to the system account. The OPD appointment
+  lock, status and revision checks, and revision bump stay in
+  `settleInvoiceTx` in
   `billing.ts`, which calls this helper.
 - `recordPaymentsTx(tx, …)`: today's body, on the new `lockInvoice`.
 - `postCreditNoteTx(tx, { scope, invoiceId, reason, lines: [{ invoiceLineId,
-taxableValue, taxAmount, gross }], settings, now, fiscalYear, creditNoteId })`:
-  the body of today's `issueCreditNote` from the invoice lock onward, with the
-  per-line values already decided by the caller. It caps each line at its
-  remaining taxable, tax, and gross and the total at the invoice.
+taxableValue, taxAmount, gross }], roundOff, settings, now, fiscalYear,
+creditNoteId })`: required `roundOff` is `0n` for non-pharmacy callers and
+  partial returns, the original invoice's value for the return completing it.
+  The helper caps each line at its remaining taxable, tax, and gross, caps
+  the total at the invoice, and reverses the round-off journal entry.
 - `insertRefundTx` moves as is.
 
 OPD owns appointment eligibility and its charge revision; Pharmacy owns batch
@@ -239,6 +243,13 @@ that tolerates a pharmacy invoice.
 - `invoices.stream` (`opd | pharmacy`, check-constrained, default `opd` so the
   migration backfills). Basis: `opd` is tax-exclusive, `pharmacy` is
   tax-inclusive.
+- **Price and total snapshots.** `charges.priceUnits` and
+  `invoice_lines.priceUnits` are positive integers (default 1), paired with
+  `unitPrice` in bigint paise per that many stock units. An invoice stores
+  `roundOff` in bigint paise (default 0); its CHECK bounds it to −49..50,
+  requires zero for OPD, and includes it in the grand-total identity.
+  Credit notes also store bigint `roundOff` (default 0), with the note total
+  equal to its line gross sum plus `roundOff`.
 - **Numbering.** `invoice:${fy}` for OPD (unchanged) and
   `invoice:pharmacy:${fy}` for pharmacy. `organization_settings` gains
   `pharmacyInvoicePrefix` (`SETTINGS_DEFAULTS` value `"PH"`), required, and
@@ -270,10 +281,18 @@ that tolerates a pharmacy invoice.
 
 ### Tax-inclusive arithmetic
 
-`computeInvoiceLines(charges, discountPaise, basis)` with
-`basis: "exclusive" | "inclusive"`. For every line,
-`lineSubtotal = unitPrice × qty` and the discount is allocated across lines
-exactly as today. Then:
+`computeInvoiceLines(charges, discountPaise, basis, rounding)` takes
+`basis: "exclusive" | "inclusive"` and `rounding: "paise" | "rupee"`
+(`invoiceRoundingFor(stream)` selects paise for OPD and rupee for Pharmacy).
+A price is `unitPrice` paise per `priceUnits` stock units; each exact line
+subtotal is `qty × unitPrice / priceUnits`, never a rounded unit or line
+price. With `L = lcm(priceUnits)` and
+`eᵢ = qtyᵢ × unitPriceᵢ × (L / priceUnitsᵢ)`, the document subtotal is
+`roundHalfUp(Σeᵢ / L)`. Each line receives `floor(eᵢ / L)` plus one paisa
+for each leftover paisa, assigned by largest `eᵢ mod L` (ties in input
+order). Thus the stored integer-paise line subtotals sum exactly to the
+rounded document subtotal without independently rounding lines. Discounts
+are allocated across these subtotals as before. Then:
 
 ```text
 exclusive (opd):      taxableValue = lineSubtotal − allocatedDiscount
@@ -284,9 +303,15 @@ inclusive (pharmacy): gross        = lineSubtotal − allocatedDiscount
                       taxAmount    = gross − taxableValue
 ```
 
-Header: `subtotal = Σ lineSubtotal`, `taxTotal = Σ taxAmount`,
-`grandTotal = Σ gross`. The header check becomes
-`grandTotal = subtotal − discountAmount + (case stream when 'opd' then taxTotal else 0 end)`.
+Header: `subtotal = Σ lineSubtotal`, `taxTotal = Σ taxAmount`, and
+`preRound = Σ gross`. OPD stores `roundOff = 0` and `grandTotal = preRound`
+(paisa precision). Pharmacy stores
+`grandTotal = roundHalfUp(preRound / 100) × 100` and
+`roundOff = grandTotal − preRound` (−49..50 paise), posted to the system
+round-off account. The header check is
+`grandTotal = subtotal − discountAmount + (case stream when 'opd' then taxTotal else 0 end) + roundOff`.
+The credit note completing a full pharmacy return reverses that invoice's
+round-off; earlier partial returns do not.
 Worked cases that `tests/unit/invoice-math.test.ts` contains, all in paise:
 
 | Case                                  | Subtotal | Discount | Taxable  | Tax      | Gross |
@@ -297,20 +322,23 @@ Worked cases that `tests/unit/invoice-math.test.ts` contains, all in paise:
 | 1 × ₹112 at 12 %, fully discounted    | 11200    | 11200    | 0        | 0        | 0     |
 | ₹112 at 12 % + ₹105 at 5 %, ₹10 disc. | 21700    | 1000     | see test | see test | 20700 |
 
-The mixed-rate case allocates the discount by subtotal share as today and the
-largest line absorbs the rounding remainder; the test pins the exact split.
+The mixed-rate case allocates the discount by subtotal share as today and
+the largest line absorbs the discount remainder; the test pins the exact
+split.
 `derivePartialCredit` already extracts tax from a gross amount and is reused
 for the inclusive line.
 
 ### Sale snapshots
 
 A Charge stays the money snapshot: description (`"<name> · batch <number>"`),
-`unitPrice` (batch MRP), GST rate and `taxCode` (HSN) from the catalog row,
+`unitPrice` (batch MRP exactly as printed), `priceUnits` (batch `mrpUnits`),
+GST rate and `taxCode` (HSN) from the catalog row,
 `revenueCategory = "pharmacy"`, `sourceType = "pharmacy_batch"`,
 `sourceId = batchId`, `pharmacySaleId` set, `opdAppointmentId` null. Batch rows
-are immutable once created (number, expiry, MRP never change; a conflicting
+are immutable once created (number, expiry, price never change; a conflicting
 arrival is refused), so the batch row is the structural snapshot of batch and
-expiry, and the sale view reads it by `sourceId`. `invoice_lines` gains nothing.
+expiry, and the sale view reads it by `sourceId`. The Invoice line snapshots
+the Charge's `unitPrice` and `priceUnits` (OPD/treatment keep `priceUnits = 1`).
 
 ### Product master and stock
 
@@ -334,10 +362,13 @@ does. Ids are UUIDv7 text. Reason and unit sets are `text` columns typed by an
   `stockUnit` and `unitsPerPack` are frozen once the product has a batch; an
   update that changes either after that is refused with `CONFLICT`.
 - **`stock_batches`**: `id`, `orgId`, `productId`, `batchNumber`,
-  `expiryDate` (date; the last day of the printed month), `mrp` (paise per
-  stock unit, ≥ 0), `createdAt`. Unique on `(orgId, productId, batchNumber)`.
-  A receipt naming an existing batch with a different expiry or MRP is
-  refused (`CONFLICT`), never merged.
+  `expiryDate` (date; the last day of the printed month), `mrp` (paise as
+  printed per `mrpUnits` stock units, ≥ 0), `mrpUnits` (integer > 0;
+  existing batches default to 1), `createdAt`. Unique on `(orgId, productId,
+batchNumber)`. A receipt naming an existing batch with a different expiry
+  or price is refused (`CONFLICT`); equivalent prices compare by cross-
+  multiplication (`old.mrp × new.mrpUnits = new.mrp × old.mrpUnits`) and keep
+  the first arrival's representation.
 - **`stock_movements`**: `id`, `orgId`, `batchId`, `bucket` (`shelf |
 quarantine`), `qty` (non-zero integer), `reason` (`opening | receipt | sale |
 return | release | quarantine | writeoff | breakage | count_correction |
@@ -363,23 +394,29 @@ pharmacy_return | adjustment`), `sourceId`, `departmentId` (nullable composite
   `date`: the day named on the document, not an instant),
   `fileId` (nullable composite FK to `file`), `note` (nullable), `billTotal`
   (paise; null on an opening count), `receivedBy`,
-  `createdAt`. Lines create batches as needed and one movement each
-  (`sourceType = "goods_receipt"`); the movement adds billed and free units.
-- **`goods_receipt_lines`** (one per priced line of a supplier delivery):
-  `receiptId`, `batchId`, `qty` and `freeQty` (stock units), `packSize` (stock
-  units the rate covers), `rate` (PTR before discount and GST), `discountPercent`,
-  `gstPercent`, `hsnCode?`, and the stored results `gross`, `discount`,
-  `taxable`, `gst`, `net`, `unitCost`. `receiptLineCost` in
-  `packages/api/src/core/receipt-math.ts` is the one formula, shared with the
-  page: gross = qty × rate ÷ packSize; discount and GST round half-up; net =
-  taxable + GST; unit cost = net ÷ (qty + freeQty). GST is part of the cost
-  (owner decision, 2026-09-23); the GST amount is stored apart so the rule can
-  change if the chartered accountant confirms input tax credit on taxable
-  pharmacy sales.
+  `createdAt`. Lines create batches as needed; one movement per batch adds
+  billed and free units aggregated across its lines (`sourceType =
+"goods_receipt"`).
+- **`goods_receipt_lines`** (one per supplier bill or opening-count line):
+  `receiptId`, `batchId`, `qty` and `freeQty` (stock units), `packSize`
+  (stock units the rate covers), `rate` (printed PTR before discount and GST,
+  paise per `packSize` units), `discountPercent`, `gstPercent`, and `hsnCode?`.
+  No computed amount or unit cost is stored. Both percentages have database
+  CHECKs from 0 through 99.99. `receiptLineCost` in
+  `packages/api/src/core/receipt-math.ts` derives gross, discount, taxable,
+  GST and net exactly in bigint units of 10⁻⁸ paisa; it never rounds a line
+  or unit. GST is part of cost (owner decision, 2026-09-23); retaining exact
+  receipt facts permits later valuation without a rounded unit cost and
+  reassessment if the accountant confirms input tax credit. Only the sum of
+  line nets rounds to paise, and the printed bill total must be within
+  ±₹0.99 of that rounded sum. Repeated lines for one batch remain separate
+  priced lines, while stock movements aggregate by batch.
   Opening stock is the same document with `opening` set: it names no supplier,
   keeps the signed count sheet in `fileId`, and posts `opening` movements, so a
-  batch that already has a movement is refused (`CONFLICT`). A later count is a
-  `count_correction` adjustment.
+  batch that already has a movement is refused (`CONFLICT`). Opening counts
+  reject expired batches: at pilot cutover expired inventory enters through
+  the separate quarantine/write-off process, not the opening count; expired
+  stock is never sellable. A later count is a `count_correction` adjustment.
 - **`pharmacy_sales`**: `id`, `orgId`, `patientId` (nullable, composite FK),
   `opdAppointmentId` (nullable, composite FK), `buyerName`, `buyerPhone`
   (nullable), `forName` (who the medicine is for; the buyer when omitted),
@@ -435,9 +472,12 @@ Returns `{ saleId, invoiceId, invoiceNumber, payments }`.
 batch locks, it caps each line at sold minus already returned
 (`BAD_REQUEST`), computes money from the original line's snapshots pro rata by
 quantity with the final unit taking the exact remainder of taxable, tax, and
-gross, posts the credit note through `postCreditNoteTx`, inserts the return and
-its lines, and posts one `return` movement per batch into **quarantine**. A
-fully discounted line returns goods with zero money. When `refund` is given it
+gross, posts the credit note through `postCreditNoteTx` with `roundOff = 0`
+unless every invoice line is fully returned after this return, in which case
+it reverses the invoice `roundOff` so all credit notes sum to the invoice
+`grandTotal`. It inserts the return and its lines and posts one `return`
+movement per batch into **quarantine**. A fully discounted line returns
+goods with zero money. When `refund` is given it
 is capped at the credit note total and posted with `insertRefundTx` (debit
 `patient_receivables`, source `{ invoiceId, creditNoteId }`); otherwise the
 existing refund-due worklist shows the obligation until `recordRefund` clears
@@ -460,16 +500,23 @@ pair). Audited.
 **`pharmacy.receiveGoods`** (`pharmacy:receive`) takes `opening` (default false),
 `supplierName?`, `supplierReference?`, `receivedOn` (`YYYY-MM-DD`), `fileId?`,
 `note?`, `billTotal?`, and
-lines `{ productId, batchNumber, expiryDate, mrp, qty, cost? }` where `cost` is
-`{ freeQty, packSize, rate, discountPercent, gstPercent, hsnCode? }`
-(min 1, positive qty). A receipt that is not an opening one must name its
-supplier, price every line, and give a bill total within ±₹0.99 of the lines'
-net sum (the bill's round-off); an opening one carries no pricing. It verifies the file belongs to the org, is `ready`, and is a PDF or
-image, creates the header, creates
-each batch that does not exist (refusing a conflicting expiry or MRP), and
-posts one movement per batch into the shelf: `receipt`, or `opening` when
-`opening` is set, in which case a batch with any movement is refused
-(`CONFLICT`). Audited.
+`lines: [{ productId, batchNumber, expiryDate, qty, pricedPer: "pack" | "unit",
+mrp, cost?: { freeQty, rate, discountPercent, gstPercent, hsnCode? } }]`
+(min 1, positive qty). `mrp` and `rate` are paise per priced unit exactly
+as printed. The client sends no `packSize`: the server derives the divisor
+from the locked product (`unitsPerPack` for `"pack"`, 1 for `"unit"`),
+stores it as batch `mrpUnits` and receipt-line `packSize`, and requires a
+priced line's billed qty to divide by it. `qty`, `freeQty`, their sum, and
+the movement qty aggregated per batch across repeated lines must each be
+at most 2,147,483,647; free qty need not be ≤ billed qty. A non-opening
+receipt names its supplier, prices every line, and reconciles the rounded
+sum of exact line nets against the printed bill total within ±₹0.99.
+An opening receipt carries no cost pricing. The command verifies the file
+belongs to the org, is `ready`, and is a PDF or image, creates the header
+and one row for each priced line, creates each missing batch (refusing a
+conflicting expiry or non-equivalent MRP), and posts one aggregated movement
+per batch into the shelf: `receipt`, or `opening` when set. Opening refuses
+expired or already-moved batches (`CONFLICT`). Audited.
 
 **`pharmacy.createProduct`** / **`updateProduct`** (`pharmacy:manageItems`)
 take `name`, the product fields, and an optional `catalog`
@@ -505,25 +552,29 @@ read`; `file: read, upload`; `report: readDailyCollections`. No
 
 - `pharmacy.searchStock({ query })` (`pharmacy:read`): active sellable products
   by name, code, or generic, each with its sellable batches (shelf sum > 0,
-  not expired) ordered by `(expiryDate, id)` with `shelfQty`; bounded to 20
-  products. An internal supply has no catalog row and never appears here.
+  not expired) ordered by `(expiryDate, id)` with `shelfQty`, printed `mrp`
+  and `mrpUnits`; bounded to 20 products. An internal supply has no catalog
+  row and never appears here.
 - `pharmacy.stockOnHand({ productId?, expiringWithinDays?, quarantineOnly?,
-includeZero? })` (`pharmacy:read`): every product's batches with `shelfQty` and
-  `quarantineQty`, ordered by expiry; zero-stock batches excluded unless asked.
+includeZero? })` (`pharmacy:read`): every product's batches with `shelfQty`,
+  `quarantineQty`, `mrp` and `mrpUnits`, ordered by expiry; zero-stock batches
+  excluded unless asked.
 - `pharmacy.listMovements({ batchId })` (`pharmacy:read`): movements newest
   first with the actor name and, for an internal issue, the department.
 - `pharmacy.listProducts({ query?, cursor?, limit })` (`pharmacy:read`):
   keyset by `(name, id)` like `catalog.list`, including inactive and
   internal-supply rows.
 - `pharmacy.getSale({ saleId })` (`pharmacy:read`): the sale, its invoice with
-  lines (each with batch number and expiry via `charges.sourceId`), payments,
-  returns with lines, refunds, and the invoice balance (refund due is
+  `roundOff` and lines (each with batch number and expiry via
+  `charges.sourceId`), payments, returns with lines and credit-note
+  `roundOff`, refunds, and the invoice balance (refund due is
   `-outstanding` when negative).
 - `pharmacy.listSales({ from?, to?, cursor?, limit })` (`pharmacy:read`): sales
   newest first by `(createdAt, id)` with invoice number, buyer, grand total.
-- Reports label pharmacy figures as sales and revenue, never profit. Receipt
-  lines record unit cost, but no report derives margin until the purchasing
-  spec decides valuation.
+- Reports label pharmacy figures as sales and revenue, never profit.
+  Receipt lines retain exact rate, quantities, discount and GST; unit cost
+  may be derived for display, but no report derives margin until the purchasing
+  spec decides valuation from those facts.
 
 ### UI
 
@@ -560,14 +611,16 @@ the console keeps one filter idiom.
   sheet) sit above one line per product and batch. A line's first row names
   the stock — product, batch, expiry, billed quantity, count as packs or loose
   units; its second row prices it — free quantity, rate, discount %, GST %,
-  MRP, HSN and the computed line total with cost per unit, shown as an error
-  when it reaches the MRP. An opening count asks only the MRP. Picking a
-  product fills GST % and HSN from its counter tax. The footer totals taxable,
-  GST and lines and states whether they match the bill total. **Back to
-  stock** returns through the unsaved-delivery confirmation. The page converts
-  packs with `unitsPerPack`, so the receipt stores stock units and the MRP per
-  unit. **New product** opens a Sheet without leaving the delivery and selects
-  the created product on the line.
+  MRP, HSN and the computed exact line total with derived cost per unit,
+  shown as an error when it reaches the MRP. An opening count asks only the
+  printed MRP and refuses expired batches. Picking a product fills GST % and
+  HSN from its counter tax. The footer totals taxable, GST and exact lines
+  and states whether their sum rounded once matches the printed bill total
+  within ±₹0.99. **Back to stock** returns through the unsaved-delivery
+  confirmation. The page converts packs with `unitsPerPack`; the receipt
+  stores stock-unit quantities and the MRP with its printed `mrpUnits`
+  denominator, never a rounded per-unit MRP. **New product** opens a Sheet
+  without leaving the delivery and selects the created product on the line.
 - `/$orgSlug/pharmacy/items`: product master list and create/edit Sheet
   (`pharmacy:manageItems`).
 - Navigation: one **Pharmacy** entry in the Care group gated on
@@ -577,27 +630,32 @@ the console keeps one filter idiom.
 
 ## Test Seams
 
-- **Unit, `tests/unit/invoice-math.test.ts`**: the inclusive table above and
-  the mixed-rate split; exclusive cases unchanged.
+- **Unit, `tests/unit/invoice-math.test.ts`**: inclusive tax, fractional-
+  paisa MRP allocation by largest remainder, rupee grand-total round-off
+  and unchanged OPD paisa math.
 - **Unit, `tests/unit/access.test.ts`**: pharmacist can sell, return, and
   receive but not adjust or manage items and holds no `billing:write`;
   accountant holds no pharmacy write; the matrix gains the `pharmacist` column.
 - **Integration, `tests/integration/pharmacy-stock.test.ts`**: a receipt
-  creates a batch and shelf stock; a second arrival with a different expiry is
-  refused; an opening receipt records its count sheet and refuses a touched
-  batch; an internal issue names its department and is refused without one;
-  quarantine and release move quantity between buckets and a bucket cannot go
-  below zero; `updateProduct` refuses a unit change after a batch exists;
-  `catalog.create` refuses category `pharmacy`; foreign product, batch and
-  file ids are `NOT_FOUND` across the org boundary.
+  retains printed pack MRP and exact line facts, allows separate priced lines
+  for a batch while aggregating movements, reconciles only the bill total,
+  and refuses aggregate quantity overflow; a second arrival with a different
+  expiry or non-equivalent MRP is refused; an opening receipt records its count
+  sheet and refuses touched or expired batches; an internal issue names its
+  department and is refused without one; quarantine and release move quantity
+  between buckets and a bucket cannot go below zero; `updateProduct` refuses
+  a unit change after a batch exists; `catalog.create` refuses category
+  `pharmacy`; foreign product, batch and file ids are `NOT_FOUND` across orgs.
 - **Integration, `tests/integration/pharmacy-sale.test.ts`**: a sale reduces
   shelf per batch, numbers in the pharmacy series with the pharmacy prefix,
-  extracts tax from the discounted gross, records the receipt and a balanced
-  journal on `revenue_pharmacy`; expired, inactive, over-stock (two lines on
-  one batch), Schedule X, and H1 without prescriber are each refused with no
-  rows written; two concurrent sales of the last unit have one winner; repeated
-  partial returns end in exact reversal of taxable, tax, and gross; a return
-  above remaining qty is refused; a returned unit sits in quarantine and cannot
+  prices loose units against printed pack MRP, extracts tax from discounted
+  gross, records the receipt and a balanced journal on `revenue_pharmacy`
+  and the round-off account; expired, inactive, over-stock (two lines on one
+  batch), Schedule X, and H1 without prescriber are each refused with no
+  rows written; two concurrent sales of the last unit have one winner;
+  repeated partial returns end in exact reversal of taxable, tax, gross,
+  and invoice round-off only on the completing return; a return above
+  remaining qty is refused; a returned unit sits in quarantine and cannot
   be sold; an immediate refund on return is capped and clears refund due;
   `issueCreditNote` refuses a pharmacy invoice; a walk-in partial payment is
   refused; foreign sale and invoice ids are
@@ -666,17 +724,18 @@ the console keeps one filter idiom.
   prescription reference; the paper register continues until the print ships.
 - Near-expiry colour at the sale line; the batch list shows expiry.
 - Partial payment for a walk-in without a Patient: refused.
-- Purchase GST as input tax credit. Unit cost includes GST for now; a hospital
-  that is GST-registered with taxable pharmacy sales may instead claim it. When
-  such a hospital pilots, add an organization setting that keeps GST out of
-  `unitCost` (taxable ÷ units) and records it for credit. Stored lines already
-  keep `taxable` and `gst`, so past receipts can be restated without re-entry.
+- Purchase GST as input tax credit. Receipt-line facts retain GST separately
+  through `gstPercent`; derived taxable and GST amounts are exact. A hospital
+  that is GST-registered with taxable pharmacy sales may claim input credit
+  rather than including GST in cost. The purchasing spec must decide that
+  valuation treatment from the retained facts, without persisting unit cost.
 - Stock valuation and opening valuation. The count document retains the sheet
   so a later dated valuation cutover has its evidence.
 - Chartered accountant and licensing adviser sign-off on the inclusive-MRP
   presentation, document label, licence particulars on the print, the
   GST registration used, and whether purchase GST is claimed as input credit
-  or kept in unit cost. These sit on the go-live checklist in Operations.
+  or included in cost derived from exact receipt facts. These sit on the
+  go-live checklist in Operations.
 - A Daily Collections breakdown by stream.
 - A maintained balance column. The sum with a `(orgId, batchId, bucket)` index
   is measured on realistic movement history before any projection is added.

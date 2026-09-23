@@ -56,6 +56,7 @@ const SYSTEM_ACCOUNTS = [
     type: "income",
   },
   { key: "revenue_other", code: "4900", name: "Other Revenue", type: "income" },
+  { key: "round_off", code: "4950", name: "Invoice Round-off", type: "income" },
 ] as const satisfies ReadonlyArray<{
   key: string;
   code: string;

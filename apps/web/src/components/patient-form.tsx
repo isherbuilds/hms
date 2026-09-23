@@ -490,14 +490,8 @@ export function PatientForm({
 
   const onSubmit = form.handleSubmit(
     ({ age, sponsorPayerId, sponsorPolicyNumber, sponsorEmployeeNumber, ...fields }) => {
-      const dateOfBirth =
-        fields.dateOfBirth ?? (age === null ? null : ageYearsToEstimatedDateOfBirth(age, today));
-
-      if (dateOfBirth === null) {
-        form.setError("dateOfBirth", { message: "Enter a date of birth or age" });
-
-        return;
-      }
+      // The schema requires one of these two values before this callback runs.
+      const dateOfBirth = fields.dateOfBirth ?? ageYearsToEstimatedDateOfBirth(age!, today);
 
       // The procedure takes the whole record, not a patch, so both paths send the
       // same body — the update adds only the id and the token it must match.

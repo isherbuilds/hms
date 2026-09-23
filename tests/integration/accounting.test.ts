@@ -987,8 +987,8 @@ test("concurrent first invoices seed one complete chart and both post", async ()
     .from(accounts)
     .where(eq(accounts.orgId, fixture.organization.id));
 
-  expect(chart).toHaveLength(11);
-  expect(new Set(chart.map((row) => row.systemKey)).size).toBe(11);
+  expect(chart).toHaveLength(12);
+  expect(new Set(chart.map((row) => row.systemKey)).size).toBe(12);
 });
 
 test("journal lines reject accounts and entries from another organization", async () => {

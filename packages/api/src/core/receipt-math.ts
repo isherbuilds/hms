@@ -1,8 +1,10 @@
 import { divideHalfUp, parseDecimal } from "./money";
 
-// One supplier-bill line, in the unit the bill prices: `packSize` stock units per priced
-// unit (1 when the bill prices loose units). Shared by the receive page and the server so
-// the figures a pharmacist checks are the figures stored.
+// Amounts here are bigints in paise / EXACT_SCALE, not rounded paise. Each billed
+// quantity is a whole number of priced units; only the final bill sum rounds to paise.
+export const MAX_STOCK_QTY = 2_147_483_647;
+
+export const EXACT_SCALE = 10n ** 8n;
 
 /** A two-place percent below 100, such as `5`, `12.5` or `0`. */
 export const PERCENT_PATTERN = /^\d{1,2}(\.\d{1,2})?$/;
@@ -21,29 +23,41 @@ export type ReceiptCostInput = {
   gstPercent: string;
 };
 
+/** Every amount is exact in paise / EXACT_SCALE; no per-line or per-unit rounding. */
 export type ReceiptCost = {
   gross: bigint;
   discount: bigint;
   taxable: bigint;
   gst: bigint;
   net: bigint;
-  /** Net paise per stock unit received, free units included. GST is a cost: see spec. */
-  unitCost: bigint;
 };
 
 export function receiptLineCost(line: ReceiptCostInput): ReceiptCost {
-  const gross = (BigInt(line.qty) * line.rate) / BigInt(line.packSize);
-  const discount = divideHalfUp(gross * parseDecimal(line.discountPercent), 100_00n);
+  const gross = (BigInt(line.qty) / BigInt(line.packSize)) * line.rate * EXACT_SCALE;
+  const discount = (gross * parseDecimal(line.discountPercent)) / 100_00n;
   const taxable = gross - discount;
-  const gst = divideHalfUp(taxable * parseDecimal(line.gstPercent), 100_00n);
+  const gst = (taxable * parseDecimal(line.gstPercent)) / 100_00n;
   const net = taxable + gst;
 
-  return {
-    gross,
-    discount,
-    taxable,
-    gst,
-    net,
-    unitCost: divideHalfUp(net, BigInt(line.qty + line.freeQty)),
-  };
+  return { gross, discount, taxable, gst, net };
+}
+
+/** Round an exact document sum once, half-up, to integer paise. */
+export function exactToPaise(exact: bigint): bigint {
+  return divideHalfUp(exact, EXACT_SCALE);
+}
+
+/** Display exact paise as rupees, keeping 2–10 fractional places. */
+export function formatExact(exact: bigint): string {
+  const sign = exact < 0n ? "-" : "";
+  const absolute = exact < 0n ? -exact : exact;
+  const rupeeScale = EXACT_SCALE * 100n;
+
+  const fraction = (absolute % rupeeScale)
+    .toString()
+    .padStart(10, "0")
+    .replace(/0+$/, "")
+    .padEnd(2, "0");
+
+  return `${sign}${absolute / rupeeScale}.${fraction}`;
 }

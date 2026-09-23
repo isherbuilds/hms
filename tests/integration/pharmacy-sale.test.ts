@@ -5,6 +5,7 @@ import type { AppRouterClient } from "@hms/api/routers/index";
 import { db } from "@hms/db";
 import { accounts } from "@hms/db/schema/accounts";
 import { charges } from "@hms/db/schema/charges";
+import { creditNotes } from "@hms/db/schema/credit-notes";
 import { invoices } from "@hms/db/schema/invoices";
 import { journalEntries } from "@hms/db/schema/journal-entries";
 import { journalLines } from "@hms/db/schema/journal-lines";
@@ -15,7 +16,6 @@ import { createOrganization, createTestUser } from "../support/auth";
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
 import { uniqueSuffix } from "../support/unique";
-import { UNPRICED } from "../support/pharmacy";
 
 const RECEIVED_ON = "2026-09-01";
 
@@ -28,7 +28,13 @@ const MRP = 112_00n;
 const TAX_RATE = "12.00";
 
 /** What the desk's total block shows, computed the same way the invoice is. */
-function expectedTotals(qty: number, discount: bigint, unitPrice = MRP, rate = TAX_RATE) {
+function expectedTotals(
+  qty: number,
+  discount: bigint,
+  unitPrice = MRP,
+  rate = TAX_RATE,
+  priceUnits = 1,
+) {
   return computeInvoiceLines(
     [
       {
@@ -36,12 +42,14 @@ function expectedTotals(qty: number, discount: bigint, unitPrice = MRP, rate = T
         description: "expected",
         qty,
         unitPrice,
+        priceUnits,
         taxRatePercent: rate,
         taxCode: null,
       },
     ],
     discount,
     "inclusive",
+    "rupee",
   );
 }
 
@@ -97,7 +105,13 @@ async function createPharmacyFixture(seed: string) {
 
   async function receive(
     productId: string,
-    line: { batchNumber?: string; expiryDate?: string; mrp?: bigint; qty: number },
+    line: {
+      batchNumber?: string;
+      expiryDate?: string;
+      mrp?: bigint;
+      qty: number;
+      pricedPer?: "pack" | "unit";
+    },
   ) {
     const received = await api.pharmacy.receiveGoods({
       orgSlug: organization.slug,
@@ -110,8 +124,14 @@ async function createPharmacyFixture(seed: string) {
           batchNumber: line.batchNumber ?? `B-${uniqueSuffix()}`,
           expiryDate: line.expiryDate ?? futureExpiry(),
           mrp: line.mrp ?? MRP,
+          pricedPer: line.pricedPer ?? "unit",
+          cost: {
+            freeQty: 0,
+            rate: 0n,
+            discountPercent: "0",
+            gstPercent: "0",
+          },
           qty: line.qty,
-          cost: UNPRICED,
         },
       ],
     });
@@ -217,6 +237,7 @@ test("a walk-in sale numbers in the pharmacy series, extracts tax, and moves sto
 
   expect(detail.invoice.stream).toBe("pharmacy");
   expect(detail.invoice.grandTotal).toBe(totals.grandTotal);
+  expect(detail.invoice.roundOff).toBe(totals.roundOff);
   expect(detail.invoice.taxTotal).toBe(totals.taxTotal);
   expect(detail.invoice.subtotal).toBe(totals.subtotal);
   expect(detail.balance.outstanding).toBe(0n);
@@ -240,6 +261,186 @@ test("a walk-in sale numbers in the pharmacy series, extracts tax, and moves sto
   const listed = await fixture.api.pharmacy.listSales({ orgSlug: fixture.organization.slug });
   expect(listed.items[0]?.saleId).toBe(sold.saleId);
   expect(listed.items[0]?.grandTotal).toBe(totals.grandTotal);
+  expect(listed.items[0]?.roundOff).toBe(totals.roundOff);
+});
+
+test("pack-priced tablets aggregate exactly, round only the invoice, and reverse its round-off on full return", async () => {
+  const fixture = await createPharmacyFixture("pharmacy-sale-pack-price");
+  const medicine = await fixture.createMedicine({ taxRatePercent: "0" });
+
+  const batchId = await fixture.receive(medicine.productId, {
+    qty: 10,
+    pricedPer: "pack",
+    mrp: 7619n,
+  });
+
+  const sold = await fixture.api.pharmacy.sell({
+    orgSlug: fixture.organization.slug,
+    lines: [
+      { batchId, qty: 3 },
+      { batchId, qty: 7 },
+    ],
+    buyer: { name: "walk in buyer" },
+    payments: [{ method: "cash", amount: 7600n }],
+    expectedGrandTotal: 7600n,
+  });
+
+  const detail = await fixture.api.pharmacy.getSale({
+    orgSlug: fixture.organization.slug,
+    saleId: sold.saleId,
+  });
+
+  expect(detail.lines).toHaveLength(2);
+  expect(
+    detail.lines.map((line) => line.lineSubtotal).reduce((sum, amount) => sum + amount, 0n),
+  ).toBe(7619n);
+  expect(detail.lines.every((line) => line.unitPrice === 7619n && line.priceUnits === 10)).toBe(
+    true,
+  );
+  expect(detail.invoice.subtotal).toBe(7619n);
+  expect(detail.invoice.grandTotal).toBe(7600n);
+  expect(detail.invoice.roundOff).toBe(-19n);
+
+  const invoiceJournal = await journalFor(fixture.organization.id, "invoice", sold.invoiceId);
+  expect(invoiceJournal.reduce((sum, line) => sum + line.debit, 0n)).toBe(
+    invoiceJournal.reduce((sum, line) => sum + line.credit, 0n),
+  );
+  expect(lineByCode(invoiceJournal, "1200").debit).toBe(7600n);
+  expect(lineByCode(invoiceJournal, "4500").credit).toBe(7619n);
+  expect(lineByCode(invoiceJournal, "4950").debit).toBe(19n);
+
+  const three = detail.lines.find((line) => line.qty === 3);
+  const seven = detail.lines.find((line) => line.qty === 7);
+
+  if (!three || !seven) throw new Error("expected both tablet sale lines");
+
+  await fixture.api.pharmacy.returnSale({
+    orgSlug: fixture.organization.slug,
+    saleId: sold.saleId,
+    reasonCode: "unwanted",
+    lines: [{ invoiceLineId: three.id, qty: 3 }],
+  });
+
+  const returned = await fixture.api.pharmacy.returnSale({
+    orgSlug: fixture.organization.slug,
+    saleId: sold.saleId,
+    reasonCode: "unwanted",
+    lines: [{ invoiceLineId: seven.id, qty: 7 }],
+  });
+
+  if (!returned.creditNoteId) throw new Error("expected a credit note for the last return");
+
+  const afterReturn = await fixture.api.pharmacy.getSale({
+    orgSlug: fixture.organization.slug,
+    saleId: sold.saleId,
+  });
+
+  expect(afterReturn.balance.creditTotal).toBe(afterReturn.invoice.grandTotal);
+  expect(afterReturn.balance.creditTotal).toBe(7600n);
+
+  const creditJournal = await journalFor(
+    fixture.organization.id,
+    "credit_note",
+    returned.creditNoteId,
+  );
+
+  expect(lineByCode(creditJournal, "4950").credit).toBe(19n);
+  expect(creditJournal.reduce((sum, line) => sum + line.debit, 0n)).toBe(
+    creditJournal.reduce((sum, line) => sum + line.credit, 0n),
+  );
+
+  const notes = await db
+    .select({ total: creditNotes.total, roundOff: creditNotes.roundOff })
+    .from(creditNotes)
+    .where(
+      and(
+        eq(creditNotes.orgId, fixture.organization.id),
+        eq(creditNotes.invoiceId, sold.invoiceId),
+      ),
+    );
+
+  expect(notes).toHaveLength(2);
+  expect(notes.reduce((sum, note) => sum + note.total, 0n)).toBe(7600n);
+  expect(notes.map((note) => note.roundOff).sort()).toEqual([-19n, 0n]);
+});
+
+test("a partial return larger than the rounded total uses round-off capacity without overcrediting", async () => {
+  const fixture = await createPharmacyFixture("pharmacy-sale-partial-roundoff");
+  const larger = await fixture.createMedicine({ taxRatePercent: "0" });
+  const smaller = await fixture.createMedicine({ taxRatePercent: "0" });
+  const largerBatch = await fixture.receive(larger.productId, { qty: 1, mrp: 1001n });
+  const smallerBatch = await fixture.receive(smaller.productId, { qty: 1, mrp: 1n });
+
+  const sold = await fixture.api.pharmacy.sell({
+    orgSlug: fixture.organization.slug,
+    lines: [
+      { batchId: largerBatch, qty: 1 },
+      { batchId: smallerBatch, qty: 1 },
+    ],
+    buyer: { name: "walk in buyer" },
+    payments: [{ method: "cash", amount: 1000n }],
+    expectedGrandTotal: 1000n,
+  });
+
+  const detail = await fixture.api.pharmacy.getSale({
+    orgSlug: fixture.organization.slug,
+    saleId: sold.saleId,
+  });
+
+  expect(detail.invoice.subtotal).toBe(1002n);
+  expect(detail.invoice.grandTotal).toBe(1000n);
+  expect(detail.invoice.roundOff).toBe(-2n);
+
+  const largeLine = detail.lines.find((line) => line.unitPrice === 1001n);
+  const smallLine = detail.lines.find((line) => line.unitPrice === 1n);
+
+  if (!largeLine || !smallLine) throw new Error("expected both invoice lines");
+
+  const first = await fixture.api.pharmacy.returnSale({
+    orgSlug: fixture.organization.slug,
+    saleId: sold.saleId,
+    reasonCode: "unwanted",
+    lines: [{ invoiceLineId: largeLine.id, qty: 1 }],
+  });
+
+  if (!first.creditNoteId) throw new Error("expected a credit note for the first return");
+
+  const [firstNote] = await db
+    .select({ total: creditNotes.total, roundOff: creditNotes.roundOff })
+    .from(creditNotes)
+    .where(
+      and(eq(creditNotes.orgId, fixture.organization.id), eq(creditNotes.id, first.creditNoteId)),
+    );
+
+  expect(firstNote?.total).toBe(1000n);
+  expect(firstNote?.roundOff).toBe(-1n);
+
+  const second = await fixture.api.pharmacy.returnSale({
+    orgSlug: fixture.organization.slug,
+    saleId: sold.saleId,
+    reasonCode: "unwanted",
+    lines: [{ invoiceLineId: smallLine.id, qty: 1 }],
+  });
+
+  if (!second.creditNoteId) throw new Error("expected a credit note for the final return");
+
+  const [secondNote] = await db
+    .select({ total: creditNotes.total, roundOff: creditNotes.roundOff })
+    .from(creditNotes)
+    .where(
+      and(eq(creditNotes.orgId, fixture.organization.id), eq(creditNotes.id, second.creditNoteId)),
+    );
+
+  expect(secondNote?.total).toBe(0n);
+  expect(secondNote?.roundOff).toBe(-1n);
+
+  const afterReturn = await fixture.api.pharmacy.getSale({
+    orgSlug: fixture.organization.slug,
+    saleId: sold.saleId,
+  });
+
+  expect(afterReturn.balance.creditTotal).toBe(afterReturn.invoice.grandTotal);
+  expect(afterReturn.balance.creditTotal).toBe(1000n);
 });
 
 test("the pharmacy invoice prefix cannot equal the OPD one", async () => {

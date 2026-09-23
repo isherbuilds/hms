@@ -1,4 +1,4 @@
-import { computeInvoiceLines } from "@hms/api/lib/invoice-math";
+import { computeInvoiceLines, invoiceRoundingFor } from "@hms/api/lib/invoice-math";
 import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
 import { Input } from "@hms/ui/components/input";
@@ -48,7 +48,7 @@ function SaleLines({
   onChange,
   onRemove,
 }: {
-  lines: SaleLine[];
+  lines: Array<SaleLine & { lineSubtotal: bigint }>;
   currency: string;
   onChange: (batchId: string, qty: number) => void;
   onRemove: (batchId: string) => void;
@@ -125,9 +125,10 @@ function SaleLines({
                 <TableCell>{qtyField(line)}</TableCell>
                 <TableCell className="text-right tabular-nums">
                   {formatMoney(line.mrp, currency)}
+                  {line.mrpUnits > 1 ? ` / ${line.mrpUnits}` : ""}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {formatMoney(line.mrp * BigInt(line.qty), currency)}
+                  {formatMoney(line.lineSubtotal, currency)}
                 </TableCell>
                 <TableCell>{removeButton(line)}</TableCell>
               </TableRow>
@@ -153,7 +154,7 @@ function SaleLines({
             </div>
             <div className="grid justify-items-end gap-2">
               <span className="font-medium tabular-nums">
-                {formatMoney(line.mrp * BigInt(line.qty), currency)}
+                {formatMoney(line.lineSubtotal, currency)}
               </span>
               <div className="flex items-end gap-2">
                 <label className="grid justify-items-end gap-1 text-muted-foreground">
@@ -212,18 +213,30 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
 
   // MRP carries the tax, so the pharmacy basis is inclusive. The overlay owns the
   // discount, so the desk only ever quotes the undiscounted bill.
+  const rounding = invoiceRoundingFor("pharmacy");
+
   const computed = computeInvoiceLines(
     cart.map((line) => ({
       chargeId: line.batchId,
       description: line.productName,
       qty: line.qty,
       unitPrice: line.mrp,
+      priceUnits: line.mrpUnits,
       taxRatePercent: line.taxRatePercent,
       taxCode: null,
     })),
     ZERO,
     "inclusive",
+    rounding,
   );
+
+  const displayLines = cart.map((line, index) => {
+    const priced = computed.lines[index];
+
+    if (!priced) throw new Error("Computed sale line has no cart line");
+
+    return { ...line, lineSubtotal: priced.lineSubtotal };
+  });
 
   const quote: WalkInQuote = {
     currency,
@@ -233,8 +246,10 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
       source: "service" as const,
     })),
     subtotal: computed.subtotal,
+    rounding,
     discountAmount: ZERO,
     taxTotal: computed.taxTotal,
+    roundOff: computed.roundOff,
     grandTotal: computed.grandTotal,
   };
 
@@ -403,7 +418,7 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                     onAdd={add}
                   />
                   <SaleLines
-                    lines={cart}
+                    lines={displayLines}
                     currency={currency}
                     onChange={(batchId, qty) =>
                       setCart((current) =>

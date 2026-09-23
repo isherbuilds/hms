@@ -77,6 +77,7 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
         batchNumber: "B-100",
         expiryDate: FAR_EXPIRY,
         mrp: 12_00n,
+        pricedPer: "unit",
         qty: 40,
         cost: UNPRICED,
       },
@@ -86,6 +87,7 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
         batchNumber: "B-100",
         expiryDate: FAR_EXPIRY,
         mrp: 12_00n,
+        pricedPer: "unit",
         qty: 10,
         cost: UNPRICED,
       },
@@ -102,11 +104,35 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
 
   const search = await api.pharmacy.searchStock({ orgSlug: org.slug, query: "paracet" });
   expect(search).toHaveLength(1);
-  expect(search[0]?.batches).toMatchObject([{ batchId, mrp: 12_00n, shelfQty: 50 }]);
+  expect(search[0]?.batches).toMatchObject([{ batchId, mrp: 12_00n, mrpUnits: 1, shelfQty: 50 }]);
 
   const movements = await api.pharmacy.listMovements({ orgSlug: org.slug, batchId });
   expect(movements).toHaveLength(1);
   expect(movements[0]).toMatchObject({ bucket: "shelf", qty: 50, reason: "receipt" });
+
+  // The same printed unit MRP may arrive expressed per pack; preserve the first snapshot.
+  const repeated = await api.pharmacy.receiveGoods({
+    orgSlug: org.slug,
+    supplierName: "Metro Distributors",
+    receivedOn: RECEIVED_ON,
+    billTotal: 0n,
+    lines: [
+      {
+        productId: product.productId,
+        batchNumber: "B-100",
+        expiryDate: FAR_EXPIRY,
+        mrp: 120_00n,
+        pricedPer: "pack",
+        qty: 10,
+        cost: UNPRICED,
+      },
+    ],
+  });
+
+  expect(repeated.batches).toMatchObject([{ batchId }]);
+  expect((await api.pharmacy.stockOnHand({ orgSlug: org.slug })).items).toMatchObject([
+    { batchId, mrp: 12_00n, mrpUnits: 1, shelfQty: 60 },
+  ]);
 
   // Batches are immutable: the same number with another expiry is refused, never merged.
   await expectORPCCode(
@@ -121,6 +147,7 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
           batchNumber: "B-100",
           expiryDate: "2032-01",
           mrp: 12_00n,
+          pricedPer: "unit",
           qty: 5,
           cost: UNPRICED,
         },
@@ -131,7 +158,7 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
   );
 });
 
-test("a priced delivery stores its bill arithmetic and shelves the free units", async () => {
+test("a priced delivery stores exact pricing facts and shelves the free units", async () => {
   const owner = await createTestUser("pharmacy-priced-owner");
   const org = await createOrganization(owner, "pharmacy-priced");
   const api = clientFor(owner);
@@ -142,11 +169,11 @@ test("a priced delivery stores its bill arithmetic and shelves the free units", 
     productId: product.productId,
     batchNumber: "P-1",
     expiryDate: FAR_EXPIRY,
-    mrp: 10_00n,
+    mrp: 76_19n,
+    pricedPer: "pack" as const,
     qty: 100,
     cost: {
       freeQty: 10,
-      packSize: 10,
       rate: 76_19n,
       discountPercent: "5",
       gstPercent: "5",
@@ -180,16 +207,94 @@ test("a priced delivery stores its bill arithmetic and shelves the free units", 
     .where(eq(goodsReceiptLines.receiptId, received.receiptId));
 
   expect(stored).toMatchObject({
-    gross: 761_90n,
-    discount: 38_10n,
-    taxable: 723_80n,
-    gst: 36_19n,
-    net: 759_99n,
-    unitCost: 6_91n,
+    qty: 100,
+    freeQty: 10,
+    packSize: 10,
+    rate: 76_19n,
+    discountPercent: "5.00",
+    gstPercent: "5.00",
+    hsnCode: "3004",
   });
 
   const { items: onHand } = await api.pharmacy.stockOnHand({ orgSlug: org.slug });
-  expect(onHand).toMatchObject([{ batchNumber: "P-1", shelfQty: 110 }]);
+  expect(onHand).toMatchObject([{ batchNumber: "P-1", mrp: 76_19n, mrpUnits: 10, shelfQty: 110 }]);
+});
+
+test("different rates on one batch retain both lines but make one stock movement", async () => {
+  const owner = await createTestUser("pharmacy-multiple-rates-owner");
+  const org = await createOrganization(owner, "pharmacy-multiple-rates");
+  const api = clientFor(owner);
+  const product = await api.pharmacy.createProduct(productInput(org.slug, "Mixed Rate Tablet"));
+
+  const base = {
+    productId: product.productId,
+    batchNumber: "R-1",
+    expiryDate: FAR_EXPIRY,
+    pricedPer: "pack" as const,
+    mrp: 10_00n,
+    qty: 10,
+  };
+
+  // Each line's discounted net is a fractional paise: 0.5 + 1.5 = 2 paise.
+  const received = await api.pharmacy.receiveGoods({
+    orgSlug: org.slug,
+    supplierName: "Metro Distributors",
+    receivedOn: RECEIVED_ON,
+    billTotal: 2n,
+    lines: [
+      { ...base, cost: { freeQty: 0, rate: 1n, discountPercent: "50", gstPercent: "0" } },
+      { ...base, cost: { freeQty: 0, rate: 3n, discountPercent: "50", gstPercent: "0" } },
+    ],
+  });
+
+  expect(received.batches).toHaveLength(1);
+
+  const lines = await db
+    .select()
+    .from(goodsReceiptLines)
+    .where(eq(goodsReceiptLines.receiptId, received.receiptId));
+
+  expect(lines.map((line) => ({ rate: line.rate, packSize: line.packSize }))).toEqual([
+    { rate: 1n, packSize: 10 },
+    { rate: 3n, packSize: 10 },
+  ]);
+
+  const movements = await api.pharmacy.listMovements({
+    orgSlug: org.slug,
+    batchId: received.batches[0]?.batchId ?? "",
+  });
+
+  expect(movements).toHaveLength(1);
+  expect(movements[0]).toMatchObject({ reason: "receipt", qty: 20 });
+});
+
+test("pack-priced receipts require whole packs from the locked product", async () => {
+  const owner = await createTestUser("pharmacy-pack-quantity-owner");
+  const org = await createOrganization(owner, "pharmacy-pack-quantity");
+  const api = clientFor(owner);
+  const product = await api.pharmacy.createProduct(productInput(org.slug, "Pack of Ten"));
+
+  await expectORPCCode(
+    api.pharmacy.receiveGoods({
+      orgSlug: org.slug,
+      supplierName: "Metro Distributors",
+      receivedOn: RECEIVED_ON,
+      billTotal: 76_19n,
+      lines: [
+        {
+          productId: product.productId,
+          batchNumber: "TEN-1",
+          expiryDate: FAR_EXPIRY,
+          pricedPer: "pack",
+          mrp: 76_19n,
+          qty: 9,
+          cost: { freeQty: 0, rate: 76_19n, discountPercent: "0", gstPercent: "0" },
+        },
+      ],
+    }),
+    "BAD_REQUEST",
+    "a pack-priced quantity that is not divisible by the product pack size",
+  );
 });
 
 test("an opening receipt carries its count sheet and refuses a batch that already moved", async () => {
@@ -222,6 +327,7 @@ test("an opening receipt carries its count sheet and refuses a batch that alread
           batchNumber: "C-MISSING-SHEET",
           expiryDate: FAR_EXPIRY,
           mrp: 30_00n,
+          pricedPer: "unit",
           qty: 1,
         },
       ],
@@ -242,6 +348,7 @@ test("an opening receipt carries its count sheet and refuses a batch that alread
           batchNumber: "C-PENDING-SHEET",
           expiryDate: FAR_EXPIRY,
           mrp: 30_00n,
+          pricedPer: "unit",
           qty: 1,
         },
       ],
@@ -263,6 +370,7 @@ test("an opening receipt carries its count sheet and refuses a batch that alread
           batchNumber: "C-WITH-SUPPLIER",
           expiryDate: FAR_EXPIRY,
           mrp: 30_00n,
+          pricedPer: "unit",
           qty: 1,
         },
       ],
@@ -283,6 +391,7 @@ test("an opening receipt carries its count sheet and refuses a batch that alread
         batchNumber: "C-1",
         expiryDate: FAR_EXPIRY,
         mrp: 30_00n,
+        pricedPer: "unit",
         qty: 12,
       },
     ],
@@ -331,6 +440,7 @@ test("an opening receipt carries its count sheet and refuses a batch that alread
           batchNumber: "C-1",
           expiryDate: FAR_EXPIRY,
           mrp: 30_00n,
+          pricedPer: "unit",
           qty: 5,
         },
       ],
@@ -358,6 +468,7 @@ test("a receipt refuses two definitions of the same batch without writing either
           batchNumber: "DUP-1",
           expiryDate: FAR_EXPIRY,
           mrp: 10_00n,
+          pricedPer: "unit",
           qty: 2,
           cost: UNPRICED,
         },
@@ -366,6 +477,7 @@ test("a receipt refuses two definitions of the same batch without writing either
           batchNumber: "DUP-1",
           expiryDate: FAR_EXPIRY,
           mrp: 11_00n,
+          pricedPer: "unit",
           qty: 3,
           cost: UNPRICED,
         },
@@ -412,6 +524,7 @@ test("stock search returns only products with sellable shelf stock", async () =>
         batchNumber: "EXPIRED-1",
         expiryDate: "2020-01",
         mrp: 10_00n,
+        pricedPer: "unit",
         qty: 5,
         cost: UNPRICED,
       },
@@ -420,6 +533,7 @@ test("stock search returns only products with sellable shelf stock", async () =>
         batchNumber: "SCHEDULE-X-1",
         expiryDate: FAR_EXPIRY,
         mrp: 20_00n,
+        pricedPer: "unit",
         qty: 5,
         cost: UNPRICED,
       },
@@ -428,6 +542,7 @@ test("stock search returns only products with sellable shelf stock", async () =>
         batchNumber: "SELLABLE-1",
         expiryDate: FAR_EXPIRY,
         mrp: 30_00n,
+        pricedPer: "unit",
         qty: 5,
         cost: UNPRICED,
       },
@@ -470,6 +585,7 @@ test("an internal issue names its department and is refused without one", async 
         batchNumber: "G-1",
         expiryDate: FAR_EXPIRY,
         mrp: 0n,
+        pricedPer: "unit",
         qty: 30,
         cost: UNPRICED,
       },
@@ -526,6 +642,7 @@ test("quarantine and release move stock between buckets and a bucket cannot go b
         batchNumber: "D-1",
         expiryDate: FAR_EXPIRY,
         mrp: 8_00n,
+        pricedPer: "unit",
         qty: 20,
         cost: UNPRICED,
       },
@@ -614,6 +731,7 @@ test("a product's stock unit is fixed once it has a batch and the catalog refuse
         batchNumber: "E-1",
         expiryDate: FAR_EXPIRY,
         mrp: 20_00n,
+        pricedPer: "unit",
         qty: 4,
         cost: UNPRICED,
       },
@@ -678,6 +796,7 @@ test("pharmacy stock ids from another organization are not found", async () => {
         batchNumber: "F-1",
         expiryDate: FAR_EXPIRY,
         mrp: 9_00n,
+        pricedPer: "unit",
         qty: 6,
         cost: UNPRICED,
       },
@@ -705,6 +824,7 @@ test("pharmacy stock ids from another organization are not found", async () => {
           batchNumber: "F-1",
           expiryDate: FAR_EXPIRY,
           mrp: 9_00n,
+          pricedPer: "unit",
           qty: 1,
           cost: UNPRICED,
         },
@@ -741,6 +861,7 @@ test("pharmacy stock ids from another organization are not found", async () => {
           batchNumber: "F-1",
           expiryDate: FAR_EXPIRY,
           mrp: 9_00n,
+          pricedPer: "unit",
           qty: 1,
         },
       ],

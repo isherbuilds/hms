@@ -284,11 +284,13 @@ export const opdRouter = {
         description: item.name,
         qty,
         unitPrice,
+        priceUnits: 1,
         taxRatePercent: item.taxRatePercent,
         taxCode: item.taxCode,
       })),
       input.discountAmount,
       "exclusive",
+      "paise",
     );
 
     return {
@@ -305,8 +307,10 @@ export const opdRouter = {
         };
       }),
       subtotal: computed.subtotal,
+      rounding: "paise" as const,
       discountAmount: input.discountAmount,
       taxTotal: computed.taxTotal,
+      roundOff: computed.roundOff,
       grandTotal: computed.grandTotal,
     };
   }),

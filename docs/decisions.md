@@ -558,3 +558,27 @@ adapted Midday files retain their original copyright notices.
 **Rejected:** deferring the migration and giving pharmacy a local control. Two
 idioms would drift on the first filter someone adds to only one, and the shared
 module is the one place the date preset and business-date rule lives.
+
+### D044 — Exact prices; only a document total rounds
+
+**Accepted 2026-09-23 on the owner's instruction.** A price is paise per N
+stock units, stored exactly as printed: batch `mrp`/`mrpUnits`, and Charge and
+Invoice-line `unitPrice`/`priceUnits`. No tablet, product, or line price is
+rounded. Invoice line subtotals allocate the rounded document subtotal by
+largest exact remainder, breaking ties in input order. Pharmacy rounds only
+the grand total to the nearest rupee, storing `roundOff` (−49..50 paise) and
+posting it to the round-off account. OPD rounds to the paisa (`roundOff = 0`).
+A credit note completing a full pharmacy return reverses the invoice
+round-off.
+
+Supplier receipt lines store only billed and free quantity, pack size, rate,
+discount %, GST %, and HSN; `receiptLineCost` derives their amounts exactly.
+Only the bill sum rounds, and it must reconcile to the printed bill total
+within ±₹0.99. There is no persisted unit cost: later valuation must use
+the exact receipt facts, never a rounded cost per stock unit. D031 still
+applies: every stored money column is `bigint` paise.
+
+**Rejected:** flooring or half-up rounding a unit MRP loses the printed
+strip price on loose-unit sales; storing fractional-paise numeric amounts
+creates a second money representation instead of retaining exact price and
+receipt facts.

@@ -1,5 +1,5 @@
 {
-  "id": "28d69125-d3cc-4a6a-881f-6ba769bbac91",
+  "id": "87d99fae-42d0-4c6b-becc-2b8a9df31e19",
   "prevId": "af140eda-6063-411b-9d74-ce8e870e0fca",
   "version": "7",
   "dialect": "postgresql",
@@ -1849,6 +1849,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "price_units": {
+          "name": "price_units",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
         "tax_rate_percent": {
           "name": "tax_rate_percent",
           "type": "numeric(4, 2)",
@@ -2140,6 +2147,10 @@
           "name": "charges_unit_price_check",
           "value": "\"charges\".\"unit_price\" >= 0"
         },
+        "charges_price_units_check": {
+          "name": "charges_price_units_check",
+          "value": "\"charges\".\"price_units\" > 0"
+        },
         "charges_tax_rate_percent_check": {
           "name": "charges_tax_rate_percent_check",
           "value": "\"charges\".\"tax_rate_percent\" >= 0"
@@ -2403,6 +2414,13 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
+        },
+        "round_off": {
+          "name": "round_off",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
         },
         "total": {
           "name": "total",
@@ -2854,42 +2872,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "gross": {
-          "name": "gross",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "discount": {
-          "name": "discount",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "taxable": {
-          "name": "taxable",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "gst": {
-          "name": "gst",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "net": {
-          "name": "net",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "unit_cost": {
-          "name": "unit_cost",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
         }
       },
       "indexes": {
@@ -3005,6 +2987,14 @@
         "goods_receipt_lines_rate_check": {
           "name": "goods_receipt_lines_rate_check",
           "value": "\"goods_receipt_lines\".\"rate\" >= 0"
+        },
+        "goods_receipt_lines_discount_percent_check": {
+          "name": "goods_receipt_lines_discount_percent_check",
+          "value": "\"goods_receipt_lines\".\"discount_percent\" >= 0 and \"goods_receipt_lines\".\"discount_percent\" <= 99.99"
+        },
+        "goods_receipt_lines_gst_percent_check": {
+          "name": "goods_receipt_lines_gst_percent_check",
+          "value": "\"goods_receipt_lines\".\"gst_percent\" >= 0 and \"goods_receipt_lines\".\"gst_percent\" <= 99.99"
         }
       },
       "isRLSEnabled": false
@@ -4496,6 +4486,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "round_off": {
+          "name": "round_off",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
         "grand_total": {
           "name": "grand_total",
           "type": "bigint",
@@ -4792,6 +4789,14 @@
           "name": "invoices_grand_total_check",
           "value": "\"invoices\".\"grand_total\" >= 0"
         },
+        "invoices_round_off_range_check": {
+          "name": "invoices_round_off_range_check",
+          "value": "\"invoices\".\"round_off\" >= -49 and \"invoices\".\"round_off\" <= 50"
+        },
+        "invoices_round_off_stream_check": {
+          "name": "invoices_round_off_stream_check",
+          "value": "\"invoices\".\"stream\" = 'pharmacy' or \"invoices\".\"round_off\" = 0"
+        },
         "invoices_discount_not_above_subtotal_check": {
           "name": "invoices_discount_not_above_subtotal_check",
           "value": "\"invoices\".\"discount_amount\" <= \"invoices\".\"subtotal\""
@@ -4802,7 +4807,7 @@
         },
         "invoices_total_math_check": {
           "name": "invoices_total_math_check",
-          "value": "\"invoices\".\"grand_total\" = \"invoices\".\"subtotal\" - \"invoices\".\"discount_amount\" + (case \"invoices\".\"stream\" when 'opd' then \"invoices\".\"tax_total\" else 0 end)"
+          "value": "\"invoices\".\"grand_total\" = \"invoices\".\"subtotal\" - \"invoices\".\"discount_amount\" + (case \"invoices\".\"stream\" when 'opd' then \"invoices\".\"tax_total\" else 0 end) + \"invoices\".\"round_off\""
         }
       },
       "isRLSEnabled": false
@@ -4852,6 +4857,13 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
+        },
+        "price_units": {
+          "name": "price_units",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         },
         "line_subtotal": {
           "name": "line_subtotal",
@@ -4997,7 +5009,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "invoice_lines_price_units_check": {
+          "name": "invoice_lines_price_units_check",
+          "value": "\"invoice_lines\".\"price_units\" > 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.payments": {
@@ -6448,6 +6465,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "mrp_units": {
+          "name": "mrp_units",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -6558,6 +6582,10 @@
         "stock_batches_mrp_check": {
           "name": "stock_batches_mrp_check",
           "value": "\"stock_batches\".\"mrp\" >= 0"
+        },
+        "stock_batches_mrp_units_check": {
+          "name": "stock_batches_mrp_units_check",
+          "value": "\"stock_batches\".\"mrp_units\" > 0"
         }
       },
       "isRLSEnabled": false

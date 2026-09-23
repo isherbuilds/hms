@@ -1,4 +1,4 @@
-import { Button } from "@hms/ui/components/button";
+import { Button, buttonVariants } from "@hms/ui/components/button";
 import { DropdownMenuCheckboxItem } from "@hms/ui/components/dropdown-menu";
 import { FormControl } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
@@ -180,9 +180,9 @@ function PharmacyStockRoute() {
         title="Pharmacy stock"
         action={
           canReceive ? (
-            <Button render={<Link to="/$orgSlug/pharmacy/receive" params={{ orgSlug }} />}>
+            <Link to="/$orgSlug/pharmacy/receive" params={{ orgSlug }} className={buttonVariants()}>
               Receive goods
-            </Button>
+            </Link>
           ) : null
         }
       />
@@ -291,6 +291,7 @@ function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFil
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {formatMoney(row.mrp, currency)}
+                        {row.mrpUnits > 1 ? ` / ${row.mrpUnits}` : ""}
                       </TableCell>
                       <TableCell>{row.stockUnit}</TableCell>
                       <TableCell className="text-right tabular-nums">{row.shelfQty}</TableCell>
@@ -333,6 +334,10 @@ function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFil
                     <p className="truncate font-medium">{row.name}</p>
                     <p className="mt-1 truncate font-mono text-muted-foreground">
                       {row.batchNumber} · {formatDay(row.expiryDate)}
+                    </p>
+                    <p className="mt-1 text-muted-foreground">
+                      MRP {formatMoney(row.mrp, currency)}
+                      {row.mrpUnits > 1 ? ` / ${row.mrpUnits}` : ""}
                     </p>
                   </div>
                   <div className="shrink-0 text-right tabular-nums">

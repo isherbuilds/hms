@@ -172,6 +172,7 @@ export const pharmacyRouter = {
           batchNumber: stockBatches.batchNumber,
           expiryDate: stockBatches.expiryDate,
           mrp: stockBatches.mrp,
+          mrpUnits: stockBatches.mrpUnits,
           productId: products.id,
           schedule: products.schedule,
           catalogItemId: catalogItems.id,
@@ -236,6 +237,7 @@ export const pharmacyRouter = {
             catalogItemId: batch.catalogItemId,
             description: `${batch.name} · batch ${batch.batchNumber}`,
             unitPrice: batch.mrp,
+            priceUnits: batch.mrpUnits,
             taxRatePercent: batch.taxRatePercent,
             taxCode: batch.taxCode,
             revenueCategory: "pharmacy" as const,
@@ -416,7 +418,7 @@ export const pharmacyRouter = {
     const result = await db.transaction(async (tx) => {
       const invoice = await lockInvoice(tx, scope.orgId, sale.invoiceId);
 
-      const [sourceLines, priorReturns, priorCredits] = await Promise.all([
+      const [sourceLines, priorReturns, priorCredits, [priorCredit]] = await Promise.all([
         tx
           .select({
             id: invoiceLines.id,
@@ -432,11 +434,7 @@ export const pharmacyRouter = {
             and(eq(charges.orgId, scope.orgId), eq(charges.id, invoiceLines.chargeId)),
           )
           .where(
-            and(
-              eq(invoiceLines.orgId, scope.orgId),
-              eq(invoiceLines.invoiceId, sale.invoiceId),
-              inArray(invoiceLines.id, requestedIds),
-            ),
+            and(eq(invoiceLines.orgId, scope.orgId), eq(invoiceLines.invoiceId, sale.invoiceId)),
           ),
         tx
           .select({
@@ -444,10 +442,17 @@ export const pharmacyRouter = {
             qty: sql<number>`sum(${pharmacyReturnLines.qty})::int`,
           })
           .from(pharmacyReturnLines)
+          .innerJoin(
+            invoiceLines,
+            and(
+              eq(invoiceLines.orgId, scope.orgId),
+              eq(invoiceLines.id, pharmacyReturnLines.invoiceLineId),
+            ),
+          )
           .where(
             and(
               eq(pharmacyReturnLines.orgId, scope.orgId),
-              inArray(pharmacyReturnLines.invoiceLineId, requestedIds),
+              eq(invoiceLines.invoiceId, sale.invoiceId),
             ),
           )
           .groupBy(pharmacyReturnLines.invoiceLineId),
@@ -473,15 +478,23 @@ export const pharmacyRouter = {
               inArray(creditNoteLines.invoiceLineId, requestedIds),
             ),
           ),
+        tx
+          .select({ total: sql`coalesce(sum(${creditNotes.total}), 0)::bigint`.mapWith(BigInt) })
+          .from(creditNotes)
+          .where(
+            and(eq(creditNotes.orgId, scope.orgId), eq(creditNotes.invoiceId, sale.invoiceId)),
+          ),
       ]);
 
-      if (sourceLines.length !== requestedIds.length) {
+      const sourceById = new Map(sourceLines.map((line) => [line.id, line]));
+
+      if (requestedIds.some((id) => !sourceById.has(id))) {
         throw new ORPCError("NOT_FOUND", {
           message: "One of those invoice lines no longer exists.",
         });
       }
 
-      const sourceById = new Map(sourceLines.map((line) => [line.id, line]));
+      const requestedQtyByLine = new Map(input.lines.map((line) => [line.invoiceLineId, line.qty]));
       const returnedQtyByLine = new Map(priorReturns.map((row) => [row.invoiceLineId, row.qty]));
 
       const creditedByLine = new Map<
@@ -544,6 +557,12 @@ export const pharmacyRouter = {
         return { invoiceLineId: source.id, batchId: source.batchId, qty: line.qty, ...credited };
       });
 
+      const fullyReturned = sourceLines.every(
+        (line) =>
+          (returnedQtyByLine.get(line.id) ?? 0) + (requestedQtyByLine.get(line.id) ?? 0) ===
+          line.qty,
+      );
+
       const moneyLines: CreditNoteLineRequest[] = computed
         .filter((line) => line.gross > 0n)
         .map((line) => ({
@@ -553,14 +572,21 @@ export const pharmacyRouter = {
           gross: line.gross,
         }));
 
-      // A fully discounted line returns goods with no money, so there is nothing to credit.
+      const lineGross = computed.reduce((sum, line) => sum + line.gross, 0n);
+      const remaining = invoice.grandTotal - (priorCredit?.total ?? 0n);
+      const excess = remaining - lineGross;
+      // Cap a partial return at the invoice balance; the final return absorbs
+      // any round-off not already carried by earlier credit notes.
+      const roundOff = fullyReturned || excess < 0n ? excess : 0n;
+
       const creditNote =
-        moneyLines.length > 0
+        moneyLines.length > 0 || roundOff > 0n
           ? await postCreditNoteTx(tx, {
               scope,
               invoiceId: sale.invoiceId,
               reason: input.note ?? input.reasonCode,
               lines: moneyLines,
+              roundOff,
               settings,
               now,
               fiscalYear,
@@ -843,6 +869,7 @@ export const pharmacyRouter = {
         businessDate: invoices.businessDate,
         buyerName: pharmacySales.buyerName,
         patientId: pharmacySales.patientId,
+        roundOff: invoices.roundOff,
         grandTotal: invoices.grandTotal,
         createdAt: pharmacySales.createdAt,
       })

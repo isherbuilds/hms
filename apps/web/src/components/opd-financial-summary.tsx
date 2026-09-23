@@ -30,6 +30,12 @@ export function FinancialSummary({
         <dt className="text-muted-foreground">Tax</dt>
         <dd className="tabular-nums">{formatMoney(quote.taxTotal, currency)}</dd>
       </div>
+      {quote.roundOff !== ZERO ? (
+        <div className="flex justify-between">
+          <dt className="text-muted-foreground">Round off</dt>
+          <dd className="tabular-nums">{formatMoney(quote.roundOff, currency)}</dd>
+        </div>
+      ) : null}
       <Separator />
       <div className="flex items-baseline justify-between pt-1 text-sm font-medium">
         <dt>Payable</dt>

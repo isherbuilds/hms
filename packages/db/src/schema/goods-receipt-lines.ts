@@ -15,9 +15,8 @@ import { organization } from "./auth";
 import { goodsReceipts } from "./goods-receipts";
 import { stockBatches } from "./stock-batches";
 
-// One priced line of a supplier's bill. Opening stock has no lines: its count is the stock
-// movements alone. Amounts are stored as computed by `receiptLineCost` so a later rate or
-// tax change never rewrites a past receipt.
+// One priced line of a supplier's bill. Opening stock has no lines: its count is
+// the stock movements alone. Store pricing facts; derive exact amounts via receiptLineCost.
 export const goodsReceiptLines = pgTable(
   "goods_receipt_lines",
   {
@@ -36,17 +35,19 @@ export const goodsReceiptLines = pgTable(
     discountPercent: numeric("discount_percent", { precision: 4, scale: 2 }).notNull(),
     gstPercent: numeric("gst_percent", { precision: 4, scale: 2 }).notNull(),
     hsnCode: text("hsn_code"),
-    gross: bigint("gross", { mode: "bigint" }).notNull(),
-    discount: bigint("discount", { mode: "bigint" }).notNull(),
-    taxable: bigint("taxable", { mode: "bigint" }).notNull(),
-    gst: bigint("gst", { mode: "bigint" }).notNull(),
-    net: bigint("net", { mode: "bigint" }).notNull(),
-    unitCost: bigint("unit_cost", { mode: "bigint" }).notNull(),
   },
   (table) => [
     check("goods_receipt_lines_qty_check", sql`${table.qty} > 0 and ${table.freeQty} >= 0`),
     check("goods_receipt_lines_pack_size_check", sql`${table.packSize} > 0`),
     check("goods_receipt_lines_rate_check", sql`${table.rate} >= 0`),
+    check(
+      "goods_receipt_lines_discount_percent_check",
+      sql`${table.discountPercent} >= 0 and ${table.discountPercent} <= 99.99`,
+    ),
+    check(
+      "goods_receipt_lines_gst_percent_check",
+      sql`${table.gstPercent} >= 0 and ${table.gstPercent} <= 99.99`,
+    ),
     unique("goods_receipt_lines_org_id_id_unique").on(table.orgId, table.id),
     foreignKey({
       columns: [table.orgId, table.receiptId],

@@ -31,6 +31,7 @@ type ChargeInput = {
   description: string;
   qty: number;
   unitPrice: bigint;
+  priceUnits: number;
   taxRatePercent: string;
   taxCode: string | null;
 };
@@ -40,6 +41,7 @@ type InvoiceLine = {
   description: string;
   qty: number;
   unitPrice: bigint;
+  priceUnits: number;
   lineSubtotal: bigint;
   allocatedDiscount: bigint;
   taxableValue: bigint;
@@ -51,27 +53,75 @@ type InvoiceLine = {
 
 export type PriceBasis = "exclusive" | "inclusive";
 
+export type InvoiceRounding = "paise" | "rupee";
+
+export class InvoiceDiscountExceededError extends Error {}
+
 export function priceBasisFor(stream: "opd" | "pharmacy"): PriceBasis {
   return stream === "pharmacy" ? "inclusive" : "exclusive";
+}
+
+export function invoiceRoundingFor(stream: "opd" | "pharmacy"): InvoiceRounding {
+  return stream === "pharmacy" ? "rupee" : "paise";
+}
+
+function gcd(left: bigint, right: bigint): bigint {
+  while (right !== 0n) {
+    [left, right] = [right, left % right];
+  }
+
+  return left;
 }
 
 export function computeInvoiceLines(
   charges: ChargeInput[],
   discountPaise: bigint,
   basis: PriceBasis,
+  rounding: InvoiceRounding,
 ) {
+  let commonUnits = 1n;
+
   const preparedLines = charges.map((charge) => {
     if (!Number.isSafeInteger(charge.qty) || charge.qty < 0) {
       throw new Error(`Invalid quantity: ${charge.qty}`);
     }
 
-    return { charge, lineSubtotal: charge.unitPrice * BigInt(charge.qty), allocatedDiscount: 0n };
+    if (!Number.isSafeInteger(charge.priceUnits) || charge.priceUnits < 1) {
+      throw new Error(`Invalid price units: ${charge.priceUnits}`);
+    }
+
+    const units = BigInt(charge.priceUnits);
+    commonUnits = (commonUnits / gcd(commonUnits, units)) * units;
+
+    return { charge, units, lineSubtotal: 0n, allocatedDiscount: 0n, remainder: 0n };
   });
 
-  const subtotalPaise = preparedLines.reduce((sum, line) => sum + line.lineSubtotal, 0n);
+  let exactSubtotal = 0n;
+  let floorTotal = 0n;
+
+  for (const line of preparedLines) {
+    // One common denominator preserves the exact price of every stock unit.
+    const numerator = BigInt(line.charge.qty) * line.charge.unitPrice * (commonUnits / line.units);
+    line.lineSubtotal = numerator / commonUnits;
+    line.remainder = numerator % commonUnits;
+    exactSubtotal += numerator;
+    floorTotal += line.lineSubtotal;
+  }
+
+  const subtotalPaise = divideHalfUp(exactSubtotal, commonUnits);
+  const leftover = Number(subtotalPaise - floorTotal);
+
+  // Stable sort gives an input-order tie break for equal fractional paise.
+  const ranked = [...preparedLines].sort((a, b) =>
+    a.remainder === b.remainder ? 0 : a.remainder > b.remainder ? -1 : 1,
+  );
+
+  for (let index = 0; index < leftover; index++) {
+    ranked[index]!.lineSubtotal += 1n;
+  }
 
   if (discountPaise > subtotalPaise) {
-    throw new Error("Discount cannot exceed invoice subtotal");
+    throw new InvoiceDiscountExceededError("Discount cannot exceed invoice subtotal");
   }
 
   for (const line of preparedLines) {
@@ -93,7 +143,7 @@ export function computeInvoiceLines(
   }
 
   let taxTotalPaise = 0n;
-  let grandTotalPaise = 0n;
+  let preRoundPaise = 0n;
 
   const lines = preparedLines.map(({ charge, lineSubtotal, allocatedDiscount }): InvoiceLine => {
     const netPaise = lineSubtotal - allocatedDiscount;
@@ -110,13 +160,14 @@ export function computeInvoiceLines(
     const grossPaise = basis === "inclusive" ? netPaise : netPaise + taxAmountPaise;
 
     taxTotalPaise += taxAmountPaise;
-    grandTotalPaise += grossPaise;
+    preRoundPaise += grossPaise;
 
     return {
       chargeId: charge.chargeId,
       description: charge.description,
       qty: charge.qty,
       unitPrice: charge.unitPrice,
+      priceUnits: charge.priceUnits,
       lineSubtotal,
       allocatedDiscount,
       taxableValue: taxableValuePaise,
@@ -127,11 +178,15 @@ export function computeInvoiceLines(
     };
   });
 
+  const grandTotal =
+    rounding === "rupee" ? divideHalfUp(preRoundPaise, 100n) * 100n : preRoundPaise;
+
   return {
     lines,
     subtotal: subtotalPaise,
     taxTotal: taxTotalPaise,
-    grandTotal: grandTotalPaise,
+    roundOff: grandTotal - preRoundPaise,
+    grandTotal,
   };
 }
 

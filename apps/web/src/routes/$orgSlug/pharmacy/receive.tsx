@@ -12,51 +12,34 @@ import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link, useBlocker, useNavigate } from "@tanstack/react-router";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useFieldArray, useFormContext, useWatch, Watch } from "react-hook-form";
+import { useFieldArray, useFormContext, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { FormSheet } from "@/components/form-sheet";
 import { ControlledField, TextField } from "@/components/form-fields";
+import { NewProductSheet } from "@/components/pharmacy-new-product-sheet";
 import { PageBody, PageHeader, Panel } from "@/components/page";
 import { ProductPicker, type PickedProduct } from "@/components/product-picker";
 import { useZodForm } from "@/hooks/use-zod-form";
-import { numberText } from "@/lib/form-schema";
-import { useMembership } from "@/lib/membership";
+import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { orgToday, useOrgDateTime } from "@/lib/org-datetime";
 import { uploadOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
 import { errorMessage } from "@/lib/orpc-error";
 import {
+  approximateUnitCost,
   billSummary,
   costAtOrAboveMrp,
-  mrpPerUnit,
+  formatReceiptExact,
   packSizeOf,
   type ReceiptRowText,
   rowCost,
+  stockQuantities,
+  wholeCount,
 } from "@/lib/receipt-lines";
 import { requireOrgPermission } from "@/lib/route-permission";
-
-// Kept local so no @hms/db server module reaches the client bundle (hard rule 6).
-const STOCK_UNITS = [
-  "tablet",
-  "capsule",
-  "ml",
-  "strip",
-  "bottle",
-  "vial",
-  "tube",
-  "piece",
-] as const;
-
-const SCHEDULES = [
-  ["none", "No schedule"],
-  ["h", "Schedule H"],
-  ["h1", "Schedule H1"],
-  ["x", "Schedule X"],
-] as const;
 
 export const Route = createFileRoute("/$orgSlug/pharmacy/receive")({
   head: () => ({ meta: [{ title: "Receive goods · HMS" }] }),
@@ -106,7 +89,12 @@ const receiptLineSchema = (today: string) =>
       unitsPerPack: z.number().int().min(1),
       batchNumber: z.string().trim().min(1, "Type the batch number").max(50),
       expiryDate: expiryMonth,
-      count: numberText(z.number().int().min(1, "At least 1")),
+      count: z
+        .string()
+        .refine((value) => wholeText.test(value.trim()), "Enter a whole number")
+        .refine((value) => wholeCount(value) !== null, "Too large")
+        .transform(Number)
+        .refine((value) => value >= 1, "At least 1"),
       loose: z.boolean(),
       price: z.string().regex(DECIMAL_PATTERN, "A price like 84 or 84.20"),
       free: z.string().trim(),
@@ -146,36 +134,32 @@ const receiptSchema = (today: string) =>
         });
       }
 
-      const batches = new Map<string, number>();
+      const issue = (path: (string | number)[], message: string) =>
+        context.addIssue({ code: "custom", path, message });
 
       value.lines.forEach((line, index) => {
-        if (!line.productId || !line.batchNumber) return;
-        const key = `${line.productId}:${line.batchNumber.trim().toUpperCase()}`;
-        const first = batches.get(key);
+        const row = rowText(line);
 
-        if (first === undefined) {
-          batches.set(key, index);
-
-          return;
+        if (!stockQuantities(row, true)) {
+          issue(["lines", index, "count"], "Too large");
+        } else if (
+          !value.opening &&
+          wholeCount(line.free || "0") !== null &&
+          !stockQuantities(row)
+        ) {
+          issue(["lines", index, "free"], "Too large");
         }
-
-        context.addIssue({
-          code: "custom",
-          path: ["lines", index, "batchNumber"],
-          message: `Already entered on line ${first + 1}`,
-        });
       });
 
       if (value.opening) return;
-
-      const issue = (path: (string | number)[], message: string) =>
-        context.addIssue({ code: "custom", path, message });
 
       if (value.supplierName === "") issue(["supplierName"], "Type who delivered this");
 
       value.lines.forEach((line, index) => {
         if (line.free !== "" && !wholeText.test(line.free)) {
-          issue(["lines", index, "free"], "A whole number");
+          issue(["lines", index, "free"], "Enter a whole number");
+        } else if (line.free !== "" && wholeCount(line.free) === null) {
+          issue(["lines", index, "free"], "Too large");
         }
 
         if (!DECIMAL_PATTERN.test(line.rate)) issue(["lines", index, "rate"], "A rate like 76.19");
@@ -258,6 +242,7 @@ function ReceiveGoodsRoute() {
   const { orgSlug } = Route.useParams();
   const navigate = useNavigate();
   const { timeZone, today } = useOrgDateTime();
+  const canManageItems = useCan(orgSlug, { pharmacy: ["manageItems"] });
   const schema = useMemo(() => receiptSchema(today), [today]);
 
   const form = useZodForm(schema, {
@@ -317,8 +302,8 @@ function ReceiveGoodsRoute() {
       return;
     }
 
-    try {
-      await receive.mutateAsync({
+    receive.mutate(
+      {
         orgSlug,
         opening: values.opening,
         supplierName: values.opening ? undefined : values.supplierName,
@@ -329,22 +314,21 @@ function ReceiveGoodsRoute() {
         note: values.note || undefined,
         lines: values.lines.map((line) => {
           const row = rowText(line);
-          const packSize = packSizeOf(row);
-          const mrp = mrpPerUnit(row);
+          const quantities = stockQuantities(row, values.opening);
 
-          if (mrp === null) throw new Error("a validated receipt line lost its MRP");
+          if (!quantities) throw new Error("A validated receipt line exceeds stock limits");
 
           return {
             productId: line.productId,
             batchNumber: line.batchNumber,
             expiryDate: line.expiryDate,
-            qty: line.count * packSize,
-            mrp,
+            qty: quantities.qty,
+            pricedPer: quantities.packSize === 1 ? ("unit" as const) : ("pack" as const),
+            mrp: parseDecimal(line.price),
             cost: values.opening
               ? undefined
               : {
-                  freeQty: Number(line.free || 0) * packSize,
-                  packSize,
+                  freeQty: quantities.freeQty,
                   rate: parseDecimal(line.rate),
                   discountPercent: line.discount,
                   gstPercent: line.gst,
@@ -352,12 +336,9 @@ function ReceiveGoodsRoute() {
                 },
           };
         }),
-      });
-    } catch (error) {
-      toast.error(errorMessage(error, "Could not receive these goods"));
-    } finally {
-      setSubmitting(false);
-    }
+      },
+      { onSettled: () => setSubmitting(false) },
+    );
   });
 
   const fillLine = (index: number, product: PickedProduct | null) => {
@@ -516,9 +497,11 @@ function ReceiveGoodsRoute() {
                   <PlusIcon data-icon="inline-start" />
                   Add batch
                 </Button>
-                <Button type="button" variant="ghost" onClick={openNewProduct}>
-                  New product
-                </Button>
+                {canManageItems ? (
+                  <Button type="button" variant="ghost" onClick={openNewProduct}>
+                    New product
+                  </Button>
+                ) : null}
               </div>
 
               <TextField
@@ -586,10 +569,12 @@ function BatchRow({
   const row = rowText(line);
   const packSize = packSizeOf(row);
   const perCounted = packSize === 1 ? line.stockUnit || "unit" : "pack";
-  const quantity = (Number(line.count) || 0) * packSize;
-  const free = (Number(line.free) || 0) * packSize;
+  const quantities = stockQuantities(row, opening);
+  const quantity = quantities?.qty;
+  const free = quantities?.freeQty;
   const cost = opening ? null : rowCost(row);
   const overMrp = costAtOrAboveMrp(row, cost);
+  const unitCost = cost ? approximateUnitCost(row, cost) : null;
 
   const monthsLeft = /^\d{4}-\d{2}$/.test(line.expiryDate)
     ? monthsUntil(line.expiryDate, today)
@@ -629,7 +614,7 @@ function BatchRow({
         name={`lines.${index}.count`}
         label={opening ? "Counted" : "Billed qty"}
         inputMode="numeric"
-        description={quantity > 0 && line.stockUnit ? countOf(quantity, line.stockUnit) : undefined}
+        description={quantity && line.stockUnit ? countOf(quantity, line.stockUnit) : undefined}
       />
       <ControlledField
         name={`lines.${index}.loose`}
@@ -675,7 +660,7 @@ function BatchRow({
             label="Free qty"
             inputMode="numeric"
             placeholder="0"
-            description={free > 0 && line.stockUnit ? countOf(free, line.stockUnit) : undefined}
+            description={free && line.stockUnit ? countOf(free, line.stockUnit) : undefined}
           />
           <TextField
             name={`lines.${index}.rate`}
@@ -699,12 +684,12 @@ function BatchRow({
           <div className="flex min-w-0 flex-col gap-1 tabular-nums md:items-end md:text-right">
             <span className="text-muted-foreground">Line total</span>
             <span className="py-1.5 font-medium">
-              {cost ? formatMoney(cost.net, currency) : "—"}
+              {cost ? formatReceiptExact(cost.net, currency) : "—"}
             </span>
-            {cost ? (
+            {unitCost !== null ? (
               <span className={overMrp ? "text-destructive" : "text-muted-foreground"}>
-                {overMrp ? "Costs at or above MRP: " : ""}
-                {formatMoney(cost.unitCost, currency)} / {line.stockUnit || "unit"}
+                {overMrp ? "Costs at or above MRP: " : ""}≈ {formatMoney(unitCost, currency)} /{" "}
+                {line.stockUnit || "unit"}
               </span>
             ) : null}
           </div>
@@ -719,11 +704,16 @@ function ReceiptTotals({ orgSlug, opening }: { orgSlug: string; opening: boolean
   const { control } = useFormContext<ReceiptInput, unknown, Receipt>();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const [lines, billTotal] = useWatch({ control, name: ["lines", "billTotal"] });
-  let quantity = 0;
+  let quantity: number | null = 0;
 
   for (const line of lines) {
-    const packSize = packSizeOf(line);
-    quantity += ((Number(line.count) || 0) + (opening ? 0 : Number(line.free) || 0)) * packSize;
+    const quantities = stockQuantities(rowText(line), opening);
+
+    if (!quantities) {
+      quantity = null;
+    } else if (quantity !== null) {
+      quantity += quantities.qty + quantities.freeQty;
+    }
   }
 
   const summary = opening ? null : billSummary(lines.map(rowText), billTotal);
@@ -731,14 +721,22 @@ function ReceiptTotals({ orgSlug, opening }: { orgSlug: string; opening: boolean
   return (
     <div className="flex flex-col gap-1 tabular-nums">
       <p className="font-medium">
-        {lines.length} batch{lines.length === 1 ? "" : "es"} · {quantity} stock unit
-        {quantity === 1 ? "" : "s"}
+        {lines.length} batch{lines.length === 1 ? "" : "es"} ·{" "}
+        {quantity === null ? "— stock units" : `${quantity} stock unit${quantity === 1 ? "" : "s"}`}
       </p>
       {summary ? (
         <>
           <p className="text-muted-foreground">
-            Taxable {formatMoney(summary.taxable, currency)} · GST{" "}
-            {formatMoney(summary.gst, currency)} · Lines {formatMoney(summary.net, currency)}
+            Taxable {formatReceiptExact(summary.taxable, currency)} · GST{" "}
+            {formatReceiptExact(summary.gst, currency)} · Net{" "}
+            {formatReceiptExact(summary.exactNet, currency)}
+          </p>
+          <p className="text-muted-foreground">
+            Bill total{" "}
+            {billTotal && DECIMAL_PATTERN.test(billTotal)
+              ? formatMoney(parseDecimal(billTotal), currency)
+              : "—"}
+            {" · "}Lines to the paisa {formatMoney(summary.net, currency)}
           </p>
           {summary.roundOff === null ? (
             <p className="text-muted-foreground">
@@ -762,161 +760,5 @@ function ReceiptTotals({ orgSlug, opening }: { orgSlug: string; opening: boolean
         </>
       ) : null}
     </div>
-  );
-}
-
-const newProductSchema = z
-  .object({
-    name: z.string().trim().min(1, "It needs a name").max(200),
-    unitsPerPack: numberText(z.number().int().min(1, "At least 1 per pack")),
-    stockUnit: z.enum(STOCK_UNITS),
-    schedule: z.enum(["none", "h", "h1", "x"]),
-    sold: z.boolean(),
-    code: z.string().trim().max(20),
-    taxRatePercent: z.string().trim(),
-  })
-  .superRefine((value, context) => {
-    if (!value.sold) return;
-
-    if (value.code === "") {
-      context.addIssue({ code: "custom", path: ["code"], message: "Code is required" });
-    }
-
-    if (!/^\d{1,2}(\.\d{1,2})?$/.test(value.taxRatePercent)) {
-      context.addIssue({
-        code: "custom",
-        path: ["taxRatePercent"],
-        message: "Rate like 0, 5, or 12.50",
-      });
-    }
-  });
-
-/** A medicine the shelf has never held, named where it is missed: four questions, then back. */
-function NewProductSheet({
-  orgSlug,
-  onClose,
-  onAdded,
-}: {
-  orgSlug: string;
-  onClose: () => void;
-  onAdded: (product: PickedProduct) => void;
-}) {
-  return (
-    <FormSheet
-      title="New product"
-      description="Only what the shelf needs. The rest can be filled in under Products."
-      submitLabel="Add product"
-      schema={newProductSchema}
-      defaultValues={{
-        name: "",
-        unitsPerPack: "1",
-        stockUnit: "tablet",
-        schedule: "none",
-        sold: true,
-        code: "",
-        taxRatePercent: "0",
-      }}
-      success="Medicine added"
-      onClose={onClose}
-      run={async (values) => {
-        const created = await orpc.pharmacy.createProduct.call({
-          orgSlug,
-          name: values.name,
-          stockUnit: values.stockUnit,
-          unitsPerPack: values.unitsPerPack,
-          schedule: values.schedule,
-          catalog: values.sold
-            ? { code: values.code, taxRatePercent: values.taxRatePercent, active: true }
-            : undefined,
-        });
-
-        onAdded({
-          productId: created.productId,
-          name: values.name,
-          stockUnit: values.stockUnit,
-          unitsPerPack: values.unitsPerPack,
-          taxRatePercent: values.sold ? values.taxRatePercent : null,
-          taxCode: null,
-        });
-
-        return created;
-      }}
-    >
-      <TextField
-        name="name"
-        label="What is it called?"
-        description="Exactly as it reads on the box."
-      />
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <TextField name="unitsPerPack" label="What does one pack hold?" inputMode="numeric" />
-        <ControlledField
-          name="stockUnit"
-          label="Counted in"
-          render={(field) => (
-            <FormControl>
-              <NativeSelect {...field}>
-                {STOCK_UNITS.map((unit) => (
-                  <option key={unit} value={unit}>
-                    {unit}
-                  </option>
-                ))}
-              </NativeSelect>
-            </FormControl>
-          )}
-        />
-      </div>
-
-      <ControlledField
-        name="schedule"
-        label="Schedule"
-        render={(field) => (
-          <FormControl>
-            <NativeSelect {...field}>
-              {SCHEDULES.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </NativeSelect>
-          </FormControl>
-        )}
-      />
-
-      <ControlledField
-        name="sold"
-        label="We sell this at the counter"
-        description="Off for an internal supply: stocked and issued, never billed."
-        className="flex flex-wrap items-center gap-2"
-        render={(field) => (
-          <FormControl>
-            <Checkbox checked={field.value} onCheckedChange={field.onChange} />
-          </FormControl>
-        )}
-      />
-
-      <SoldFields />
-    </FormSheet>
-  );
-}
-
-/** The billing details, present only while the medicine is sold at the counter. */
-function SoldFields() {
-  const { control } = useFormContext();
-
-  return (
-    <Watch
-      control={control}
-      name="sold"
-      exact
-      render={(sold) =>
-        sold ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <TextField name="code" label="Code" />
-            <TextField name="taxRatePercent" label="GST %" inputMode="decimal" placeholder="12" />
-          </div>
-        ) : null
-      }
-    />
   );
 }
