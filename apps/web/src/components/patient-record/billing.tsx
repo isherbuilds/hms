@@ -254,12 +254,12 @@ export function PatientBilling({
                 const due = invoice.outstanding !== ZERO;
 
                 return (
-                  <TableRow key={invoice.id}>
+                  <TableRow key={invoice.id} className="relative">
                     <TableCell className="font-mono whitespace-nowrap">
                       <Link
                         to="/$orgSlug/billing/invoices/$invoiceId"
                         params={{ orgSlug, invoiceId: invoice.id }}
-                        className="underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                        className="underline-offset-4 after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                       >
                         {invoice.invoiceNumber}
                       </Link>

@@ -49,12 +49,12 @@ Owner-funded, contracted: the pilot hospital has asked for this in writing as a
 condition of signing, and the owner runs the hospital. The roadmap gate in
 [Product](../product.md#roadmap-gates) is met as follows:
 
-| Gate condition               | Status                                                                        |
-| ---------------------------- | ----------------------------------------------------------------------------- |
-| Paid scope                   | Signing condition, owner-confirmed 2026-09-18                                 |
-| Pharmacy owner               | **To be named** at the Stage 0 walkthrough                                    |
-| Verified opening stock       | Slice 2 posts an opening goods receipt with the count time and retained sheet |
-| Signed sale/return workflows | Stage 0 walkthrough signs the sale, return, receipt and adjustment flows      |
+| Gate condition               | Status                                                                     |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| Paid scope                   | Signing condition, owner-confirmed 2026-09-18                              |
+| Pharmacy owner               | **To be named** at the Stage 0 walkthrough                                 |
+| Verified opening stock       | Slice 2 posts an opening goods receipt with the count date and batch lines |
+| Signed sale/return workflows | Stage 0 walkthrough signs the sale, return, receipt and adjustment flows   |
 
 - **Baseline:** zero pharmacy sales in HMS; the incumbent holds stock and sales.
 - **Target outcome:** the pharmacy runs one full month on HMS with the incumbent
@@ -137,8 +137,8 @@ this spec. Nothing in the code depends on an answer beyond what is written.
     quarantine) with an explanation, so that a stock difference is explained,
     not typed over.
 11. As an **administrator**, I want to post opening stock as an opening goods
-    receipt with the count time and the retained sheet, so that cutover starts
-    from a verified number with its evidence.
+    receipt with the count date and batch quantities, so that cutover starts
+    from the physical count without collecting a separate document.
 12. As an **administrator**, I want to maintain the product master (name,
     generic, form, strength, stock unit, pack size, and, for a product sold at
     the counter, code, HSN and GST rate), so that sales carry the right tax and
@@ -393,7 +393,8 @@ pharmacy_return | adjustment`), `sourceId`, `departmentId` (nullable composite
   `opening` (boolean, default false),
   `supplierName` (nullable), `supplierReference` (nullable), `receivedOn` (a
   `date`: the day named on the document, not an instant),
-  `fileId` (nullable composite FK to `file`), `note` (nullable), `billTotal`
+  `fileId` (nullable composite FK to `file`, retained only for legacy receipts;
+  new receipts do not attach files), `note` (nullable), `billTotal`
   (paise; null on an opening count), `receivedBy`,
   `createdAt`. Lines create batches as needed; one movement per batch adds
   billed and free units aggregated across its lines (`sourceType =
@@ -412,9 +413,9 @@ pharmacy_return | adjustment`), `sourceId`, `departmentId` (nullable composite
   line nets rounds to paise, and the printed bill total must be within
   ±₹0.99 of that rounded sum. Repeated lines for one batch remain separate
   priced lines, while stock movements aggregate by batch.
-  Opening stock is the same document with `opening` set: it names no supplier,
-  keeps the signed count sheet in `fileId`, and posts `opening` movements, so a
-  batch that already has a movement is refused (`CONFLICT`). Opening counts
+  Opening stock is the same document with `opening` set: it names no supplier
+  and posts `opening` movements, so a batch that already has a movement is
+  refused (`CONFLICT`). No receipt takes a new attachment (D045). Opening counts
   reject expired batches: at pilot cutover expired inventory enters through
   the separate quarantine/write-off process, not the opening count; expired
   stock is never sellable. A later count is a `count_correction` adjustment.
@@ -499,8 +500,8 @@ pair (`sourceType = "adjustment"`, `sourceId` = a fresh UUIDv7 shared by the
 pair). Audited.
 
 **`pharmacy.receiveGoods`** (`pharmacy:receive`) takes `opening` (default false),
-`supplierName?`, `supplierReference?`, `receivedOn` (`YYYY-MM-DD`), `fileId?`,
-`note?`, `billTotal?`, and
+`supplierName?`, `supplierReference?`, `receivedOn` (`YYYY-MM-DD`), `note?`,
+`billTotal?`, and
 `lines: [{ productId, batchNumber, expiryDate, qty, pricedPer: "pack" | "unit",
 mrp, cost?: { freeQty, rate, discountPercent, gstPercent, hsnCode? } }]`
 (min 1, positive qty). `mrp` and `rate` are paise per priced unit exactly
@@ -512,12 +513,12 @@ aggregated per batch stay within the PostgreSQL integer range; free qty need
 not be ≤ billed qty. A non-opening receipt names its supplier, prices every
 line, and reconciles the rounded sum of exact line nets against the printed
 bill total within the explicit ±₹0.99 supplier-bill tolerance.
-An opening receipt carries no cost pricing. The command verifies the file
-belongs to the org, is `ready`, and is a PDF or image, creates the header
+An opening receipt carries no cost pricing. The command creates the header
 and one row for each priced line, creates each missing batch (refusing a
 conflicting expiry or non-equivalent MRP), and posts one aggregated movement
 per batch into the shelf: `receipt`, or `opening` when set. Opening refuses
-expired or already-moved batches (`CONFLICT`). Audited.
+expired or already-moved batches (`CONFLICT`). New receipts carry no file.
+Audited.
 
 **`pharmacy.createProduct`** / **`updateProduct`** (`pharmacy:manageItems`)
 take `name`, the product fields, and an optional `catalog`
@@ -560,8 +561,13 @@ read`; `file: read, upload`; `report: readDailyCollections`. No
 includeZero? })` (`pharmacy:read`): every product's batches with `shelfQty`,
   `quarantineQty`, `mrp` and `mrpUnits`, ordered by expiry; zero-stock batches
   excluded unless asked.
-- `pharmacy.listMovements({ batchId })` (`pharmacy:read`): movements newest
-  first with the actor name and, for an internal issue, the department.
+- `pharmacy.listMovements({ batchId?, cursor?, limit })` (`pharmacy:read`):
+  movements newest first by `(createdAt, id)`, org-wide or for one batch, with
+  product, batch number, unit, the actor name and, for an internal issue, the
+  department.
+- `pharmacy.lookupMedicine({ q })` (`pharmacy:manageItems`): name suggestions
+  from Tata 1mg's autocomplete, proxied server-side, for the product forms
+  (D046).
 - `pharmacy.listProducts({ query?, cursor?, limit })` (`pharmacy:read`):
   keyset by `(name, id)` like `catalog.list`, including inactive and
   internal-supply rows.
@@ -603,14 +609,18 @@ the console keeps one filter idiom.
   returns to the sales list with the new sale open, where **Print** lives.
 - `/$orgSlug/pharmacy/stock`: batches with shelf and quarantine, filters
   (product, expiring within 30/90 days, quarantine only); a Sheet for **Adjust**
-  (which needs `pharmacy:adjust`); a batch row expands to its movements.
-  **Receive goods** links to its own page.
+  (which needs `pharmacy:adjust`); a batch's **Movements** links to the
+  movements page filtered to it. **Receive goods** links to its own page.
+- `/$orgSlug/pharmacy/movements` (`pharmacy:read`): the movement ledger, its
+  own page so the stock list runs no movement query; `?batchId=` narrows it to
+  one batch with a removable chip.
 - `/$orgSlug/pharmacy/receive` (`pharmacy:receive`): a page, not a dialog,
   laid out as a ledger that follows the supplier bill (the Ledger prototype,
-  promoted 2026-09-23). The delivery details (supplier, bill number, bill
-  total, date and bill copy, or the **opening stock count** with its signed
-  sheet) sit above one line per product and batch. A line's first row names
-  the stock — product, batch, expiry, billed quantity, count as packs or loose
+  promoted 2026-09-23). A two-option mode choice selects supplier delivery
+  (supplier, bill number, total and date) or opening count (count date); neither
+  attaches a file. Those details sit above one line per product and batch.
+  A line's first row names the stock — product, batch, expiry, billed quantity,
+  count as packs or loose
   units; its second row prices it — free quantity, rate, discount %, GST %,
   MRP, HSN and the line total with derived cost per unit, shown as an error
   when it reaches the MRP. An opening count asks only the

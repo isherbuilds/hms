@@ -36,7 +36,7 @@ export function AdvanceReceiptLink({
       href={advancePdfUrl(orgSlug, id, refundId)}
       target="_blank"
       rel="noreferrer"
-      className="font-mono underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+      className="relative font-mono underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
     >
       {label}
     </a>

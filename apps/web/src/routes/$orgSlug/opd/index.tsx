@@ -134,6 +134,7 @@ function OpdStatusCell({
       {status === "booked" && canUpdate ? (
         <Button
           size="xs"
+          className="relative"
           disabled={checkIn.isPending}
           onClick={() => {
             if (patientId) {
@@ -178,15 +179,18 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
 
   return (
     <Panel
-      label="Appointments"
       minHeight="min-h-64"
       grow
-      action={
-        <div className="flex items-center gap-2">
+      // Polling stops once a second page loads, so the notice and Refresh sit with Load more.
+      footer={
+        <div className="flex items-center gap-2 pr-3">
+          <div className="min-w-0 flex-1">
+            <LoadMore query={day} shown={items.length} />
+          </div>
           <StaleDataNotice dataUpdatedAt={day.dataUpdatedAt} />
           {(day.data?.pages.length ?? 0) > 1 ? (
             <Button
-              size="sm"
+              size="xs"
               variant="ghost"
               disabled={day.isFetching}
               onClick={() => void day.refetch()}
@@ -196,7 +200,6 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
           ) : null}
         </div>
       }
-      footer={<LoadMore query={day} shown={items.length} />}
     >
       <ListState
         query={day}
@@ -223,7 +226,7 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
               </TableHeader>
               <TableBody>
                 {items.map((appointment) => (
-                  <TableRow key={appointment.id}>
+                  <TableRow key={appointment.id} className="relative">
                     <TableCell>
                       {appointment.tokenNumber === null ? (
                         <span className="text-muted-foreground">·</span>
@@ -240,7 +243,7 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
                         title={
                           appointment.patientName ?? appointment.callerName ?? "Unnamed caller"
                         }
-                        className="block truncate text-left font-medium capitalize underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                        className="block truncate text-left font-medium capitalize underline-offset-4 after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                       >
                         {appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
                       </Link>

@@ -91,5 +91,6 @@ export const stockMovements = pgTable(
       table.bucket,
     ),
     index("stock_movements_org_batch_bucket_idx").on(table.orgId, table.batchId, table.bucket),
+    index("stock_movements_org_created_idx").on(table.orgId, table.createdAt, table.id),
   ],
 );

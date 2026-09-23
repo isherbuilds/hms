@@ -25,14 +25,17 @@ export function PageHeader({ title, action }: { title: string; action?: ReactNod
 }
 
 // A page should never set its own `p-*`; pass `bleed` for content that must reach
-// the edge.
+// the edge. `width` caps the content, not the scroller, so the scrollbar stays at the
+// window edge.
 export function PageBody({
   children,
   bleed = false,
+  width,
   className,
 }: {
   children?: ReactNode;
   bleed?: boolean;
+  width?: string;
   className?: string;
 }) {
   return (
@@ -44,7 +47,11 @@ export function PageBody({
         className,
       )}
     >
-      {children}
+      {width ? (
+        <div className={cn("mx-auto flex w-full flex-col gap-4", width)}>{children}</div>
+      ) : (
+        children
+      )}
     </div>
   );
 }
@@ -249,25 +256,33 @@ export function Panel({
   className,
   children,
 }: {
-  label: string;
+  /** Omit on a single-list page: the table's column labels take the label row. */
+  label?: string;
   action?: ReactNode;
   footer?: ReactNode;
   minHeight?: string;
   padded?: boolean;
-  /** Fill the page: the one list on an operational desk, not a settings tray. */
+  /** Fill the page: set on every page whose body is one list. */
   grow?: boolean;
   className?: string;
   children: ReactNode;
 }) {
   return (
     <section className={cn("flex flex-col rounded-xl bg-muted p-1", grow && "flex-1")}>
-      <div className="flex h-9 items-center justify-between gap-2 px-3 text-muted-foreground">
-        <h2 className="min-w-0 truncate">{label}</h2>
-        {action}
-      </div>
+      {label && (
+        <div className="flex h-9 items-center justify-between gap-2 px-3 text-muted-foreground">
+          <h2 className="min-w-0 truncate">{label}</h2>
+          {action}
+        </div>
+      )}
       <div
         className={cn(
-          "flex flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card",
+          "flex flex-1 flex-col",
+          label
+            ? "overflow-hidden rounded-lg border border-border bg-card"
+            : // The card starts under the header row, so the column labels sit on the tray
+              // while staying in the rows' table and keeping their columns aligned.
+              "relative isolate before:absolute before:inset-x-0 before:top-0 before:bottom-0 before:-z-10 before:rounded-lg before:border before:border-border before:bg-card md:before:top-8 [&_thead_tr]:border-0",
           minHeight,
           padded && "gap-3 p-4",
           className,

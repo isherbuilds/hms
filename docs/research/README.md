@@ -22,6 +22,10 @@ Active temporary memos:
 - [Pharmacy reference flows](./pharmacy-reference-flows.md) — Bahmni, Danphe,
   and Marley observed 2026-09-18; the shared item, batch, movement-ledger,
   FEFO, and return-to-original-batch shape the pharmacy spec adopts.
+- [Hospital-wide financial reports](./hospital-wide-financial-reports.md) —
+  ERPNext, Tally and CBIC checked 2026-09-23; proposes one all-stream invoice
+  register beside per-stream series (D025 unchanged) and names the CA questions
+  to answer before a reporting spec.
 - [Landing page composition](./landing-page-composition.md) and
   [landing header anatomy](./landing-header-anatomy.md) — design-led and
   healthcare sites observed 2026-09-04; composition and header norms cited by the

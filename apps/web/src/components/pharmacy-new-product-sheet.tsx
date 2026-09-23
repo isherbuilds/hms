@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { FormSheet } from "@/components/form-sheet";
 import { ControlledField, TextField } from "@/components/form-fields";
+import { MedicineNameField } from "@/components/medicine-name-field";
 import type { PickedProduct } from "@/components/product-picker";
 import { numberText } from "@/lib/form-schema";
 import { orpc } from "@/lib/orpc";
@@ -55,6 +56,9 @@ export function validateSoldProduct(
 const newProductSchema = z
   .object({
     name: z.string().trim().min(1, "It needs a name").max(200),
+    form: z.string().trim().max(50),
+    strength: z.string().trim().max(50),
+    manufacturer: z.string().trim().max(200),
     unitsPerPack: numberText(z.number().int().min(1, "At least 1 per pack")),
     stockUnit: z.enum(STOCK_UNITS),
     schedule: z.enum(["none", "h", "h1", "x"]),
@@ -83,6 +87,9 @@ export function NewProductSheet({
       schema={newProductSchema}
       defaultValues={{
         name: "",
+        form: "",
+        strength: "",
+        manufacturer: "",
         unitsPerPack: "1",
         stockUnit: "tablet",
         schedule: "none",
@@ -97,6 +104,9 @@ export function NewProductSheet({
         const created = await orpc.pharmacy.createProduct.call({
           orgSlug,
           name: values.name,
+          form: values.form || undefined,
+          strength: values.strength || undefined,
+          manufacturer: values.manufacturer || undefined,
           stockUnit: values.stockUnit,
           unitsPerPack: values.unitsPerPack,
           schedule: values.schedule,
@@ -122,11 +132,16 @@ export function NewProductSheet({
         return created;
       }}
     >
-      <TextField
-        name="name"
+      <MedicineNameField
+        orgSlug={orgSlug}
         label="What is it called?"
         description="Exactly as it reads on the box."
       />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <TextField name="strength" label="Strength (optional)" placeholder="500 mg" />
+        <TextField name="form" label="Form (optional)" placeholder="tablet" />
+        <TextField name="manufacturer" label="Manufacturer (optional)" />
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <TextField name="unitsPerPack" label="What does one pack hold?" inputMode="numeric" />

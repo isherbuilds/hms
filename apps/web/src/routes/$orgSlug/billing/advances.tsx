@@ -72,7 +72,7 @@ function AdvancesHeldRoute() {
             onQueryChange={setQuery}
           />
         </ListToolbar>
-        <Panel label="Patient credit" footer={<LoadMore query={advances} shown={rows.length} />}>
+        <Panel grow footer={<LoadMore query={advances} shown={rows.length} />}>
           <ListState
             query={advances}
             errorTitle="Could not load advances held"
@@ -93,13 +93,13 @@ function AdvancesHeldRoute() {
                   </TableHeader>
                   <TableBody>
                     {rows.map((row) => (
-                      <TableRow key={row.id}>
+                      <TableRow key={row.id} className="relative">
                         <TableCell>
                           <Link
                             to="/$orgSlug/patients/$patientId"
                             params={{ orgSlug, patientId: row.patientId }}
                             search={{ tab: "billing" }}
-                            className="font-medium capitalize underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                            className="font-medium capitalize underline-offset-4 after:absolute after:inset-0 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                           >
                             {row.patientName}
                           </Link>

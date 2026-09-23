@@ -26,7 +26,7 @@ import {
 import { TooltipProvider } from "@hms/ui/components/tooltip";
 import { useQueryClient } from "@tanstack/react-query";
 import { ClientOnly, Link, useNavigate } from "@tanstack/react-router";
-import { CheckIcon, ChevronsUpDownIcon, LogInIcon, LogOutIcon, SettingsIcon } from "lucide-react";
+import { CheckIcon, ChevronsUpDownIcon, LogOutIcon, SettingsIcon } from "lucide-react";
 import { type ReactNode } from "react";
 
 import { Monogram } from "@/components/monogram";
@@ -47,7 +47,7 @@ function OrgSwitcher({ activeOrgSlug }: { activeOrgSlug: string }) {
         render={<SidebarMenuButton size="lg" tooltip={name} />}
         className="justify-between gap-2"
       >
-        <Monogram label={name} tone="accent" />
+        <Monogram label={name} seed={activeOrgSlug} kind="organization" />
         <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
         <ChevronsUpDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
       </DropdownMenuTrigger>
@@ -58,22 +58,19 @@ function OrgSwitcher({ activeOrgSlug }: { activeOrgSlug: string }) {
             <DropdownMenuItem
               key={org.id}
               render={<Link to="/$orgSlug/dashboard" params={{ orgSlug: org.slug }} />}
-              disabled={org.slug === activeOrgSlug}
-              className="gap-2"
+              aria-current={org.slug === activeOrgSlug ? "page" : undefined}
+              className={org.slug === activeOrgSlug ? "font-medium" : undefined}
             >
               <span className="min-w-0 flex-1 truncate">{org.name}</span>
-              {org.slug === activeOrgSlug && <CheckIcon className="size-3.5 shrink-0" />}
+              {org.slug === activeOrgSlug && <CheckIcon />}
             </DropdownMenuItem>
           ))}
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem render={<Link to="/join" />} className="gap-2">
-          <LogInIcon className="size-3.5" />
-          Join organization
-        </DropdownMenuItem>
-        <DropdownMenuItem render={<Link to="/create" />} className="gap-2">
-          Create organization
-        </DropdownMenuItem>
+        <DropdownMenuGroup>
+          <DropdownMenuItem render={<Link to="/join" />}>Join organization</DropdownMenuItem>
+          <DropdownMenuItem render={<Link to="/create" />}>Create organization</DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -90,7 +87,7 @@ function UserFooter({ orgSlug }: { orgSlug: string }) {
         render={<SidebarMenuButton size="lg" tooltip={user.email} />}
         className="justify-start gap-2"
       >
-        <Monogram label={user.name || user.email} />
+        <Monogram label={user.name || user.email} seed={user.email} kind="user" />
         <span className="flex min-w-0 flex-1 flex-col text-left leading-tight">
           <span className="truncate font-medium">{user.name || user.email}</span>
           <span className="truncate text-xs text-muted-foreground">{user.email}</span>
@@ -103,25 +100,26 @@ function UserFooter({ orgSlug }: { orgSlug: string }) {
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          variant="destructive"
-          className="gap-2"
-          onClick={() => {
-            authClient.signOut({
-              fetchOptions: {
-                onSuccess: () => {
-                  // Query keys partition by org, not by user: without this the next account signed
-                  // in on this tab reads the previous one's cached responses.
-                  queryClient.clear();
-                  navigate({ to: "/login" });
+        <DropdownMenuGroup>
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => {
+              authClient.signOut({
+                fetchOptions: {
+                  onSuccess: () => {
+                    // Query keys partition by org, not by user: without this the next account signed
+                    // in on this tab reads the previous one's cached responses.
+                    queryClient.clear();
+                    navigate({ to: "/login" });
+                  },
                 },
-              },
-            });
-          }}
-        >
-          <LogOutIcon className="size-3.5" />
-          Sign out
-        </DropdownMenuItem>
+              });
+            }}
+          >
+            <LogOutIcon />
+            Sign out
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

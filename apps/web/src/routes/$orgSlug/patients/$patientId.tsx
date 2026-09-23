@@ -83,7 +83,7 @@ function PinnedFacts({
   return (
     <div className="shrink-0 border-b border-border bg-card px-3 py-3 lg:px-6">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Monogram label={record.name} />
+        <Monogram label={record.name} seed={record.id} kind="patient" />
         <div className="flex min-w-0 flex-col gap-1">
           <p className="truncate text-sm font-medium">
             <span className="capitalize">{record.name}</span>

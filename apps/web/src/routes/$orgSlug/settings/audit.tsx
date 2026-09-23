@@ -67,7 +67,7 @@ function AuditRoute() {
       <SettingsTabs orgSlug={orgSlug} />
 
       <PageBody>
-        <Panel label="Entries" footer={<LoadMore query={audit} shown={entries.length} />}>
+        <Panel grow footer={<LoadMore query={audit} shown={entries.length} />}>
           <ListState
             query={audit}
             errorTitle="Could not load the audit trail"

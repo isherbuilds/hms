@@ -1,5 +1,12 @@
 import { Button, buttonVariants } from "@hms/ui/components/button";
-import { DropdownMenuCheckboxItem } from "@hms/ui/components/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@hms/ui/components/dropdown-menu";
 import { FormControl } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import {
@@ -11,12 +18,11 @@ import {
   TableRow,
 } from "@hms/ui/components/table";
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { CalendarClockIcon, CircleDotIcon } from "lucide-react";
-import { Fragment, useRef, useState } from "react";
+import { ClientOnly, createFileRoute, Link } from "@tanstack/react-router";
+import { CalendarClockIcon, CircleDotIcon, MoreHorizontalIcon } from "lucide-react";
+import { useRef, useState } from "react";
 import { useFormContext, Watch } from "react-hook-form";
 import { z } from "zod";
-import { toast } from "sonner";
 
 import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
@@ -28,7 +34,6 @@ import {
   type ActiveFilter,
 } from "@/components/list-filter";
 import {
-  ErrorNote,
   ListState,
   ListToolbar,
   LoadMore,
@@ -40,10 +45,10 @@ import {
 import { numberText } from "@/lib/form-schema";
 import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
-import { formatDateTime, formatDay, useOrgDateTime } from "@/lib/org-datetime";
-import { openOrgFile } from "@/lib/org-files";
+import { formatDay } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { errorMessage, loadRouteQuery } from "@/lib/orpc-error";
+import { loadRouteQuery } from "@/lib/orpc-error";
+import { REASON_LABELS } from "@/lib/pharmacy-labels";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 import { PharmacyTabs } from "./route";
@@ -59,20 +64,6 @@ const ADJUST_REASONS = [
 ] as const;
 
 const BUCKETS = ["shelf", "quarantine"] as const;
-
-// Every movement reason, so the adjustment select and the movement list read the same.
-const REASON_LABELS: Record<string, string> = {
-  opening: "Opening",
-  receipt: "Receipt",
-  sale: "Sale",
-  return: "Return",
-  release: "Release to shelf",
-  quarantine: "Hold in quarantine",
-  writeoff: "Write off",
-  breakage: "Breakage",
-  count_correction: "Count correction",
-  internal_issue: "Internal issue",
-};
 
 const EXPIRING_DAYS = [30, 90] as const;
 
@@ -245,14 +236,13 @@ function PharmacyStockRoute() {
 function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFilters }) {
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const canAdjust = useCan(orgSlug, { pharmacy: ["adjust"] });
-  const [expanded, setExpanded] = useState<string | null>(null);
   const [adjusting, setAdjusting] = useState<StockRow | null>(null);
   const stock = useInfiniteQuery(stockQuery(orgSlug, filters));
   const rows = stock.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
     <>
-      <Panel label="Batches" grow footer={<LoadMore query={stock} shown={rows.length} />}>
+      <Panel grow footer={<LoadMore query={stock} shown={rows.length} />}>
         <ListState
           query={stock}
           errorTitle="Could not load pharmacy stock"
@@ -270,57 +260,39 @@ function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFil
                   <TableHead>Unit</TableHead>
                   <TableHead className="text-right">Shelf</TableHead>
                   <TableHead className="text-right">Quarantine</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="w-10">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rows.map((row) => (
-                  <Fragment key={row.batchId}>
-                    <TableRow>
-                      <TableCell className="font-medium">
-                        {row.name}{" "}
-                        {row.code === null ? (
-                          <span className="text-muted-foreground">Internal</span>
-                        ) : (
-                          <span className="font-mono text-muted-foreground">{row.code}</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-mono">{row.batchNumber}</TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {formatDay(row.expiryDate)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatMoney(row.mrp, currency)}
-                        {row.mrpUnits > 1 ? ` / ${row.mrpUnits}` : ""}
-                      </TableCell>
-                      <TableCell>{row.stockUnit}</TableCell>
-                      <TableCell className="text-right tabular-nums">{row.shelfQty}</TableCell>
-                      <TableCell className="text-right tabular-nums">{row.quarantineQty}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          onClick={() =>
-                            setExpanded((current) => (current === row.batchId ? null : row.batchId))
-                          }
-                        >
-                          Movements
-                        </Button>
-                        {canAdjust ? (
-                          <Button variant="ghost" size="xs" onClick={() => setAdjusting(row)}>
-                            Adjust
-                          </Button>
-                        ) : null}
-                      </TableCell>
-                    </TableRow>
-                    {expanded === row.batchId ? (
-                      <TableRow>
-                        <TableCell colSpan={8}>
-                          <BatchMovements orgSlug={orgSlug} batchId={row.batchId} />
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
-                  </Fragment>
+                  <TableRow key={row.batchId}>
+                    <TableCell className="font-medium">
+                      {row.name}{" "}
+                      {row.code === null ? (
+                        <span className="text-muted-foreground">Internal</span>
+                      ) : (
+                        <span className="font-mono text-muted-foreground">{row.code}</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono">{row.batchNumber}</TableCell>
+                    <TableCell className="whitespace-nowrap">{formatDay(row.expiryDate)}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatMoney(row.mrp, currency)}
+                      {row.mrpUnits > 1 ? ` / ${row.mrpUnits}` : ""}
+                    </TableCell>
+                    <TableCell>{row.stockUnit}</TableCell>
+                    <TableCell className="text-right tabular-nums">{row.shelfQty}</TableCell>
+                    <TableCell className="text-right tabular-nums">{row.quarantineQty}</TableCell>
+                    <TableCell className="text-right">
+                      <BatchActions
+                        orgSlug={orgSlug}
+                        row={row}
+                        onAdjust={canAdjust ? () => setAdjusting(row) : undefined}
+                      />
+                    </TableCell>
+                  </TableRow>
                 ))}
               </TableBody>
             </Table>
@@ -344,26 +316,12 @@ function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFil
                     <p className="font-medium">{row.shelfQty}</p>
                     <p className="mt-1 text-muted-foreground">{row.quarantineQty} held</p>
                   </div>
+                  <BatchActions
+                    orgSlug={orgSlug}
+                    row={row}
+                    onAdjust={canAdjust ? () => setAdjusting(row) : undefined}
+                  />
                 </div>
-                <div className="flex items-center gap-1 pt-1">
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    onClick={() =>
-                      setExpanded((current) => (current === row.batchId ? null : row.batchId))
-                    }
-                  >
-                    Movements
-                  </Button>
-                  {canAdjust ? (
-                    <Button variant="ghost" size="xs" onClick={() => setAdjusting(row)}>
-                      Adjust
-                    </Button>
-                  ) : null}
-                </div>
-                {expanded === row.batchId ? (
-                  <BatchMovements orgSlug={orgSlug} batchId={row.batchId} />
-                ) : null}
               </li>
             ))}
           </ul>
@@ -379,96 +337,6 @@ function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFil
         />
       ) : null}
     </>
-  );
-}
-
-function BatchMovements({ orgSlug, batchId }: { orgSlug: string; batchId: string }) {
-  const { timeZone } = useOrgDateTime();
-
-  const movements = useQuery(
-    orpc.pharmacy.listMovements.queryOptions({ input: { orgSlug, batchId } }),
-  );
-
-  if (movements.isPending) {
-    return <p className="text-muted-foreground">Loading movements…</p>;
-  }
-
-  if (movements.isError) {
-    return <ErrorNote title="Could not load movements" error={movements.error} inset />;
-  }
-
-  if (movements.data.length === 0) {
-    return <p className="text-muted-foreground">No movements on this batch.</p>;
-  }
-
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>When</TableHead>
-          <TableHead>Reason</TableHead>
-          <TableHead>Bucket</TableHead>
-          <TableHead className="text-right">Qty</TableHead>
-          <TableHead>Department</TableHead>
-          <TableHead>Source</TableHead>
-          <TableHead>By</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {movements.data.map((movement) => {
-          const sheetId = movement.receipt?.fileId ?? null;
-
-          return (
-            <TableRow key={movement.id}>
-              <TableCell className="whitespace-nowrap">
-                {formatDateTime(movement.createdAt, timeZone)}
-              </TableCell>
-              <TableCell>{REASON_LABELS[movement.reason] ?? movement.reason}</TableCell>
-              <TableCell>{movement.bucket}</TableCell>
-              <TableCell className="text-right tabular-nums">{movement.qty}</TableCell>
-              <TableCell>{movement.departmentName ?? "—"}</TableCell>
-              <TableCell className="text-xs">
-                {movement.receipt ? (
-                  <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center gap-1">
-                      <span>
-                        {movement.receipt.opening
-                          ? "Opening count"
-                          : [movement.receipt.supplierName, movement.receipt.supplierReference]
-                              .filter(Boolean)
-                              .join(" · ") || "Receipt"}
-                        <span className="text-muted-foreground">
-                          {" · "}
-                          {movement.receipt.opening ? "counted" : "received"}{" "}
-                          {formatDay(movement.receipt.receivedOn)}
-                        </span>
-                      </span>
-                      {sheetId ? (
-                        <Button
-                          variant="link"
-                          size="xs"
-                          onClick={() =>
-                            openOrgFile(orgSlug, sheetId).catch((error) =>
-                              toast.error(errorMessage(error, "Could not open that receipt file")),
-                            )
-                          }
-                        >
-                          {movement.receipt.opening ? "Sheet" : "Delivery note"}
-                        </Button>
-                      ) : null}
-                    </div>
-                    {movement.note ? <span>{movement.note}</span> : null}
-                  </div>
-                ) : (
-                  movement.note || "—"
-                )}
-              </TableCell>
-              <TableCell className="capitalize">{movement.createdByName}</TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
   );
 }
 
@@ -504,6 +372,45 @@ const adjustSchema = z
   });
 
 const BUCKET_REASONS = ["writeoff", "breakage", "count_correction"];
+
+function BatchActions({
+  orgSlug,
+  row,
+  onAdjust,
+}: {
+  orgSlug: string;
+  row: StockRow;
+  onAdjust?: () => void;
+}) {
+  return (
+    <ClientOnly fallback={<span className="inline-block size-6" />}>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-xs" />}
+          aria-label={`Actions for ${row.name} batch ${row.batchNumber}`}
+        >
+          <MoreHorizontalIcon />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-32">
+          <DropdownMenuGroup>
+            <DropdownMenuItem
+              render={
+                <Link
+                  to="/$orgSlug/pharmacy/movements"
+                  params={{ orgSlug }}
+                  search={{ batchId: row.batchId }}
+                />
+              }
+            >
+              Movements
+            </DropdownMenuItem>
+            {onAdjust ? <DropdownMenuItem onClick={onAdjust}>Adjust stock</DropdownMenuItem> : null}
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </ClientOnly>
+  );
+}
 
 function AdjustDialog({
   orgSlug,

@@ -317,7 +317,7 @@ function CatalogRoute() {
           <FilterChips filters={chips} field={field} onClear={clear} />
         </ListToolbar>
 
-        <Panel label="Items" footer={<LoadMore query={catalog} shown={items.length} />}>
+        <Panel grow footer={<LoadMore query={catalog} shown={items.length} />}>
           <ListState
             query={catalog}
             errorTitle="Could not load service catalog"

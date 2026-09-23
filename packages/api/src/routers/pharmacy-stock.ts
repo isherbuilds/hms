@@ -3,14 +3,13 @@ import type { DbTransaction } from "@hms/db/counter";
 import { user } from "@hms/db/schema/auth";
 import { catalogItems } from "@hms/db/schema/catalog-items";
 import { departments } from "@hms/db/schema/departments";
-import { file } from "@hms/db/schema/file";
 import { goodsReceiptLines } from "@hms/db/schema/goods-receipt-lines";
 import { goodsReceipts } from "@hms/db/schema/goods-receipts";
 import { PRODUCT_SCHEDULES, STOCK_UNITS, products } from "@hms/db/schema/products";
 import { stockBatches } from "@hms/db/schema/stock-batches";
 import { STOCK_BUCKETS, type StockBucket, stockMovements } from "@hms/db/schema/stock-movements";
 import { ORPCError } from "@orpc/server";
-import { and, asc, desc, eq, exists, ilike, inArray, like, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
@@ -25,6 +24,7 @@ import {
 import { businessDate } from "../lib/business-date";
 import { conflict, impossible } from "../lib/conflict";
 import { uniqueViolationConstraint } from "../lib/db-errors";
+import { searchOneMg } from "../lib/onemg";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import {
   expiryMonth,
@@ -49,7 +49,7 @@ const catalogDetails = z.object({
 });
 
 const productFields = {
-  name: shortName,
+  name: shortName.transform((value) => value.replace(/\s+/g, " ")),
   genericName: z.string().trim().max(200).optional(),
   form: z.string().trim().max(50).optional(),
   strength: z.string().trim().max(50).optional(),
@@ -231,6 +231,11 @@ async function resolveBatches(
 }
 
 export const pharmacyStockRouter = {
+  lookupMedicine: orgProcedure(
+    { pharmacy: ["manageItems"] },
+    orgInput.extend({ q: z.string().trim().min(3).max(60) }),
+  ).handler(({ input }) => searchOneMg(input.q)),
+
   createProduct: orgProcedure(
     { pharmacy: ["manageItems"] },
     orgInput.extend(productFields),
@@ -654,29 +659,36 @@ export const pharmacyStockRouter = {
 
   listMovements: orgProcedure(
     { pharmacy: ["read"] },
-    orgInput.extend({ batchId: z.string() }),
+    orgInput.extend({
+      batchId: z.string().optional(),
+      cursor: z.object({ createdAt: z.iso.datetime(), id: z.string() }).optional(),
+      limit: pageLimit,
+    }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
 
-    const [batch] = await db
-      .select({ id: stockBatches.id })
-      .from(stockBatches)
-      .where(and(eq(stockBatches.orgId, scope.orgId), eq(stockBatches.id, input.batchId)))
-      .limit(1);
+    if (input.batchId && !input.cursor) {
+      const [batch] = await db
+        .select({ id: stockBatches.id })
+        .from(stockBatches)
+        .where(and(eq(stockBatches.orgId, scope.orgId), eq(stockBatches.id, input.batchId)))
+        .limit(1);
 
-    if (!batch) {
-      throw new ORPCError("NOT_FOUND", { message: "That batch no longer exists." });
+      if (!batch) {
+        throw new ORPCError("NOT_FOUND", { message: "That batch no longer exists." });
+      }
     }
 
     const rows = await db
       .select({
         id: stockMovements.id,
+        productName: products.name,
+        batchNumber: stockBatches.batchNumber,
+        stockUnit: products.stockUnit,
         bucket: stockMovements.bucket,
         qty: stockMovements.qty,
         reason: stockMovements.reason,
         sourceType: stockMovements.sourceType,
-        sourceId: stockMovements.sourceId,
-        departmentId: stockMovements.departmentId,
         departmentName: departments.name,
         note: stockMovements.note,
         createdAt: stockMovements.createdAt,
@@ -690,6 +702,17 @@ export const pharmacyStockRouter = {
         },
       })
       .from(stockMovements)
+      .innerJoin(
+        stockBatches,
+        and(
+          eq(stockBatches.orgId, stockMovements.orgId),
+          eq(stockBatches.id, stockMovements.batchId),
+        ),
+      )
+      .innerJoin(
+        products,
+        and(eq(products.orgId, stockMovements.orgId), eq(products.id, stockBatches.productId)),
+      )
       .innerJoin(user, eq(user.id, stockMovements.createdBy))
       .leftJoin(
         departments,
@@ -705,16 +728,34 @@ export const pharmacyStockRouter = {
           eq(goodsReceipts.id, stockMovements.sourceId),
         ),
       )
-      .where(and(eq(stockMovements.orgId, scope.orgId), eq(stockMovements.batchId, input.batchId)))
-      .orderBy(desc(stockMovements.createdAt), desc(stockMovements.id));
+      .where(
+        and(
+          eq(stockMovements.orgId, scope.orgId),
+          input.batchId ? eq(stockMovements.batchId, input.batchId) : undefined,
+          input.cursor
+            ? sql`(${stockMovements.createdAt}, ${stockMovements.id}) < (${input.cursor.createdAt}::timestamptz, ${input.cursor.id})`
+            : undefined,
+        ),
+      )
+      .orderBy(desc(stockMovements.createdAt), desc(stockMovements.id))
+      .limit(input.limit + 1);
 
-    return rows.map((row) => {
-      if (row.sourceType !== "goods_receipt") return { ...row, receipt: null };
+    const hasNextPage = rows.length > input.limit;
 
-      if (!row.receipt) throw impossible("a goods receipt movement has no receipt");
+    if (hasNextPage) rows.pop();
+    const last = rows.at(-1);
 
-      return row;
-    });
+    return {
+      items: rows.map(({ sourceType, ...row }) => {
+        if (sourceType !== "goods_receipt") return { ...row, receipt: null };
+
+        if (!row.receipt) throw impossible("a goods receipt movement has no receipt");
+
+        return row;
+      }),
+      nextCursor:
+        hasNextPage && last ? { createdAt: last.createdAt.toISOString(), id: last.id } : null,
+    };
   }),
 
   receiveGoods: orgProcedure(
@@ -727,9 +768,6 @@ export const pharmacyStockRouter = {
         supplierName: shortName.optional(),
         supplierReference: z.string().trim().max(100).optional(),
         receivedOn: z.iso.date(),
-        // The supplier's delivery note; required when this is an opening receipt's signed
-        // count sheet.
-        fileId: z.string().optional(),
         note,
         billTotal: money.optional(),
         lines: z
@@ -747,14 +785,6 @@ export const pharmacyStockRouter = {
             code: "custom",
             path: ["supplierName"],
             message: "Name the supplier",
-          });
-        }
-
-        if (value.opening && !value.fileId) {
-          context.addIssue({
-            code: "custom",
-            path: ["fileId"],
-            message: "Attach the signed count sheet",
           });
         }
 
@@ -797,26 +827,6 @@ export const pharmacyStockRouter = {
       : null;
 
     const batches = await db.transaction(async (tx) => {
-      if (input.fileId) {
-        const [sheet] = await tx
-          .select({ id: file.id })
-          .from(file)
-          .where(
-            and(
-              eq(file.orgId, scope.orgId),
-              eq(file.id, input.fileId),
-              eq(file.status, "ready"),
-              or(eq(file.mimeType, "application/pdf"), like(file.mimeType, "image/%")),
-            ),
-          )
-          .limit(1)
-          .for("key share");
-
-        if (!sheet) {
-          throw new ORPCError("NOT_FOUND", { message: "That document is not available." });
-        }
-      }
-
       const resolvedLines = await resolveBatches(tx, {
         orgId: scope.orgId,
         now,
@@ -889,7 +899,6 @@ export const pharmacyStockRouter = {
         supplierName: input.supplierName ?? null,
         supplierReference: input.supplierReference ?? null,
         receivedOn: input.receivedOn,
-        fileId: input.fileId ?? null,
         note: input.note ?? null,
         billTotal: input.billTotal ?? null,
         receivedBy: scope.userId,
