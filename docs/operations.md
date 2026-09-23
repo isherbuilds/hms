@@ -71,6 +71,12 @@ receive the server environment because web SSR imports auth/database code. The
 web build also receives `VITE_SERVER_URL`, `VITE_WEB_URL`, `VITE_WHATSAPP_NUMBER`
 and `VITE_CONTACT_EMAIL`.
 
+Coolify deploys each app on a push to `main` through a GitHub push webhook,
+filtered by per-app watch paths (`apps/<app>/**`, `packages/**`, and root
+workspace files). Each image declares a `HEALTHCHECK` on `/`; Coolify keeps the
+old container serving until the new one passes it, so a failed migration or
+boot never replaces a running release.
+
 The server container applies migrations before accepting traffic. A migration
 failure exits startup; concurrent starters serialize through the advisory lock.
 Rolling releases require migrations compatible with the previous application
@@ -100,7 +106,7 @@ Current behaviour, with the release evidence still to be recorded:
    same-origin).
 3. The two-stage application images build in dedicated builder stages. Their
    runtime stages install production-only dependencies, run as the non-root
-   `bun` user, and contain only Bun, dependency manifests, installed dependencies,
+   `bun` user over root-owned, world-readable files, and contain only Bun, dependency manifests, installed dependencies,
    and application build output; the server image additionally contains the
    database and environment sources required to migrate before serving.
    Image digests, sizes, startup health, and migration behavior are recorded at
