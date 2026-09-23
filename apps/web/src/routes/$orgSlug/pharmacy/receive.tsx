@@ -644,7 +644,7 @@ function BatchRow({
           aria-label={`Remove ${line.productName || `batch ${index + 1}`}`}
           onClick={onRemove}
         >
-          <Trash2Icon data-icon="inline-start" />
+          <Trash2Icon />
           <span className="lg:hidden">Remove</span>
         </Button>
       </div>
