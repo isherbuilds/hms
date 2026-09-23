@@ -92,24 +92,20 @@ test("invoice layouts preserve guardian casing and render non-zero round-off", a
     expect(lowerName.bytes).toEqual(titleName.bytes);
     expect(titleName.bytes).not.toEqual(upperRelation.bytes);
 
-    const unrounded = await renderBillingPdf({
-      kind: "invoice",
-      data,
-      documentId: null,
-      layout,
-    });
+    const renderRoundOff = (roundOff: bigint) =>
+      renderBillingPdf({
+        kind: "invoice",
+        data: { ...data, invoice: { ...data.invoice, roundOff } },
+        documentId: null,
+        layout,
+      });
 
-    const rounded = await renderBillingPdf({
-      kind: "invoice",
-      data: {
-        ...data,
-        invoice: { ...data.invoice, roundOff: 40n },
-      },
-      documentId: null,
-      layout,
-    });
+    const unrounded = await renderRoundOff(0n);
+    const rounded = await renderRoundOff(40n);
+    const differentlyRounded = await renderRoundOff(-40n);
 
     expect(rounded.bytes).not.toEqual(unrounded.bytes);
+    expect(differentlyRounded.bytes).not.toEqual(rounded.bytes);
   }
 });
 

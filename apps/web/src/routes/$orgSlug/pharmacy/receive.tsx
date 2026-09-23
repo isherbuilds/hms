@@ -1,5 +1,9 @@
 import { DECIMAL_PATTERN, parseDecimal } from "@hms/api/core/money";
-import { PERCENT_PATTERN, exactToPaise } from "@hms/api/core/receipt-math";
+import {
+  MAX_STOCK_QTY,
+  PERCENT_PATTERN,
+  exactToPaise,
+} from "@hms/api/core/receipt-math";
 import { expiryMonth } from "@hms/api/lib/schemas";
 import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
@@ -30,6 +34,7 @@ import { uploadOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
 import { errorMessage } from "@/lib/orpc-error";
 import {
+  allocateReceiptLineTotals,
   approximateUnitCost,
   billSummary,
   costAtOrAboveMrp,
@@ -37,6 +42,7 @@ import {
   type ReceiptRowText,
   rowCost,
   stockQuantities,
+  wholeCount,
 } from "@/lib/receipt-lines";
 import { requireOrgPermission } from "@/lib/route-permission";
 
@@ -88,7 +94,9 @@ const receiptLineSchema = (today: string) =>
       unitsPerPack: z.number().int().min(1),
       batchNumber: z.string().trim().min(1, "Type the batch number").max(50),
       expiryDate: expiryMonth,
-      count: numberText(z.number().int().min(1, "At least 1")),
+      count: numberText(
+        z.number().int().min(1, "At least 1").max(MAX_STOCK_QTY, "Too large"),
+      ),
       loose: z.boolean(),
       price: z.string().regex(DECIMAL_PATTERN, "A price like 84 or 84.20"),
       free: z.string().trim(),
@@ -131,13 +139,32 @@ const receiptSchema = (today: string) =>
       const issue = (path: (string | number)[], message: string) =>
         context.addIssue({ code: "custom", path, message });
 
+      value.lines.forEach((line, index) => {
+        const row = rowText(line);
+
+        if (!stockQuantities(row, true)) {
+          issue(["lines", index, "count"], "Too large");
+        } else if (
+          !value.opening &&
+          line.free !== "" &&
+          wholeCount(line.free) !== null &&
+          !stockQuantities(row)
+        ) {
+          issue(["lines", index, "free"], "Too large");
+        }
+      });
+
       if (value.opening) return;
 
       if (value.supplierName === "") issue(["supplierName"], "Type who delivered this");
 
       value.lines.forEach((line, index) => {
+        const row = rowText(line);
+
         if (line.free !== "" && !wholeText.test(line.free)) {
           issue(["lines", index, "free"], "Enter a whole number");
+        } else if (line.free !== "" && wholeCount(line.free) === null) {
+          issue(["lines", index, "free"], "Too large");
         }
 
         if (!DECIMAL_PATTERN.test(line.rate)) issue(["lines", index, "rate"], "A rate like 76.19");
@@ -147,6 +174,10 @@ const receiptSchema = (today: string) =>
         }
 
         if (!PERCENT_PATTERN.test(line.gst)) issue(["lines", index, "gst"], "0, 5, 12 or 18");
+
+        if (costAtOrAboveMrp(row, rowCost(row))) {
+          issue(["lines", index, "price"], "Cost must be below MRP");
+        }
       });
 
       if (!DECIMAL_PATTERN.test(value.billTotal)) {
@@ -446,17 +477,14 @@ function ReceiveGoodsRoute() {
                 minHeight="min-h-0"
               >
                 <div className="flex min-w-0 flex-col">
-                  {lines.fields.map((line, index) => (
-                    <BatchRow
-                      key={line.fieldKey}
-                      index={index}
-                      orgSlug={orgSlug}
-                      today={today}
-                      opening={opening}
-                      onPick={(product) => fillLine(index, product)}
-                      onRemove={() => lines.remove(index)}
-                    />
-                  ))}
+                  <ReceiptRows
+                    fields={lines.fields}
+                    orgSlug={orgSlug}
+                    today={today}
+                    opening={opening}
+                    onPick={fillLine}
+                    onRemove={lines.remove}
+                  />
                 </div>
                 {lines.fields.length === 0 ? (
                   <p className="px-4 py-6 text-center text-muted-foreground">
@@ -522,28 +550,67 @@ function ReceiveGoodsRoute() {
   );
 }
 
-/**
- * One product and batch as the bill prints it. The first row names the stock; the second
- * prices it, and on an opening count asks only the printed MRP.
- */
-function BatchRow({
-  index,
+function ReceiptRows({
+  fields,
   orgSlug,
   today,
   opening,
   onPick,
   onRemove,
 }: {
-  index: number;
+  fields: readonly { fieldKey: string }[];
   orgSlug: string;
   today: string;
   opening: boolean;
+  onPick: (index: number, product: PickedProduct | null) => void;
+  onRemove: (index: number) => void;
+}) {
+  const { control } = useFormContext<ReceiptInput, unknown, Receipt>();
+  const values = useWatch({ control, name: "lines" });
+  const totals = useMemo(
+    () => (opening ? [] : allocateReceiptLineTotals(values.map(rowText))),
+    [opening, values],
+  );
+
+  return fields.map((field, index) => (
+    <BatchRow
+      key={field.fieldKey}
+      index={index}
+      line={values[index]!}
+      orgSlug={orgSlug}
+      today={today}
+      opening={opening}
+      lineTotal={totals[index] ?? null}
+      onPick={(product) => onPick(index, product)}
+      onRemove={() => onRemove(index)}
+    />
+  ));
+}
+
+/**
+ * One product and batch as the bill prints it. The first row names the stock; the second
+ * prices it, and on an opening count asks only the printed MRP.
+ */
+function BatchRow({
+  index,
+  line,
+  orgSlug,
+  today,
+  opening,
+  lineTotal,
+  onPick,
+  onRemove,
+}: {
+  index: number;
+  line: ReceiptLineInput;
+  orgSlug: string;
+  today: string;
+  opening: boolean;
+  lineTotal: bigint | null;
   onPick: (product: PickedProduct | null) => void;
   onRemove: () => void;
 }) {
-  const { control } = useFormContext<ReceiptInput, unknown, Receipt>();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
-  const line = useWatch({ control, name: `lines.${index}` });
   const row = rowText(line);
   const packSize = packSizeOf(row);
   const perCounted = packSize === 1 ? line.stockUnit || "unit" : "pack";
@@ -662,7 +729,7 @@ function BatchRow({
           <div className="flex min-w-0 flex-col gap-1 tabular-nums md:items-end md:text-right">
             <span className="text-muted-foreground">Line total</span>
             <span className="py-1.5 font-medium">
-              {cost ? formatMoney(exactToPaise(cost.net), currency) : "—"}
+              {lineTotal === null ? "—" : formatMoney(lineTotal, currency)}
             </span>
             {unitCost !== null ? (
               <span className={overMrp ? "text-destructive" : "text-muted-foreground"}>

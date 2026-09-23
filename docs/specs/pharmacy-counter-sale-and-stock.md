@@ -507,9 +507,11 @@ mrp, cost?: { freeQty, rate, discountPercent, gstPercent, hsnCode? } }]`
 as printed. The client sends no `packSize`: the server derives the divisor
 from the locked product (`unitsPerPack` for `"pack"`, 1 for `"unit"`),
 stores it as batch `mrpUnits` and receipt-line `packSize`, and requires a
-priced line's billed qty to divide by it. Free qty need not be ≤ billed qty. A non-opening
-receipt names its supplier, prices every line, and reconciles the rounded
-sum of exact line nets against the printed bill total within ±₹0.99.
+priced line's billed qty to divide by it. Quantities and the movement total
+aggregated per batch stay within the PostgreSQL integer range; free qty need
+not be ≤ billed qty. A non-opening receipt names its supplier, prices every
+line, and reconciles the rounded sum of exact line nets against the printed
+bill total within the explicit ±₹0.99 supplier-bill tolerance.
 An opening receipt carries no cost pricing. The command verifies the file
 belongs to the org, is `ready`, and is a PDF or image, creates the header
 and one row for each priced line, creates each missing batch (refusing a
@@ -610,12 +612,13 @@ the console keeps one filter idiom.
   sheet) sit above one line per product and batch. A line's first row names
   the stock — product, batch, expiry, billed quantity, count as packs or loose
   units; its second row prices it — free quantity, rate, discount %, GST %,
-  MRP, HSN and the line total with derived cost per unit,
-  shown as an error when it reaches the MRP. An opening count asks only the
+  MRP, HSN and the line total with derived cost per unit; a delivery is
+  refused when that cost reaches the MRP. An opening count asks only the
   printed MRP and refuses expired batches. Picking a product fills GST % and
-  HSN from its counter tax. Line totals and the footer's taxable, GST and
-  lines totals are shown to the paisa; the footer states whether the rounded
-  sum of the lines matches the printed bill total within ±₹0.99. **Back to stock** returns through the unsaved-delivery
+  HSN from its counter tax. Displayed line totals allocate the once-rounded
+  document total by largest remainder, so they reconcile exactly with the
+  footer; the footer states whether that total matches the printed bill within
+  the explicit ±₹0.99 tolerance. **Back to stock** returns through the unsaved-delivery
   confirmation. The page converts packs with `unitsPerPack`; the receipt
   stores stock-unit quantities and the MRP with its printed `mrpUnits`
   denominator, never a rounded per-unit MRP. **New product** opens a Sheet

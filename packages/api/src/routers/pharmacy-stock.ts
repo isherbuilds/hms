@@ -17,6 +17,8 @@ import { audit } from "../audit";
 import { formatDecimal } from "../core/money";
 import {
   BILL_ROUND_OFF_LIMIT,
+  EXACT_SCALE,
+  MAX_STOCK_QTY,
   PERCENT_PATTERN,
   exactToPaise,
   receiptLineCost,
@@ -53,7 +55,7 @@ const productFields = {
   form: z.string().trim().max(50).optional(),
   strength: z.string().trim().max(50).optional(),
   stockUnit: z.enum(STOCK_UNITS),
-  unitsPerPack: z.number().int().min(1),
+  unitsPerPack: z.number().int().min(1).max(MAX_STOCK_QTY),
   schedule: z.enum(PRODUCT_SCHEDULES).default("none"),
   manufacturer: z.string().trim().max(200).optional(),
   catalog: catalogDetails.optional(),
@@ -76,7 +78,7 @@ const batchLine = z.object({
 
 // Quantities are stock units; the locked product determines the priced-unit divisor.
 const lineCost = z.object({
-  freeQty: z.number().int().min(0),
+  freeQty: z.number().int().min(0).max(MAX_STOCK_QTY),
   rate: money,
   discountPercent: z.string().regex(PERCENT_PATTERN),
   gstPercent: z.string().regex(PERCENT_PATTERN),
@@ -734,7 +736,7 @@ export const pharmacyStockRouter = {
         lines: z
           .array(
             batchLine.extend({
-              qty: z.number().int().positive(),
+              qty: z.number().int().positive().max(MAX_STOCK_QTY),
               cost: lineCost.optional(),
             }),
           )
@@ -790,6 +792,9 @@ export const pharmacyStockRouter = {
     const { scope } = context;
     const receiptId = Bun.randomUUIDv7();
     const now = new Date();
+    const today = input.opening
+      ? businessDate(now, (await readOrgSettings(scope.orgId)).timeZone)
+      : null;
 
     const batches = await db.transaction(async (tx) => {
       if (input.fileId) {
@@ -818,6 +823,16 @@ export const pharmacyStockRouter = {
         lines: input.lines,
       });
 
+      if (today !== null) {
+        const expired = resolvedLines.find(({ batch }) => batch.expiryDate < today);
+
+        if (expired) {
+          throw new ORPCError("CONFLICT", {
+            message: `Batch ${expired.batch.batchNumber} is expired and cannot be opening stock.`,
+          });
+        }
+      }
+
       const wanted = new Map<string, number>();
       const priced: (typeof goodsReceiptLines.$inferInsert)[] = [];
       let exactNet = 0n;
@@ -825,8 +840,15 @@ export const pharmacyStockRouter = {
       for (const [index, line] of input.lines.entries()) {
         const { batch, divisor } = resolvedLines[index]!;
         const freeQty = line.cost?.freeQty ?? 0;
+        const quantity = (wanted.get(batch.id) ?? 0) + line.qty + freeQty;
 
-        wanted.set(batch.id, (wanted.get(batch.id) ?? 0) + line.qty + freeQty);
+        if (quantity > MAX_STOCK_QTY) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "Batch receipt quantity exceeds stock limit.",
+          });
+        }
+
+        wanted.set(batch.id, quantity);
 
         if (!line.cost) continue;
 
@@ -834,7 +856,16 @@ export const pharmacyStockRouter = {
           throw new ORPCError("BAD_REQUEST", { message: "Quantity must be whole priced units" });
         }
 
-        exactNet += receiptLineCost({ qty: line.qty, packSize: divisor, ...line.cost }).net;
+        const cost = receiptLineCost({ qty: line.qty, packSize: divisor, ...line.cost });
+
+        if (
+          cost.net * BigInt(divisor) >=
+          line.mrp * EXACT_SCALE * BigInt(line.qty + freeQty)
+        ) {
+          throw new ORPCError("BAD_REQUEST", { message: "Cost must be below MRP" });
+        }
+
+        exactNet += cost.net;
         priced.push({
           id: Bun.randomUUIDv7(),
           orgId: scope.orgId,

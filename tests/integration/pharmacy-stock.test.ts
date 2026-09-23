@@ -1,5 +1,6 @@
 import { beforeAll, expect, test } from "bun:test";
 
+import { MAX_STOCK_QTY } from "@hms/api/core/receipt-math";
 import { db } from "@hms/db";
 import { file } from "@hms/db/schema/file";
 import { goodsReceiptLines } from "@hms/db/schema/goods-receipt-lines";
@@ -134,6 +135,37 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
     { batchId, mrp: 12_00n, mrpUnits: 1, shelfQty: 60 },
   ]);
 
+  await expectORPCCode(
+    api.pharmacy.receiveGoods({
+      orgSlug: org.slug,
+      supplierName: "Metro Distributors",
+      receivedOn: RECEIVED_ON,
+      billTotal: 0n,
+      lines: [
+        {
+          productId: product.productId,
+          batchNumber: "B-OVERFLOW",
+          expiryDate: FAR_EXPIRY,
+          mrp: 12_00n,
+          pricedPer: "unit",
+          qty: MAX_STOCK_QTY,
+          cost: UNPRICED,
+        },
+        {
+          productId: product.productId,
+          batchNumber: "B-OVERFLOW",
+          expiryDate: FAR_EXPIRY,
+          mrp: 12_00n,
+          pricedPer: "unit",
+          qty: 1,
+          cost: UNPRICED,
+        },
+      ],
+    }),
+    "BAD_REQUEST",
+    "an aggregate receipt quantity outside the stock integer range",
+  );
+
   // Batches are immutable: the same number with another expiry is refused, never merged.
   await expectORPCCode(
     api.pharmacy.receiveGoods({
@@ -191,6 +223,18 @@ test("a priced delivery stores exact pricing facts and shelves the free units", 
     }),
     "BAD_REQUEST",
     "a bill total the lines do not reach",
+  );
+
+  await expectORPCCode(
+    api.pharmacy.receiveGoods({
+      orgSlug: org.slug,
+      supplierName: "Metro Distributors",
+      receivedOn: RECEIVED_ON,
+      billTotal: 760_00n,
+      lines: [{ ...line, mrp: 70_00n }],
+    }),
+    "BAD_REQUEST",
+    "a receipt whose derived cost reaches its MRP",
   );
 
   const received = await api.pharmacy.receiveGoods({
@@ -377,6 +421,27 @@ test("an opening receipt carries its count sheet and refuses a batch that alread
     }),
     "BAD_REQUEST",
     "an opening receipt with supplier details",
+  );
+
+  await expectORPCCode(
+    api.pharmacy.receiveGoods({
+      orgSlug: org.slug,
+      opening: true,
+      receivedOn: countedOn,
+      fileId,
+      lines: [
+        {
+          productId: product.productId,
+          batchNumber: "C-EXPIRED",
+          expiryDate: "2000-01",
+          mrp: 30_00n,
+          pricedPer: "unit",
+          qty: 1,
+        },
+      ],
+    }),
+    "CONFLICT",
+    "expired opening stock",
   );
 
   const posted = await api.pharmacy.receiveGoods({
