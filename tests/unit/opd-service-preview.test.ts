@@ -20,8 +20,10 @@ test("selected services produce an immediate client-side financial preview", () 
   ).toMatchObject({
     currency: "INR",
     subtotal: 200_00n,
+    rounding: "paise",
     discountAmount: 0n,
     taxTotal: 36_00n,
+    roundOff: 0n,
     grandTotal: 236_00n,
     lines: [
       {
@@ -29,6 +31,7 @@ test("selected services produce an immediate client-side financial preview", () 
         source: "service",
         category: "lab",
         qty: 2,
+        priceUnits: 1,
         unitPrice: 100_00n,
         taxAmount: 36_00n,
         gross: 236_00n,
@@ -56,6 +59,7 @@ test("a discount updates tax and payable locally from the trusted quote", () => 
     subtotal: 100_00n,
     discountAmount: 10_00n,
     taxTotal: 16_20n,
+    roundOff: 0n,
     grandTotal: 106_20n,
     lines: [{ allocatedDiscount: 10_00n, taxableValue: 90_00n, gross: 106_20n }],
   });

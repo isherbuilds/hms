@@ -20,7 +20,9 @@ import {
   computeInvoiceLines,
   derivePartialCredit,
   documentNumber,
+  InvoiceDiscountExceededError,
   fiscalYearLabel,
+  invoiceRoundingFor,
   priceBasisFor,
 } from "./invoice-math";
 import {
@@ -54,6 +56,7 @@ export type LockedInvoice = {
   id: string;
   invoiceNumber: string;
   grandTotal: bigint;
+  roundOff: bigint;
   patientId: string | null;
   stream: "opd" | "pharmacy";
   treatmentPlanId: string | null;
@@ -70,6 +73,7 @@ export async function lockInvoice(
       id: invoices.id,
       invoiceNumber: invoices.invoiceNumber,
       grandTotal: invoices.grandTotal,
+      roundOff: invoices.roundOff,
       patientId: invoices.patientId,
       stream: invoices.stream,
       treatmentPlanId: opdAppointments.treatmentPlanId,
@@ -266,6 +270,7 @@ export async function issueInvoiceTx(
       description: charges.description,
       qty: charges.qty,
       unitPrice: charges.unitPrice,
+      priceUnits: charges.priceUnits,
       taxRatePercent: charges.taxRatePercent,
       taxCode: charges.taxCode,
     })
@@ -280,22 +285,21 @@ export async function issueInvoiceTx(
     });
   }
 
-  const subtotalPaise = pendingCharges.reduce(
-    (sum, charge) => sum + BigInt(charge.qty) * charge.unitPrice,
-    0n,
-  );
-
-  if (args.discountAmount > subtotalPaise) {
-    throw new ORPCError("BAD_REQUEST", {
-      message: "The charges changed. Review the invoice and try again",
-    });
-  }
-
-  const computed = computeInvoiceLines(
-    pendingCharges,
-    args.discountAmount,
-    priceBasisFor(parent.stream),
-  );
+  const computed = (() => {
+    try {
+      return computeInvoiceLines(
+        pendingCharges,
+        args.discountAmount,
+        priceBasisFor(parent.stream),
+        invoiceRoundingFor(parent.stream),
+      );
+    } catch (error) {
+      if (!(error instanceof InvoiceDiscountExceededError)) throw error;
+      throw new ORPCError("BAD_REQUEST", {
+        message: "The charges changed. Review the invoice and try again",
+      });
+    }
+  })();
 
   const categoryByChargeId = new Map(
     pendingCharges.map((charge) => [charge.chargeId, charge.revenueCategory]),
@@ -339,6 +343,7 @@ export async function issueInvoiceTx(
       note: args.note ?? null,
       subtotal: computed.subtotal,
       taxTotal: computed.taxTotal,
+      roundOff: computed.roundOff,
       grandTotal: computed.grandTotal,
       orgLegalName: settings.legalName,
       orgAddress: settings.address,
@@ -396,7 +401,7 @@ export async function issueInvoiceTx(
     revenueByAccount.set(account, (revenueByAccount.get(account) ?? 0n) + line.taxableValue);
   }
 
-  if (computed.grandTotal > 0n) {
+  if (computed.grandTotal > 0n || computed.roundOff !== 0n) {
     await postJournalEntries(tx, scope.orgId, [
       {
         sourceType: "invoice",
@@ -414,6 +419,11 @@ export async function issueInvoiceTx(
           ...(computed.taxTotal > 0n
             ? [{ account: "gst_output" as const, credit: computed.taxTotal }]
             : []),
+          ...(computed.roundOff > 0n
+            ? [{ account: "round_off" as const, credit: computed.roundOff }]
+            : computed.roundOff < 0n
+              ? [{ account: "round_off" as const, debit: -computed.roundOff }]
+              : []),
         ],
       },
     ]);
@@ -526,6 +536,7 @@ export async function postCreditNoteTx(
     invoiceId: string;
     reason: string;
     lines: CreditNoteLineRequest[];
+    roundOff: bigint;
     settings: OrgSettings;
     now: Date;
     fiscalYear: string;
@@ -651,7 +662,7 @@ export async function postCreditNoteTx(
 
   const subtotalPaise = computedLines.reduce((sum, line) => sum + line.taxableValue, 0n);
   const taxTotalPaise = computedLines.reduce((sum, line) => sum + line.taxAmount, 0n);
-  const totalPaise = computedLines.reduce((sum, line) => sum + line.gross, 0n);
+  const totalPaise = computedLines.reduce((sum, line) => sum + line.gross, args.roundOff);
   const priorCreditPaise = priorCredit?.total ?? 0n;
 
   if (priorCreditPaise + totalPaise > invoice.grandTotal) {
@@ -675,6 +686,7 @@ export async function postCreditNoteTx(
       reason: args.reason,
       subtotal: subtotalPaise,
       taxTotal: taxTotalPaise,
+      roundOff: args.roundOff,
       total: totalPaise,
       issuedBy: scope.userId,
       createdAt: now,
@@ -683,17 +695,20 @@ export async function postCreditNoteTx(
 
   if (!creditNote) throw impossible("credit note insert returned no row");
 
-  const insertedLines = await tx
-    .insert(creditNoteLines)
-    .values(
-      computedLines.map(({ revenueCategory: _revenueCategory, ...line }) => ({
-        id: Bun.randomUUIDv7(),
-        orgId: scope.orgId,
-        creditNoteId,
-        ...line,
-      })),
-    )
-    .returning();
+  const insertedLines =
+    computedLines.length === 0
+      ? []
+      : await tx
+          .insert(creditNoteLines)
+          .values(
+            computedLines.map(({ revenueCategory: _revenueCategory, ...line }) => ({
+              id: Bun.randomUUIDv7(),
+              orgId: scope.orgId,
+              creditNoteId,
+              ...line,
+            })),
+          )
+          .returning();
 
   const revenueByAccount = new Map<SystemAccountKey, bigint>();
 
@@ -716,6 +731,11 @@ export async function postCreditNoteTx(
           debit: amount,
         })),
         ...(taxTotalPaise > 0n ? [{ account: "gst_output" as const, debit: taxTotalPaise }] : []),
+        ...(args.roundOff > 0n
+          ? [{ account: "round_off" as const, debit: args.roundOff }]
+          : args.roundOff < 0n
+            ? [{ account: "round_off" as const, credit: -args.roundOff }]
+            : []),
         { account: "patient_receivables", credit: totalPaise },
       ],
     },

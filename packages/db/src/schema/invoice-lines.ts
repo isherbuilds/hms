@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
+  check,
   foreignKey,
   index,
   integer,
@@ -28,6 +30,7 @@ export const invoiceLines = pgTable(
     description: text("description").notNull(),
     qty: integer("qty").notNull(),
     unitPrice: bigint("unit_price", { mode: "bigint" }).notNull(),
+    priceUnits: integer("price_units").notNull().default(1),
     lineSubtotal: bigint("line_subtotal", { mode: "bigint" }).notNull(),
     allocatedDiscount: bigint("allocated_discount", { mode: "bigint" }).notNull(),
     taxableValue: bigint("taxable_value", { mode: "bigint" }).notNull(),
@@ -39,6 +42,7 @@ export const invoiceLines = pgTable(
   },
   (table) => [
     unique("invoice_lines_org_id_id_unique").on(table.orgId, table.id),
+    check("invoice_lines_price_units_check", sql`${table.priceUnits} > 0`),
     foreignKey({
       columns: [table.orgId, table.invoiceId],
       foreignColumns: [invoices.orgId, invoices.id],

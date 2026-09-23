@@ -41,6 +41,7 @@ export const charges = pgTable(
     catalogItemId: text("catalog_item_id").notNull(),
     description: text("description").notNull(),
     unitPrice: bigint("unit_price", { mode: "bigint" }).notNull(),
+    priceUnits: integer("price_units").notNull().default(1),
     taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull(),
     taxCode: text("tax_code"),
     revenueCategory: text("revenue_category", { enum: CATALOG_CATEGORIES }).notNull(),
@@ -60,6 +61,7 @@ export const charges = pgTable(
   (table) => [
     check("charges_qty_check", sql`${table.qty} > 0`),
     check("charges_unit_price_check", sql`${table.unitPrice} >= 0`),
+    check("charges_price_units_check", sql`${table.priceUnits} > 0`),
     check("charges_tax_rate_percent_check", sql`${table.taxRatePercent} >= 0`),
     check(
       "charges_parent_check",

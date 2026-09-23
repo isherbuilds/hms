@@ -73,7 +73,7 @@ test("advance receipt and refund voucher render from the stored receipt snapshot
   expect(refundPdf.fileName).toBe("RF-2026-0001.pdf");
 });
 
-test("invoice layouts preserve relation casing and capitalize only the guardian name", async () => {
+test("invoice layouts preserve guardian casing and render non-zero round-off", async () => {
   const data = billingPdfFixture({ unicode: false });
 
   for (const layout of ["a4", "thermal"] as const) {
@@ -91,6 +91,25 @@ test("invoice layouts preserve relation casing and capitalize only the guardian 
 
     expect(lowerName.bytes).toEqual(titleName.bytes);
     expect(titleName.bytes).not.toEqual(upperRelation.bytes);
+
+    const unrounded = await renderBillingPdf({
+      kind: "invoice",
+      data,
+      documentId: null,
+      layout,
+    });
+
+    const rounded = await renderBillingPdf({
+      kind: "invoice",
+      data: {
+        ...data,
+        invoice: { ...data.invoice, roundOff: 40n },
+      },
+      documentId: null,
+      layout,
+    });
+
+    expect(rounded.bytes).not.toEqual(unrounded.bytes);
   }
 });
 

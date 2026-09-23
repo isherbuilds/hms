@@ -20,6 +20,7 @@ export type SaleLine = {
   batchNumber: string;
   expiryDate: string;
   mrp: bigint;
+  mrpUnits: number;
   taxRatePercent: string;
   schedule: string;
   stockUnit: string;
@@ -63,6 +64,7 @@ export function PharmacyBatchPicker({
         batchNumber: batch.batchNumber,
         expiryDate: batch.expiryDate,
         mrp: batch.mrp,
+        mrpUnits: batch.mrpUnits,
         taxRatePercent: product.taxRatePercent,
         schedule: product.schedule,
         stockUnit: product.stockUnit,
@@ -135,7 +137,10 @@ export function PharmacyBatchPicker({
                 </span>
               </span>
               <span className="grid justify-items-end">
-                <span className="tabular-nums">{formatMoney(batch.mrp, currency)}</span>
+                <span className="tabular-nums">
+                  {formatMoney(batch.mrp, currency)}
+                  {batch.mrpUnits > 1 ? ` / ${batch.mrpUnits}` : ""}
+                </span>
                 <span className="text-muted-foreground tabular-nums">
                   {batch.shelfQty} {batch.stockUnit}
                 </span>

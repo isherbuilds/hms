@@ -318,17 +318,24 @@ missing object. No anonymous bucket policy or unsigned read path is allowed.
 
 Invoices, Payments, Advance Receipts, Advance Allocations, Credit Notes, and Refunds post balanced journals in the
 same transaction. Stable `systemKey` accounts include Cash, Bank, Patient
-Receivables, Patient Advances, GST Output, and category revenue accounts. An
-Advance Receipt credits Patient Advances. Allocation debits that liability and
-credits Patient Receivables. An unused-credit Refund debits the liability. A unique
-`(orgId, sourceType, sourceId)` prevents duplicate posting; storage and all math use
-`bigint` paise, and the RPC link carries `bigint` end to end; decimal strings exist only
-where a person types or reads them (form inputs, PDF cells, audit meta).
+Receivables, Patient Advances, GST Output, Round-off, and category revenue
+accounts. An Advance Receipt credits Patient Advances. Allocation debits that
+liability and credits Patient Receivables. An unused-credit Refund debits the
+liability. A unique `(orgId, sourceType, sourceId)` prevents duplicate posting;
+storage and all math use `bigint` paise, and the RPC link carries `bigint` end
+to end; decimal strings exist only where a person types or reads them (form
+inputs, PDF cells, audit meta).
 Payments use four methods: Cash, UPI, Card, and Bank transfer.
 
 A pharmacy sale credits Pharmacy Sales Revenue (`4500`). Pharmacy invoices are
-tax-inclusive: the line price is the batch MRP, so taxable value and tax are
-extracted from the discounted gross per line. OPD invoices stay tax-exclusive.
+tax-inclusive: `unitPrice` is the batch MRP as printed per `priceUnits` stock
+units (`mrpUnits` on the batch). Exact line values allocate the rounded subtotal
+by largest remainder; taxable value and tax are extracted from discounted gross
+per line. The pharmacy grand total alone rounds to the nearest rupee, with
+`roundOff` (−49..50 paise) posted to the Round-off account and reversed on the
+credit note completing a full return. OPD invoices stay tax-exclusive and
+round to the paisa (`roundOff = 0`). Stored money remains `bigint` paise (D031,
+D044).
 
 Split collection is one tenant-scoped transaction containing up to four
 Payments. Every line gets its own Receipt and journal source; lines

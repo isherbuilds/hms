@@ -1,13 +1,20 @@
 import { DECIMAL_PATTERN, divideHalfUp, parseDecimal } from "@hms/api/core/money";
 import {
   BILL_ROUND_OFF_LIMIT,
+  EXACT_SCALE,
+  MAX_STOCK_QTY,
   PERCENT_PATTERN,
   type ReceiptCost,
+  exactToPaise,
+  formatExact,
   receiptLineCost,
 } from "@hms/api/core/receipt-math";
 
+import { formatMoney } from "./money";
+
 // Bigint arithmetic for the receive page lives here: the React Compiler drops bigint
 // literals inside components.
+const groupedWhole = new Intl.NumberFormat("en-IN");
 
 /** A receipt row as typed: counts and prices in the bill's unit, pack or loose. */
 export type ReceiptRowText = {
@@ -26,25 +33,47 @@ export function packSizeOf(row: Pick<ReceiptRowText, "unitsPerPack" | "loose">) 
   return row.loose || row.unitsPerPack === 1 ? 1 : row.unitsPerPack;
 }
 
-function wholeCount(value: string) {
-  return /^\d+$/.test(value.trim()) ? Number(value) : null;
+/** Invalid or out-of-range counts must never reach bigint arithmetic or the render tree. */
+export function wholeCount(value: string): number | null {
+  if (!/^\d+$/.test(value.trim())) return null;
+  const count = Number(value);
+
+  return Number.isSafeInteger(count) && count <= MAX_STOCK_QTY ? count : null;
 }
 
-/** MRP per stock unit from the printed MRP of the counted unit. */
-export function mrpPerUnit(row: ReceiptRowText): bigint | null {
-  if (!DECIMAL_PATTERN.test(row.price)) return null;
-
-  return divideHalfUp(parseDecimal(row.price), BigInt(packSizeOf(row)));
-}
-
-/** The line's bill arithmetic once every figure it needs is typed; otherwise null. */
-export function rowCost(row: ReceiptRowText): ReceiptCost | null {
+/** Counts typed in packs or loose units, bounded by the stock column's integer limit. */
+export function stockQuantities(row: ReceiptRowText, opening = false) {
   const count = wholeCount(row.count);
-  const free = row.free.trim() === "" ? 0 : wholeCount(row.free);
+  const free = opening || row.free.trim() === "" ? 0 : wholeCount(row.free);
+  const packSize = packSizeOf(row);
 
   if (
-    !count ||
+    count === null ||
     free === null ||
+    !Number.isSafeInteger(packSize) ||
+    packSize < 1 ||
+    packSize > MAX_STOCK_QTY
+  ) {
+    return null;
+  }
+
+  const qty = count * packSize;
+  const freeQty = free * packSize;
+
+  if (qty > MAX_STOCK_QTY || freeQty > MAX_STOCK_QTY || qty + freeQty > MAX_STOCK_QTY) {
+    return null;
+  }
+
+  return { qty, freeQty, packSize };
+}
+
+/** The line's exact bill arithmetic once every figure it needs is typed; otherwise null. */
+export function rowCost(row: ReceiptRowText): ReceiptCost | null {
+  const quantities = stockQuantities(row);
+
+  if (
+    !quantities ||
+    quantities.qty === 0 ||
     !DECIMAL_PATTERN.test(row.rate) ||
     !PERCENT_PATTERN.test(row.discount) ||
     !PERCENT_PATTERN.test(row.gst)
@@ -52,28 +81,51 @@ export function rowCost(row: ReceiptRowText): ReceiptCost | null {
     return null;
   }
 
-  const packSize = packSizeOf(row);
-
   return receiptLineCost({
-    qty: count * packSize,
-    freeQty: free * packSize,
-    packSize,
+    ...quantities,
     rate: parseDecimal(row.rate),
     discountPercent: row.discount,
     gstPercent: row.gst,
   });
 }
 
-/** True when a unit costs at least what it may be sold for. */
+/** Compare exact unit costs without rounding either the printed MRP or the net. */
 export function costAtOrAboveMrp(row: ReceiptRowText, cost: ReceiptCost | null) {
-  const mrp = mrpPerUnit(row);
+  const quantities = stockQuantities(row);
 
-  return cost !== null && mrp !== null && cost.unitCost >= mrp;
+  return (
+    cost !== null &&
+    quantities !== null &&
+    DECIMAL_PATTERN.test(row.price) &&
+    cost.net * BigInt(quantities.packSize) >=
+      parseDecimal(row.price) * EXACT_SCALE * BigInt(quantities.qty + quantities.freeQty)
+  );
+}
+
+/** Approximate paise per stock unit for display only; never used for billing or storage. */
+export function approximateUnitCost(row: ReceiptRowText, cost: ReceiptCost): bigint | null {
+  const quantities = stockQuantities(row);
+
+  if (!quantities || quantities.qty + quantities.freeQty === 0) return null;
+
+  return divideHalfUp(cost.net, EXACT_SCALE * BigInt(quantities.qty + quantities.freeQty));
+}
+
+/** Currency display without passing fractional paise through Intl's two-place rounding. */
+export function formatReceiptExact(exact: bigint, currency: string): string {
+  const [whole, fraction] = formatExact(exact).split(".");
+  const grouped = groupedWhole.format(BigInt(whole));
+
+  return formatMoney(0n, currency).replace("0.00", `${grouped}.${fraction}`);
 }
 
 export type BillSummary = {
+  /** Exact amounts, in paise/EXACT_SCALE, for display with formatExact. */
   taxable: bigint;
   gst: bigint;
+  /** Exact sum of line nets, in paise/EXACT_SCALE. */
+  exactNet: bigint;
+  /** Rounded once after summing every exact line net. */
   net: bigint;
   /** Every line priced, so `net` is the whole bill. */
   complete: boolean;
@@ -83,9 +135,9 @@ export type BillSummary = {
 };
 
 export function billSummary(rows: readonly ReceiptRowText[], billTotal: string): BillSummary {
-  let taxable = BigInt(0);
-  let gst = BigInt(0);
-  let net = BigInt(0);
+  let taxable = 0n;
+  let gst = 0n;
+  let exactNet = 0n;
   let complete = rows.length > 0;
 
   for (const row of rows) {
@@ -98,8 +150,10 @@ export function billSummary(rows: readonly ReceiptRowText[], billTotal: string):
 
     taxable += cost.taxable;
     gst += cost.gst;
-    net += cost.net;
+    exactNet += cost.net;
   }
+
+  const net = exactToPaise(exactNet);
 
   const roundOff =
     complete && DECIMAL_PATTERN.test(billTotal) ? parseDecimal(billTotal) - net : null;
@@ -107,6 +161,7 @@ export function billSummary(rows: readonly ReceiptRowText[], billTotal: string):
   return {
     taxable,
     gst,
+    exactNet,
     net,
     complete,
     roundOff,

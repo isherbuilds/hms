@@ -43,6 +43,9 @@ export const invoices = pgTable(
     note: text("note"),
     subtotal: bigint("subtotal", { mode: "bigint" }).notNull(),
     taxTotal: bigint("tax_total", { mode: "bigint" }).notNull(),
+    roundOff: bigint("round_off", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
     grandTotal: bigint("grand_total", { mode: "bigint" }).notNull(),
     orgLegalName: text("org_legal_name").notNull(),
     orgAddress: text("org_address").notNull(),
@@ -65,6 +68,14 @@ export const invoices = pgTable(
     check("invoices_tax_total_check", sql`${table.taxTotal} >= 0`),
     check("invoices_grand_total_check", sql`${table.grandTotal} >= 0`),
     check(
+      "invoices_round_off_range_check",
+      sql`${table.roundOff} >= -49 and ${table.roundOff} <= 50`,
+    ),
+    check(
+      "invoices_round_off_stream_check",
+      sql`${table.stream} = 'pharmacy' or ${table.roundOff} = 0`,
+    ),
+    check(
       "invoices_discount_not_above_subtotal_check",
       sql`${table.discountAmount} <= ${table.subtotal}`,
     ),
@@ -76,7 +87,7 @@ export const invoices = pgTable(
     // Pharmacy prices are MRP inclusive of GST, so its tax is already inside the gross.
     check(
       "invoices_total_math_check",
-      sql`${table.grandTotal} = ${table.subtotal} - ${table.discountAmount} + (case ${table.stream} when 'opd' then ${table.taxTotal} else 0 end)`,
+      sql`${table.grandTotal} = ${table.subtotal} - ${table.discountAmount} + (case ${table.stream} when 'opd' then ${table.taxTotal} else 0 end) + ${table.roundOff}`,
     ),
     unique("invoices_org_id_id_unique").on(table.orgId, table.id),
     uniqueIndex("invoices_org_number_idx").on(table.orgId, table.invoiceNumber),

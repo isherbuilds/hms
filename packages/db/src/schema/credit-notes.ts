@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
   date,
@@ -13,8 +14,8 @@ import {
 import { organization, user } from "./auth";
 import { invoices } from "./invoices";
 
-// The only correction path for an issued invoice. Header totals are sums of the
-// stored credit-note lines.
+// The only correction path for an issued invoice. Header total is the sum of
+// stored line gross amounts plus the document round-off.
 export const creditNotes = pgTable(
   "credit_notes",
   {
@@ -29,6 +30,9 @@ export const creditNotes = pgTable(
     reason: text("reason").notNull(),
     subtotal: bigint("subtotal", { mode: "bigint" }).notNull(),
     taxTotal: bigint("tax_total", { mode: "bigint" }).notNull(),
+    roundOff: bigint("round_off", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
     total: bigint("total", { mode: "bigint" }).notNull(),
     issuedBy: text("issued_by")
       .notNull()

@@ -19,6 +19,7 @@ import { z } from "zod";
 
 import { FormSheet } from "@/components/form-sheet";
 import { ControlledField, TextField } from "@/components/form-fields";
+import { productTaxCode, validateSoldProduct } from "@/components/pharmacy-new-product-sheet";
 import {
   ListState,
   ListToolbar,
@@ -98,24 +99,10 @@ const productSchema = z
     sold: z.boolean(),
     code: z.string().trim().max(20),
     taxRatePercent: z.string().trim(),
-    taxCode: z.string().trim().max(20),
+    taxCode: productTaxCode,
     active: z.boolean(),
   })
-  .superRefine((value, context) => {
-    if (!value.sold) return;
-
-    if (value.code === "") {
-      context.addIssue({ code: "custom", path: ["code"], message: "Code is required" });
-    }
-
-    if (!/^\d{1,2}(\.\d{1,2})?$/.test(value.taxRatePercent)) {
-      context.addIssue({
-        code: "custom",
-        path: ["taxRatePercent"],
-        message: "Rate like 0, 5, or 12.50",
-      });
-    }
-  });
+  .superRefine(validateSoldProduct);
 
 type ProductFormValues = z.input<typeof productSchema>;
 

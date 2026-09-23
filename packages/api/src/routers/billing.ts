@@ -578,6 +578,7 @@ export const billingRouter = {
         scope,
         invoiceId: input.invoiceId,
         reason: input.reason,
+        roundOff: 0n,
         lines: input.lines,
         settings,
         now,

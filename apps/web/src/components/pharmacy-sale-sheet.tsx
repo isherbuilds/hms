@@ -147,6 +147,11 @@ function SaleBody({ orgSlug, saleId }: { orgSlug: string; saleId: string }) {
           <span className="text-sm font-medium tabular-nums">
             {formatMoney(data.invoice.grandTotal, currency)}
           </span>
+          {data.invoice.roundOff !== ZERO ? (
+            <span className="text-muted-foreground tabular-nums">
+              Round off {formatMoney(data.invoice.roundOff, currency)}
+            </span>
+          ) : null}
           {data.refundDue > ZERO ? (
             <span className="font-medium text-destructive tabular-nums">
               Refund due {formatMoney(data.refundDue, currency)}

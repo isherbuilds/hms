@@ -247,7 +247,7 @@ export function InvoiceDocument({
                 <span>{formatMoney(line.gross, currency)}</span>
               </div>
               <div style={{ color: colors.muted, fontSize: 8 }}>
-                {`Unit ${formatDecimal(line.unitPrice)} · taxable ${formatDecimal(line.taxableValue)} · tax ${formatDecimal(line.taxAmount)} @ ${line.taxRatePercent}%`}
+                {`Unit ${formatDecimal(line.unitPrice)}${line.priceUnits > 1 ? ` / ${line.priceUnits}` : ""} · taxable ${formatDecimal(line.taxableValue)} · tax ${formatDecimal(line.taxAmount)} @ ${line.taxRatePercent}%`}
               </div>
             </div>
           ))}
@@ -258,6 +258,9 @@ export function InvoiceDocument({
             { label: "Subtotal", value: formatMoney(invoice.subtotal, currency) },
             { label: "Discount", value: formatMoney(invoice.discountAmount, currency) },
             { label: "Tax", value: formatMoney(invoice.taxTotal, currency) },
+            ...(invoice.roundOff !== ZERO
+              ? [{ label: "Round off", value: formatMoney(invoice.roundOff, currency) }]
+              : []),
             { label: "Grand total", value: formatMoney(invoice.grandTotal, currency) },
           ]}
         />
@@ -334,7 +337,10 @@ export function InvoiceDocument({
                 ) : null}
               </td>
               <td style={{ ...cellStyle, textAlign: "right" }}>{line.qty}</td>
-              <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(line.unitPrice)}</td>
+              <td style={{ ...cellStyle, textAlign: "right" }}>
+                {formatDecimal(line.unitPrice)}
+                {line.priceUnits > 1 ? ` / ${line.priceUnits}` : ""}
+              </td>
               <td style={{ ...cellStyle, textAlign: "right" }}>
                 {formatDecimal(line.allocatedDiscount)}
               </td>
@@ -386,6 +392,9 @@ export function InvoiceDocument({
           { label: "Subtotal", value: formatMoney(invoice.subtotal, currency) },
           { label: "Discount", value: formatMoney(invoice.discountAmount, currency) },
           { label: "Tax", value: formatMoney(invoice.taxTotal, currency) },
+          ...(invoice.roundOff !== ZERO
+            ? [{ label: "Round off", value: formatMoney(invoice.roundOff, currency) }]
+            : []),
           { label: "Grand total", value: formatMoney(invoice.grandTotal, currency), total: true },
         ]}
       />
@@ -493,6 +502,9 @@ export function CreditNoteDocument({
         rows={[
           { label: "Taxable", value: formatMoney(note.subtotal, invoice.currency) },
           { label: "Tax", value: formatMoney(note.taxTotal, invoice.currency) },
+          ...(note.roundOff !== ZERO
+            ? [{ label: "Round off", value: formatMoney(note.roundOff, invoice.currency) }]
+            : []),
           { label: "Credit total", value: formatMoney(note.total, invoice.currency), total: true },
         ]}
       />

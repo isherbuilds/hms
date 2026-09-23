@@ -352,9 +352,7 @@ function CreditDialog({
             if (line.full) return [{ invoiceLineId: line.invoiceLineId, full: true as const }];
             const gross = parseMoneyInput(line.gross ?? "");
 
-            return gross === null || gross === ZERO
-              ? []
-              : [{ invoiceLineId: line.invoiceLineId, gross }];
+            return gross === null ? [] : [{ invoiceLineId: line.invoiceLineId, gross }];
           }),
         })
       }

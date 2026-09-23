@@ -99,11 +99,13 @@ export async function settlePendingCharges(
       description: charge.description,
       qty: charge.qty,
       unitPrice: charge.unitPrice,
+      priceUnits: charge.priceUnits,
       taxRatePercent: charge.taxRatePercent,
       taxCode: charge.taxCode,
     })),
     discountAmount,
     "exclusive",
+    "paise",
   );
 
   return api.billing.settleCharges({

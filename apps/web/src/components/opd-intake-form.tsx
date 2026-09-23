@@ -701,8 +701,10 @@ export function OpdIntakeForm({
         : {
             currency,
             subtotal: ZERO,
+            rounding: "paise",
             discountAmount: ZERO,
             taxTotal: ZERO,
+            roundOff: ZERO,
             grandTotal: ZERO,
             lines: [],
           },
