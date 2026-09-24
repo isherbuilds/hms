@@ -14,6 +14,7 @@ export function PlanItemRow({
     note: string | null;
     status: string;
     postedSittings: number;
+    postedAmount: bigint;
     sittingsPlanned: number;
     quotedPrice: bigint;
     nextSittingPrice: bigint | null;
@@ -35,11 +36,11 @@ export function PlanItemRow({
         {item.note ? <span className="text-muted-foreground">{item.note}</span> : null}
       </span>
       <span className="tabular-nums text-muted-foreground">
-        Sitting {item.postedSittings} of ~{item.sittingsPlanned} · total{" "}
-        {formatMoney(item.quotedPrice, currency)}
+        Sitting {item.postedSittings} of ~{item.sittingsPlanned} ·{" "}
+        {formatMoney(item.postedAmount, currency)} of {formatMoney(item.quotedPrice, currency)}
         {item.done
           ? " · posted in full"
-          : item.status === "open" && item.nextSittingPrice !== null
+          : item.nextSittingPrice !== null
             ? ` · next ${formatMoney(item.nextSittingPrice, currency)}`
             : null}
       </span>

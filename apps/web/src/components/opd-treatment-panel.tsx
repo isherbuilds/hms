@@ -37,6 +37,7 @@ export function OpdTreatmentPanel({
   const canEdit = authorize(roles, { treatment: ["create", "update"] });
   const checkedIn = appointment.status === "checked_in";
   const canLink = canEdit && (appointment.status === "booked" || checkedIn);
+  const canPost = checkedIn && authorize(roles, { billing: ["write"] });
 
   const patientId = record.patient?.id;
 
@@ -202,7 +203,7 @@ export function OpdTreatmentPanel({
                   action={
                     plan.status === "open" && item.status === "open" && !item.done ? (
                       <>
-                        {authorize(roles, { billing: ["write"] }) && checkedIn ? (
+                        {canPost ? (
                           <>
                             <Button
                               size="xs"

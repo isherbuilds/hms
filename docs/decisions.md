@@ -638,11 +638,12 @@ sitting count is an estimate, never a posting limit. A plan completes when
 every non-dropped priced item has its full price posted. A free item still needs one
 posted sitting before completion.
 
-Patients pay at will: paying less leaves the sitting's Invoice outstanding;
-paying more creates an Advance Receipt tagged to the plan. The OPD Billing tab
-shows the plan total and posted amount beside the existing Invoice and Advance
-actions. An Invoice can include tax and non-plan services, so there is no
-plan-specific collection balance or payment allocation rule.
+Patients pay at will. A sitting's Invoice may stay outstanding with a recorded
+reason; money for later sittings is taken separately as an Advance Receipt
+tagged to the plan, which settlement spends on that plan's Invoices first. The
+OPD Billing tab shows the plan total and posted amount beside the existing
+Invoice and Advance actions. There is no separate plan account or collection
+balance: an Invoice can include tax and non-plan services.
 
 Existing rows migrate by multiplying unit price by planned quantity
 (`0007_treatment_item_sittings.sql` and `0008_treatment_course_price_data.sql`).
