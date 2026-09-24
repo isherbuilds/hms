@@ -43,8 +43,8 @@ The shell groups related rows. Do not nest a shell inside a shell.
 Keep the muted tray and its inset card. Reduce the information shown at once
 before removing this framing. Billing separates open money, refunds, and held
 advances into routes. Patient billing opens on invoices; advance receipts expand
-below them. Staff keeps a compact panel (`min-h-48`) and a button-style view
-selector, so nested tab strips do not add parallel rules. Reports use a muted
+below them. Staff keeps a compact panel and a button-style view selector, so
+nested tab strips do not add parallel rules. Reports use a muted
 navigation panel with no extra rule above or below it.
 
 Organization settings use a left-aligned `max-w-5xl` content column. At `md`,
@@ -162,11 +162,11 @@ border-black` because paper is white with black ink in every theme; the login
 - **Clinical severity** is the one place hue carries meaning beyond tenancy
   state: `--clinical-alert` for what is dangerous about a patient (allergies, a
   balance still owed), `--clinical-note` for what is chronic (medical history),
-  `--clinical-clear` for what is settled or explicitly absent, `--clinical-info`
-  for neutral identity such as a blood group. Each has a `-surface` and a
-  `-border` companion and is defined in both themes in `globals.css`. A hue here
-  is a claim about the patient, never decoration — and the word is still
-  present, so the meaning survives for a reader who cannot see the colour.
+  `--clinical-clear` for what is settled or explicitly absent. Each has a
+  `-surface` and a `-border` companion and is defined in both themes in
+  `globals.css`. A hue here is a claim about the patient, never decoration —
+  and the word is still present, so the meaning survives for a reader who
+  cannot see the colour.
 - **Billing work state** uses `--pending` for Charges not yet invoiced and
   `--overdue` for an unpaid Invoice older than seven days. These tokens appear
   through labelled `Badge` variants; neither is a general accent colour.
@@ -241,14 +241,15 @@ Reach for these before writing a `div` with padding. All in
 
 **Page-header grammar.** Every page uses `PageHeader`. The title is a static noun
 of at most two words. Never put data in the title. Put durable context in the
-description: `MRN · Name` or `Token N` identity on record pages, or a short phrase
-with no trailing period. A date appears only when it is an interactive part of
-the screen: operational day navigation belongs in the header action area, while
-screens fixed to today (such as Dashboard) do not repeat today's date. Actions
-align to the right in the header. Sibling record tab pages — views of one entity,
-like the OPD record's Clinical and Billing — share one title and description, so
-switching tabs does not shift the layout. Section tabs over distinct pages, like
-Settings, keep their own titles.
+description: `Token N` identity on record pages, or a short phrase with no
+trailing period. Patient records are the exception: `MRN · Name` lives in the
+pinned identity strip, not the PageHeader description. A date appears only when
+it is an interactive part of the screen: operational day navigation belongs in
+the header action area, while screens fixed to today (such as Dashboard) do not
+repeat today's date. Actions align to the right in the header. Sibling record
+tab pages — views of one entity, like the OPD record's Clinical and Billing —
+share one title and description, so switching tabs does not shift the layout.
+Section tabs over distinct pages, like Settings, keep their own titles.
 
 Page-header and panel-label-row actions use the default 32 px control height
 (`icon` when icon-only), including secondary actions and operational date
@@ -284,9 +285,13 @@ style choice.
 - **Patient sections** — Record, Visits, Billing, and Treatment are child routes.
   The layout owns one live patient query; each child loads only its own data.
   Account totals belong to Billing, so the other sections do not load the full
-  account. Record shows allergy and medical-history sections, followed by one patient details card containing contact, identity, guardian, and payer details. Patient and report content columns are centered within the page; their text stays left-aligned. The name
-  and MRN appear once in the compact identity strip, not again in PageHeader.
-  Allergy and medical-history sections retain their color tokens without an outer Clinical notes panel. Open money and Refunds due panels fill the remaining page height.
+  account. Record shows allergy and medical-history sections, followed by one
+  patient details card containing contact, identity, guardian, and payer details.
+  Patient and report content columns are centered within the page; their text stays
+  left-aligned. As the page-header exception, the name and MRN appear once in the
+  pinned compact identity strip, not again in PageHeader. Allergy and medical-history
+  sections retain their color tokens without an outer Clinical notes panel. Open money
+  and Refunds due panels fill the remaining page height.
 - **`ListToolbar`** — the row above a list. Search comes first, followed by
   filters.
 - **`SearchInput`** — the one uncontrolled search box. It trims the query and
@@ -306,11 +311,14 @@ style choice.
   list.
 - **`LoadMore`** — the count and the only control that grows a cursor list. It
   belongs in the panel footer.
-- **`DataList`** — one `columns` definition renders the table at `md` and the
-  compact row below it. The first column is the row name and target;
-  `mobile: "title"` shares its line, while other columns join with `·`.
-  `action` sits outside the target. A route never writes `<Table>` or an
-  `md:hidden` list.
+- **`DataList`** — for simple, read-only, low-density lists with a single row
+  target. One `columns` definition renders the table at `md` and the compact
+  row below it. The first column is the row name and target; `mobile: "title"`
+  shares its line, while other columns join with `·`. `action` sits outside the
+  target. Editable or information-dense rows own explicit responsive layouts:
+  OPD service entry, the pharmacy sale cart, the audit log, and the Settings
+  catalog (whose memoised row earned its place in a benchmark) do not use
+  `DataList`.
 
 **Choice controls.** Use a dropdown menu for actions and short option lists,
 including the list filter's checkbox submenus. Use a popover when the anchored

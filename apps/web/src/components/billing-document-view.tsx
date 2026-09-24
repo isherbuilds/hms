@@ -104,7 +104,7 @@ function BillingDocumentView({
                 {number && patient ? " · " : null}
                 {patient?.patientMrn ? (
                   <>
-                    <span className="font-mono">{patient.patientMrn}</span> ·{" "}
+                    MRN <span className="font-mono">{patient.patientMrn}</span> ·{" "}
                   </>
                 ) : null}
                 {patient ? <span className="capitalize">{patient.patientName}</span> : null}

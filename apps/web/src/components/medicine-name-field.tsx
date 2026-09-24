@@ -1,6 +1,7 @@
 import { Autocomplete } from "@hms/ui/components/autocomplete";
 import { FormControl, FormDescription } from "@hms/ui/components/form";
 import { useQuery } from "@tanstack/react-query";
+import { useRef } from "react";
 import { useFormContext, type ControllerRenderProps, type FieldValues } from "react-hook-form";
 
 import { ControlledField } from "@/components/form-fields";
@@ -15,6 +16,40 @@ type MedicineFields = {
   manufacturer: string;
   unitsPerPack: string;
 };
+
+type SuggestedAttributes = {
+  strength: string | null;
+  form: string | null;
+  manufacturer: string | null;
+  unitsPerPack: number | null;
+};
+
+type PickedAttributes = Pick<MedicineFields, "strength" | "form" | "manufacturer" | "unitsPerPack">;
+
+/** Only replace defaults and values still owned by the previous suggestion. */
+export function mergeMedicineSuggestion(
+  current: PickedAttributes,
+  previous: Partial<PickedAttributes>,
+  suggestion: SuggestedAttributes,
+  existingProduct: boolean,
+): Partial<PickedAttributes> {
+  const next: Partial<PickedAttributes> = {};
+
+  for (const key of ["strength", "form", "manufacturer"] as const) {
+    if (current[key] === "" || current[key] === previous[key]) {
+      next[key] = suggestion[key] ?? "";
+    }
+  }
+
+  if (
+    !existingProduct &&
+    (current.unitsPerPack === "1" || current.unitsPerPack === previous.unitsPerPack)
+  ) {
+    next.unitsPerPack = String(suggestion.unitsPerPack ?? 1);
+  }
+
+  return next;
+}
 
 /** Suggestions assist entry; they do not replace the user's editable product name. */
 export function MedicineNameField({
@@ -64,6 +99,7 @@ function MedicineNameInput({
   "aria-invalid"?: boolean;
 }) {
   const form = useFormContext<MedicineFields>();
+  const previousPick = useRef<Partial<PickedAttributes>>({});
   const search = useSearchTerm(250, 3);
 
   const suggestions = useQuery({
@@ -81,7 +117,7 @@ function MedicineNameInput({
 
   const existing = useQuery({
     ...orpc.pharmacy.listProducts.queryOptions({
-      input: { orgSlug, query: name, limit: SEARCH_RESULT_LIMIT },
+      input: { orgSlug, query: name.slice(0, 100), limit: SEARCH_RESULT_LIMIT },
     }),
     enabled: name.length >= 3,
     staleTime: 60 * 1000,
@@ -95,27 +131,18 @@ function MedicineNameInput({
   const pick = (suggestion: Suggestion) => {
     field.onChange(suggestion.name);
 
-    for (const [key, value] of [
-      ["strength", suggestion.strength],
-      ["form", suggestion.form],
-      ["manufacturer", suggestion.manufacturer],
-    ] as const) {
-      if (value && !form.getValues(key)) {
+    const current = form.getValues();
+    const next = mergeMedicineSuggestion(current, previousPick.current, suggestion, !!productId);
+
+    for (const key of ["strength", "form", "manufacturer", "unitsPerPack"] as const) {
+      const value = next[key];
+
+      if (value !== undefined && value !== current[key]) {
         form.setValue(key, value, { shouldDirty: true, shouldValidate: true });
       }
     }
 
-    if (
-      !productId &&
-      suggestion.unitsPerPack != null &&
-      form.getValues("unitsPerPack") === "1" &&
-      !form.getFieldState("unitsPerPack").isDirty
-    ) {
-      form.setValue("unitsPerPack", String(suggestion.unitsPerPack), {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
-    }
+    previousPick.current = next;
 
     search.clear();
   };

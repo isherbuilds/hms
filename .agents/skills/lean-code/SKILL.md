@@ -47,7 +47,7 @@ proves the session, resolves membership, checks the permission, and exposes
 - **A helper is created at the second real caller.** An existing one-caller helper is
   inlined only if it merely forwards — wraps a single `throw` or one query behind an
   options object. Keep it if it names a concept (`assertDepartmentInScope`,
-  `lockInvoice`, `blockingReason`).
+  `lockInvoice`).
 - **Error reasons are read or they are gone.** `ConflictReason` holds only values a
   web file branches on. If the client's response to every CONFLICT from a screen is
   "refetch and show the message", the reasons on that path are removed.
@@ -101,9 +101,9 @@ proves the session, resolves membership, checks the permission, and exposes
   server refused passes `onError: closeOnConflict(close)`; nothing else.
 - **A mutation hook is written once.** If a dialog and a row action both check in an
   appointment, they call the same `useOpdCheckIn`.
-- **CONFLICT means stale.** Only the patient form and catalog settings read
-  `data.reason` (field mapping); every other screen lets the refresh show the
-  winning state.
+- **CONFLICT means stale.** A screen reads `data.reason` only to map a conflict onto
+  a form field (`applyOrpcFieldError`) or to keep a form open on a duplicate; every
+  other screen lets the refresh show the winning state.
 - Props that are always the same literal (`open={true}`), callbacks with no caller,
   re-exports with no importer, and components split solely to isolate a render are
   deleted.

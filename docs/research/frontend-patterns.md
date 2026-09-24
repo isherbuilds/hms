@@ -89,7 +89,9 @@ If an item shows no change, drop it rather than keep it for tidiness.
 
 ## Rejected, with reasons
 
-- **Midday's memoization density as a default.** The catalog list now renders through shared `DataList` and relies on React Compiler memoisation rather than a hand-memoised row or pinned callback.
+- **Midday's memoization density as a default.** See above. HMS's one `memo`
+  (`settings/catalog.tsx`) earned its place against a measured 150 ms → 7 ms
+  flip at 1,000 rows; each future one must cite its own measurement.
 - **Midday's totals loop.** Watching a field array, recomputing in floating
   point, then writing back through `setValue` in an effect is a cascade and a
   money bug at once. HMS's server-owned `opd.quoteWalkIn` with the shared

@@ -653,11 +653,12 @@ the console keeps one filter idiom.
   for a batch while aggregating movements, and reconciles only the bill
   total; a second arrival with a different
   expiry or non-equivalent MRP is refused; an opening receipt records its count
-  sheet and refuses touched or expired batches; an internal issue names its
-  department and is refused without one; quarantine and release move quantity
-  between buckets and a bucket cannot go below zero; `updateProduct` refuses
-  a unit change after a batch exists; `catalog.create` refuses category
-  `pharmacy`; foreign product, batch and file ids are `NOT_FOUND` across orgs.
+  date and batch quantities and refuses touched or expired batches; an internal
+  issue names its department and is refused without one; quarantine and release
+  move quantity between buckets and a bucket cannot go below zero;
+  `updateProduct` refuses a unit change after a batch exists; `catalog.create`
+  refuses category `pharmacy`; foreign product and batch ids are `NOT_FOUND`
+  across orgs.
 - **Integration, `tests/integration/pharmacy-sale.test.ts`**: a sale reduces
   shelf per batch, numbers in the pharmacy series with the pharmacy prefix,
   prices loose units against printed pack MRP, extracts tax from discounted
@@ -741,8 +742,8 @@ the console keeps one filter idiom.
   that is GST-registered with taxable pharmacy sales may claim input credit
   rather than including GST in cost. The purchasing spec must decide that
   valuation treatment from the retained facts, without persisting unit cost.
-- Stock valuation and opening valuation. The count document retains the sheet
-  so a later dated valuation cutover has its evidence.
+- Stock valuation and opening valuation. The opening receipt retains the count
+  date, batch quantities, and receipt facts as evidence for a later dated valuation cutover.
 - Chartered accountant and licensing adviser sign-off on the inclusive-MRP
   presentation, document label, licence particulars on the print, the
   GST registration used, and whether purchase GST is claimed as input credit

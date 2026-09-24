@@ -157,7 +157,7 @@ function BalanceSheetRoute() {
             <div className="grid gap-3 lg:grid-cols-2">
               <section className="flex flex-col gap-2">
                 <h2 className="min-h-6 text-muted-foreground">Assets</h2>
-                <div className="overflow-x-auto ring-1 ring-border">
+                <div className="ring-1 ring-border">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -189,7 +189,7 @@ function BalanceSheetRoute() {
 
               <section className="flex flex-col gap-2">
                 <h2 className="min-h-6 text-muted-foreground">Liabilities and equity</h2>
-                <div className="overflow-x-auto ring-1 ring-border">
+                <div className="ring-1 ring-border">
                   <Table>
                     <TableHeader>
                       <TableRow>

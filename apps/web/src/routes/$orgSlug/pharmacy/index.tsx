@@ -123,16 +123,14 @@ function PharmacySalesRoute() {
                 },
                 {
                   head: "Buyer",
-                  cell: (item) => <span className="capitalize">{item.buyerName}</span>,
-                },
-                {
-                  head: "Patient",
-                  cell: (item) =>
-                    item.patientId ? (
-                      <span className="capitalize">{item.buyerName}</span>
-                    ) : (
-                      <span className="text-muted-foreground">Walk-in</span>
-                    ),
+                  cell: (item) => (
+                    <span className="capitalize">
+                      {item.buyerName}
+                      {item.patientId ? null : (
+                        <span className="text-muted-foreground normal-case"> (walk-in)</span>
+                      )}
+                    </span>
+                  ),
                 },
                 {
                   head: "Total",
@@ -145,6 +143,17 @@ function PharmacySalesRoute() {
               rows={items}
               rowKey={(item) => item.saleId}
               onActivate={(item) => void openSale(item.saleId)}
+              action={(item) =>
+                item.patientId ? (
+                  <Link
+                    to="/$orgSlug/patients/$patientId/billing"
+                    params={{ orgSlug, patientId: item.patientId }}
+                    className="underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                  >
+                    Patient billing
+                  </Link>
+                ) : null
+              }
             />
           </ListState>
         </Panel>

@@ -117,10 +117,6 @@ function OpdCheckInAction({
 }) {
   const [checkingIn, setCheckingIn] = useState(false);
   const checkIn = useOpdCheckIn();
-  // Cashiers and accountants read the queue; checking in needs `opd:update`.
-  const canUpdate = useCan(orgSlug, { opd: ["update"] });
-
-  if (!canUpdate) return null;
 
   return (
     <>
@@ -156,6 +152,8 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
   const { from, to, status } = Route.useSearch();
   const { timeZone, today } = useOrgDateTime();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
+  // Cashiers and accountants read the queue; checking in needs `opd:update`.
+  const canUpdate = useCan(orgSlug, { opd: ["update"] });
 
   const day = useInfiniteQuery({
     ...dayQuery(orgSlug, { from, to }, search, status === "all"),
@@ -275,16 +273,19 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
             to: "/$orgSlug/opd/$appointmentId",
             params: { orgSlug, appointmentId: appointment.id },
           })}
-          action={(appointment) =>
-            appointment.status === "booked" ? (
-              <OpdCheckInAction
-                orgSlug={orgSlug}
-                appointmentId={appointment.id}
-                patientId={appointment.patientId}
-                callerName={appointment.callerName}
-                callerPhone={appointment.callerPhone}
-              />
-            ) : null
+          action={
+            canUpdate && items.some((appointment) => appointment.status === "booked")
+              ? (appointment) =>
+                  appointment.status === "booked" ? (
+                    <OpdCheckInAction
+                      orgSlug={orgSlug}
+                      appointmentId={appointment.id}
+                      patientId={appointment.patientId}
+                      callerName={appointment.callerName}
+                      callerPhone={appointment.callerPhone}
+                    />
+                  ) : null
+              : undefined
           }
         />
       </ListState>

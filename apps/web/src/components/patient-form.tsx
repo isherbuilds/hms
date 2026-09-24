@@ -458,6 +458,11 @@ export function PatientForm({
     }
   }
 
+  function handleUidConflict(error: unknown) {
+    if (applyOrpcFieldError(form, error, UID_CONFLICT))
+      revealFields([UID_CONFLICT.uid_taken.field]);
+  }
+
   const register = useMutation(
     orpc.patient.register.mutationOptions({
       onSuccess: async (created) => {
@@ -477,10 +482,7 @@ export function PatientForm({
           ignoreBlocker: true,
         });
       },
-      onError: (error) => {
-        if (applyOrpcFieldError(form, error, UID_CONFLICT))
-          revealFields([UID_CONFLICT.uid_taken.field]);
-      },
+      onError: handleUidConflict,
     }),
   );
 
@@ -490,10 +492,7 @@ export function PatientForm({
         onSaved();
         toast.success("Changes saved");
       },
-      onError: (error) => {
-        if (applyOrpcFieldError(form, error, UID_CONFLICT))
-          revealFields([UID_CONFLICT.uid_taken.field]);
-      },
+      onError: handleUidConflict,
     }),
   );
 

@@ -2,19 +2,18 @@ import { authorize, type AppPermission } from "@hms/auth/access";
 import { guardianLabel } from "@hms/api/lib/schemas";
 import { buttonVariants } from "@hms/ui/components/button";
 import { cn } from "@hms/ui/lib/utils";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, createFileRoute } from "@tanstack/react-router";
 import { CalendarIcon } from "lucide-react";
 
 import { Monogram } from "@/components/monogram";
-import { PageHeader, PageTab, PageTabs } from "@/components/page";
+import { ErrorNote, PageHeader, PageTab, PageTabs } from "@/components/page";
 import type { EditablePatient } from "@/components/patient-form";
 import { useMembership } from "@/lib/membership";
 import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { loadRouteQuery } from "@/lib/orpc-error";
+import { isAuthorizationError, loadRouteQuery } from "@/lib/orpc-error";
 import { patientAgeLabel } from "@/lib/patient-age";
-import { PatientRecordContext } from "@/lib/patient-record";
 
 const TABS = [
   { to: "/$orgSlug/patients/$patientId", label: "Record", permission: { patient: ["read"] } },
@@ -105,15 +104,32 @@ function PatientDetailRoute() {
   const { orgSlug, patientId } = Route.useParams();
   const { today } = useOrgDateTime();
 
-  const record = useSuspenseQuery(
-    orpc.patient.get.queryOptions({ input: { orgSlug, patientId } }),
-  ).data;
-
+  const detail = useQuery(orpc.patient.get.queryOptions({ input: { orgSlug, patientId } }));
   const { roles } = useMembership(orgSlug);
+
+  // Authorization failures are terminal: keeping the cached record here would leave
+  // patient data visible after access was revoked.
+  if (detail.error && isAuthorizationError(detail.error)) {
+    throw detail.error;
+  }
+
+  if (!detail.data) {
+    return (
+      <>
+        <PageHeader title="Patient" />
+        {detail.error ? (
+          <ErrorNote title="Could not load patient" error={detail.error} inset />
+        ) : null}
+      </>
+    );
+  }
+
+  const record = detail.data;
+
   const ageLabel = patientAgeLabel(record.dateOfBirth, record.dobEstimated, today);
 
   return (
-    <PatientRecordContext.Provider value={record}>
+    <>
       <PageHeader
         title="Patient"
         action={
@@ -150,6 +166,6 @@ function PatientDetailRoute() {
         )}
       </PageTabs>
       <Outlet />
-    </PatientRecordContext.Provider>
+    </>
   );
 }

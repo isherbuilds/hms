@@ -1,8 +1,15 @@
 import { computeInvoiceLines } from "@hms/api/lib/invoice-math";
-import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
 import { Input } from "@hms/ui/components/input";
 import { SubmitButton } from "@hms/ui/components/submit-button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@hms/ui/components/table";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ClientOnly, useBlocker, useNavigate } from "@tanstack/react-router";
 import { Trash2Icon } from "lucide-react";
@@ -17,7 +24,7 @@ import {
   type SelectedPatient,
 } from "@/components/opd-patient-picker";
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
-import { DataList, FormSection, Panel } from "@/components/page";
+import { FormSection, Panel } from "@/components/page";
 import { PharmacyBatchPicker, type SaleLine } from "@/components/pharmacy-batch-picker";
 import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
@@ -87,55 +94,86 @@ function SaleLines({
   }
 
   return (
-    <DataList
-      columns={[
-        {
-          head: "Product",
-          cell: (line) => (
-            <span className="block">
-              <span className="block capitalize">{line.productName}</span>
-              <span className="block font-mono text-muted-foreground">{line.code}</span>
-              <span className="flex flex-wrap gap-1">
-                <Badge variant="muted" className="font-mono">
-                  {line.batchNumber}
-                </Badge>
-                <Badge variant="outline">Expires {formatBusinessDate(line.expiryDate)}</Badge>
-              </span>
-            </span>
-          ),
-        },
-        { head: "Batch", cell: (line) => <span className="font-mono">{line.batchNumber}</span> },
-        {
-          head: "Expiry",
-          cell: (line) => (
-            <span className="whitespace-nowrap">{formatBusinessDate(line.expiryDate)}</span>
-          ),
-        },
-        { head: "Qty", cell: (line) => qtyField(line), className: "w-20" },
-        {
-          head: "MRP",
-          cell: (line) => (
-            <span className="tabular-nums">
-              {formatMoney(line.mrp, currency)}
-              {line.mrpUnits > 1 ? ` / ${line.mrpUnits}` : ""}
-            </span>
-          ),
-          className: "text-right",
-        },
-        {
-          head: "Amount",
-          cell: (line) => (
-            <span className="font-medium tabular-nums">
-              {formatMoney(line.lineSubtotal, currency)}
-            </span>
-          ),
-          className: "text-right",
-        },
-      ]}
-      rows={lines}
-      rowKey={(line) => line.batchId}
-      action={(line) => removeButton(line)}
-    />
+    <>
+      <div className="hidden overflow-hidden rounded-lg ring-1 ring-border md:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Product</TableHead>
+              <TableHead>Batch</TableHead>
+              <TableHead>Expiry</TableHead>
+              <TableHead className="w-20">Qty</TableHead>
+              <TableHead className="text-right">MRP</TableHead>
+              <TableHead className="text-right">Amount</TableHead>
+              <TableHead className="w-10">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {lines.map((line) => (
+              <TableRow key={line.batchId}>
+                <TableCell>
+                  <p className="font-medium capitalize">{line.productName}</p>
+                  <p className="font-mono text-muted-foreground">{line.code}</p>
+                </TableCell>
+                <TableCell className="font-mono">{line.batchNumber}</TableCell>
+                <TableCell className="whitespace-nowrap">
+                  {formatBusinessDate(line.expiryDate)}
+                </TableCell>
+                <TableCell>{qtyField(line)}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatMoney(line.mrp, currency)}
+                  {line.mrpUnits > 1 ? ` / ${line.mrpUnits}` : ""}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatMoney(line.lineSubtotal, currency)}
+                </TableCell>
+                <TableCell>{removeButton(line)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="grid gap-2 md:hidden">
+        {lines.map((line) => (
+          <article
+            key={line.batchId}
+            className="grid min-w-0 gap-3 rounded-lg border border-border p-3"
+          >
+            <div className="min-w-0">
+              <p className="break-words font-medium capitalize">{line.productName}</p>
+              <p className="break-all font-mono text-muted-foreground">{line.code}</p>
+              <p className="break-all font-mono text-muted-foreground">Batch {line.batchNumber}</p>
+              <p className="text-muted-foreground">Expires {formatBusinessDate(line.expiryDate)}</p>
+            </div>
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-end gap-3">
+              <label className="grid gap-1 text-muted-foreground">
+                Qty
+                {qtyField(line)}
+              </label>
+              <div className="min-w-0">
+                <p className="text-muted-foreground">MRP</p>
+                <p className="break-words tabular-nums">
+                  {formatMoney(line.mrp, currency)}
+                  {line.mrpUnits > 1 ? ` / ${line.mrpUnits}` : ""}
+                </p>
+              </div>
+            </div>
+            <div className="flex min-w-0 items-end justify-between gap-2 border-t border-border pt-2">
+              <div className="min-w-0">
+                <p className="text-muted-foreground">Amount</p>
+                <p className="break-words font-medium tabular-nums">
+                  {formatMoney(line.lineSubtotal, currency)}
+                </p>
+              </div>
+              {removeButton(line)}
+            </div>
+          </article>
+        ))}
+      </div>
+    </>
   );
 }
 

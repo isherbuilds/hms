@@ -12,15 +12,15 @@ import {
 import { cn } from "@hms/ui/lib/utils";
 import { Link, createLink, type LinkOptions } from "@tanstack/react-router";
 import { SearchIcon } from "lucide-react";
-import { memo, useEffect, useRef, type ComponentProps, type ReactNode, type Ref } from "react";
+import { useEffect, useRef, type ComponentProps, type ReactNode, type Ref } from "react";
 
 import { useDebouncedCallback } from "@/hooks/use-debounced-value";
 import { errorMessage } from "@/lib/orpc-error";
 
 /**
- * The page's single 48 px title band. `description` is durable context — `MRN ·
- * Name` on a record, a short phrase elsewhere — never data that changes with the
- * view (docs/design.md §8). It stacks under the title inside the same band.
+ * The page's single 48 px title band. `description` is durable context —
+ * record identity or a short phrase — never data that changes with the view
+ * (docs/design.md §8). Patient identity belongs in its pinned strip instead.
  */
 export function PageHeader({
   title,
@@ -167,12 +167,12 @@ export const PageTab = createLink(function PageTabAnchor({
 });
 
 /**
- * One list, two shapes (docs/design.md §8). The same `columns` render a `Table`
- * at `md` and one compact row per record below it: the first column is the
- * row's name and carries its link or activation, `title` columns share its
- * line, the rest are joined with `·` beneath, `hidden` ones are dropped.
- * `action` is the right-aligned last column on the table and sits outside the
- * row target on the compact row.
+ * Simple, read-only, low-density, single-target lists only (docs/design.md §8).
+ * Editable or dense rows own their responsive layout. The same `columns`
+ * render a `Table` at `md` and one compact row per record below it: the first
+ * column is the row's name and target, `title` columns share its line, the
+ * rest are joined with `·` beneath, `hidden` ones are dropped. `action` is
+ * outside the row target on the compact row.
  */
 export type Column<T> = {
   head: ReactNode;
@@ -183,7 +183,7 @@ export type Column<T> = {
 };
 
 type DataListProps<T> = {
-  columns: Column<T>[];
+  columns: [Column<T>, ...Column<T>[]];
   rows: readonly T[];
   rowKey: (row: T) => string;
   /** The route the row opens. */
@@ -191,20 +191,10 @@ type DataListProps<T> = {
   /** The overlay the row opens. */
   onActivate?: (row: T) => void;
   /** Row controls, rendered outside the row target. */
-  action?: (row: T, busy: boolean) => ReactNode;
-  /** Per-row pending state, read here so only that row re-renders while it saves. */
-  busy?: (row: T) => boolean;
+  action?: (row: T) => ReactNode;
 };
 
-export function DataList<T>({
-  columns,
-  rows,
-  rowKey,
-  link,
-  onActivate,
-  action,
-  busy,
-}: DataListProps<T>) {
+export function DataList<T>({ columns, rows, rowKey, link, onActivate, action }: DataListProps<T>) {
   const shape = (compact: boolean) =>
     rows.map((row) => (
       <DataRow
@@ -215,7 +205,6 @@ export function DataList<T>({
         link={link}
         onActivate={onActivate}
         action={action}
-        busy={busy?.(row) ?? false}
       />
     ));
 
@@ -241,20 +230,16 @@ export function DataList<T>({
   );
 }
 
-// SAFETY: `memo` erases the type parameter; the cast restores the same generic signature the
-// wrapped function declares, so every call site is still checked against its `T`.
-const DataRow = memo(function DataRow<T>({
+function DataRow<T>({
   row,
   compact,
   columns,
   link,
   onActivate,
   action,
-  busy,
-}: Omit<DataListProps<T>, "rows" | "rowKey" | "busy"> & {
+}: Omit<DataListProps<T>, "rows" | "rowKey"> & {
   row: T;
   compact: boolean;
-  busy: boolean;
 }) {
   const target = (className: string, children: ReactNode) =>
     link ? (
@@ -278,7 +263,7 @@ const DataRow = memo(function DataRow<T>({
         {children}
       </button>
     ) : (
-      children
+      <div className={className}>{children}</div>
     );
 
   const targeted = Boolean(link || onActivate);
@@ -296,7 +281,7 @@ const DataRow = memo(function DataRow<T>({
               : column.cell(row)}
           </TableCell>
         ))}
-        {action && <TableCell className="relative z-10 text-right">{action(row, busy)}</TableCell>}
+        {action && <TableCell className="relative z-10 text-right">{action(row)}</TableCell>}
       </TableRow>
     );
   }
@@ -330,16 +315,10 @@ const DataRow = memo(function DataRow<T>({
           )}
         </>,
       )}
-      {action && <div className="shrink-0 py-2 pr-3">{action(row, busy)}</div>}
+      {action && <div className="shrink-0 py-2 pr-3">{action(row)}</div>}
     </li>
   );
-}) as <T>(
-  props: Omit<DataListProps<T>, "rows" | "rowKey" | "busy"> & {
-    row: T;
-    compact: boolean;
-    busy: boolean;
-  },
-) => ReactNode;
+}
 
 /**
  * One titled band of a full-page form. The card owns the border; the last section

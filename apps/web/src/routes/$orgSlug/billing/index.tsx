@@ -6,7 +6,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CircleDotIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { z } from "zod";
@@ -350,6 +350,17 @@ function BillingIndexRoute() {
                 rows={rows}
                 rowKey={(row) => row.key}
                 onActivate={(row) => void openSheet(row)}
+                action={(row) =>
+                  row.appointmentId ? (
+                    <Link
+                      to="/$orgSlug/opd/$appointmentId/billing"
+                      params={{ orgSlug, appointmentId: row.appointmentId }}
+                      className="relative whitespace-nowrap text-xs underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                    >
+                      Visit billing
+                    </Link>
+                  ) : null
+                }
               />
               {(facet === "all" || facet === "to-bill") && worklist.data?.hasMore ? (
                 <p className="text-xs text-muted-foreground">
@@ -383,7 +394,7 @@ function Stat({
       <dd className={`text-2xl font-medium tabular-nums ${alarm ? "text-destructive" : ""}`}>
         {value}
       </dd>
-      <span className="tabular-nums text-muted-foreground">{detail}</span>
+      <dd className="tabular-nums text-muted-foreground">{detail}</dd>
     </div>
   );
 }

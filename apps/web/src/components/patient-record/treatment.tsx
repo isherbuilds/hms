@@ -4,7 +4,7 @@ import type { RouterClient } from "@orpc/server";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { ListState, Panel } from "@/components/page";
+import { ErrorNote, ListState, Panel } from "@/components/page";
 import { PlanItemRow } from "@/components/treatment-plan-item";
 import { ReasonDialog, type ReasonTarget } from "@/components/treatment-dialogs";
 import { useCan } from "@/lib/membership";
@@ -33,6 +33,14 @@ export function PatientTreatment({
 
   return (
     <Panel grow label="Treatment plans">
+      {plans.isRefetchError ? (
+        <div className="flex flex-col items-start gap-2 px-3 pt-3">
+          <ErrorNote title="Could not refresh treatment plans" error={plans.error} />
+          <Button size="xs" variant="ghost" onClick={() => void plans.refetch()}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
       <ListState
         query={plans}
         errorTitle="Could not load treatment plans"

@@ -58,7 +58,7 @@ function OrgSwitcher({ activeOrgSlug }: { activeOrgSlug: string }) {
             <DropdownMenuItem
               key={org.id}
               render={<Link to="/$orgSlug/dashboard" params={{ orgSlug: org.slug }} />}
-              aria-current={org.slug === activeOrgSlug ? "page" : undefined}
+              aria-current={org.slug === activeOrgSlug ? "true" : undefined}
               className={org.slug === activeOrgSlug ? "font-medium" : undefined}
             >
               <span className="min-w-0 flex-1 truncate">{org.name}</span>

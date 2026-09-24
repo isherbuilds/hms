@@ -184,7 +184,7 @@ function GstReportRoute() {
 
             <section className="flex flex-col gap-2">
               <h2 className="min-h-6 text-muted-foreground">Documents</h2>
-              <div className="overflow-x-auto ring-1 ring-border">
+              <div className="ring-1 ring-border">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -253,7 +253,7 @@ function GstReportRoute() {
             <div className="grid gap-3 lg:grid-cols-2">
               <section className="flex flex-col gap-2">
                 <h2 className="min-h-6 text-muted-foreground">Rate summary</h2>
-                <div className="overflow-x-auto ring-1 ring-border">
+                <div className="ring-1 ring-border">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -306,7 +306,7 @@ function GstReportRoute() {
 
               <section className="flex flex-col gap-2">
                 <h2 className="min-h-6 text-muted-foreground">HSN/SAC summary</h2>
-                <div className="overflow-x-auto ring-1 ring-border">
+                <div className="ring-1 ring-border">
                   <Table>
                     <TableHeader>
                       <TableRow>

@@ -128,7 +128,7 @@ function TrialBalanceRoute() {
                 {report.data.from} to {report.data.to}
               </p>
             </header>
-            <div className="overflow-x-auto ring-1 ring-border">
+            <div className="ring-1 ring-border">
               <Table>
                 <TableHeader>
                   <TableRow>

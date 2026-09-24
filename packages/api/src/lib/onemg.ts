@@ -5,10 +5,8 @@ const suggestion = z.object({
   id: z.number(),
   label: z.string(),
   strength: z.string().nullable(),
-  pack_form: z.string().nullable(),
   pack_size_label: z.string().nullable(),
   units_in_pack: z.number().int().nullable(),
-  marketer_name: z.string().nullable(),
   manufacturer_name: z.string().nullable(),
   product_type: z.string(),
   // Sponsored slots carry an object here; organic results carry null.
@@ -16,6 +14,22 @@ const suggestion = z.object({
 });
 
 const responseBody = z.object({ results: z.array(z.unknown()) });
+
+/** Keep the manufacturer's identity distinct from the seller/marketer. */
+export function mapOneMgSuggestion(result: z.infer<typeof suggestion>) {
+  const lastWord = result.pack_size_label?.match(/([a-zA-Z]+)$/)?.[1];
+  const form = lastWord ? lastWord.replace(/s$/i, "").toLowerCase() : null;
+
+  return {
+    id: String(result.id),
+    name: result.label,
+    strength: result.strength,
+    form,
+    manufacturer: result.manufacturer_name ?? null,
+    unitsPerPack: result.units_in_pack,
+    packSizeLabel: result.pack_size_label,
+  };
+}
 
 /** Public suggestions only: never send a user's or organization's identity to 1mg. */
 export async function searchOneMg(q: string) {
@@ -47,21 +61,7 @@ export async function searchOneMg(q: string) {
       // Ads and devices/foods are not product masters for a pharmacy shelf.
       if (!["drug", "otc"].includes(type) || productType === "non_medicine" || ad) return [];
 
-      const result = parsed.data;
-      const lastWord = result.pack_size_label?.match(/([a-zA-Z]+)$/)?.[1];
-      const form = lastWord ? lastWord.replace(/s$/i, "").toLowerCase() : null;
-
-      return [
-        {
-          id: String(result.id),
-          name: result.label,
-          strength: result.strength,
-          form,
-          manufacturer: result.marketer_name ?? result.manufacturer_name,
-          unitsPerPack: result.units_in_pack,
-          packSizeLabel: result.pack_size_label,
-        },
-      ];
+      return [mapOneMgSuggestion(parsed.data)];
     })
     .slice(0, 6);
 }

@@ -1,10 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageBody } from "@/components/page";
 import { PatientBilling } from "@/components/patient-record/billing";
 import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
-import { usePatientRecord } from "@/lib/patient-record";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 export const Route = createFileRoute("/$orgSlug/patients/$patientId/billing")({
@@ -20,7 +19,9 @@ export const Route = createFileRoute("/$orgSlug/patients/$patientId/billing")({
 
 function PatientBillingRoute() {
   const { orgSlug, patientId } = Route.useParams();
-  const record = usePatientRecord();
+  const record = useSuspenseQuery(
+    orpc.patient.get.queryOptions({ input: { orgSlug, patientId } }),
+  ).data;
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const account = useQuery(orpc.patient.account.queryOptions({ input: { orgSlug, patientId } }));
 

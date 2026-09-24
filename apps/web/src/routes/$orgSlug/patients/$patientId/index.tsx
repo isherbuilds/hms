@@ -2,6 +2,7 @@ import { authorize } from "@hms/auth/access";
 import { guardianLabel } from "@hms/api/lib/schemas";
 import { Button } from "@hms/ui/components/button";
 import { cn } from "@hms/ui/lib/utils";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PencilIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -10,9 +11,9 @@ import type { EditablePatient } from "@/components/patient-form";
 import { PatientSheet } from "@/components/patient-sheet";
 import { useMembership } from "@/lib/membership";
 import { formatBusinessDate, useOrgDateTime } from "@/lib/org-datetime";
+import { orpc } from "@/lib/orpc";
 import { PAYER_TYPE_LABELS } from "@/lib/payer";
 import { patientAgeLabel } from "@/lib/patient-age";
-import { usePatientRecord } from "@/lib/patient-record";
 
 export const Route = createFileRoute("/$orgSlug/patients/$patientId/")({
   head: () => ({ meta: [{ title: "Patient record · HMS" }] }),
@@ -20,8 +21,10 @@ export const Route = createFileRoute("/$orgSlug/patients/$patientId/")({
 });
 
 function PatientRecordRoute() {
-  const { orgSlug } = Route.useParams();
-  const record = usePatientRecord();
+  const { orgSlug, patientId } = Route.useParams();
+  const record = useSuspenseQuery(
+    orpc.patient.get.queryOptions({ input: { orgSlug, patientId } }),
+  ).data;
   const { today } = useOrgDateTime();
 
   return (

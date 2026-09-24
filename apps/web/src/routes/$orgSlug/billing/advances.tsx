@@ -88,11 +88,6 @@ function AdvancesHeldRoute() {
                   ),
                 },
                 {
-                  head: "Receipt",
-                  mobile: "title",
-                  cell: (row) => <span className="font-mono">{row.receiptNumber}</span>,
-                },
-                {
                   head: "Purpose",
                   cell: (row) =>
                     row.planStatus ? `${row.purpose} · ${row.planStatus}` : row.purpose,

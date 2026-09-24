@@ -32,10 +32,8 @@ export function LandingFaq({ feature }: { feature?: ShotName }) {
           ragged. */}
       <div className="flex flex-col">
         {items.map((item) => (
-          <details
-            key={item.q}
-            className="group flex flex-col gap-3 border-b border-border py-3 sm:py-4"
-          >
+          // WebKit before 17.4 drops <summary> when <details> is a flex container.
+          <details key={item.q} className="group border-b border-border py-3 sm:py-4">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-6 text-base font-medium marker:content-none">
               {item.q}
               <span
@@ -45,7 +43,7 @@ export function LandingFaq({ feature }: { feature?: ShotName }) {
                 +
               </span>
             </summary>
-            <p className="text-sm text-muted-foreground text-pretty">{item.a}</p>
+            <p className="mt-3 text-sm text-muted-foreground text-pretty">{item.a}</p>
           </details>
         ))}
       </div>
