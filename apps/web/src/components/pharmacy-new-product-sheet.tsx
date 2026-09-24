@@ -146,7 +146,7 @@ export function NewProductSheet({
 
       <ControlledField
         name="schedule"
-        label="Schedule"
+        label="Prescription"
         render={(field) => (
           <FormControl>
             <NativeSelect {...field}>

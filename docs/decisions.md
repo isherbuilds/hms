@@ -597,13 +597,32 @@ new receipts leave it null. There is no destructive migration.
 **Accepted 2026-09-23 on the owner's instruction.** Product names retain the
 case staff enter, with internal whitespace collapsed; no normalized-name column
 is added. The product form warns about likely duplicate names but does not
-prevent saving them. Staff can request suggestions from Tata 1mg's public
-autocomplete while typing. The server proxies the request because browsers
-cannot read that endpoint without an `Access-Control-Allow-Origin` header;
-it sends only the search text, never tenant or user identity. Staff confirm
-suggestions before copying them into the organization's own product row.
+prevent saving them. Staff can request medicine-name suggestions while typing
+and confirm them before copying them into the organization's own product row.
 MRP, tax and schedule are never imported.
 
-**Consequence:** this is an unofficial endpoint, which can change or block
-requests, and 1mg's terms restrict automated access. The owner accepted that
-risk. Failure leaves manual entry available without blocking the form.
+**Amended 2026-09-24, decided by the agent at the owner's request.**
+Suggestions come from two sources queried in parallel by the browser:
+Medbuzz's product search (stocked rows only) and Truemeds' search. Results
+are merged with names starting with the typed text first (Medbuzz can answer
+a brand with its substitutes), then Medbuzz before Truemeds, de-duplicated by
+name ignoring case and punctuation, and capped at six. Requests carry only the search text plus fixed request
+constants, never tenant or user identity. Web CSP `connect-src` allows
+`https://searchapi.medbuzz.in` and `https://nal.tmmumbai.in`.
+
+A suggestion must fill strength, manufacturer and pack, not just a name.
+Across 21 names (the pilot's 13 shelf items plus eight mainstream brands),
+fully-filled hits were Apollo 0 (its products have no strength field),
+Truemeds 6 (mainstream) and Medbuzz 6 (the pilot's LXIR ophthalmic line);
+the two useful sets are disjoint
+([source comparison](./research/medicine-name-sources.md)). 1mg returned
+403 from the production server IP and has no browser CORS access.
+
+**Consequence:** both endpoints are unofficial and can change or block.
+Medbuzz's endpoint sits under `/admin/` with an empty ApiKey and no
+published terms, and rejects non-browser clients. [Truemeds' terms](https://www.truemeds.in/legal/ispl/terms-and-conditions)
+forbid "any automated means ... to access the Website, the information, or
+Services for any purpose". This matches the risk class the owner accepted
+for 1mg, but the owner has not confirmed it for these sources. Written
+permission is needed before commercial launch. If one source fails, the
+other still suggests; if both fail, manual entry remains available.

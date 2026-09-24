@@ -565,9 +565,6 @@ includeZero? })` (`pharmacy:read`): every product's batches with `shelfQty`,
   movements newest first by `(createdAt, id)`, org-wide or for one batch, with
   product, batch number, unit, the actor name and, for an internal issue, the
   department.
-- `pharmacy.lookupMedicine({ q })` (`pharmacy:manageItems`): name suggestions
-  from Tata 1mg's autocomplete, proxied server-side, for the product forms
-  (D046).
 - `pharmacy.listProducts({ query?, cursor?, limit })` (`pharmacy:read`):
   keyset by `(name, id)` like `catalog.list`, including inactive and
   internal-supply rows.
@@ -587,11 +584,12 @@ includeZero? })` (`pharmacy:read`): every product's batches with `shelfQty`,
 
 Plain and standard: the existing list, Sheet, `useZodForm`, and `FormDialog`
 patterns; product forms use `FormSheet` with fixed header and actions around a
-scrollable body. No motion on the sale path. The shared list
-filter (`components/list-filter.tsx`, D043) serves the stock list's product,
-expiry and bucket at once, which the toggle-pill row could not express, and the
-same control replaced the pill rows and period controls on the other lists so
-the console keeps one filter idiom.
+scrollable body. Medicine-name suggestions come directly from Medbuzz and
+Truemeds in the browser, with only the search text sent (D046). No motion on
+the sale path. The shared list filter (`components/list-filter.tsx`, D043)
+serves the stock list's product, expiry and bucket at once, which the
+toggle-pill row could not express, and the same control replaced the pill rows
+and period controls on the other lists so the console keeps one filter idiom.
 
 - `/$orgSlug/pharmacy` (`pharmacy:read`): the section's landing page, a
   date-ranged sales list defaulting to the current day, with **New sale** for

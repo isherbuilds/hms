@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 
-import { mapOneMgSuggestion } from "../../packages/api/src/lib/onemg";
+import {
+  mapMedbuzzProduct,
+  mapTruemedsProduct,
+  mergeSuggestions,
+} from "../../apps/web/src/lib/medicine-suggestions";
 
 const empty = { strength: "", form: "", manufacturer: "", unitsPerPack: "1" };
 
@@ -61,20 +65,73 @@ test("a second pick preserves an edited pack and ignores missing pack sizes", as
   ).toBeUndefined();
 });
 
-test("1mg marketer never substitutes for manufacturer", () => {
-  const result = {
-    type: "drug",
-    id: 1,
-    label: "Example medicine",
-    strength: "500 mg",
-    pack_form: "tablet",
-    pack_size_label: "10 tablets",
-    units_in_pack: 10,
-    marketer_name: "Seller",
-    manufacturer_name: "Factory",
-    product_type: "medicine",
+test("Medbuzz maps strength, trailing form and counted packs without a form list", () => {
+  expect(
+    mapMedbuzzProduct({
+      productName: "ZALMOX EYE DROPS",
+      genericName: "Moxifloxacin Hydrochloride 0.5%",
+      manufacturedBy: "LXIR MEDILABS PVT LTD",
+      packing: "Bottle of 5ml",
+    }),
+  ).toEqual({
+    name: "ZALMOX EYE DROPS",
+    strength: "0.5%",
+    form: "drops",
+    manufacturer: "LXIR MEDILABS PVT LTD",
+    unitsPerPack: null,
+    packSizeLabel: "Bottle of 5ml",
+  });
+
+  const inhaler = mapMedbuzzProduct({
+    productName: "EXAMPLE 200 INHALER",
+    genericName: "Budesonide 200mcg + Formoterol 6mcg",
+    manufacturedBy: null,
+    packing: "Box of 2 Inhalers",
+  });
+
+  expect(inhaler).toMatchObject({ strength: "200mcg / 6mcg", form: "inhaler", unitsPerPack: 2 });
+});
+
+test("Truemeds counts Units strips but not measured bottles", () => {
+  const strip = {
+    skuName: "Example Tablet",
+    strength: "100 MG",
+    packSize: "10",
+    unit: "Units",
+    packForm: "Strip of 10 Units",
+    drugType: "TABLET",
+    manufacturerName: "Factory",
+    isAd: false,
   };
 
-  expect(mapOneMgSuggestion(result).manufacturer).toBe("Factory");
-  expect(mapOneMgSuggestion({ ...result, manufacturer_name: null }).manufacturer).toBeNull();
+  expect(mapTruemedsProduct(strip)).toEqual({
+    name: "Example Tablet",
+    strength: "100 MG",
+    form: "tablet",
+    manufacturer: "Factory",
+    unitsPerPack: 10,
+    packSizeLabel: "Strip of 10 Units",
+  });
+
+  expect(
+    mapTruemedsProduct({ ...strip, packSize: "5", unit: "ML", packForm: "Bottle of 5 ML" })
+      .unitsPerPack,
+  ).toBeNull();
+});
+
+test("merge ranks the typed brand first, keeps source order, and de-duplicates by name", () => {
+  const suggestion = (name: string) => ({
+    ...second,
+    name,
+    unitsPerPack: null,
+    packSizeLabel: null,
+  });
+
+  expect(
+    mergeSuggestions(
+      "zalmox",
+      [suggestion("MOXITIK EYE DROPS"), suggestion("ZALMOX-D EYE DROPS")],
+      [suggestion("Zalmox D Eye Drops"), suggestion("Zalmox Eye Drops")],
+    ).map((item) => item.name),
+  ).toEqual(["ZALMOX-D EYE DROPS", "Zalmox Eye Drops", "MOXITIK EYE DROPS"]);
 });

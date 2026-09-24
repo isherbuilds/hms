@@ -24,7 +24,6 @@ import {
 import { businessDate } from "../lib/business-date";
 import { conflict, impossible } from "../lib/conflict";
 import { uniqueViolationConstraint } from "../lib/db-errors";
-import { searchOneMg } from "../lib/onemg";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import {
   expiryMonth,
@@ -231,11 +230,6 @@ async function resolveBatches(
 }
 
 export const pharmacyStockRouter = {
-  lookupMedicine: orgProcedure(
-    { pharmacy: ["manageItems"] },
-    orgInput.extend({ q: z.string().trim().min(3).max(60) }),
-  ).handler(({ input }) => searchOneMg(input.q)),
-
   createProduct: orgProcedure(
     { pharmacy: ["manageItems"] },
     orgInput.extend(productFields),

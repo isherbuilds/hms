@@ -13,6 +13,8 @@ const isDevelopment = import.meta.env.DEV;
 const connectSrc = [
   "'self'",
   apiOrigin,
+  "https://searchapi.medbuzz.in",
+  "https://nal.tmmumbai.in",
   ...(storageOrigin ? [storageOrigin] : []),
   ...(isDevelopment ? ["ws:"] : []),
 ].join(" ");

@@ -47,8 +47,8 @@ export type ScheduleLabelsMatchServer = Assert<
 >;
 
 export const SCHEDULE_LABELS: Record<(typeof SCHEDULES)[number], string> = {
-  none: "No schedule",
-  h: "Schedule H",
-  h1: "Schedule H1",
-  x: "Schedule X",
+  none: "No prescription needed",
+  h: "Schedule H · prescription needed",
+  h1: "Schedule H1 · prescription + register",
+  x: "Schedule X · not sold here",
 };

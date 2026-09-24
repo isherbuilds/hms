@@ -26,6 +26,11 @@ Active temporary memos:
   ERPNext, Tally and CBIC checked 2026-09-23; proposes one all-stream invoice
   register beside per-stream series (D025 unchanged) and names the CA questions
   to answer before a reporting spec.
+- [Medicine-name sources](./medicine-name-sources.md) — Indian catalogs probed
+  2026-09-24 against the pilot shelf and mainstream brands. Medbuzz and
+  Truemeds are merged for browser-fetched suggestions; Medbuzz has no
+  published terms and Truemeds forbids automated access. Written permission
+  is required before commercial launch (D046).
 - [Landing page composition](./landing-page-composition.md) and
   [landing header anatomy](./landing-header-anatomy.md) — design-led and
   healthcare sites observed 2026-09-04; composition and header norms cited by the

@@ -156,7 +156,7 @@ function PharmacyItemsRoute() {
                     </span>
                   ),
                 },
-                { head: "Schedule", cell: (item) => SCHEDULE_LABELS[item.schedule] },
+                { head: "Prescription", cell: (item) => SCHEDULE_LABELS[item.schedule] },
                 {
                   head: "GST %",
                   cell: (item) => (
@@ -297,7 +297,7 @@ function ProductSheet({
         <TextField name="unitsPerPack" label="Units per pack" inputMode="numeric" />
         <ControlledField
           name="schedule"
-          label="Schedule"
+          label="Prescription"
           render={(field) => (
             <FormControl>
               <NativeSelect {...field}>

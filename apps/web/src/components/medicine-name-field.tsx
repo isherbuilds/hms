@@ -7,6 +7,7 @@ import { useFormContext, type ControllerRenderProps, type FieldValues } from "re
 import { ControlledField } from "@/components/form-fields";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { SEARCH_RESULT_LIMIT, searchEmptyMessage, useSearchTerm } from "@/hooks/use-remote-search";
+import { searchMedicines, type MedicineSuggestion } from "@/lib/medicine-suggestions";
 import { orpc } from "@/lib/orpc";
 
 type MedicineFields = {
@@ -105,15 +106,15 @@ function MedicineNameInput({
   const previousPick = useRef<Partial<PickedAttributes>>({});
   const search = useSearchTerm(250, 3);
 
+  const q = search.term.slice(0, 60);
+
   const suggestions = useQuery({
-    ...orpc.pharmacy.lookupMedicine.queryOptions({
-      input: { orgSlug, q: search.term.slice(0, 60) },
-    }),
+    queryKey: ["medicine-suggestions", q],
+    queryFn: ({ signal }) => searchMedicines(q, signal),
     enabled: search.searching,
     staleTime: 60 * 60 * 1000,
+    retry: false,
   });
-
-  type Suggestion = NonNullable<typeof suggestions.data>[number];
 
   // Keyed off the value, not the search, so a picked suggestion is checked too (D046: warn only).
   const name = useDebouncedValue(field.value.trim().replace(/\s+/g, " "), 250);
@@ -131,7 +132,7 @@ function MedicineNameInput({
       product.productId !== productId && product.name.toLowerCase() === name.toLowerCase(),
   );
 
-  const pick = (suggestion: Suggestion) => {
+  const pick = (suggestion: MedicineSuggestion) => {
     field.onChange(suggestion.name);
 
     const current = form.getValues();
@@ -166,7 +167,7 @@ function MedicineNameInput({
     <>
       <Autocomplete
         items={search.searching && suggestions.isSuccess ? suggestions.data : []}
-        getItemKey={(item) => item.id}
+        getItemKey={(item) => item.name}
         getItemLabel={(item) => item.name}
         renderItem={(item) => (
           <span className="min-w-0">
