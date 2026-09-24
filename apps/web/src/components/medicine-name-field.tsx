@@ -32,6 +32,7 @@ export function mergeMedicineSuggestion(
   previous: Partial<PickedAttributes>,
   suggestion: SuggestedAttributes,
   existingProduct: boolean,
+  packEdited = false,
 ): Partial<PickedAttributes> {
   const next: Partial<PickedAttributes> = {};
 
@@ -43,9 +44,11 @@ export function mergeMedicineSuggestion(
 
   if (
     !existingProduct &&
+    !packEdited &&
+    suggestion.unitsPerPack != null &&
     (current.unitsPerPack === "1" || current.unitsPerPack === previous.unitsPerPack)
   ) {
-    next.unitsPerPack = String(suggestion.unitsPerPack ?? 1);
+    next.unitsPerPack = String(suggestion.unitsPerPack);
   }
 
   return next;
@@ -132,13 +135,20 @@ function MedicineNameInput({
     field.onChange(suggestion.name);
 
     const current = form.getValues();
-    const next = mergeMedicineSuggestion(current, previousPick.current, suggestion, !!productId);
+
+    const next = mergeMedicineSuggestion(
+      current,
+      previousPick.current,
+      suggestion,
+      !!productId,
+      form.getFieldState("unitsPerPack").isDirty,
+    );
 
     for (const key of ["strength", "form", "manufacturer", "unitsPerPack"] as const) {
       const value = next[key];
 
       if (value !== undefined && value !== current[key]) {
-        form.setValue(key, value, { shouldDirty: true, shouldValidate: true });
+        form.setValue(key, value, { shouldDirty: key !== "unitsPerPack", shouldValidate: true });
       }
     }
 

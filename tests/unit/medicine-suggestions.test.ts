@@ -50,6 +50,17 @@ test("a second pick preserves operator edits and cannot reconfigure an existing 
   });
 });
 
+test("a second pick preserves an edited pack and ignores missing pack sizes", async () => {
+  const merge = await mergeSuggestion();
+  const pickedA = merge(empty, {}, first, false);
+  const current = { ...empty, ...pickedA };
+
+  expect(merge(current, pickedA, second, false, true).unitsPerPack).toBeUndefined();
+  expect(
+    merge(current, pickedA, { ...second, unitsPerPack: null }, false).unitsPerPack,
+  ).toBeUndefined();
+});
+
 test("1mg marketer never substitutes for manufacturer", () => {
   const result = {
     type: "drug",

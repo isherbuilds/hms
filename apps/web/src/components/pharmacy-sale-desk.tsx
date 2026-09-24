@@ -23,9 +23,15 @@ import {
   SelectedPatientChip,
   type SelectedPatient,
 } from "@/components/opd-patient-picker";
-import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
+import {
+  SettlementOverlay,
+  type SettlementDraft,
+} from "@/components/opd-settlement-overlay";
 import { FormSection, Panel } from "@/components/page";
-import { PharmacyBatchPicker, type SaleLine } from "@/components/pharmacy-batch-picker";
+import {
+  PharmacyBatchPicker,
+  type SaleLine,
+} from "@/components/pharmacy-batch-picker";
 import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
 import type { WalkInQuote } from "@/lib/opd-service-preview";
@@ -143,10 +149,18 @@ function SaleLines({
             className="grid min-w-0 gap-3 rounded-lg border border-border p-3"
           >
             <div className="min-w-0">
-              <p className="break-words font-medium capitalize">{line.productName}</p>
-              <p className="break-all font-mono text-muted-foreground">{line.code}</p>
-              <p className="break-all font-mono text-muted-foreground">Batch {line.batchNumber}</p>
-              <p className="text-muted-foreground">Expires {formatBusinessDate(line.expiryDate)}</p>
+              <p className="wrap-break-words font-medium capitalize">
+                {line.productName}
+              </p>
+              <p className="break-all font-mono text-muted-foreground">
+                {line.code}
+              </p>
+              <p className="break-all font-mono text-muted-foreground">
+                Batch {line.batchNumber}
+              </p>
+              <p className="text-muted-foreground">
+                Expires {formatBusinessDate(line.expiryDate)}
+              </p>
             </div>
             <div className="grid grid-cols-[auto_minmax(0,1fr)] items-end gap-3">
               <label className="grid gap-1 text-muted-foreground">
@@ -155,7 +169,7 @@ function SaleLines({
               </label>
               <div className="min-w-0">
                 <p className="text-muted-foreground">MRP</p>
-                <p className="break-words tabular-nums">
+                <p className="wrap-break-words tabular-nums">
                   {formatMoney(line.mrp, currency)}
                   {line.mrpUnits > 1 ? ` / ${line.mrpUnits}` : ""}
                 </p>
@@ -164,7 +178,7 @@ function SaleLines({
             <div className="flex min-w-0 items-end justify-between gap-2 border-t border-border pt-2">
               <div className="min-w-0">
                 <p className="text-muted-foreground">Amount</p>
-                <p className="break-words font-medium tabular-nums">
+                <p className="wrap-break-words font-medium tabular-nums">
                   {formatMoney(line.lineSubtotal, currency)}
                 </p>
               </div>
@@ -200,7 +214,8 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
   // Freezes the buyer while the credit read is in flight, so the overlay cannot open on
   // one patient's credit while the sale names another.
   const readCredit = useMutation({
-    mutationFn: (patientId: string) => openingCredit(queryClient, orgSlug, patientId),
+    mutationFn: (patientId: string) =>
+      openingCredit(queryClient, orgSlug, patientId),
     onSuccess: (credit) => {
       if (credit !== null) setSettlement(credit);
     },
@@ -337,7 +352,10 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
         Collect
       </SubmitButton>
       {attempted && blocked ? (
-        <p id={id} className={`text-muted-foreground ${messageClassName ?? ""}`}>
+        <p
+          id={id}
+          className={`text-muted-foreground ${messageClassName ?? ""}`}
+        >
           {blocked}
         </p>
       ) : null}
@@ -345,7 +363,9 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
   );
 
   const buyerLabel =
-    buyerKind === "patient" ? (patient?.name ?? "patient") : walkInName.trim() || "walk-in";
+    buyerKind === "patient"
+      ? (patient?.name ?? "patient")
+      : walkInName.trim() || "walk-in";
 
   return (
     <>
@@ -356,7 +376,10 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
           collect();
         }}
       >
-        <fieldset disabled={sell.isPending || readCredit.isPending} className="contents">
+        <fieldset
+          disabled={sell.isPending || readCredit.isPending}
+          className="contents"
+        >
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
             <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
               <FormSection title="Buyer">
@@ -389,7 +412,9 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                         <Input
                           value={walkInName}
                           aria-invalid={attempted && walkInName.trim() === ""}
-                          onChange={(event) => setWalkInName(event.target.value)}
+                          onChange={(event) =>
+                            setWalkInName(event.target.value)
+                          }
                         />
                       </label>
                       <label className="flex flex-col gap-2 text-muted-foreground">
@@ -397,19 +422,27 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                         <Input
                           value={walkInPhone}
                           inputMode="tel"
-                          onChange={(event) => setWalkInPhone(event.target.value)}
+                          onChange={(event) =>
+                            setWalkInPhone(event.target.value)
+                          }
                         />
                       </label>
                     </div>
                   ) : patient ? (
-                    <SelectedPatientChip patient={patient} onClear={() => setPatient(null)} />
+                    <SelectedPatientChip
+                      patient={patient}
+                      onClear={() => setPatient(null)}
+                    />
                   ) : (
                     <OpdPatientSearch orgSlug={orgSlug} onSelect={setPatient} />
                   )}
                 </div>
               </FormSection>
 
-              <FormSection title="Items" description="Search the shelf and pick a batch">
+              <FormSection
+                title="Items"
+                description="Search the shelf and pick a batch"
+              >
                 <div className="grid gap-3">
                   <PharmacyBatchPicker
                     orgSlug={orgSlug}
@@ -421,11 +454,15 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                     currency={currency}
                     onChange={(batchId, qty) =>
                       setCart((current) =>
-                        current.map((line) => (line.batchId === batchId ? { ...line, qty } : line)),
+                        current.map((line) =>
+                          line.batchId === batchId ? { ...line, qty } : line,
+                        ),
                       )
                     }
                     onRemove={(batchId) =>
-                      setCart((current) => current.filter((line) => line.batchId !== batchId))
+                      setCart((current) =>
+                        current.filter((line) => line.batchId !== batchId),
+                      )
                     }
                   />
                   <div className="border-t border-border pt-3 lg:hidden">
@@ -436,7 +473,9 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
 
               <FormSection
                 title="Prescription"
-                description={scheduleH1 ? "Required for Schedule H1" : "Optional"}
+                description={
+                  scheduleH1 ? "Required for Schedule H1" : "Optional"
+                }
               >
                 <div className="grid gap-3">
                   {scheduleH1 ? null : (
@@ -453,7 +492,8 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                   )}
                   {scheduleH1 ? (
                     <p className="text-muted-foreground">
-                      A Schedule H1 medicine is on this sale: the prescriber is required.
+                      A Schedule H1 medicine is on this sale: the prescriber is
+                      required.
                     </p>
                   ) : null}
                   {prescriptionOpen ? (
@@ -466,18 +506,29 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                         />
                       </label>
                       <label className="flex flex-col gap-2 text-muted-foreground">
-                        Prescriber {scheduleH1 ? <span className="text-destructive">*</span> : null}
+                        Prescriber{" "}
+                        {scheduleH1 ? (
+                          <span className="text-destructive">*</span>
+                        ) : null}
                         <Input
                           value={prescriberName}
-                          aria-invalid={scheduleH1 && attempted && prescriberName.trim() === ""}
-                          onChange={(event) => setPrescriberName(event.target.value)}
+                          aria-invalid={
+                            scheduleH1 &&
+                            attempted &&
+                            prescriberName.trim() === ""
+                          }
+                          onChange={(event) =>
+                            setPrescriberName(event.target.value)
+                          }
                         />
                       </label>
                       <label className="flex flex-col gap-2 text-muted-foreground">
                         Prescription reference
                         <Input
                           value={prescriptionReference}
-                          onChange={(event) => setPrescriptionReference(event.target.value)}
+                          onChange={(event) =>
+                            setPrescriptionReference(event.target.value)
+                          }
                         />
                       </label>
                     </div>
@@ -499,7 +550,8 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
           <footer className="absolute inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card p-3 lg:hidden">
             <div className="min-w-0">
               <p className="truncate text-muted-foreground">
-                Payable · <span className="tabular-nums">{cart.length}</span> line
+                Payable · <span className="tabular-nums">{cart.length}</span>{" "}
+                line
                 {cart.length === 1 ? "" : "s"}
               </p>
               <p className="truncate text-xs font-medium tabular-nums">

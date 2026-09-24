@@ -22,9 +22,11 @@ export const Route = createFileRoute("/$orgSlug/patients/$patientId/")({
 
 function PatientRecordRoute() {
   const { orgSlug, patientId } = Route.useParams();
+
   const record = useSuspenseQuery(
     orpc.patient.get.queryOptions({ input: { orgSlug, patientId } }),
   ).data;
+
   const { today } = useOrgDateTime();
 
   return (
@@ -32,7 +34,11 @@ function PatientRecordRoute() {
       <RecordTab
         orgSlug={orgSlug}
         record={record}
-        ageLabel={patientAgeLabel(record.dateOfBirth, record.dobEstimated, today)}
+        ageLabel={patientAgeLabel(
+          record.dateOfBirth,
+          record.dobEstimated,
+          today,
+        )}
       />
     </PageBody>
   );
@@ -42,7 +48,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 break-words">{children}</dd>
+      <dd className="min-w-0 wrap-break-words">{children}</dd>
     </div>
   );
 }
@@ -89,7 +95,11 @@ function RecordTab({
         padded
         action={
           authorize(roles, { patient: ["update"] }) ? (
-            <Button type="button" variant="outline" onClick={() => setEditing(true)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditing(true)}
+            >
               <PencilIcon />
               Edit patient
             </Button>
@@ -101,22 +111,30 @@ function RecordTab({
             <span className="font-mono tabular-nums">{record.phone}</span>
           </Row>
           <Row label="Email">{record.email ?? <Empty>Not recorded</Empty>}</Row>
-          <Row label="Address">{record.address || <Empty>Not recorded</Empty>}</Row>
+          <Row label="Address">
+            {record.address || <Empty>Not recorded</Empty>}
+          </Row>
           <Row label="Emergency contact">
             {record.emergencyContactName ? (
               <span className="capitalize">
                 {record.emergencyContactName}
-                {record.emergencyContactRelation ? ` · ${record.emergencyContactRelation}` : ""}
+                {record.emergencyContactRelation
+                  ? ` · ${record.emergencyContactRelation}`
+                  : ""}
               </span>
             ) : (
               <Empty>Not recorded</Empty>
             )}
             {record.emergencyContactPhone ? (
-              <span className="block font-mono tabular-nums">{record.emergencyContactPhone}</span>
+              <span className="block font-mono tabular-nums">
+                {record.emergencyContactPhone}
+              </span>
             ) : null}
           </Row>
           <Row label="MRN">
-            <span className="font-mono text-muted-foreground">{record.mrn}</span>
+            <span className="font-mono text-muted-foreground">
+              {record.mrn}
+            </span>
           </Row>
           <Row label="Name">
             <span className="capitalize">{record.name}</span>
@@ -124,7 +142,9 @@ function RecordTab({
           <Row label="Sex">
             <span className="capitalize">{record.sex}</span>
           </Row>
-          <Row label="Blood group">{record.bloodGroup ?? <Empty>Not recorded</Empty>}</Row>
+          <Row label="Blood group">
+            {record.bloodGroup ?? <Empty>Not recorded</Empty>}
+          </Row>
           <Row label="Date of birth">
             {formatBusinessDate(record.dateOfBirth)}
             {record.dobEstimated ? <Empty> · estimated from age</Empty> : null}
@@ -142,7 +162,8 @@ function RecordTab({
           <Row label="Guardian">
             {guardian ? (
               <span>
-                {guardian.relation} <span className="capitalize">{guardian.name}</span>
+                {guardian.relation}{" "}
+                <span className="capitalize">{guardian.name}</span>
               </span>
             ) : (
               <Empty>Not recorded</Empty>
@@ -150,13 +171,16 @@ function RecordTab({
           </Row>
           {record.guardianPhone ? (
             <Row label="Relation mobile">
-              <span className="font-mono tabular-nums">{record.guardianPhone}</span>
+              <span className="font-mono tabular-nums">
+                {record.guardianPhone}
+              </span>
             </Row>
           ) : null}
           <Row label="Sponsor">
             {record.sponsor ? (
               <>
-                {record.sponsor.payerName} ({PAYER_TYPE_LABELS[record.sponsor.payerType]})
+                {record.sponsor.payerName} (
+                {PAYER_TYPE_LABELS[record.sponsor.payerType]})
               </>
             ) : (
               <Empty>Self-paying</Empty>
@@ -175,7 +199,12 @@ function RecordTab({
         </dl>
       </Panel>
 
-      <PatientSheet orgSlug={orgSlug} patient={record} open={editing} onOpenChange={setEditing} />
+      <PatientSheet
+        orgSlug={orgSlug}
+        patient={record}
+        open={editing}
+        onOpenChange={setEditing}
+      />
     </div>
   );
 }
