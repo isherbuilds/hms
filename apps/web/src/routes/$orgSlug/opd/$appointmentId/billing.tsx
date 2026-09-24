@@ -78,9 +78,9 @@ function BillingOpdAppointmentRoute() {
       ) : null}
 
       {linkedPlan || (canWrite && patientId && openPlans) ? (
-        <section className="flex flex-wrap items-center justify-between gap-2">
+        <section className="flex items-center justify-between gap-2">
           {linkedPlan ? (
-            <div className="flex flex-col gap-1">
+            <div className="flex min-w-0 flex-col gap-1">
               <h2 className="text-muted-foreground">Treatment plan · {linkedPlan.label}</h2>
               <p className="tabular-nums">
                 {formatMoney(linkedPlan.postedAmount, currency)} of{" "}
@@ -89,7 +89,7 @@ function BillingOpdAppointmentRoute() {
             </div>
           ) : null}
           {canWrite && patientId && openPlans ? (
-            <div className="ml-auto">
+            <div className="ml-auto shrink-0">
               <AdvanceForm
                 orgSlug={orgSlug}
                 patientId={patientId}
