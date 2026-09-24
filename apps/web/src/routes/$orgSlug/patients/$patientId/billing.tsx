@@ -19,9 +19,11 @@ export const Route = createFileRoute("/$orgSlug/patients/$patientId/billing")({
 
 function PatientBillingRoute() {
   const { orgSlug, patientId } = Route.useParams();
+
   const record = useSuspenseQuery(
     orpc.patient.get.queryOptions({ input: { orgSlug, patientId } }),
   ).data;
+
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const account = useQuery(orpc.patient.account.queryOptions({ input: { orgSlug, patientId } }));
 

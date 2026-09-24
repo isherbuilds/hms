@@ -11,7 +11,13 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { ScrollTextIcon } from "lucide-react";
 
-import { ListState, LoadMore, PageBody, PageHeader, Panel } from "@/components/page";
+import {
+  ListState,
+  LoadMore,
+  PageBody,
+  PageHeader,
+  Panel,
+} from "@/components/page";
 import { orpc } from "@/lib/orpc";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { requireOrgPermission } from "@/lib/route-permission";
@@ -28,7 +34,9 @@ const auditQuery = (orgSlug: string) =>
     staleTime: 0,
   });
 
-function describeMeta(meta: Record<string, unknown> | null | undefined): string {
+function describeMeta(
+  meta: Record<string, unknown> | null | undefined,
+): string {
   if (!meta) return "—";
 
   const details = Object.entries(meta).map(([key, value]) => {
@@ -48,7 +56,12 @@ function describeMeta(meta: Record<string, unknown> | null | undefined): string 
 export const Route = createFileRoute("/$orgSlug/settings/audit")({
   head: () => ({ meta: [{ title: "Audit log · HMS" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
-    await requireOrgPermission(queryClient, orgSlug, { audit: ["read"] }, "/$orgSlug/settings");
+    await requireOrgPermission(
+      queryClient,
+      orgSlug,
+      { audit: ["read"] },
+      "/$orgSlug/settings",
+    );
     await queryClient.infiniteQuery(auditQuery(orgSlug)).catch(() => {});
   },
   component: AuditRoute,
@@ -107,13 +120,17 @@ function AuditRoute() {
                         <TableCell>
                           <span className="flex items-center gap-2">
                             <span className="font-medium">{entry.action}</span>
-                            {entry.denied && <Badge variant="destructive">denied</Badge>}
+                            {entry.denied && (
+                              <Badge variant="destructive">denied</Badge>
+                            )}
                           </span>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {entry.actorName ? (
                             <>
-                              <div className="truncate text-foreground">{entry.actorName}</div>
+                              <div className="truncate text-foreground">
+                                {entry.actorName}
+                              </div>
                               <div className="truncate">{entry.actorEmail}</div>
                             </>
                           ) : (
@@ -129,7 +146,7 @@ function AuditRoute() {
                         </TableCell>
                         {/* Prose, not an identifier, so no mono. It wraps: the
                             amounts and numbers here are why someone opens the log. */}
-                        <TableCell className="break-words text-muted-foreground">
+                        <TableCell className="wrap-break-words text-muted-foreground">
                           {details}
                         </TableCell>
                       </TableRow>
@@ -144,16 +161,31 @@ function AuditRoute() {
                 <li key={entry.id} className="border-b px-3 py-2 text-xs">
                   <div className="flex items-baseline gap-2">
                     <span className="font-medium">{entry.action}</span>
-                    {entry.denied && <Badge variant="destructive">denied</Badge>}
+                    {entry.denied && (
+                      <Badge variant="destructive">denied</Badge>
+                    )}
                     <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
                       {formatDateTime(entry.createdAt, timeZone)}
                     </span>
                   </div>
-                  <p className="mt-1 text-muted-foreground">{entry.actorName ?? entry.actorId}</p>
+                  <p className="mt-1 text-muted-foreground">
+                    {entry.actorName ? (
+                      <>
+                        <span className="block text-foreground">
+                          {entry.actorName}
+                        </span>
+                        <span className="block break-all">
+                          {entry.actorEmail}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="font-mono">{entry.actorId}</span>
+                    )}
+                  </p>
                   <p className="mt-1 break-all font-mono text-muted-foreground">
                     {entry.target ?? "—"}
                   </p>
-                  <p className="mt-1 break-words text-muted-foreground">
+                  <p className="mt-1 wrap-break-words text-muted-foreground">
                     {describeMeta(entry.meta)}
                   </p>
                 </li>
