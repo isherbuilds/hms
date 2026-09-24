@@ -87,7 +87,7 @@ Organization scope and require the same Patient and an open status. The Clinical
 tab's Treatment plan section is where a plan is started and
 worked: **New plan** presets the visit's practitioner and makes this visit the
 plan's first sitting, **Add visit to plan** attaches the visit to an existing open
-plan (named directly when the patient has only one, otherwise picked from a list),
+plan (the first open plan is preselected),
 and both refuse a visit that is not booked or checked in, belongs to
 another patient, or already names a plan. `opd.get` does not carry the plan: the
 record layout loads the Patient's plans once, and the Clinical panel and the
@@ -95,7 +95,7 @@ Billing tab's advance form both read that one query. For a
 checked-in sitting, **Add to bill** (`treatment.postToVisit`) creates a Charge for
 one sitting's share of the item's whole-course quote. **Bill remaining**, in the
 item's `⋯` menu beside **Drop item**, bills everything left. **Complete plan**
-appears only once every item is fully billed or dropped.
+replaces **Next sitting** once every item is fully billed or dropped.
 Posting refuses an item whose full course price is already posted or which is
 already posted to this visit.
 An ordinary Charge for the same service stays separate; the panel warns before

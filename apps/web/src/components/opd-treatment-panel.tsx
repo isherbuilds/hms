@@ -98,9 +98,8 @@ export function OpdTreatmentPanel({
 
   // Completion is refused while work is unbilled, so it is offered only once it can succeed.
   const finished = openPlan?.items.every((item) => item.status === "dropped" || item.done);
-  // One open plan is the usual case: name it and offer one button instead of a picker.
-  const onlyOpenPlan = openPlans.length === 1 ? openPlans[0] : undefined;
-  const chosenPlanId = onlyOpenPlan?.id ?? selectedPlanId;
+  // Preselected, so the usual single open plan is one click.
+  const chosenPlanId = selectedPlanId || openPlans[0]?.id;
 
   const sitting =
     plan &&
@@ -122,9 +121,6 @@ export function OpdTreatmentPanel({
             <Button size="xs" variant="ghost" onClick={() => setAction("add")}>
               Add item
             </Button>
-            <Button size="xs" variant="outline" onClick={() => setAction("next")}>
-              Next sitting
-            </Button>
             {finished ? (
               <Button
                 size="xs"
@@ -133,35 +129,32 @@ export function OpdTreatmentPanel({
               >
                 Complete plan
               </Button>
-            ) : null}
+            ) : (
+              <Button size="xs" variant="outline" onClick={() => setAction("next")}>
+                Next sitting
+              </Button>
+            )}
           </div>
         ) : null}
       </header>
       {!planId ? (
-        canLink && openPlans.length > 0 ? (
+        canLink && chosenPlanId ? (
           <div className="flex flex-wrap items-center gap-2">
-            {onlyOpenPlan ? (
-              <p>
-                Open plan: <span className="font-medium">{onlyOpenPlan.label}</span>
-              </p>
-            ) : (
-              <NativeSelect
-                className="max-w-sm"
-                aria-label="Open treatment plan"
-                value={selectedPlanId}
-                onChange={(event) => setSelectedPlanId(event.target.value)}
-              >
-                <option value="">Choose an open plan</option>
-                {openPlans.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.label}
-                  </option>
-                ))}
-              </NativeSelect>
-            )}
+            <NativeSelect
+              className="max-w-sm"
+              aria-label="Open treatment plan"
+              value={chosenPlanId}
+              onChange={(event) => setSelectedPlanId(event.target.value)}
+            >
+              {openPlans.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.label}
+                </option>
+              ))}
+            </NativeSelect>
             <Button
               size="xs"
-              disabled={!chosenPlanId || link.isPending}
+              disabled={link.isPending}
               onClick={() => link.mutate({ orgSlug, appointmentId, planId: chosenPlanId })}
             >
               Add visit to plan
@@ -232,7 +225,7 @@ export function OpdTreatmentPanel({
                   item={item}
                   currency={currency}
                   action={
-                    open && (canPost || editable) ? (
+                    open ? (
                       <div className="flex items-center gap-1">
                         {canPost ? (
                           <Button
