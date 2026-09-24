@@ -121,6 +121,10 @@ export function OpdTreatmentPanel({
             <Button size="xs" variant="ghost" onClick={() => setAction("add")}>
               Add item
             </Button>
+            {/* Kept after full billing: a course can run past its estimate. */}
+            <Button size="xs" variant="outline" onClick={() => setAction("next")}>
+              Next sitting
+            </Button>
             {finished ? (
               <Button
                 size="xs"
@@ -129,11 +133,7 @@ export function OpdTreatmentPanel({
               >
                 Complete plan
               </Button>
-            ) : (
-              <Button size="xs" variant="outline" onClick={() => setAction("next")}>
-                Next sitting
-              </Button>
-            )}
+            ) : null}
           </div>
         ) : null}
       </header>

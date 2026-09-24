@@ -95,7 +95,7 @@ Billing tab's advance form both read that one query. For a
 checked-in sitting, **Add to bill** (`treatment.postToVisit`) creates a Charge for
 one sitting's share of the item's whole-course quote. **Bill remaining**, in the
 item's `⋯` menu beside **Drop item**, bills everything left. **Complete plan**
-replaces **Next sitting** once every item is fully billed or dropped.
+appears beside **Next sitting** once every item is fully billed or dropped.
 Posting refuses an item whose full course price is already posted or which is
 already posted to this visit.
 An ordinary Charge for the same service stays separate; the panel warns before

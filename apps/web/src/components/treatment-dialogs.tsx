@@ -39,14 +39,30 @@ const itemFields = {
 
 const NEW_ITEM = { procedure: null, sittingsPlanned: 1, quotedPrice: "0.00", note: "" };
 
-const newPlanSchema = z.object({
-  practitionerId: z.string().min(1, "Choose a practitioner"),
-  ...itemFields,
-  nextSittingOn: z.string(),
-  nextSittingNote: z.string().trim().max(500),
-});
+// Mirrors the server's rule, so the desk sees it on the Note field before submitting.
+function requirePriceNote(
+  value: { procedure: Procedure; quotedPrice: bigint; note: string },
+  context: z.RefinementCtx,
+) {
+  if (value.quotedPrice !== value.procedure.unitPrice && !value.note) {
+    context.addIssue({
+      code: "custom",
+      path: ["note"],
+      message: "Add a note when the price differs from the catalog",
+    });
+  }
+}
 
-const addItemSchema = z.object(itemFields);
+const newPlanSchema = z
+  .object({
+    practitionerId: z.string().min(1, "Choose a practitioner"),
+    ...itemFields,
+    nextSittingOn: z.string(),
+    nextSittingNote: z.string().trim().max(500),
+  })
+  .superRefine(requirePriceNote);
+
+const addItemSchema = z.object(itemFields).superRefine(requirePriceNote);
 
 const nextSittingSchema = z.object({ date: z.string(), note: z.string().trim().max(500) });
 
