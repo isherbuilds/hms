@@ -24,7 +24,7 @@
   "devDependencies": {
     "@hms/config": "workspace:*",
     "@types/pg": "catalog:",
-    "drizzle-kit": "^0.31.10",
+    "drizzle-kit": "^0.31.11",
     "typescript": "catalog:"
   }
 }

@@ -1,4 +1,4 @@
-FROM oven/bun:1.4.0-slim AS builder
+FROM oven/bun:1.4.2-slim AS builder
 WORKDIR /app
 
 # Manifests first, so a source-only change reuses the installed dependencies.
@@ -28,7 +28,7 @@ ENV SKIP_ENV_VALIDATION=1
 WORKDIR /app/apps/web
 RUN bun run build
 
-FROM oven/bun:1.4.0-slim AS runtime
+FROM oven/bun:1.4.2-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -54,7 +54,7 @@ COPY --from=builder /app/apps/web/.output ./apps/web/.output
 USER bun
 
 HEALTHCHECK --interval=5s --timeout=5s --start-period=10s --retries=10 \
-  CMD ["bun", "-e", "fetch('http://127.0.0.1:3001/').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+    CMD ["bun", "-e", "fetch('http://127.0.0.1:3001/').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 
 ENV HOST=0.0.0.0
 ENV PORT=3001
