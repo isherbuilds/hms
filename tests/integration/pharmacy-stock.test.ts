@@ -4,7 +4,8 @@ import { MAX_STOCK_QTY } from "@hms/api/core/receipt-math";
 import { db } from "@hms/db";
 import { goodsReceiptLines } from "@hms/db/schema/goods-receipt-lines";
 import { goodsReceipts } from "@hms/db/schema/goods-receipts";
-import { eq } from "drizzle-orm";
+import { stockMovements } from "@hms/db/schema/stock-movements";
+import { desc, eq } from "drizzle-orm";
 
 import { createOrganization, createTestUser } from "../support/auth";
 import { clientFor, expectORPCCode } from "../support/client";
@@ -184,6 +185,69 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
     "CONFLICT",
     "a conflicting batch expiry",
   );
+});
+
+test("movement pages keep tied timestamps complete and scoped to their organization", async () => {
+  const owner = await createTestUser("pharmacy-movement-pages-owner");
+  const home = await createOrganization(owner, "pharmacy-movement-pages-home");
+  const other = await createOrganization(owner, "pharmacy-movement-pages-other");
+  const api = clientFor(owner);
+  const homeProduct = await api.pharmacy.createProduct(productInput(home.slug));
+  const otherProduct = await api.pharmacy.createProduct(productInput(other.slug));
+
+  const line = (productId: string, batchNumber: string) => ({
+    productId,
+    batchNumber,
+    expiryDate: FAR_EXPIRY,
+    mrp: 12_00n,
+    pricedPer: "unit" as const,
+    qty: 10,
+    cost: UNPRICED,
+  });
+
+  await api.pharmacy.receiveGoods({
+    orgSlug: home.slug,
+    supplierName: "Metro Distributors",
+    receivedOn: RECEIVED_ON,
+    billTotal: 0n,
+    lines: ["P-1", "P-2", "P-3"].map((batchNumber) => line(homeProduct.productId, batchNumber)),
+  });
+  await api.pharmacy.receiveGoods({
+    orgSlug: other.slug,
+    supplierName: "Metro Distributors",
+    receivedOn: RECEIVED_ON,
+    billTotal: 0n,
+    lines: [line(otherProduct.productId, "FOREIGN-1")],
+  });
+
+  const expected = await db
+    .select({ id: stockMovements.id, createdAt: stockMovements.createdAt })
+    .from(stockMovements)
+    .where(eq(stockMovements.orgId, home.id))
+    .orderBy(desc(stockMovements.createdAt), desc(stockMovements.id));
+
+  expect(expected).toHaveLength(3);
+  expect(new Set(expected.map((movement) => movement.createdAt.toISOString())).size).toBe(1);
+
+  const actualIds: string[] = [];
+  let cursor: { createdAt: string; id: string } | undefined;
+
+  for (let page = 0; page < 3; page++) {
+    const result = await api.pharmacy.listMovements({ orgSlug: home.slug, limit: 1, cursor });
+    expect(result.items).toHaveLength(1);
+    actualIds.push(result.items[0]!.id);
+
+    if (page < 2) expect(result.nextCursor).not.toBeNull();
+    cursor = result.nextCursor ?? undefined;
+  }
+
+  expect(cursor).toBeUndefined();
+  expect(actualIds).toEqual(expected.map((movement) => movement.id));
+
+  const foreignPage = await api.pharmacy.listMovements({ orgSlug: other.slug, limit: 1 });
+  expect(foreignPage.items).toHaveLength(1);
+  expect(foreignPage.nextCursor).toBeNull();
+  expect(actualIds).not.toContain(foreignPage.items[0]?.id);
 });
 
 test("a priced delivery stores exact pricing facts and shelves the free units", async () => {

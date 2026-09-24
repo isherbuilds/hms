@@ -23,6 +23,14 @@ import { DropdownMenuCheckboxItem } from "@hms/ui/components/dropdown-menu";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@hms/ui/components/table";
+import {
   type InfiniteData,
   keepPreviousData,
   useInfiniteQuery,
@@ -31,7 +39,7 @@ import {
 } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
 import { CircleDotIcon, TagIcon } from "lucide-react";
-import { useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -44,7 +52,6 @@ import {
   type ActiveFilter,
 } from "@/components/list-filter";
 import {
-  DataList,
   ListState,
   ListToolbar,
   LoadMore,
@@ -215,12 +222,13 @@ function CatalogRoute() {
     }),
   );
 
-  // Destructured so the compiler keys `toggleItem` (and every row's `action`) on the
-  // stable `mutate`, not on the mutation result that changes with each flip.
-  const { mutate: mutateToggle } = toggleActive;
+  const mutateToggle = toggleActive.mutate;
 
-  const toggleItem = (item: CatalogItem) =>
-    mutateToggle({ orgSlug, itemId: item.id, active: !item.active });
+  // A stable callback keeps the memoized rows out of unrelated status toggles.
+  const toggleItem = useCallback(
+    (item: CatalogItem) => mutateToggle({ orgSlug, itemId: item.id, active: !item.active }),
+    [mutateToggle, orgSlug],
+  );
 
   const catalog = useInfiniteQuery(
     catalogListQuery(orgSlug, {
@@ -318,75 +326,44 @@ function CatalogRoute() {
                   : "No catalog items yet"
             }
           >
-            <DataList
-              columns={[
-                {
-                  head: "Code",
-                  cell: (item) => <span className="font-mono">{item.code}</span>,
-                  mobile: "title",
-                },
-                { head: "Name", cell: (item) => <span className="font-medium">{item.name}</span> },
-                { head: "Category", cell: (item) => CATEGORY_LABELS[item.category] },
-                {
-                  head: "Unit price",
-                  cell: (item) => (
-                    <span className="tabular-nums">
-                      {formatDecimal(item.unitPrice)}
-                      {item.customRate ? (
-                        <span className="text-muted-foreground"> default</span>
-                      ) : null}
-                    </span>
-                  ),
-                  className: "text-right",
-                },
-                {
-                  head: "Tax %",
-                  cell: (item) => <span className="tabular-nums">{item.taxRatePercent}</span>,
-                  className: "text-right",
-                },
-                {
-                  head: "Tax code",
-                  cell: (item) => <span className="font-mono">{item.taxCode || "—"}</span>,
-                },
-                {
-                  head: "Status",
-                  cell: (item) => (
-                    <Badge variant={item.active ? "secondary" : "muted"}>
-                      {item.active ? "Active" : "Inactive"}
-                    </Badge>
-                  ),
-                  mobile: "title",
-                },
-              ]}
-              rows={items}
-              rowKey={(item) => item.id}
-              busy={(item) => toggleActive.isPending && toggleActive.variables?.itemId === item.id}
-              action={(item, busy) => {
-                const category = item.category;
-
-                return (
-                  <div className="flex items-center justify-end gap-2">
-                    <Checkbox
-                      checked={item.active}
-                      disabled={busy || category === "pharmacy"}
-                      aria-label={`Set ${item.name} ${item.active ? "inactive" : "active"}`}
-                      onCheckedChange={() => toggleItem(item)}
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead className="text-right">Unit price</TableHead>
+                    <TableHead className="text-right">Tax %</TableHead>
+                    <TableHead>Tax code</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((item) => (
+                    <CatalogRow
+                      key={item.id}
+                      item={item}
+                      pending={toggleActive.isPending && toggleActive.variables?.itemId === item.id}
+                      onToggle={toggleItem}
+                      onEdit={setEditing}
                     />
-                    {category === "pharmacy" ? (
-                      <span className="text-muted-foreground">Pharmacy → Items</span>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        onClick={() => setEditing({ ...item, category })}
-                      >
-                        Edit
-                      </Button>
-                    )}
-                  </div>
-                );
-              }}
-            />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <ul className="md:hidden">
+              {items.map((item) => (
+                <CatalogMobileRow
+                  key={item.id}
+                  item={item}
+                  pending={toggleActive.isPending && toggleActive.variables?.itemId === item.id}
+                  onToggle={toggleItem}
+                  onEdit={setEditing}
+                />
+              ))}
+            </ul>
           </ListState>
         </Panel>
       </PageBody>
@@ -412,6 +389,103 @@ function CatalogRoute() {
     </>
   );
 }
+
+const CatalogRow = memo(function CatalogRow({
+  item,
+  pending,
+  onToggle,
+  onEdit,
+}: {
+  item: CatalogItem;
+  pending: boolean;
+  onToggle: (item: CatalogItem) => void;
+  onEdit: (item: EditableCatalogItem) => void;
+}) {
+  // A const narrows inside the click closure; `item.category` would not.
+  const category = item.category;
+
+  return (
+    <TableRow>
+      <TableCell className="font-mono">{item.code}</TableCell>
+      <TableCell className="font-medium">{item.name}</TableCell>
+      <TableCell>{CATEGORY_LABELS[item.category]}</TableCell>
+      <TableCell className="text-right tabular-nums">
+        {formatDecimal(item.unitPrice)}
+        {item.customRate ? <span className="text-muted-foreground"> default</span> : null}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">{item.taxRatePercent}</TableCell>
+      <TableCell className="font-mono">{item.taxCode || "—"}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={item.active}
+            disabled={pending || item.category === "pharmacy"}
+            aria-label={`Set ${item.name} ${item.active ? "inactive" : "active"}`}
+            onCheckedChange={() => onToggle(item)}
+          />
+          <Badge variant={item.active ? "secondary" : "muted"}>
+            {item.active ? "Active" : "Inactive"}
+          </Badge>
+        </div>
+      </TableCell>
+      <TableCell className="text-right">
+        {category === "pharmacy" ? (
+          <span className="text-muted-foreground">Pharmacy → Items</span>
+        ) : (
+          <Button variant="ghost" size="xs" onClick={() => onEdit({ ...item, category })}>
+            Edit
+          </Button>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+});
+
+const CatalogMobileRow = memo(function CatalogMobileRow({
+  item,
+  pending,
+  onToggle,
+  onEdit,
+}: {
+  item: CatalogItem;
+  pending: boolean;
+  onToggle: (item: CatalogItem) => void;
+  onEdit: (item: EditableCatalogItem) => void;
+}) {
+  const category = item.category;
+
+  return (
+    <li className="border-b px-3 py-2 text-xs">
+      <div className="flex items-start justify-between gap-2">
+        <span className="min-w-0 break-words font-medium">{item.name}</span>
+        <Badge variant={item.active ? "secondary" : "muted"}>
+          {item.active ? "Active" : "Inactive"}
+        </Badge>
+      </div>
+      <p className="mt-1 text-muted-foreground">
+        <span className="font-mono">{item.code}</span> · {CATEGORY_LABELS[category]} ·{" "}
+        <span className="tabular-nums">{formatDecimal(item.unitPrice)}</span>
+        {item.customRate ? " default" : null} · Tax {item.taxRatePercent}% ·{" "}
+        <span className="font-mono">{item.taxCode || "—"}</span>
+      </p>
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <Checkbox
+          checked={item.active}
+          disabled={pending || category === "pharmacy"}
+          aria-label={`Set ${item.name} ${item.active ? "inactive" : "active"}`}
+          onCheckedChange={() => onToggle(item)}
+        />
+        {category === "pharmacy" ? (
+          <span className="text-muted-foreground">Pharmacy → Items</span>
+        ) : (
+          <Button variant="ghost" size="xs" onClick={() => onEdit({ ...item, category })}>
+            Edit
+          </Button>
+        )}
+      </div>
+    </li>
+  );
+});
 
 type CatalogItemDialogProps =
   | {

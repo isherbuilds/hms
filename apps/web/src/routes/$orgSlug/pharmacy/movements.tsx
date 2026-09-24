@@ -121,7 +121,7 @@ function PharmacyMovementsRoute() {
                 { head: "Department", cell: (movement) => movement.departmentName ?? "—" },
                 {
                   head: "Source",
-                  cell: (movement) => <MovementSource orgSlug={orgSlug} movement={movement} />,
+                  cell: (movement) => <MovementSource movement={movement} />,
                 },
                 {
                   head: "By",
@@ -130,6 +130,26 @@ function PharmacyMovementsRoute() {
               ]}
               rows={rows}
               rowKey={(movement) => movement.id}
+              action={(movement) => {
+                const receipt = movement.receipt;
+                const fileId = receipt?.fileId;
+
+                if (!fileId) return null;
+
+                return (
+                  <Button
+                    variant="link"
+                    size="xs"
+                    onClick={() =>
+                      openOrgFile(orgSlug, fileId).catch((error) =>
+                        toast.error(errorMessage(error, "Could not open that receipt file")),
+                      )
+                    }
+                  >
+                    {receipt.opening ? "Sheet" : "Delivery note"}
+                  </Button>
+                );
+              }}
             />
           </ListState>
         </Panel>
@@ -140,44 +160,22 @@ function PharmacyMovementsRoute() {
 
 type Movement = Awaited<ReturnType<typeof orpc.pharmacy.listMovements.call>>["items"][number];
 
-function MovementSource({
-  orgSlug,
-  movement,
-}: {
-  orgSlug: string;
-  movement: Pick<Movement, "receipt" | "note">;
-}) {
+function MovementSource({ movement }: { movement: Pick<Movement, "receipt" | "note"> }) {
   const receipt = movement.receipt;
-  const fileId = receipt?.fileId;
 
   if (!receipt) return <span>{movement.note || "—"}</span>;
 
   return (
     <span className="flex flex-col gap-1">
-      <span className="flex flex-wrap items-center gap-1">
-        <span>
-          {receipt.opening
-            ? "Opening count"
-            : [receipt.supplierName, receipt.supplierReference].filter(Boolean).join(" · ") ||
-              "Receipt"}
-          <span className="text-muted-foreground">
-            {" · "}
-            {receipt.opening ? "counted" : "received"} {formatDay(receipt.receivedOn)}
-          </span>
+      <span>
+        {receipt.opening
+          ? "Opening count"
+          : [receipt.supplierName, receipt.supplierReference].filter(Boolean).join(" · ") ||
+            "Receipt"}
+        <span className="text-muted-foreground">
+          {" · "}
+          {receipt.opening ? "counted" : "received"} {formatDay(receipt.receivedOn)}
         </span>
-        {fileId ? (
-          <Button
-            variant="link"
-            size="xs"
-            onClick={() =>
-              openOrgFile(orgSlug, fileId).catch((error) =>
-                toast.error(errorMessage(error, "Could not open that receipt file")),
-              )
-            }
-          >
-            {receipt.opening ? "Sheet" : "Delivery note"}
-          </Button>
-        ) : null}
       </span>
       {movement.note ? <span>{movement.note}</span> : null}
     </span>

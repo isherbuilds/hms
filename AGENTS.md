@@ -26,8 +26,6 @@ One session at a time owns a database-wiping test run.
 
 ## Hard rules
 
-If my instructions are ambiguous, ask me to clarify before proceeding.
-
 1. **Every domain row belongs to exactly one org (`orgId NOT NULL`), and every query carries the tenant predicate `eq(orgId, scope.orgId)`.** This includes infrastructure tables (`audit_log`, `file`). `userId` columns are attribution, never scope.
 2. **Org context is explicit procedure input, proven by the permission guard.** Org pages pass their `/:orgSlug` route param as `input.orgSlug` through the single `/rpc` client. `orgProcedure(permission, input)` resolves membership in its internal guard and turns the claim into verified `context.scope`; the permission is a required constructor argument and the raw builder is not exported. Handlers use only scope for authorization and SQL. Membership resolves once per request and never across requests; there is no fallback to `session.activeOrganizationId`.
    - Org pages live under `apps/web/src/routes/$orgSlug/` and import the singleton `orpc`. Every org query, mutation, and invalidation includes `orgSlug`, so query keys cannot reuse another tenant's data. Slugs are validated by `@hms/auth/organization-slug`. The layout server-renders; its loader fetches `member.me` through the request-local server client. Base UI popups stay behind `ClientOnly` (D008).
@@ -47,6 +45,7 @@ work and its staged/unstaged split; leave changes uncommitted unless requested.
 Personal guidance can add preferences; this file owns the project rules.
 
 - Restate in a few lines before editing: what the user wants, scope, what you will not do, what counts as done. Read the code that owns the behaviour; never conclude from grep hits.
+- When an instruction is ambiguous in a way that would change behaviour, data, or scope, ask before proceeding; otherwise state the assumption in the restatement and continue.
 - YAGNI/KISS: extract a helper at the second real call site; delete unused exports. Fail loud on config, auth, money, and data-integrity errors. No defaults, no broad catches.
 - Fix the root cause once. No stacked patches or dual code paths. A second failed correction means a narrower reproduction and a new hypothesis, not a third patch.
 - Irreversible operations need explicit confirmation immediately before execution. Git revert, branch switch, running tests, and read-only analysis are not irreversible.

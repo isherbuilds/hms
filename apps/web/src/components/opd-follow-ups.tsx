@@ -95,7 +95,10 @@ export function OpdFollowUps({ orgSlug, search }: { orgSlug: string; search: str
                     {row.nextSittingOn ? formatBusinessDate(row.nextSittingOn) : "Date not set"}
                   </span>
                   {" · "}
-                  <span className="text-muted-foreground" title={row.nextSittingNote ?? undefined}>
+                  <span
+                    className="inline-block max-w-64 truncate align-bottom text-muted-foreground"
+                    title={row.nextSittingNote ?? undefined}
+                  >
                     {row.nextSittingNote ?? "No follow-up note"}
                   </span>
                 </span>

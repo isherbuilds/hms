@@ -1,7 +1,14 @@
 import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
 import { Input } from "@hms/ui/components/input";
-import { DataList } from "@/components/page";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@hms/ui/components/table";
 import { Trash2Icon } from "lucide-react";
 import { formatDecimal } from "@hms/api/core/money";
 
@@ -81,92 +88,165 @@ export function ServiceLines({
   }
 
   return (
-    <DataList
-      columns={[
-        {
-          head: "Service",
-          cell: (line) => <p className="font-medium">{line.description}</p>,
-        },
-        {
-          head: "Category",
-          cell: (line) => (
-            <Badge variant="muted" className="capitalize">
-              {line.category}
-            </Badge>
-          ),
-        },
-        {
-          head: "Qty",
-          className: "w-20",
-          cell: (line) =>
-            line.editable ? (
-              <Input
-                key={`${line.key}:${line.qty}`}
-                type="number"
-                min={1}
-                max={999}
-                defaultValue={line.qty}
-                aria-label={`${line.description} quantity`}
-                className="w-16 tabular-nums"
-                onBlur={(event) => commitQty(line.key, event.currentTarget)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter") return;
-                  event.preventDefault();
-                  commitQty(line.key, event.currentTarget);
-                }}
-              />
-            ) : (
-              <span className="tabular-nums">1</span>
-            ),
-        },
-        {
-          head: "Rate",
-          className: "text-right",
-          cell: (line) => (
-            <span className="tabular-nums">
-              {line.customRate ? (
-                <RateInput
-                  line={line}
-                  onCommit={(customUnitPrice) => onChange(line.key, { customUnitPrice })}
-                />
-              ) : (
-                formatMoney(line.unitPrice, currency)
-              )}
-            </span>
-          ),
-        },
-        {
-          head: "Tax",
-          className: "text-right",
-          cell: (line) => (
-            <span className="tabular-nums">
-              {line.taxRatePercent === "0.00" ? "—" : `${line.taxRatePercent}%`}
-            </span>
-          ),
-        },
-        {
-          head: "Amount",
-          className: "text-right",
-          cell: (line) => (
-            <span className="tabular-nums group-aria-busy/quote:opacity-50">
-              {line.gross !== undefined ? formatMoney(line.gross, currency) : "—"}
-            </span>
-          ),
-        },
-      ]}
-      rows={lines}
-      rowKey={(line) => line.key}
-      action={(line) => (
-        <Button
-          type="button"
-          size="icon-xs"
-          variant="destructive"
-          aria-label={`Remove ${line.description}`}
-          onClick={() => onRemove(line.key, line.editable)}
-        >
-          <Trash2Icon />
-        </Button>
-      )}
-    />
+    <>
+      <div className="hidden overflow-hidden rounded-lg ring-1 ring-border md:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Service</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead className="w-20">Qty</TableHead>
+              <TableHead className="text-right">Rate</TableHead>
+              <TableHead className="text-right">Tax</TableHead>
+              <TableHead className="text-right">Amount</TableHead>
+              <TableHead className="w-10">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {lines.map((line) => (
+              <TableRow key={line.key}>
+                <TableCell>
+                  <p className="font-medium">{line.description}</p>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="muted" className="capitalize">
+                    {line.category}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  {line.editable ? (
+                    <Input
+                      key={`${line.key}:${line.qty}`}
+                      type="number"
+                      min={1}
+                      max={999}
+                      defaultValue={line.qty}
+                      aria-label={`${line.description} quantity`}
+                      className="w-16 tabular-nums"
+                      onBlur={(event) => commitQty(line.key, event.currentTarget)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") return;
+                        event.preventDefault();
+                        commitQty(line.key, event.currentTarget);
+                      }}
+                    />
+                  ) : (
+                    <span className="tabular-nums">1</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {line.customRate ? (
+                    <RateInput
+                      line={line}
+                      onCommit={(customUnitPrice) => onChange(line.key, { customUnitPrice })}
+                    />
+                  ) : (
+                    formatMoney(line.unitPrice, currency)
+                  )}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {line.taxRatePercent === "0.00" ? "—" : `${line.taxRatePercent}%`}
+                </TableCell>
+                <TableCell className="text-right tabular-nums group-aria-busy/quote:opacity-50">
+                  {line.gross !== undefined ? formatMoney(line.gross, currency) : "—"}
+                </TableCell>
+                <TableCell>
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="destructive"
+                    aria-label={`Remove ${line.description}`}
+                    onClick={() => onRemove(line.key, line.editable)}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="grid gap-2 md:hidden">
+        {lines.map((line) => (
+          <article
+            key={line.key}
+            className="grid min-w-0 gap-3 rounded-lg border border-border p-3"
+          >
+            <div className="min-w-0">
+              <p className="break-words font-medium">{line.description}</p>
+              <div className="flex flex-wrap gap-1 pt-2">
+                <Badge variant="muted" className="capitalize">
+                  {line.category}
+                </Badge>
+                <Badge variant="outline">
+                  {line.taxRatePercent === "0.00" ? "No tax" : `Tax ${line.taxRatePercent}%`}
+                </Badge>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className="flex flex-wrap items-end gap-2">
+                {line.customRate ? (
+                  <label className="grid gap-1 text-muted-foreground">
+                    Rate
+                    <RateInput
+                      line={line}
+                      onCommit={(customUnitPrice) => onChange(line.key, { customUnitPrice })}
+                    />
+                  </label>
+                ) : (
+                  <span className="self-center tabular-nums">
+                    {formatMoney(line.unitPrice, currency)}
+                  </span>
+                )}
+                {line.editable ? (
+                  <label className="grid gap-1 text-muted-foreground">
+                    Qty
+                    <Input
+                      key={`${line.key}:${line.qty}`}
+                      type="number"
+                      min={1}
+                      max={999}
+                      defaultValue={line.qty}
+                      aria-label={`${line.description} quantity`}
+                      className="w-16 tabular-nums"
+                      onBlur={(event) => commitQty(line.key, event.currentTarget)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") return;
+                        event.preventDefault();
+                        commitQty(line.key, event.currentTarget);
+                      }}
+                    />
+                  </label>
+                ) : (
+                  <span
+                    className="self-center tabular-nums"
+                    aria-label={`${line.description} quantity`}
+                  >
+                    Qty 1
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium tabular-nums group-aria-busy/quote:opacity-50">
+                  {line.gross !== undefined ? formatMoney(line.gross, currency) : "—"}
+                </span>
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="destructive"
+                  aria-label={`Remove ${line.description}`}
+                  onClick={() => onRemove(line.key, line.editable)}
+                >
+                  <Trash2Icon />
+                </Button>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </>
   );
 }

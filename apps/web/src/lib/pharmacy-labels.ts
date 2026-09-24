@@ -4,6 +4,12 @@ type MovementReason = Awaited<
   ReturnType<typeof orpc.pharmacy.listMovements.call>
 >["items"][number]["reason"];
 
+type Product = Awaited<ReturnType<typeof orpc.pharmacy.listProducts.call>>["items"][number];
+
+type Assert<T extends true> = T;
+
+type SameValues<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+
 // Client-safe labels shared by the stock adjustment form and movement ledger.
 export const REASON_LABELS: Record<MovementReason, string> = {
   opening: "Opening",
@@ -30,7 +36,15 @@ export const STOCK_UNITS = [
   "piece",
 ] as const;
 
+export type StockUnitLabelsMatchServer = Assert<
+  SameValues<(typeof STOCK_UNITS)[number], Product["stockUnit"]>
+>;
+
 export const SCHEDULES = ["none", "h", "h1", "x"] as const;
+
+export type ScheduleLabelsMatchServer = Assert<
+  SameValues<(typeof SCHEDULES)[number], Product["schedule"]>
+>;
 
 export const SCHEDULE_LABELS: Record<(typeof SCHEDULES)[number], string> = {
   none: "No schedule",

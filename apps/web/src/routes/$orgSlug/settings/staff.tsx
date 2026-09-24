@@ -52,7 +52,7 @@ const feeItemsQuery = (orgSlug: string) =>
 export const Route = createFileRoute("/$orgSlug/settings/staff")({
   head: () => ({ meta: [{ title: "Staff · HMS" }] }),
   validateSearch: z.object({
-    view: z.enum(["practitioners", "departments"]).default("practitioners"),
+    view: z.enum(["practitioners", "departments"]).default("practitioners").catch("practitioners"),
   }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     // Everyone may read the roster; only these roles may edit it, and this page is
@@ -190,6 +190,7 @@ function StaffRoute() {
             <SearchInput
               label="Search practitioners"
               placeholder="Name or registration number"
+              value={query}
               onQueryChange={setQuery}
             />
           ) : null}

@@ -59,7 +59,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
   return (
     <td
       data-slot="table-cell"
-      // One row height everywhere: a monogram row and a two-line cell both land on 44px.
+      // h-11 sets the minimum row height; taller cell content grows the row.
       className={cn("h-11 px-3 py-1 align-middle tabular-nums", className)}
       {...props}
     />

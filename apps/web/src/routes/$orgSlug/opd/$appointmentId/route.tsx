@@ -26,7 +26,7 @@ import { useCan, useMembership } from "@/lib/membership";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { OpdRecordContext, useOpdRecord } from "@/lib/opd-record";
 import { orpc } from "@/lib/orpc";
-import { hasErrorCode, loadRouteQuery } from "@/lib/orpc-error";
+import { isAuthorizationError, loadRouteQuery } from "@/lib/orpc-error";
 import { patientAgeLabel } from "@/lib/patient-age";
 import { practitionerDisplayName } from "@/lib/practitioner-name";
 
@@ -115,10 +115,7 @@ function OpdRecordLayout() {
 
   // Authorization failures are terminal: keeping the cached record here would leave
   // patient and charge data visible after access was revoked.
-  if (
-    detail.error &&
-    (hasErrorCode(detail.error, "UNAUTHORIZED") || hasErrorCode(detail.error, "FORBIDDEN"))
-  ) {
+  if (detail.error && isAuthorizationError(detail.error)) {
     throw detail.error;
   }
 
@@ -137,7 +134,7 @@ function OpdRecordLayout() {
       <>
         <PageHeader title="Outpatient appointment" />
         <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
-        <PageBody className="w-full max-w-5xl" />
+        <PageBody width="max-w-5xl" />
       </>
     );
   }
@@ -171,7 +168,7 @@ function OpdRecordLayout() {
         <OpdRecordTabs orgSlug={orgSlug} appointmentId={appointmentId} />
       </div>
 
-      <PageBody className="w-full max-w-5xl">
+      <PageBody width="max-w-5xl">
         <div className={cn("contents", isClinical && "print:hidden")}>
           <OpdRecordSummary
             record={record}

@@ -45,9 +45,6 @@
   --clinical-note: oklch(0.5 0.11 68);
   --clinical-note-surface: oklch(0.965 0.03 80);
   --clinical-note-border: oklch(0.89 0.06 75);
-  --clinical-info: oklch(0.5 0.13 253);
-  --clinical-info-surface: oklch(0.962 0.025 253);
-  --clinical-info-border: oklch(0.88 0.05 253);
   --clinical-clear: oklch(0.47 0.11 155);
   --clinical-clear-surface: oklch(0.958 0.03 155);
   --clinical-clear-border: oklch(0.87 0.06 155);
@@ -89,9 +86,6 @@
   --clinical-note: oklch(0.83 0.11 80);
   --clinical-note-surface: oklch(0.28 0.045 75);
   --clinical-note-border: oklch(0.4 0.07 75);
-  --clinical-info: oklch(0.8 0.1 253);
-  --clinical-info-surface: oklch(0.28 0.05 253);
-  --clinical-info-border: oklch(0.4 0.07 253);
   --clinical-clear: oklch(0.8 0.11 155);
   --clinical-clear-surface: oklch(0.27 0.045 155);
   --clinical-clear-border: oklch(0.39 0.07 155);
@@ -123,9 +117,6 @@
   --color-clinical-note: var(--clinical-note);
   --color-clinical-note-surface: var(--clinical-note-surface);
   --color-clinical-note-border: var(--clinical-note-border);
-  --color-clinical-info: var(--clinical-info);
-  --color-clinical-info-surface: var(--clinical-info-surface);
-  --color-clinical-info-border: var(--clinical-info-border);
   --color-clinical-clear: var(--clinical-clear);
   --color-clinical-clear-surface: var(--clinical-clear-surface);
   --color-clinical-clear-border: var(--clinical-clear-border);

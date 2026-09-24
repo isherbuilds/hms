@@ -206,6 +206,7 @@ export function InvoiceAccount({
             ))}
             {detail.data.creditNotes.map((note) => (
               <Link
+                key={note.id}
                 className="font-mono"
                 to="/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId"
                 params={{ orgSlug, invoiceId: invoice.id, creditNoteId: note.id }}

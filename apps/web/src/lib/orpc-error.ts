@@ -26,6 +26,10 @@ export function hasErrorCode(error: unknown, code: string): boolean {
   return false;
 }
 
+export function isAuthorizationError(error: unknown): boolean {
+  return hasErrorCode(error, "UNAUTHORIZED") || hasErrorCode(error, "FORBIDDEN");
+}
+
 /** A CONFLICT means the overlay holds a snapshot the server will keep refusing, so it closes. */
 export function closeOnConflict(close: () => void) {
   return (error: Error) => {
