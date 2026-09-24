@@ -221,7 +221,7 @@ function DashboardRoute() {
                   label="Unbilled"
                   icon={ReceiptTextIcon}
                   value={money(collections.data?.unbilled)}
-                  note="Past alert threshold"
+                  note="Unbilled past alert threshold"
                   pending={collections.isPending}
                   queue={{ from, to }}
                   orgSlug={orgSlug}
