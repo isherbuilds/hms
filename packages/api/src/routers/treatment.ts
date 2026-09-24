@@ -712,7 +712,8 @@ export const treatmentRouter = {
             ...item,
             postedSittings,
             postedAmount,
-            nextSittingPrice: nextPrice,
+            // Only a postable item has a next charge; a closed plan or dropped item has none.
+            nextSittingPrice: plan.status === "open" && item.status === "open" ? nextPrice : null,
             done: nextPrice === null,
           };
         },
