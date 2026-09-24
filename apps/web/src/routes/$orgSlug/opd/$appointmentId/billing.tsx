@@ -77,25 +77,28 @@ function BillingOpdAppointmentRoute() {
         />
       ) : null}
 
-      {linkedPlan ? (
-        <section className="flex flex-col gap-1">
-          <h2 className="text-muted-foreground">Treatment plan · {linkedPlan.label}</h2>
-          <p className="tabular-nums">
-            {formatMoney(linkedPlan.postedAmount, currency)} of{" "}
-            {formatMoney(linkedPlan.quotedTotal, currency)} billed
-          </p>
+      {linkedPlan || (canWrite && patientId && openPlans) ? (
+        <section className="flex flex-wrap items-center justify-between gap-2">
+          {linkedPlan ? (
+            <div className="flex flex-col gap-1">
+              <h2 className="text-muted-foreground">Treatment plan · {linkedPlan.label}</h2>
+              <p className="tabular-nums">
+                {formatMoney(linkedPlan.postedAmount, currency)} of{" "}
+                {formatMoney(linkedPlan.quotedTotal, currency)} billed
+              </p>
+            </div>
+          ) : null}
+          {canWrite && patientId && openPlans ? (
+            <div className="ml-auto">
+              <AdvanceForm
+                orgSlug={orgSlug}
+                patientId={patientId}
+                plans={openPlans}
+                linkedPlanId={record.appointment.treatmentPlanId ?? undefined}
+              />
+            </div>
+          ) : null}
         </section>
-      ) : null}
-
-      {canWrite && patientId && openPlans ? (
-        <div className="flex justify-end">
-          <AdvanceForm
-            orgSlug={orgSlug}
-            patientId={patientId}
-            plans={openPlans}
-            linkedPlanId={record.appointment.treatmentPlanId ?? undefined}
-          />
-        </div>
       ) : null}
 
       {/* One list for both roles now that the counter cannot add to it: the

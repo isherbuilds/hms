@@ -1,6 +1,13 @@
 import { Button } from "@hms/ui/components/button";
 import { Checkbox } from "@hms/ui/components/checkbox";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@hms/ui/components/dropdown-menu";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -27,6 +34,7 @@ import {
 import { requirePaymentReference } from "@hms/api/lib/schemas";
 import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClientOnly, Link } from "@tanstack/react-router";
+import { MoreHorizontalIcon } from "lucide-react";
 import { useState } from "react";
 import { useFormContext, useFormState, Watch } from "react-hook-form";
 import { z } from "zod";
@@ -136,55 +144,59 @@ export function InvoiceAccount({
             {invoice.invoiceNumber}
           </Link>
           <p className="text-muted-foreground tabular-nums">
-            Total {formatMoney(invoice.grandTotal, invoice.currency)} · Paid / credit{" "}
-            {formatMoney(invoice.paymentsTotal + invoice.allocationsTotal, invoice.currency)}
+            Total {formatMoney(invoice.grandTotal, invoice.currency)}
+            {invoice.outstanding === ZERO
+              ? " · Paid"
+              : ` · Paid ${formatMoney(invoice.paymentsTotal + invoice.allocationsTotal, invoice.currency)}`}
           </p>
-          <p
-            className={
-              isRefundDue ? "font-medium text-destructive tabular-nums" : "font-medium tabular-nums"
-            }
-          >
-            {isRefundDue
-              ? `Refund due ${formatMoney(-invoice.outstanding, invoice.currency)}`
-              : `Outstanding ${formatMoney(invoice.outstanding, invoice.currency)}`}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {canPay ? (
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={invoice.outstanding <= ZERO}
-              onClick={() => void openPayment()}
+          {invoice.outstanding === ZERO ? null : (
+            <p
+              className={
+                isRefundDue
+                  ? "font-medium text-destructive tabular-nums"
+                  : "font-medium tabular-nums"
+              }
             >
+              {isRefundDue
+                ? `Refund due ${formatMoney(-invoice.outstanding, invoice.currency)}`
+                : `Outstanding ${formatMoney(invoice.outstanding, invoice.currency)}`}
+            </p>
+          )}
+        </div>
+        {/* Only the action the invoice's state allows is shown; a credit note is rare, so it waits in the menu. */}
+        <div className="flex items-center gap-1">
+          {canPay && invoice.outstanding > ZERO ? (
+            <Button size="xs" variant="outline" onClick={() => void openPayment()}>
               Record payment
             </Button>
           ) : null}
+          {canCredit && isRefundDue ? (
+            <Button size="xs" variant="outline" onClick={() => setAction({ kind: "refund" })}>
+              Record refund
+            </Button>
+          ) : null}
           {canCredit ? (
-            <>
-              <Button size="xs" variant="outline" onClick={() => setAction({ kind: "credit" })}>
-                Credit note
-              </Button>
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={!isRefundDue}
-                onClick={() => setAction({ kind: "refund" })}
-              >
-                Record refund
-              </Button>
-            </>
+            <ClientOnly fallback={<span className="inline-block size-6" />}>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<Button variant="ghost" size="icon-xs" />}
+                  aria-label={`More actions for ${invoice.invoiceNumber}`}
+                >
+                  <MoreHorizontalIcon />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-36">
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={() => setAction({ kind: "credit" })}>
+                      Issue credit note
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </ClientOnly>
           ) : null}
         </div>
       </div>
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
-        <Link
-          to="/$orgSlug/billing/invoices/$invoiceId"
-          params={{ orgSlug, invoiceId: invoice.id }}
-          search={{ layout: undefined }}
-        >
-          Invoice print
-        </Link>
         <Button
           size="xs"
           variant="ghost"

@@ -165,24 +165,24 @@ export function OpdTreatmentPanel({
         )
       ) : plan ? (
         <>
-          <div className="flex flex-col gap-0.5">
-            <p className="font-medium">{plan.label}</p>
-            <p className="tabular-nums text-muted-foreground">
-              Sitting {sitting} · {formatMoney(plan.postedAmount, currency)} of{" "}
-              {formatMoney(plan.quotedTotal, currency)} billed
-            </p>
-            <p className="text-muted-foreground">
-              {plan.status !== "open" ? (
-                <span className="capitalize">{plan.status}</span>
-              ) : (
-                <>
-                  Next sitting:{" "}
-                  {plan.nextSittingOn ? formatBusinessDate(plan.nextSittingOn) : "not set"}
-                  {plan.nextSittingNote ? ` · ${plan.nextSittingNote}` : null}
-                </>
-              )}
-            </p>
-          </div>
+          {/* The items below name the plan and carry their own amounts; a plan total
+              adds something only when there is more than one item. */}
+          <p className="tabular-nums text-muted-foreground">
+            Sitting {sitting}
+            {plan.items.length > 1
+              ? ` · ${formatMoney(plan.postedAmount, currency)} of ${formatMoney(plan.quotedTotal, currency)} billed`
+              : null}
+            {" · "}
+            {plan.status !== "open" ? (
+              <span className="capitalize">{plan.status}</span>
+            ) : (
+              <>
+                Next sitting{" "}
+                {plan.nextSittingOn ? formatBusinessDate(plan.nextSittingOn) : "not set"}
+                {plan.nextSittingNote ? ` · ${plan.nextSittingNote}` : null}
+              </>
+            )}
+          </p>
           <div className="flex flex-col divide-y border-t">
             {plan.items.map((item) => {
               const unposted = item.quotedPrice - item.postedAmount;
@@ -237,7 +237,7 @@ export function OpdTreatmentPanel({
                   currency={currency}
                   action={
                     open ? (
-                      <div className="flex items-center gap-1">
+                      <>
                         {canBill ? (
                           <Button
                             size="xs"
@@ -268,7 +268,10 @@ export function OpdTreatmentPanel({
                                     </DropdownMenuItem>
                                   ) : null}
                                   {editable ? (
-                                    <DropdownMenuItem onClick={() => setDropping(item.id)}>
+                                    <DropdownMenuItem
+                                      variant="destructive"
+                                      onClick={() => setDropping(item.id)}
+                                    >
                                       Drop item
                                     </DropdownMenuItem>
                                   ) : null}
@@ -277,7 +280,7 @@ export function OpdTreatmentPanel({
                             </DropdownMenu>
                           </ClientOnly>
                         ) : null}
-                      </div>
+                      </>
                     ) : null
                   }
                 />
