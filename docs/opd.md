@@ -91,14 +91,16 @@ plan, and both refuse a visit that is not booked or checked in, belongs to
 another patient, or already names a plan. `opd.get` does not carry the plan: the
 record layout loads the Patient's plans once, and the Clinical panel and the
 Billing tab's advance form both read that one query. For a
-checked-in sitting, **Post to this visit** creates a Charge from the plan
-item's immutable quote snapshot and refuses a quantity above the plan or an item
-this visit already carries. An ordinary Charge for the same service stays
-separate; the panel warns before posting, and the desk voids or credits it if it
-was the same work (D038). An item is done when its non-voided posted quantity
-reaches the planned quantity; voiding delivered work reopens a completed plan.
-Work posted after the visit was settled becomes a second Invoice on that visit;
-the Billing tab lists each one.
+checked-in sitting, **Post to this visit** creates a Charge for one sitting's
+share of the item's whole-course quote. **Bill rest** bills everything left.
+Posting refuses an item whose full course price is already posted or which is
+already posted to this visit.
+An ordinary Charge for the same service stays separate; the panel warns before
+posting, and the desk voids or credits it if it was the same work (D038).
+An item is done when its full price is posted; a free item needs one posted
+sitting. Voiding delivered work reopens a completed
+plan. Work posted after the visit was settled becomes a second Invoice on that
+visit; the Billing tab lists each one beside the plan's quoted and posted amounts.
 
 **Follow-ups** is a Status filter of the day desk. It lists open plans with no
 booked sitting today or later whose requested next-sitting date is due or unset,

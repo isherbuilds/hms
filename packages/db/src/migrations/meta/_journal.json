@@ -50,6 +50,20 @@
       "when": 1790175572583,
       "tag": "0006_robust_nightshade",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790231432042,
+      "tag": "0007_treatment_item_sittings",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790235425993,
+      "tag": "0008_treatment_course_price_data",
+      "breakpoints": true
     }
   ]
 }

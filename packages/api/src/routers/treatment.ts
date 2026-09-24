@@ -23,14 +23,22 @@ import { planLabel } from "../lib/treatment-label";
 
 const planItemInput = z.object({
   catalogItemId: z.string(),
-  qtyPlanned: z.number().int().min(1).max(999),
-  unitPrice: money.optional(),
+  sittingsPlanned: z.number().int().min(1).max(99),
+  /** The whole course price; the catalog price when omitted. */
+  quotedPrice: money.optional(),
   note,
 });
 
 const planIdInput = orgInput.extend({ planId: z.string() });
 
-const postedQty = sql<number>`coalesce(sum(${charges.qty}) filter (where ${charges.status} <> 'voided'), 0)::int`;
+const delivered = sql`${charges.status} <> 'voided'`;
+
+const postedSittings = sql<number>`coalesce(sum(${charges.qty}) filter (where ${delivered}), 0)::int`;
+
+const postedAmount =
+  sql`coalesce(sum(${charges.unitPrice} * ${charges.qty}) filter (where ${delivered}), 0)::bigint`.mapWith(
+    BigInt,
+  );
 
 function planItemCharges(orgId: string) {
   return and(
@@ -38,6 +46,22 @@ function planItemCharges(orgId: string) {
     eq(charges.sourceType, "treatment_plan"),
     eq(charges.sourceId, treatmentPlanItems.id),
   );
+}
+
+/**
+ * Split the unposted course price over the estimated sittings remaining.
+ * The estimate never blocks posting: once used up, the next sitting takes the rest.
+ * `null` means the course price has been posted, or a free course has been posted.
+ */
+function nextSittingPrice(
+  item: { quotedPrice: bigint; sittingsPlanned: number },
+  posted: { sittings: number; amount: bigint },
+) {
+  const unposted = item.quotedPrice - posted.amount;
+
+  if (unposted <= 0n && (item.quotedPrice > 0n || posted.sittings > 0)) return null;
+
+  return unposted / BigInt(Math.max(item.sittingsPlanned - posted.sittings, 1));
 }
 
 async function preparePlanItem(
@@ -64,9 +88,9 @@ async function preparePlanItem(
     throw new ORPCError("NOT_FOUND", { message: "That service is not available." });
   }
 
-  const unitPrice = input.unitPrice ?? item.unitPrice;
+  const quotedPrice = input.quotedPrice ?? item.unitPrice;
 
-  if (unitPrice !== item.unitPrice && !input.note) {
+  if (quotedPrice !== item.unitPrice && !input.note) {
     throw new ORPCError("BAD_REQUEST", { message: `Add a note for ${item.name}'s price.` });
   }
 
@@ -76,11 +100,11 @@ async function preparePlanItem(
     treatmentPlanId: planId,
     catalogItemId: item.id,
     description: item.name,
-    unitPrice,
+    quotedPrice,
     taxRatePercent: item.taxRatePercent,
     taxCode: item.taxCode,
     revenueCategory: item.category,
-    qtyPlanned: input.qtyPlanned,
+    sittingsPlanned: input.sittingsPlanned,
     note: input.note ?? null,
     createdBy: actorId,
     createdAt: now,
@@ -347,8 +371,7 @@ export const treatmentRouter = {
     orgInput.extend({
       itemId: z.string(),
       appointmentId: z.string(),
-      // One charge per item per sitting, so a sitting that delivers two units says so here.
-      qty: z.number().int().min(1).max(999).default(1),
+      rest: z.boolean().optional(),
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
@@ -374,7 +397,7 @@ export const treatmentRouter = {
           and(eq(opdAppointments.orgId, scope.orgId), eq(opdAppointments.id, input.appointmentId)),
         )
         .limit(1)
-        // The item and plan rows too: two posts of one item must not both pass the quantity check.
+        // The item and plan rows too: two posts of one item must not both bill its remainder.
         .for("update", { of: [opdAppointments, treatmentPlanItems, treatmentPlans] });
 
       if (!row) {
@@ -403,8 +426,9 @@ export const treatmentRouter = {
       // work, and the desk voids it if it was this delivery (D038).
       const [posted] = await tx
         .select({
-          qty: postedQty,
-          onVisit: sql<boolean>`coalesce(bool_or(${charges.opdAppointmentId} = ${row.appointment.id} and ${charges.status} <> 'voided'), false)`,
+          sittings: postedSittings,
+          amount: postedAmount,
+          onVisit: sql<boolean>`coalesce(bool_or(${charges.opdAppointmentId} = ${row.appointment.id} and ${delivered}), false)`,
         })
         .from(charges)
         .where(
@@ -415,15 +439,23 @@ export const treatmentRouter = {
           ),
         );
 
-      if (posted?.onVisit) {
+      if (!posted) throw impossible("aggregate over plan charges returned no row");
+
+      if (posted.onVisit) {
         throw new ORPCError("CONFLICT", {
           message: `${row.item.description} is already posted to this visit.`,
         });
       }
 
-      if ((posted?.qty ?? 0) + input.qty > row.item.qtyPlanned) {
-        throw new ORPCError("CONFLICT", { message: "That would exceed the planned quantity." });
+      const nextPrice = nextSittingPrice(row.item, posted);
+
+      if (nextPrice === null) {
+        throw new ORPCError("CONFLICT", {
+          message: `Everything for ${row.item.description} is already posted.`,
+        });
       }
+
+      const price = input.rest ? row.item.quotedPrice - posted.amount : nextPrice;
 
       const [inserted] = await tx
         .insert(charges)
@@ -433,11 +465,11 @@ export const treatmentRouter = {
           opdAppointmentId: row.appointment.id,
           catalogItemId: row.item.catalogItemId,
           description: row.item.description,
-          unitPrice: row.item.unitPrice,
+          unitPrice: price,
           taxRatePercent: row.item.taxRatePercent,
           taxCode: row.item.taxCode,
           revenueCategory: row.item.revenueCategory,
-          qty: input.qty,
+          qty: 1,
           sourceType: "treatment_plan",
           sourceId: row.item.id,
           createdBy: scope.userId,
@@ -500,8 +532,10 @@ export const treatmentRouter = {
         const rows = await tx
           .select({
             status: treatmentPlanItems.status,
-            qtyPlanned: treatmentPlanItems.qtyPlanned,
-            postedQty,
+            quotedPrice: treatmentPlanItems.quotedPrice,
+            sittingsPlanned: treatmentPlanItems.sittingsPlanned,
+            postedSittings,
+            postedAmount,
           })
           .from(treatmentPlanItems)
           .leftJoin(charges, planItemCharges(orgId))
@@ -513,7 +547,16 @@ export const treatmentRouter = {
           )
           .groupBy(treatmentPlanItems.id);
 
-        if (rows.some((item) => item.status !== "dropped" && item.postedQty < item.qtyPlanned)) {
+        if (
+          rows.some(
+            (item) =>
+              item.status !== "dropped" &&
+              nextSittingPrice(item, {
+                sittings: item.postedSittings,
+                amount: item.postedAmount,
+              }) !== null,
+          )
+        ) {
           throw new ORPCError("CONFLICT", {
             message: "Post or drop every planned item before completion.",
           });
@@ -625,10 +668,11 @@ export const treatmentRouter = {
             description: treatmentPlanItems.description,
             note: treatmentPlanItems.note,
             status: treatmentPlanItems.status,
-            qtyPlanned: treatmentPlanItems.qtyPlanned,
-            unitPrice: treatmentPlanItems.unitPrice,
+            sittingsPlanned: treatmentPlanItems.sittingsPlanned,
+            quotedPrice: treatmentPlanItems.quotedPrice,
           },
-          postedQty,
+          postedSittings,
+          postedAmount,
         })
         .from(treatmentPlanItems)
         .leftJoin(charges, planItemCharges(orgId))
@@ -657,11 +701,23 @@ export const treatmentRouter = {
     const sittingsByPlan = Map.groupBy(sittingRows, (row) => row.planId);
 
     return plans.map(({ plan, label, practitionerName }) => {
-      const items = (itemsByPlan.get(plan.id) ?? []).map((row) => ({
-        ...row.item,
-        postedQty: row.postedQty,
-        done: row.postedQty >= row.item.qtyPlanned,
-      }));
+      const items = (itemsByPlan.get(plan.id) ?? []).map(
+        ({ item, postedSittings, postedAmount }) => {
+          const nextPrice = nextSittingPrice(item, {
+            sittings: postedSittings,
+            amount: postedAmount,
+          });
+
+          return {
+            ...item,
+            postedSittings,
+            postedAmount,
+            // Only a postable item has a next charge; a closed plan or dropped item has none.
+            nextSittingPrice: plan.status === "open" && item.status === "open" ? nextPrice : null,
+            done: nextPrice === null,
+          };
+        },
+      );
 
       return {
         ...plan,
@@ -669,9 +725,11 @@ export const treatmentRouter = {
         practitionerName,
         items,
         sittings: (sittingsByPlan.get(plan.id) ?? []).map(({ id }) => ({ id })),
-        quotedTotal: items
-          .filter((item) => item.status !== "dropped")
-          .reduce((sum, item) => sum + BigInt(item.qtyPlanned) * item.unitPrice, 0n),
+        quotedTotal: items.reduce(
+          (sum, item) => sum + (item.status === "dropped" ? item.postedAmount : item.quotedPrice),
+          0n,
+        ),
+        postedAmount: items.reduce((sum, item) => sum + item.postedAmount, 0n),
       };
     });
   }),

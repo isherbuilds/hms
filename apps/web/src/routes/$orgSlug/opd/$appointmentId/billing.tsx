@@ -10,6 +10,7 @@ import { VoidChargeDialog } from "@/components/opd-billing/void-charge-dialog";
 import { ErrorNote } from "@/components/page";
 import { StaleDataNotice } from "@/components/stale-data-notice";
 import { useMembership } from "@/lib/membership";
+import { formatMoney } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
 import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 
@@ -37,21 +38,23 @@ function BillingOpdAppointmentRoute() {
   const { roles, currency } = useMembership(orgSlug);
   const canCredit = authorize(roles, { billing: ["creditNote"] });
   const canWrite = authorize(roles, { billing: ["write"] });
+  const canReadPlans = authorize(roles, { treatment: ["read"] });
 
   const invoices = useQuery({
     ...orpc.billing.listInvoices.queryOptions({ input: { orgSlug, appointmentId } }),
     ...OPERATIONAL_REFETCH,
   });
 
-  // The record layout prefetches the patient's plans; the advance form needs the open
-  // ones, and only a billing writer sees it.
+  // The layout prefetches this key; the plan summary and advance form share it.
   const plans = useQuery(
     orpc.treatment.listForPatient.queryOptions({
-      input: canWrite && patientId ? { orgSlug, patientId } : skipToken,
+      input: canReadPlans && patientId ? { orgSlug, patientId } : skipToken,
     }),
   );
 
   const openPlans = plans.data?.filter((plan) => plan.status === "open");
+
+  const linkedPlan = plans.data?.find((plan) => plan.id === record.appointment.treatmentPlanId);
 
   // The layout has proven the record; only the invoice list can be missing here.
   if (!invoices.data) {
@@ -72,6 +75,16 @@ function BillingOpdAppointmentRoute() {
           title="Billing data could not refresh"
           detail="Showing the last successful billing state. Your unsubmitted changes are preserved."
         />
+      ) : null}
+
+      {linkedPlan ? (
+        <section className="flex flex-col gap-1">
+          <h2 className="text-muted-foreground">Treatment plan · {linkedPlan.label}</h2>
+          <p className="tabular-nums">
+            Posted {formatMoney(linkedPlan.postedAmount, currency)} of{" "}
+            {formatMoney(linkedPlan.quotedTotal, currency)}
+          </p>
+        </section>
       ) : null}
 
       {canWrite && patientId && openPlans ? (

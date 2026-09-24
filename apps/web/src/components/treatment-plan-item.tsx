@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import { formatMoney } from "@/lib/money";
 
-/** One quoted plan item and how much of it is delivered; `action` is the screen's own control. */
+/** One quoted plan item and its posting progress; `action` is the screen's own control. */
 export function PlanItemRow({
   item,
   currency,
@@ -13,9 +13,12 @@ export function PlanItemRow({
     description: string;
     note: string | null;
     status: string;
-    postedQty: number;
-    qtyPlanned: number;
-    unitPrice: bigint;
+    postedSittings: number;
+    postedAmount: bigint;
+    sittingsPlanned: number;
+    quotedPrice: bigint;
+    nextSittingPrice: bigint | null;
+    done: boolean;
   };
   currency: string;
   action: ReactNode;
@@ -33,7 +36,13 @@ export function PlanItemRow({
         {item.note ? <span className="text-muted-foreground">{item.note}</span> : null}
       </span>
       <span className="tabular-nums text-muted-foreground">
-        {item.postedQty}/{item.qtyPlanned} · {formatMoney(item.unitPrice, currency)}
+        Sitting {item.postedSittings} of ~{item.sittingsPlanned} ·{" "}
+        {formatMoney(item.postedAmount, currency)} of {formatMoney(item.quotedPrice, currency)}
+        {item.done
+          ? " · posted in full"
+          : item.nextSittingPrice !== null
+            ? ` · next ${formatMoney(item.nextSittingPrice, currency)}`
+            : null}
       </span>
       {action}
     </div>
