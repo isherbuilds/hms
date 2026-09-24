@@ -285,6 +285,8 @@ export const billingWorklistRouter = {
         id: invoices.id,
         invoiceNumber: invoices.invoiceNumber,
         appointmentId: invoices.opdAppointmentId,
+        // Settling credit defaults to this plan's advance plus untagged credit.
+        treatmentPlanId: opdAppointments.treatmentPlanId,
         patientName: invoices.patientName,
         patientId: invoices.patientId,
         patientMrn: invoices.patientMrn,
@@ -296,6 +298,13 @@ export const billingWorklistRouter = {
       })
       .from(invoices)
       .leftJoin(movements, joinOn)
+      .leftJoin(
+        opdAppointments,
+        and(
+          eq(opdAppointments.orgId, scope.orgId),
+          eq(opdAppointments.id, invoices.opdAppointmentId),
+        ),
+      )
       .where(
         and(
           eq(invoices.orgId, scope.orgId),

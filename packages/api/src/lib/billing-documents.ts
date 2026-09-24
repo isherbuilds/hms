@@ -155,13 +155,17 @@ async function applyPatientCreditTx(
     throw new ORPCError("CONFLICT", { message: "That credit is no longer available." });
   }
 
-  // Credit taken for this visit's plan goes first; a visit with no plan spends untagged
-  // credit first. The sort is stable, so each group stays oldest-first.
-  receipts.sort(
-    (first, second) =>
-      Number(second.treatmentPlanId === invoice.treatmentPlanId) -
-      Number(first.treatmentPlanId === invoice.treatmentPlanId),
-  );
+  // This visit's plan first, then untagged credit, and another plan's advance only last:
+  // money taken for one course is never the first to pay for something else. The sort
+  // is stable, so each group stays oldest-first.
+  const rank = (receipt: { treatmentPlanId: string | null }) =>
+    receipt.treatmentPlanId === invoice.treatmentPlanId
+      ? 0
+      : receipt.treatmentPlanId === null
+        ? 1
+        : 2;
+
+  receipts.sort((first, second) => rank(first) - rank(second));
 
   let due = args.amount;
   const rows: Array<typeof advanceAllocations.$inferInsert> = [];

@@ -103,11 +103,14 @@ type Action = { kind: "payment"; credit: bigint } | { kind: "credit" } | { kind:
 export function InvoiceAccount({
   orgSlug,
   invoice,
+  treatmentPlanId,
   canCredit,
   canPay,
 }: {
   orgSlug: string;
   invoice: InvoiceHeader;
+  /** The visit's plan: payment defaults to its advance plus untagged credit. */
+  treatmentPlanId: string | null;
   canCredit: boolean;
   canPay: boolean;
 }) {
@@ -123,7 +126,7 @@ export function InvoiceAccount({
 
   const openPayment = async () => {
     const credit = invoice.patientId
-      ? await openingCredit(queryClient, orgSlug, invoice.patientId)
+      ? await openingCredit(queryClient, orgSlug, invoice.patientId, treatmentPlanId)
       : ZERO;
 
     if (credit === null) return;

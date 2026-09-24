@@ -192,8 +192,10 @@ export function SettlementOverlay({
               htmlFor="settlement-credit"
             >
               <span>
-                Credit available{" "}
-                <span className="tabular-nums">{formatMoney(availableCredit, quote.currency)}</span>
+                <span className="font-medium text-foreground">Use advance credit</span> ·{" "}
+                <span className="tabular-nums">
+                  {formatMoney(availableCredit, quote.currency)} available
+                </span>
               </span>
               <Input
                 id="settlement-credit"

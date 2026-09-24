@@ -15,7 +15,7 @@ import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { user } from "@hms/db/schema/auth";
 import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { formatDecimal } from "../core/money";
@@ -399,13 +399,26 @@ export const billingRouter = {
 
   patientCredit: orgProcedure(
     { billing: ["read"] },
-    orgInput.extend({ patientId: z.string() }),
+    // The plan of the bill being settled, or null for a bill outside any plan.
+    orgInput.extend({ patientId: z.string(), treatmentPlanId: z.string().nullable() }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
+    const remaining = advanceRemaining(scope.orgId);
+    const untagged = isNull(advanceReceipts.treatmentPlanId);
 
+    const usableReceipt =
+      input.treatmentPlanId === null
+        ? untagged
+        : or(untagged, eq(advanceReceipts.treatmentPlanId, input.treatmentPlanId));
+
+    // `usable` is what the desk offers on this bill: untagged credit plus this plan's
+    // own advance. Another plan's advance stays out of the default (it is spent last).
     const [credit] = await db
       .select({
-        total: sql<bigint>`coalesce(sum(${advanceRemaining(scope.orgId)}), 0)`.mapWith(BigInt),
+        total: sql<bigint>`coalesce(sum(${remaining}), 0)`.mapWith(BigInt),
+        usable: sql<bigint>`coalesce(sum(${remaining}) filter (where ${usableReceipt}), 0)`.mapWith(
+          BigInt,
+        ),
       })
       .from(patients)
       .leftJoin(

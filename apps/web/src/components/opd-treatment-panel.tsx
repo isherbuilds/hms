@@ -118,7 +118,7 @@ export function OpdTreatmentPanel({
         ) : null}
         {editable ? (
           <div className="flex flex-wrap gap-1">
-            <Button variant="ghost" onClick={() => setAction("add")}>
+            <Button variant="outline" onClick={() => setAction("add")}>
               Add item
             </Button>
             {/* Kept after full billing: a course can run past its estimate. */}

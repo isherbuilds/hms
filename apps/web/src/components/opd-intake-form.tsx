@@ -807,7 +807,12 @@ export function OpdIntakeForm({
       return;
     }
 
-    const credit = await openingCredit(queryClient, orgSlug, current.patient.id);
+    const credit = await openingCredit(
+      queryClient,
+      orgSlug,
+      current.patient.id,
+      current.treatmentPlanId || null,
+    );
 
     if (credit === null) return;
     setSettlement(credit);

@@ -52,6 +52,7 @@ export function ChargeCheckout({
   orgSlug,
   appointmentId,
   patientId,
+  treatmentPlanId,
   pending,
   chargeRevision,
   currency,
@@ -63,6 +64,8 @@ export function ChargeCheckout({
   appointmentId: string;
   /** Absent only on a booked visit, which cannot be settled. */
   patientId: string | undefined;
+  /** The visit's plan: collecting defaults to its advance plus untagged credit. */
+  treatmentPlanId: string | null;
   pending: PendingCharge[];
   chargeRevision: number;
   currency: string;
@@ -133,7 +136,7 @@ export function ChargeCheckout({
     }
 
     if (!patientId) throw new Error("A settleable appointment has no patient");
-    const credit = await openingCredit(queryClient, orgSlug, patientId);
+    const credit = await openingCredit(queryClient, orgSlug, patientId, treatmentPlanId);
 
     if (credit === null) return;
     setCollecting(credit);

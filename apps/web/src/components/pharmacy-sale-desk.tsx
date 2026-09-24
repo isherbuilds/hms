@@ -200,7 +200,7 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
   // Freezes the buyer while the credit read is in flight, so the overlay cannot open on
   // one patient's credit while the sale names another.
   const readCredit = useMutation({
-    mutationFn: (patientId: string) => openingCredit(queryClient, orgSlug, patientId),
+    mutationFn: (patientId: string) => openingCredit(queryClient, orgSlug, patientId, null),
     onSuccess: (credit) => {
       if (credit !== null) setSettlement(credit);
     },

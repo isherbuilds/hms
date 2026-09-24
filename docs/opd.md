@@ -113,8 +113,12 @@ booked sitting today or later whose requested next-sitting date is due or unset,
 ordered by that date (unset last), then by the oldest last sitting.
 
 **Credit** is applied at settlement or payment. Receipts taken for the Invoice's
-own plan are spent first (untagged credit first when the visit has no plan), and
-each group is spent oldest first. Unused credit is returned only by an advance
+own plan are spent first, then untagged credit, and another plan's advance only
+last; each group is spent oldest first. Every collect screen opens with only the
+credit that belongs to the bill (`billing.patientCredit` `usable`: untagged credit
+plus the bill's own plan), so a plan's advance never pays an unrelated consult or
+pharmacy sale by default; the cashier can still type a larger amount up to the
+patient's total. Unused credit is returned only by an advance
 Refund. The pilot's chartered accountant still owes two answers: the GST Receipt
 Voucher particulars for an Advance Receipt, and the earning milestone for a
 one-fee multi-sitting procedure (post at completion, or add a partial-work item).

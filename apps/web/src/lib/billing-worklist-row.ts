@@ -14,6 +14,8 @@ export type WorklistRow = {
   appointmentId: string | null;
   /** Null when the buyer is a walk-in with no Patient record. */
   patientId: string | null;
+  /** The visit's plan, so collecting defaults to that plan's advance; null outside one. */
+  treatmentPlanId: string | null;
   reference: string;
   patientName: string;
   patientMrn: string | null;
@@ -60,6 +62,7 @@ type InvoiceInput = {
   invoiceNumber: string;
   appointmentId: string | null;
   patientId: string | null;
+  treatmentPlanId: string | null;
   patientName: string;
   patientMrn: string | null;
   patientPhone: string | null;
@@ -82,6 +85,7 @@ export function toWorklistRows(
     ...unbilled.map((row) => ({
       key: `c-${row.appointmentId}`,
       invoiceId: null,
+      treatmentPlanId: null,
       appointmentId: row.appointmentId,
       patientId: row.patientId,
       reference: row.tokenNumber === null ? "No token" : `Token ${row.tokenNumber}`,
@@ -100,6 +104,7 @@ export function toWorklistRows(
       invoiceId: row.id,
       appointmentId: row.appointmentId,
       patientId: row.patientId,
+      treatmentPlanId: row.treatmentPlanId,
       reference: row.invoiceNumber,
       currency,
       patientName: row.patientName,

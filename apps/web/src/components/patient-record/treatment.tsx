@@ -92,7 +92,7 @@ function PlanCard({
             variant="outline"
             onClick={() => setReasonFor({ kind: "close", planId: plan.id })}
           >
-            Close
+            Close plan
           </Button>
         ) : null}
       </header>

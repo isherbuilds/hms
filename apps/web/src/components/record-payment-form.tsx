@@ -166,7 +166,8 @@ export function RecordPaymentForm({
                 {/* `FormLabel` owns the association: `FormControl` overwrites a hand-written
                     id on its child, which would leave the label pointing at nothing. */}
                 <FormLabel className="text-muted-foreground tabular-nums">
-                  Credit available {formatMoney(availableCredit, currency)}
+                  <span className="font-medium text-foreground">Use advance credit</span> ·{" "}
+                  {formatMoney(availableCredit, currency)} available
                 </FormLabel>
                 <FormControl>
                   <Input

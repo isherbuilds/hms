@@ -138,7 +138,7 @@ function BillingIndexRoute() {
 
     const credit =
       row.invoiceId && row.patientId
-        ? await openingCredit(queryClient, orgSlug, row.patientId)
+        ? await openingCredit(queryClient, orgSlug, row.patientId, row.treatmentPlanId)
         : ZERO;
 
     if (credit === null || latestClick.current !== row.key) return;

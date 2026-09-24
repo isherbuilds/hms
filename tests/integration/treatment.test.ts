@@ -747,6 +747,7 @@ test("three irregular plan advances settle three physiotherapy sittings before u
   const credit = await setup.api.billing.patientCredit({
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
+    treatmentPlanId: null,
   });
 
   expect(credit.total).toBe(10_00n);
@@ -918,7 +919,13 @@ test("credit allocation does not spend receipts created after its lock statement
     await locker.query("commit");
     await rejected;
     expect(
-      (await setup.api.billing.patientCredit({ orgSlug, patientId: setup.patient.id })).total,
+      (
+        await setup.api.billing.patientCredit({
+          orgSlug,
+          patientId: setup.patient.id,
+          treatmentPlanId: null,
+        })
+      ).total,
     ).toBe(50_00n);
     expect(
       (await setup.api.billing.getInvoice({ orgSlug, invoiceId: settled.invoice.id })).balance
@@ -930,12 +937,53 @@ test("credit allocation does not spend receipts created after its lock statement
       applyCredit: 50_00n,
     });
     expect(
-      (await setup.api.billing.patientCredit({ orgSlug, patientId: setup.patient.id })).total,
+      (
+        await setup.api.billing.patientCredit({
+          orgSlug,
+          patientId: setup.patient.id,
+          treatmentPlanId: null,
+        })
+      ).total,
     ).toBe(0n);
   } finally {
     await locker.query("rollback");
     await locker.end();
   }
+});
+
+test("a plan's advance is offered only on that plan's bills", async () => {
+  const setup = await fixture("treatment-credit-scope");
+  const orgSlug = setup.organization.slug;
+  const patientId = setup.patient.id;
+
+  const plan = await setup.api.treatment.create({
+    orgSlug,
+    patientId,
+    practitionerId: setup.practitioner.id,
+    item: {
+      catalogItemId: setup.service.id,
+      sittingsPlanned: 2,
+      quotedPrice: 150_00n,
+      note: "Course price",
+    },
+  });
+
+  await setup.api.billing.recordAdvance({ orgSlug, patientId, method: "cash", amount: 10_00n });
+  await setup.api.billing.recordAdvance({
+    orgSlug,
+    patientId,
+    treatmentPlanId: plan.id,
+    method: "cash",
+    amount: 30_00n,
+  });
+
+  expect(
+    await setup.api.billing.patientCredit({ orgSlug, patientId, treatmentPlanId: plan.id }),
+  ).toEqual({ total: 40_00n, usable: 40_00n });
+  // A bill outside the plan does not default to the plan's advance.
+  expect(
+    await setup.api.billing.patientCredit({ orgSlug, patientId, treatmentPlanId: null }),
+  ).toEqual({ total: 40_00n, usable: 10_00n });
 });
 
 test("a four-sitting estimate allows billing the rest early and finishing the plan", async () => {

@@ -123,7 +123,9 @@ function BillingOpdAppointmentRoute() {
                 </span>
                 <span className="text-muted-foreground">
                   {" · "}
-                  <span className="font-mono">{receipt.receiptNumber}</span> · {receipt.purpose}
+                  <span className="font-mono">{receipt.receiptNumber}</span>
+                  {/* The block's heading already names the linked plan. */}
+                  {receipt.purpose === linkedPlan?.label ? null : ` · ${receipt.purpose}`}
                 </span>
               </p>
               {canRefundAdvance ? (
@@ -148,6 +150,7 @@ function BillingOpdAppointmentRoute() {
             orgSlug={orgSlug}
             appointmentId={appointmentId}
             patientId={patientId}
+            treatmentPlanId={record.appointment.treatmentPlanId}
             pending={pending}
             chargeRevision={record.appointment.chargeRevision}
             currency={currency}
@@ -170,6 +173,7 @@ function BillingOpdAppointmentRoute() {
                 key={invoice.id}
                 orgSlug={orgSlug}
                 invoice={invoice}
+                treatmentPlanId={record.appointment.treatmentPlanId}
                 canCredit={canCredit}
                 canPay={canWrite}
               />

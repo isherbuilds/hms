@@ -577,7 +577,7 @@ const GUARDED_CALLS = {
       amount: 1_00n,
     }),
   "billing.patientCredit": (api, claim) =>
-    api.billing.patientCredit({ ...claim, patientId: Bun.randomUUIDv7() }),
+    api.billing.patientCredit({ ...claim, patientId: Bun.randomUUIDv7(), treatmentPlanId: null }),
   "billing.getAdvanceReceipt": (api, claim) =>
     api.billing.getAdvanceReceipt({ ...claim, advanceId: Bun.randomUUIDv7() }),
   "billing.issueCreditNote": (api, claim) =>
@@ -864,7 +864,11 @@ test("treatment plans and advance receipts are invisible by row id and list acro
     "CONFLICT",
   );
   await expectORPCCode(
-    bobClient.billing.patientCredit({ orgSlug: beta.slug, patientId: alphaRows.patient.id }),
+    bobClient.billing.patientCredit({
+      orgSlug: beta.slug,
+      patientId: alphaRows.patient.id,
+      treatmentPlanId: null,
+    }),
     "NOT_FOUND",
   );
   await expectORPCCode(
@@ -893,8 +897,16 @@ test("one client concurrently scopes treatment and advance calls to two organiza
     await Promise.all([
       api.treatment.listForPatient({ orgSlug: one.slug, patientId: inOne.patient.id }),
       api.treatment.listForPatient({ orgSlug: two.slug, patientId: inTwo.patient.id }),
-      api.billing.patientCredit({ orgSlug: one.slug, patientId: inOne.patient.id }),
-      api.billing.patientCredit({ orgSlug: two.slug, patientId: inTwo.patient.id }),
+      api.billing.patientCredit({
+        orgSlug: one.slug,
+        patientId: inOne.patient.id,
+        treatmentPlanId: null,
+      }),
+      api.billing.patientCredit({
+        orgSlug: two.slug,
+        patientId: inTwo.patient.id,
+        treatmentPlanId: null,
+      }),
       api.patient.account({ orgSlug: one.slug, patientId: inOne.patient.id }),
       api.patient.account({ orgSlug: two.slug, patientId: inTwo.patient.id }),
       api.treatment.followUps({ orgSlug: one.slug }),

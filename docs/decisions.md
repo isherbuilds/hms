@@ -650,6 +650,11 @@ Existing rows migrate by multiplying unit price by planned quantity
 This changes the meaning of stored money,
 so D031 requires a stop-the-world cutover.
 
+**Amended 2026-09-24 on the owner's instruction:** a plan's advance is offered by
+default only on that plan's Invoices, and settlement spends another plan's advance
+after untagged credit. A dental advance paying a same-day dermatology consult was
+unexpected at the desk.
+
 **Rejected:** billing the whole course at the first sitting books revenue
 before delivery (D034); an editable sitting count with floor rules adds more
 logic than the desk needs.
