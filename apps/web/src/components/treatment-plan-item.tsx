@@ -36,7 +36,8 @@ export function PlanItemRow({
         {item.note ? <span className="text-muted-foreground">{item.note}</span> : null}
       </span>
       <span className="tabular-nums text-muted-foreground">
-        {item.postedSittings} of ~{item.sittingsPlanned} sittings ·{" "}
+        {item.postedSittings} of ~{item.sittingsPlanned}{" "}
+        {item.sittingsPlanned === 1 ? "sitting" : "sittings"} ·{" "}
         {formatMoney(item.postedAmount, currency)} of {formatMoney(item.quotedPrice, currency)}{" "}
         billed
         {item.done

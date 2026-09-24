@@ -217,7 +217,18 @@ export function OpdTreatmentPanel({
               };
 
               const open = plan.status === "open" && item.status === "open" && !item.done;
-              const canBillRest = canPost && item.nextSittingPrice !== unposted;
+
+              // One sitting per visit: the server refuses a second posting here.
+              const canBill =
+                canPost &&
+                !record.charges.some(
+                  (charge) =>
+                    charge.sourceType === "treatment_plan" &&
+                    charge.sourceId === item.id &&
+                    charge.status !== "voided",
+                );
+
+              const canBillRest = canBill && item.nextSittingPrice !== unposted;
 
               return (
                 <PlanItemRow
@@ -227,7 +238,7 @@ export function OpdTreatmentPanel({
                   action={
                     open ? (
                       <div className="flex items-center gap-1">
-                        {canPost ? (
+                        {canBill ? (
                           <Button
                             size="xs"
                             variant="outline"
