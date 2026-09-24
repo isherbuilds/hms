@@ -125,9 +125,7 @@ export function ServiceLines({
                       defaultValue={line.qty}
                       aria-label={`${line.description} quantity`}
                       className="w-16 tabular-nums"
-                      onBlur={(event) =>
-                        commitQty(line.key, event.currentTarget)
-                      }
+                      onBlur={(event) => commitQty(line.key, event.currentTarget)}
                       onKeyDown={(event) => {
                         if (event.key !== "Enter") return;
                         event.preventDefault();
@@ -142,23 +140,17 @@ export function ServiceLines({
                   {line.customRate ? (
                     <RateInput
                       line={line}
-                      onCommit={(customUnitPrice) =>
-                        onChange(line.key, { customUnitPrice })
-                      }
+                      onCommit={(customUnitPrice) => onChange(line.key, { customUnitPrice })}
                     />
                   ) : (
                     formatMoney(line.unitPrice, currency)
                   )}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {line.taxRatePercent === "0.00"
-                    ? "—"
-                    : `${line.taxRatePercent}%`}
+                  {line.taxRatePercent === "0.00" ? "—" : `${line.taxRatePercent}%`}
                 </TableCell>
                 <TableCell className="text-right tabular-nums group-aria-busy/quote:opacity-50">
-                  {line.gross !== undefined
-                    ? formatMoney(line.gross, currency)
-                    : "—"}
+                  {line.gross !== undefined ? formatMoney(line.gross, currency) : "—"}
                 </TableCell>
                 <TableCell>
                   <Button
@@ -190,9 +182,7 @@ export function ServiceLines({
                   {line.category}
                 </Badge>
                 <Badge variant="outline">
-                  {line.taxRatePercent === "0.00"
-                    ? "No tax"
-                    : `Tax ${line.taxRatePercent}%`}
+                  {line.taxRatePercent === "0.00" ? "No tax" : `Tax ${line.taxRatePercent}%`}
                 </Badge>
               </div>
             </div>
@@ -203,17 +193,13 @@ export function ServiceLines({
                     Rate
                     <RateInput
                       line={line}
-                      onCommit={(customUnitPrice) =>
-                        onChange(line.key, { customUnitPrice })
-                      }
+                      onCommit={(customUnitPrice) => onChange(line.key, { customUnitPrice })}
                     />
                   </label>
                 ) : (
                   <span className="grid gap-1">
                     <span className="text-muted-foreground">Rate</span>
-                    <span className="tabular-nums">
-                      {formatMoney(line.unitPrice, currency)}
-                    </span>
+                    <span className="tabular-nums">{formatMoney(line.unitPrice, currency)}</span>
                   </span>
                 )}
                 {line.editable ? (
@@ -227,9 +213,7 @@ export function ServiceLines({
                       defaultValue={line.qty}
                       aria-label={`${line.description} quantity`}
                       className="w-16 tabular-nums"
-                      onBlur={(event) =>
-                        commitQty(line.key, event.currentTarget)
-                      }
+                      onBlur={(event) => commitQty(line.key, event.currentTarget)}
                       onKeyDown={(event) => {
                         if (event.key !== "Enter") return;
                         event.preventDefault();
@@ -248,9 +232,7 @@ export function ServiceLines({
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0 wrap-break-words font-medium tabular-nums group-aria-busy/quote:opacity-50">
-                  {line.gross !== undefined
-                    ? formatMoney(line.gross, currency)
-                    : "—"}
+                  {line.gross !== undefined ? formatMoney(line.gross, currency) : "—"}
                 </span>
                 <Button
                   type="button"

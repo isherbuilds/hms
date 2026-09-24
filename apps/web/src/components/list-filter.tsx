@@ -25,14 +25,7 @@ import {
   XIcon,
   type LucideIcon,
 } from "lucide-react";
-import {
-  lazy,
-  Suspense,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { lazy, Suspense, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { datePresets, dateRangeLabel } from "@/lib/date-presets";
 import { validateReportPeriod } from "@/lib/report-presentation";
@@ -121,10 +114,7 @@ export function FilterSubmenu({
  * text first: SearchInput never syncs a focused box, so a cleared `q` would
  * leave the old text on screen.
  */
-export function focusSearch(
-  field: RefObject<HTMLDivElement | null>,
-  { empty = false } = {},
-) {
+export function focusSearch(field: RefObject<HTMLDivElement | null>, { empty = false } = {}) {
   const box = field.current?.querySelector("input");
 
   if (!box) return;
@@ -159,10 +149,7 @@ export function FilterChips({
 
   return (
     <>
-      <ul
-        aria-label="Active filters"
-        className="flex flex-wrap items-center gap-2"
-      >
+      <ul aria-label="Active filters" className="flex flex-wrap items-center gap-2">
         {filters.map((filter) => (
           <li key={filter.id}>
             <button
@@ -223,9 +210,7 @@ function DateFilterItems({
           checked={preset.from === from && preset.to === to}
           onCheckedChange={(checked) =>
             onChange(
-              checked
-                ? { from: preset.from, to: preset.to }
-                : { from: undefined, to: undefined },
+              checked ? { from: preset.from, to: preset.to } : { from: undefined, to: undefined },
             )
           }
         >
@@ -281,15 +266,9 @@ export function DateFilter({
 
   const button = (
     <Button ref={trigger} variant="outline">
-      <CalendarIcon
-        data-icon="inline-start"
-        className="text-muted-foreground"
-      />
+      <CalendarIcon data-icon="inline-start" className="text-muted-foreground" />
       {dateRangeLabel(today, from, to)}
-      <ChevronDownIcon
-        data-icon="inline-end"
-        className="text-muted-foreground"
-      />
+      <ChevronDownIcon data-icon="inline-end" className="text-muted-foreground" />
     </Button>
   );
 
@@ -433,11 +412,8 @@ function DateRangeCalendar({
         />
       </Suspense>
       <div className="mx-2 flex items-center gap-2 border-t border-border pt-2">
-        <p
-          className={`flex-1 ${error ? "text-destructive" : "text-muted-foreground"}`}
-        >
-          {error ??
-            (start ? dateRangeLabel(today, start, end) : "Pick the first day")}
+        <p className={`flex-1 ${error ? "text-destructive" : "text-muted-foreground"}`}>
+          {error ?? (start ? dateRangeLabel(today, start, end) : "Pick the first day")}
         </p>
         <Button
           size="xs"

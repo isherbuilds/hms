@@ -8,12 +8,7 @@ import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { cn } from "@hms/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
-import {
-  createFileRoute,
-  Link,
-  useBlocker,
-  useNavigate,
-} from "@tanstack/react-router";
+import { createFileRoute, Link, useBlocker, useNavigate } from "@tanstack/react-router";
 import { Trash2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useFieldArray, useFormContext, useWatch } from "react-hook-form";
@@ -125,28 +120,22 @@ const receiptSchema = (today: string) =>
         if (!value.opening && line.free !== "" && !wholeText.test(line.free)) {
           issue(["lines", index, "free"], "Enter a whole number");
         } else if (!stockQuantities(row, value.opening)) {
-          issue(
-            ["lines", index, stockQuantities(row, true) ? "free" : "count"],
-            "Too large",
-          );
+          issue(["lines", index, stockQuantities(row, true) ? "free" : "count"], "Too large");
         }
       });
 
       if (value.opening) return;
 
-      if (value.supplierName === "")
-        issue(["supplierName"], "Type who delivered this");
+      if (value.supplierName === "") issue(["supplierName"], "Type who delivered this");
 
       value.lines.forEach((line, index) => {
-        if (!DECIMAL_PATTERN.test(line.rate))
-          issue(["lines", index, "rate"], "A rate like 76.19");
+        if (!DECIMAL_PATTERN.test(line.rate)) issue(["lines", index, "rate"], "A rate like 76.19");
 
         if (!PERCENT_PATTERN.test(line.discount)) {
           issue(["lines", index, "discount"], "0 to 99.99");
         }
 
-        if (!PERCENT_PATTERN.test(line.gst))
-          issue(["lines", index, "gst"], "0, 5, 12 or 18");
+        if (!PERCENT_PATTERN.test(line.gst)) issue(["lines", index, "gst"], "0, 5, 12 or 18");
       });
 
       if (!DECIMAL_PATTERN.test(value.billTotal)) {
@@ -211,9 +200,7 @@ function productFields(product: PickedProduct | null, line: ReceiptLineInput) {
     stockUnit: product?.stockUnit ?? "",
     unitsPerPack: product?.unitsPerPack ?? 1,
     loose: product?.unitsPerPack === 1,
-    gst: product?.taxRatePercent
-      ? String(Number(product.taxRatePercent))
-      : line.gst,
+    gst: product?.taxRatePercent ? String(Number(product.taxRatePercent)) : line.gst,
     hsn: product?.taxCode ?? line.hsn,
   };
 }
@@ -242,6 +229,7 @@ function ReceiveGoodsRoute() {
     name: "lines",
     keyName: "fieldKey",
   });
+
   const [newProductLine, setNewProductLine] = useState<number | null>(null);
   const opening = useWatch({ control: form.control, name: "opening" });
   const dirty = form.formState.isDirty;
@@ -276,9 +264,7 @@ function ReceiveGoodsRoute() {
       orgSlug,
       opening: values.opening,
       supplierName: values.opening ? undefined : values.supplierName,
-      supplierReference: values.opening
-        ? undefined
-        : values.supplierReference || undefined,
+      supplierReference: values.opening ? undefined : values.supplierReference || undefined,
       receivedOn: values.receivedOn,
       billTotal: values.opening ? undefined : parseDecimal(values.billTotal),
       note: values.note || undefined,
@@ -286,16 +272,14 @@ function ReceiveGoodsRoute() {
         const row = rowText(line);
         const quantities = stockQuantities(row, values.opening);
 
-        if (!quantities)
-          throw new Error("A validated receipt line exceeds stock limits");
+        if (!quantities) throw new Error("A validated receipt line exceeds stock limits");
 
         return {
           productId: line.productId,
           batchNumber: line.batchNumber,
           expiryDate: line.expiryDate,
           qty: quantities.qty,
-          pricedPer:
-            quantities.packSize === 1 ? ("unit" as const) : ("pack" as const),
+          pricedPer: quantities.packSize === 1 ? ("unit" as const) : ("pack" as const),
           mrp: parseDecimal(line.price),
           cost: values.opening
             ? undefined
@@ -326,9 +310,7 @@ function ReceiveGoodsRoute() {
   };
 
   const openNewProduct = () => {
-    const available = form
-      .getValues("lines")
-      .findIndex((line) => line.productId === "");
+    const available = form.getValues("lines").findIndex((line) => line.productId === "");
 
     if (available >= 0) {
       setNewProductLine(available);
@@ -359,16 +341,9 @@ function ReceiveGoodsRoute() {
 
       <PageBody width="max-w-6xl">
         <Form {...form}>
-          <form
-            noValidate
-            className="flex min-w-0 flex-col gap-4"
-            onSubmit={submit}
-          >
+          <form noValidate className="flex min-w-0 flex-col gap-4" onSubmit={submit}>
             <fieldset disabled={locked} className="contents">
-              <section
-                aria-labelledby="delivery-heading"
-                className="flex flex-col gap-3"
-              >
+              <section aria-labelledby="delivery-heading" className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex flex-col gap-1">
                     <h2 id="delivery-heading" className="text-sm font-medium">
@@ -410,11 +385,7 @@ function ReceiveGoodsRoute() {
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {opening ? null : (
                     <>
-                      <TextField
-                        name="supplierName"
-                        label="Supplier"
-                        placeholder="Supplier name"
-                      />
+                      <TextField name="supplierName" label="Supplier" placeholder="Supplier name" />
                       <TextField
                         name="supplierReference"
                         label="Bill number"
@@ -456,12 +427,7 @@ function ReceiveGoodsRoute() {
                       Add batch
                     </Button>
                     {canManageItems ? (
-                      <Button
-                        type="button"
-                        variant="link"
-                        size="xs"
-                        onClick={openNewProduct}
-                      >
+                      <Button type="button" variant="link" size="xs" onClick={openNewProduct}>
                         New product
                       </Button>
                     ) : null}
@@ -487,10 +453,7 @@ function ReceiveGoodsRoute() {
                   </p>
                 ) : null}
                 {typeof form.formState.errors.lines?.message === "string" ? (
-                  <p
-                    role="alert"
-                    className="border-t border-border px-3 py-2 text-destructive"
-                  >
+                  <p role="alert" className="border-t border-border px-3 py-2 text-destructive">
                     {form.formState.errors.lines.message}
                   </p>
                 ) : null}
@@ -506,9 +469,7 @@ function ReceiveGoodsRoute() {
                 />
                 <div className="flex flex-wrap items-end justify-between gap-3 lg:flex-col lg:justify-end">
                   <ReceiptTotals orgSlug={orgSlug} opening={opening} />
-                  <SubmitButton isSubmitting={locked}>
-                    Receive goods
-                  </SubmitButton>
+                  <SubmitButton isSubmitting={locked}>Receive goods</SubmitButton>
                 </div>
               </div>
             </fieldset>
@@ -581,9 +542,7 @@ function BatchRow({
     <div
       className={cn(
         "grid min-w-0 grid-cols-2 gap-x-3 gap-y-4 border-b border-border p-4 last:border-b-0 md:grid-cols-4",
-        opening
-          ? "lg:grid-cols-[repeat(7,minmax(0,1fr))_auto]"
-          : "lg:grid-cols-7",
+        opening ? "lg:grid-cols-[repeat(7,minmax(0,1fr))_auto]" : "lg:grid-cols-7",
       )}
     >
       <ControlledField
@@ -594,21 +553,13 @@ function BatchRow({
           <FormControl>
             <ProductPicker
               orgSlug={orgSlug}
-              value={
-                line.productId
-                  ? { productId: line.productId, name: line.productName }
-                  : null
-              }
+              value={line.productId ? { productId: line.productId, name: line.productName } : null}
               onChange={onPick}
             />
           </FormControl>
         )}
       />
-      <TextField
-        name={`lines.${index}.batchNumber`}
-        label="Batch"
-        placeholder="Printed on pack"
-      />
+      <TextField name={`lines.${index}.batchNumber`} label="Batch" placeholder="Printed on pack" />
       <TextField
         name={`lines.${index}.expiryDate`}
         label="Expiry"
@@ -626,11 +577,7 @@ function BatchRow({
         name={`lines.${index}.count`}
         label={opening ? "Counted" : "Billed qty"}
         inputMode="numeric"
-        description={
-          quantity && line.stockUnit
-            ? countOf(quantity, line.stockUnit)
-            : undefined
-        }
+        description={quantity && line.stockUnit ? countOf(quantity, line.stockUnit) : undefined}
       />
       {line.unitsPerPack > 1 ? (
         <ControlledField
@@ -643,9 +590,7 @@ function BatchRow({
                 ref={field.ref}
                 onBlur={field.onBlur}
                 value={field.value ? "loose" : "packs"}
-                onChange={(event) =>
-                  field.onChange(event.target.value === "loose")
-                }
+                onChange={(event) => field.onChange(event.target.value === "loose")}
                 disabled={!line.productId}
               >
                 <option value="packs">Packs of {line.unitsPerPack}</option>
@@ -657,16 +602,9 @@ function BatchRow({
           )}
         />
       ) : (
-        <span className="self-end py-2 text-muted-foreground">
-          {line.stockUnit || "unit"}
-        </span>
+        <span className="self-end py-2 text-muted-foreground">{line.stockUnit || "unit"}</span>
       )}
-      <div
-        className={cn(
-          "order-last flex items-end lg:justify-end",
-          !opening && "lg:order-0",
-        )}
-      >
+      <div className={cn("order-last flex items-end lg:justify-end", !opening && "lg:order-0")}>
         <Button
           type="button"
           variant="destructive"
@@ -686,9 +624,7 @@ function BatchRow({
             label="Free qty"
             inputMode="numeric"
             placeholder="0"
-            description={
-              free && line.stockUnit ? countOf(free, line.stockUnit) : undefined
-            }
+            description={free && line.stockUnit ? countOf(free, line.stockUnit) : undefined}
           />
           <TextField
             name={`lines.${index}.rate`}
@@ -696,16 +632,8 @@ function BatchRow({
             inputMode="decimal"
             placeholder="PTR"
           />
-          <TextField
-            name={`lines.${index}.discount`}
-            label="Disc %"
-            inputMode="decimal"
-          />
-          <TextField
-            name={`lines.${index}.gst`}
-            label="GST %"
-            inputMode="decimal"
-          />
+          <TextField name={`lines.${index}.discount`} label="Disc %" inputMode="decimal" />
+          <TextField name={`lines.${index}.gst`} label="GST %" inputMode="decimal" />
         </>
       )}
       <TextField
@@ -716,24 +644,16 @@ function BatchRow({
       />
       {opening ? null : (
         <>
-          <TextField
-            name={`lines.${index}.hsn`}
-            label="HSN"
-            placeholder="3004"
-          />
+          <TextField name={`lines.${index}.hsn`} label="HSN" placeholder="3004" />
           <div className="flex min-w-0 flex-col gap-1 tabular-nums md:items-end md:text-right">
             <span className="text-muted-foreground">Line total</span>
             <span className="py-2 font-medium">
               {cost ? formatMoney(exactToPaise(cost.net), currency) : "—"}
             </span>
             {unitCost !== null ? (
-              <span
-                className={
-                  overMrp ? "text-destructive" : "text-muted-foreground"
-                }
-              >
-                {overMrp ? "Costs at or above MRP: " : ""}≈{" "}
-                {formatMoney(unitCost, currency)} / {line.stockUnit || "unit"}
+              <span className={overMrp ? "text-destructive" : "text-muted-foreground"}>
+                {overMrp ? "Costs at or above MRP: " : ""}≈ {formatMoney(unitCost, currency)} /{" "}
+                {line.stockUnit || "unit"}
               </span>
             ) : null}
           </div>
@@ -744,19 +664,15 @@ function BatchRow({
 }
 
 /** Stock added, and on a delivery the bill arithmetic checked against its printed total. */
-function ReceiptTotals({
-  orgSlug,
-  opening,
-}: {
-  orgSlug: string;
-  opening: boolean;
-}) {
+function ReceiptTotals({ orgSlug, opening }: { orgSlug: string; opening: boolean }) {
   const { control } = useFormContext<ReceiptInput, unknown, Receipt>();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
+
   const [lines, billTotal] = useWatch({
     control,
     name: ["lines", "billTotal"],
   });
+
   let quantity = 0;
 
   for (const line of lines) {
@@ -769,8 +685,7 @@ function ReceiptTotals({
   return (
     <div className="flex flex-col gap-1 tabular-nums lg:items-end lg:text-right">
       <p className="font-medium">
-        {lines.length} batch{lines.length === 1 ? "" : "es"} · {quantity} stock
-        unit
+        {lines.length} batch{lines.length === 1 ? "" : "es"} · {quantity} stock unit
         {quantity === 1 ? "" : "s"}
       </p>
       {summary ? (
@@ -794,13 +709,8 @@ function ReceiptTotals({
               <Badge variant={summary.matches ? "muted" : "destructive"}>
                 {summary.matches ? "Matches bill" : "Does not match bill"}
               </Badge>
-              <span
-                className={
-                  summary.matches ? "text-muted-foreground" : "text-destructive"
-                }
-              >
-                {summary.matches ? "Round-off" : "Off by"}{" "}
-                {formatMoney(summary.roundOff, currency)}
+              <span className={summary.matches ? "text-muted-foreground" : "text-destructive"}>
+                {summary.matches ? "Round-off" : "Off by"} {formatMoney(summary.roundOff, currency)}
               </span>
             </p>
           )}

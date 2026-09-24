@@ -260,9 +260,7 @@ function PrescriptionDocuments({
       </div>
 
       {prescriptions.length === 0 ? (
-        <p className="text-muted-foreground">
-          No scan attached yet.
-        </p>
+        <p className="text-muted-foreground">No scan attached yet.</p>
       ) : (
         <Table>
           <TableHeader>
