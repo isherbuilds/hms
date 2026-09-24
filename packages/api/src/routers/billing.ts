@@ -15,7 +15,7 @@ import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { user } from "@hms/db/schema/auth";
 import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { formatDecimal } from "../core/money";
@@ -796,7 +796,38 @@ export const billingRouter = {
       .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.opdAppointmentId, appointment.id)))
       .orderBy(asc(invoices.createdAt), asc(invoices.id));
 
-    const balances = await invoiceBalancesFor(db, scope.orgId, rows);
+    if (rows.length === 0) return [];
+
+    const ids = rows.map((invoice) => invoice.id);
+
+    // Each card links its receipts, credit notes and refunds directly, so the desk
+    // never opens a menu to find a receipt. One batched read per kind, not per invoice.
+    const [balances, receiptRows, noteRows, refundRows] = await Promise.all([
+      invoiceBalancesFor(db, scope.orgId, rows),
+      db
+        .select({ id: payments.id, invoiceId: payments.invoiceId, number: payments.receiptNumber })
+        .from(payments)
+        .where(and(eq(payments.orgId, scope.orgId), inArray(payments.invoiceId, ids)))
+        .orderBy(asc(payments.createdAt), asc(payments.id)),
+      db
+        .select({
+          id: creditNotes.id,
+          invoiceId: creditNotes.invoiceId,
+          number: creditNotes.creditNoteNumber,
+        })
+        .from(creditNotes)
+        .where(and(eq(creditNotes.orgId, scope.orgId), inArray(creditNotes.invoiceId, ids)))
+        .orderBy(asc(creditNotes.createdAt), asc(creditNotes.id)),
+      db
+        .select({ id: refunds.id, invoiceId: refunds.invoiceId, number: refunds.refundNumber })
+        .from(refunds)
+        .where(and(eq(refunds.orgId, scope.orgId), inArray(refunds.invoiceId, ids)))
+        .orderBy(asc(refunds.createdAt), asc(refunds.id)),
+    ]);
+
+    const receiptsOf = Map.groupBy(receiptRows, (row) => row.invoiceId);
+    const notesOf = Map.groupBy(noteRows, (row) => row.invoiceId);
+    const refundsOf = Map.groupBy(refundRows, (row) => row.invoiceId);
 
     return rows.map((invoice) => {
       const balance = balances.get(invoice.id);
@@ -808,6 +839,9 @@ export const billingRouter = {
         paymentsTotal: balance.paymentsTotal,
         allocationsTotal: balance.allocationsTotal,
         outstanding: balance.outstanding,
+        receipts: receiptsOf.get(invoice.id) ?? [],
+        creditNotes: notesOf.get(invoice.id) ?? [],
+        refunds: refundsOf.get(invoice.id) ?? [],
       };
     });
   }),

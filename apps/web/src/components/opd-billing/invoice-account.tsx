@@ -95,7 +95,13 @@ type InvoiceHeader = {
   paymentsTotal: bigint;
   allocationsTotal: bigint;
   outstanding: bigint;
+  receipts: Array<{ id: string; number: string }>;
+  creditNotes: Array<{ id: string; number: string }>;
+  refunds: Array<{ id: string; number: string }>;
 };
+
+// Plain enough to read as a link on the card: underlined, in the body colour.
+const DOCUMENT_LINK = "underline underline-offset-4";
 
 // The payment form takes the credit as a snapshot, so opening it carries the figure.
 type Action = { kind: "payment"; credit: bigint } | { kind: "credit" } | { kind: "refund" };
@@ -116,8 +122,7 @@ export function InvoiceAccount({
 }) {
   const queryClient = useQueryClient();
   const [action, setAction] = useState<Action | null>(null);
-  const [documentsOpen, setDocumentsOpen] = useState(false);
-  const needsDetail = documentsOpen || action?.kind === "credit" || action?.kind === "refund";
+  const needsDetail = action?.kind === "credit" || action?.kind === "refund";
 
   const detail = useQuery({
     ...orpc.billing.getInvoice.queryOptions({ input: { orgSlug, invoiceId: invoice.id } }),
@@ -199,49 +204,40 @@ export function InvoiceAccount({
           ) : null}
         </div>
       </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
-        <Button
-          size="xs"
-          variant="ghost"
-          className="h-auto px-0 text-muted-foreground"
-          onClick={() => setDocumentsOpen((open) => !open)}
-        >
-          {documentsOpen ? "Hide documents" : "Documents"}
-        </Button>
-        {documentsOpen && detail.data ? (
-          <>
-            {detail.data.payments.map((payment) => (
-              <Link
-                key={payment.id}
-                to="/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId"
-                params={{ orgSlug, invoiceId: invoice.id, paymentId: payment.id }}
-              >
-                Receipt <span className="font-mono">{payment.receiptNumber}</span>
-              </Link>
-            ))}
-            {detail.data.creditNotes.map((note) => (
-              <Link
-                key={note.id}
-                className="font-mono"
-                to="/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId"
-                params={{ orgSlug, invoiceId: invoice.id, creditNoteId: note.id }}
-              >
-                {note.creditNoteNumber}
-              </Link>
-            ))}
-            {detail.data.refunds.map((refund) => (
-              <Link
-                key={refund.id}
-                to="/$orgSlug/billing/invoices/$invoiceId/refund/$refundId"
-                params={{ orgSlug, invoiceId: invoice.id, refundId: refund.id }}
-                className="font-mono"
-              >
-                {refund.refundNumber}
-              </Link>
-            ))}
-          </>
-        ) : null}
-      </div>
+      {invoice.receipts.length + invoice.creditNotes.length + invoice.refunds.length > 0 ? (
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {invoice.receipts.map((receipt) => (
+            <Link
+              key={receipt.id}
+              to="/$orgSlug/billing/invoices/$invoiceId/receipt/$paymentId"
+              params={{ orgSlug, invoiceId: invoice.id, paymentId: receipt.id }}
+              className={DOCUMENT_LINK}
+            >
+              Receipt <span className="font-mono">{receipt.number}</span>
+            </Link>
+          ))}
+          {invoice.creditNotes.map((note) => (
+            <Link
+              key={note.id}
+              to="/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId"
+              params={{ orgSlug, invoiceId: invoice.id, creditNoteId: note.id }}
+              className={DOCUMENT_LINK}
+            >
+              Credit note <span className="font-mono">{note.number}</span>
+            </Link>
+          ))}
+          {invoice.refunds.map((refund) => (
+            <Link
+              key={refund.id}
+              to="/$orgSlug/billing/invoices/$invoiceId/refund/$refundId"
+              params={{ orgSlug, invoiceId: invoice.id, refundId: refund.id }}
+              className={DOCUMENT_LINK}
+            >
+              Refund <span className="font-mono">{refund.number}</span>
+            </Link>
+          ))}
+        </div>
+      ) : null}
       {needsDetail && detail.isPending ? (
         <p role="status" className="text-muted-foreground">
           Loading invoice details…
