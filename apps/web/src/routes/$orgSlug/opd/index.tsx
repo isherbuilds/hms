@@ -8,7 +8,7 @@ import { CircleDotIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { z } from "zod";
 
-import { OpdAppointmentStatusBadge, useOpdCheckIn } from "@/components/opd-appointment";
+import { opdQueueColumns, useOpdCheckIn } from "@/components/opd-appointment";
 import { CheckInOpdAppointmentDialog } from "@/components/opd-appointment-dialogs";
 import { followUpsQuery, OpdFollowUps } from "@/components/opd-follow-ups";
 import {
@@ -37,7 +37,6 @@ import { OPERATIONAL_INFINITE_REFETCH } from "@/lib/operational-query";
 import { dateRangeLabel } from "@/lib/date-presets";
 import { formatTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 const STATUS_LABELS = { all: "All", "follow-ups": "Follow-ups" } as const;
 
@@ -197,40 +196,7 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
       >
         <DataList
           columns={[
-            {
-              head: "Patient",
-              cell: (appointment) => (
-                <span className="inline-flex max-w-full items-center gap-2">
-                  <span
-                    className="truncate capitalize"
-                    title={appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
-                  >
-                    {appointment.patientName ?? appointment.callerName ?? "Unnamed caller"}
-                  </span>
-                  <span
-                    className="truncate font-mono text-muted-foreground"
-                    title={appointment.patientMrn ?? appointment.callerPhone ?? "No phone"}
-                  >
-                    {appointment.patientMrn ?? appointment.callerPhone ?? "No phone"}
-                  </span>
-                </span>
-              ),
-              className: "max-w-0",
-            },
-            {
-              head: "Token",
-              cell: (appointment) =>
-                appointment.tokenNumber === null ? (
-                  <span className="text-muted-foreground">·</span>
-                ) : (
-                  <span className="font-mono font-medium tabular-nums">
-                    {appointment.tokenNumber}
-                  </span>
-                ),
-              className: "w-16",
-              mobile: "title",
-            },
-            {
+            ...opdQueueColumns({
               head: "Time",
               cell: (appointment) => (
                 <span className="whitespace-nowrap text-muted-foreground tabular-nums">
@@ -238,24 +204,7 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
                 </span>
               ),
               className: "w-20",
-            },
-            {
-              head: "Practitioner",
-              cell: (appointment) => (
-                <span
-                  className="block truncate capitalize"
-                  title={practitionerDisplayName(appointment.practitionerName)}
-                >
-                  {practitionerDisplayName(appointment.practitionerName)}
-                </span>
-              ),
-              className: "max-w-0",
-            },
-            {
-              head: "Status",
-              cell: (appointment) => <OpdAppointmentStatusBadge status={appointment.status} />,
-              mobile: "title",
-            },
+            }),
             {
               head: "Balance",
               cell: (appointment) =>
@@ -265,6 +214,7 @@ function OpdAppointments({ orgSlug, search }: { orgSlug: string; search: string 
                   </Badge>
                 ) : null,
               className: "text-right",
+              mobile: "title",
             },
           ]}
           rows={items}

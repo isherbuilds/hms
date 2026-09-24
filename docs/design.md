@@ -343,8 +343,10 @@ below, and the table returns at `md`. Report and print tables are the one
 exception and keep the primitive's horizontal scroll. A scrollbar is 6 px on
 both axes; the sidebar rail hides its own because a rail is not a data region.
 A long text cell wraps with `wrap-break-words` when its content is why the reader is
-there, or uses `max-w-0` with an inner `truncate` `div` and a `title` when it
-is secondary. Identifiers stay whole: when one can outgrow the row, the table is
+there, or uses `max-w-0` with a `truncate` cell (an inner `truncate` block
+only for a stacked two-line cell) and a `title` when it is secondary. A
+`max-w-0` column also declares its share of the width (`w-1/4`), or the table
+squeezes it to nothing while empty columns take the space. Identifiers stay whole: when one can outgrow the row, the table is
 `table-fixed` with declared column widths and the identifier cell wraps with
 `break-all`.
 

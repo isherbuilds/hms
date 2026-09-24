@@ -1,5 +1,4 @@
 import { authorize } from "@hms/auth/access";
-import { Badge } from "@hms/ui/components/badge";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
@@ -15,7 +14,8 @@ import { z } from "zod";
 
 import { BarChart, type BarDatum } from "@/components/bar-chart";
 import { DateFilter } from "@/components/list-filter";
-import { ListState, PageBody, PageHeader, Panel } from "@/components/page";
+import { opdQueueColumns } from "@/components/opd-appointment";
+import { DataList, ListState, PageBody, PageHeader, Panel } from "@/components/page";
 import { useMembership } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
 import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
@@ -23,7 +23,6 @@ import { dateRangeLabel } from "@/lib/date-presets";
 import { formatBusinessDate, formatDay, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { methodLabel } from "@/lib/settlement";
-import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 export const Route = createFileRoute("/$orgSlug/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard · HMS" }] }),
@@ -100,7 +99,7 @@ function StatCard({
       <div className="flex min-h-30 flex-1 flex-col justify-between gap-4 rounded-lg border border-border bg-card p-4">
         <div className="flex items-baseline justify-between gap-2">
           {pending ? null : (
-            <span className="truncate text-3xl font-medium tracking-tight tabular-nums">
+            <span className="truncate text-2xl font-medium tracking-tight tabular-nums sm:text-3xl">
               {value}
             </span>
           )}
@@ -190,7 +189,7 @@ function DashboardRoute() {
       />
 
       <PageBody>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {canReadOpdAppointments && (
             <>
               <StatCard
@@ -222,7 +221,7 @@ function DashboardRoute() {
                   label="Unbilled"
                   icon={ReceiptTextIcon}
                   value={money(collections.data?.unbilled)}
-                  note="Unbilled past alert threshold"
+                  note="Past alert threshold"
                   pending={collections.isPending}
                   queue={{ from, to }}
                   orgSlug={orgSlug}
@@ -313,19 +312,16 @@ function DashboardRoute() {
           <Panel
             label="Waiting patients"
             minHeight="min-h-64"
-            padded
             action={
-              <div className="flex items-center gap-2">
-                <Link
-                  to="/$orgSlug/opd"
-                  params={{ orgSlug }}
-                  search={{ from, to }}
-                  className="flex items-center gap-1 [@media(hover:hover)_and_(pointer:fine)]:hover:text-foreground"
-                >
-                  Open queue
-                  <ArrowRightIcon className="size-3.5" />
-                </Link>
-              </div>
+              <Link
+                to="/$orgSlug/opd"
+                params={{ orgSlug }}
+                search={{ from, to }}
+                className="flex items-center gap-1 [@media(hover:hover)_and_(pointer:fine)]:hover:text-foreground"
+              >
+                Open queue
+                <ArrowRightIcon className="size-3.5" />
+              </Link>
             }
           >
             <ListState
@@ -334,50 +330,21 @@ function DashboardRoute() {
               isEmpty={queue.data?.items.length === 0}
               empty="The queue is empty"
             >
-              {queue.data && queue.data.items.length > 0 && (
-                <table className="w-full text-left">
-                  <thead className="text-muted-foreground">
-                    <tr>
-                      <th className="pb-2 font-normal">Token</th>
-                      <th className="pb-2 font-normal">Patient</th>
-                      <th className="pb-2 font-normal">Department</th>
-                      <th className="pb-2 font-normal">Practitioner</th>
-                      <th className="pb-2 text-right font-normal">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {queue.data.items.map((appointment) => (
-                      <tr
-                        key={appointment.id}
-                        className="relative border-t border-border [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/40"
-                      >
-                        <td className="py-2 font-mono tabular-nums text-muted-foreground">
-                          {appointment.tokenNumber}
-                        </td>
-                        <td className="py-2">
-                          <Link
-                            to="/$orgSlug/opd/$appointmentId"
-                            params={{ orgSlug, appointmentId: appointment.id }}
-                            className="capitalize after:absolute after:inset-0 after:rounded-md focus-visible:after:outline-[2.5px] focus-visible:after:outline-offset-[-2.5px] focus-visible:after:outline-(--focus-ring) [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-                            data-focus-floor="off"
-                          >
-                            {appointment.patientName}
-                          </Link>
-                        </td>
-                        <td className="py-2 text-muted-foreground">{appointment.departmentName}</td>
-                        <td className="py-2 text-muted-foreground capitalize">
-                          {practitionerDisplayName(appointment.practitionerName)}
-                        </td>
-                        <td className="py-2 text-right">
-                          <Badge variant="secondary">
-                            {appointment.status === "checked_in" ? "Checked In" : "Booked"}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+              <DataList
+                columns={opdQueueColumns({
+                  head: "Department",
+                  cell: (appointment) => (
+                    <span className="text-muted-foreground">{appointment.departmentName}</span>
+                  ),
+                  className: "w-1/5 max-w-0 truncate xl:w-1/6",
+                })}
+                rows={queue.data?.items ?? []}
+                rowKey={(appointment) => appointment.id}
+                link={(appointment) => ({
+                  to: "/$orgSlug/opd/$appointmentId",
+                  params: { orgSlug, appointmentId: appointment.id },
+                })}
+              />
             </ListState>
           </Panel>
         )}
