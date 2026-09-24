@@ -5,7 +5,7 @@ import { Separator } from "@hms/ui/components/separator";
 import { cn } from "@hms/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { ClientOnly, Link, Outlet, createFileRoute, useChildMatches } from "@tanstack/react-router";
-import { PrinterIcon } from "lucide-react";
+import { ArrowUpRightIcon, PrinterIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { useConfirm } from "@/components/confirm-dialog";
@@ -149,7 +149,15 @@ function OpdRecordLayout() {
       <div className={cn("contents", isClinical && "print:hidden")}>
         <PageHeader
           title="Outpatient appointment"
-          description={<OpdRecordDescription orgSlug={orgSlug} record={record} />}
+          description={
+            record.appointment.tokenNumber != null ? (
+              <>
+                Token <span className="font-mono">{record.appointment.tokenNumber}</span>
+              </>
+            ) : (
+              "Booked"
+            )
+          }
           action={
             <>
               <StaleDataNotice dataUpdatedAt={detail.dataUpdatedAt} />
@@ -179,7 +187,7 @@ function OpdRecordLayout() {
             }
           />
           <Separator />
-          <OpdRecordFacts record={record} />
+          <OpdRecordFacts orgSlug={orgSlug} record={record} />
           <Separator />
         </div>
         <Outlet />
@@ -337,44 +345,6 @@ type OpdRecordIdentity = {
   department: { name: string };
 };
 
-function OpdRecordDescription({ orgSlug, record }: { orgSlug: string; record: OpdRecordIdentity }) {
-  const { appointment, patient } = record;
-
-  return (
-    <>
-      {appointment.tokenNumber != null ? (
-        <>
-          Token <span className="font-mono">{appointment.tokenNumber}</span>
-        </>
-      ) : (
-        "Booked"
-      )}
-      {" · "}
-      {patient ? (
-        <Link
-          to="/$orgSlug/patients/$patientId"
-          params={{ orgSlug, patientId: patient.id }}
-          className="underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-        >
-          <span className="font-mono">{patient.mrn}</span>
-          {" · "}
-          <span className="capitalize">{patient.name}</span>
-        </Link>
-      ) : (
-        <span>
-          {appointment.callerName ? (
-            <span className="capitalize">{appointment.callerName}</span>
-          ) : (
-            "Unnamed caller"
-          )}
-          {" · "}
-          <span className="font-mono">{appointment.callerPhone ?? "No phone"}</span>
-        </span>
-      )}
-    </>
-  );
-}
-
 function OpdRecordSummary({ record, action }: { record: OpdRecordIdentity; action?: ReactNode }) {
   const { timeZone } = useOrgDateTime();
   const { appointment } = record;
@@ -396,20 +366,15 @@ function OpdRecordSummary({ record, action }: { record: OpdRecordIdentity; actio
 
   return (
     <section className="flex flex-wrap items-start justify-between gap-4">
-      <dl className="grid min-w-0 flex-1 grid-cols-2 gap-4 sm:grid-cols-3">
-        <div className="flex flex-col gap-1">
-          <dt className="text-muted-foreground">Token</dt>
-          <dd className="font-mono font-medium tabular-nums">
-            {appointment.tokenNumber ?? "Pending"}
-          </dd>
-        </div>
+      {/* The token is the header's identity (design.md, page-header grammar). */}
+      <dl className="grid min-w-0 flex-1 grid-cols-2 gap-4">
         <div className="flex flex-col gap-1">
           <dt className="text-muted-foreground">Status</dt>
           <dd>
             <OpdAppointmentStatusBadge status={appointment.status} />
           </dd>
         </div>
-        <div className="col-span-2 flex flex-col gap-1 sm:col-span-1">
+        <div className="flex flex-col gap-1">
           <dt className="text-muted-foreground">{event.label}</dt>
           <dd className="font-medium tabular-nums">{event.value}</dd>
         </div>
@@ -419,7 +384,7 @@ function OpdRecordSummary({ record, action }: { record: OpdRecordIdentity; actio
   );
 }
 
-function OpdRecordFacts({ record }: { record: OpdRecordIdentity }) {
+function OpdRecordFacts({ orgSlug, record }: { orgSlug: string; record: OpdRecordIdentity }) {
   const { today } = useOrgDateTime();
   const { appointment, patient, practitioner, department } = record;
   const guardian = patient && guardianLabel(patient);
@@ -434,7 +399,15 @@ function OpdRecordFacts({ record }: { record: OpdRecordIdentity }) {
         <div className="flex flex-col gap-1">
           <h2 className="text-muted-foreground">Patient</h2>
           <p className="font-medium">
-            <span className="capitalize">{patient.name}</span>
+            {/* The one way from the visit to the patient's full record. */}
+            <Link
+              to="/$orgSlug/patients/$patientId"
+              params={{ orgSlug, patientId: patient.id }}
+              className="inline-flex items-center gap-1 underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+            >
+              <span className="capitalize">{patient.name}</span>
+              <ArrowUpRightIcon aria-hidden className="size-3 text-muted-foreground" />
+            </Link>
             {guardian ? (
               <span className="font-normal text-muted-foreground">
                 {` ${guardian.relation} `}
