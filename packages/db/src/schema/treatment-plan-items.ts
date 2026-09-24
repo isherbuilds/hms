@@ -26,11 +26,12 @@ export const treatmentPlanItems = pgTable(
     treatmentPlanId: text("treatment_plan_id").notNull(),
     catalogItemId: text("catalog_item_id").notNull(),
     description: text("description").notNull(),
-    unitPrice: bigint("unit_price", { mode: "bigint" }).notNull(),
+    /** The whole course price for this item, split across its sittings as each is posted. */
+    quotedPrice: bigint("quoted_price", { mode: "bigint" }).notNull(),
     taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull(),
     taxCode: text("tax_code"),
     revenueCategory: text("revenue_category", { enum: CATALOG_CATEGORIES }).notNull(),
-    qtyPlanned: integer("qty_planned").notNull(),
+    sittingsPlanned: integer("sittings_planned").notNull(),
     note: text("note"),
     status: text("status", { enum: TREATMENT_ITEM_STATUSES }).notNull().default("open"),
     dropReason: text("drop_reason"),
@@ -41,9 +42,9 @@ export const treatmentPlanItems = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    check("treatment_plan_items_unit_price_check", sql`${table.unitPrice} >= 0`),
+    check("treatment_plan_items_quoted_price_check", sql`${table.quotedPrice} >= 0`),
     check("treatment_plan_items_tax_rate_check", sql`${table.taxRatePercent} >= 0`),
-    check("treatment_plan_items_qty_check", sql`${table.qtyPlanned} > 0`),
+    check("treatment_plan_items_sittings_check", sql`${table.sittingsPlanned} > 0`),
     check(
       "treatment_plan_items_drop_reason_check",
       sql`${table.status} <> 'dropped' or ${table.dropReason} is not null`,

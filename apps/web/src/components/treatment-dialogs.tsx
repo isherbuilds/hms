@@ -6,7 +6,7 @@ import { NativeSelect } from "@hms/ui/components/native-select";
 import { useQuery } from "@tanstack/react-query";
 import { SearchIcon } from "lucide-react";
 import type { ComponentPropsWithoutRef } from "react";
-import { useFormContext } from "react-hook-form";
+import { useFormContext, useWatch } from "react-hook-form";
 import { z } from "zod";
 
 import { FormDialog } from "@/components/form-dialog";
@@ -32,12 +32,12 @@ const procedureField = z
 
 const itemFields = {
   procedure: procedureField,
-  qtyPlanned: z.coerce.number().int().min(1).max(999),
-  unitPrice: z.string().regex(DECIMAL_PATTERN, "Amount like 150.00").transform(parseDecimal),
+  sittingsPlanned: z.coerce.number().int().min(1).max(99),
+  quotedPrice: z.string().regex(DECIMAL_PATTERN, "Amount like 150.00").transform(parseDecimal),
   note: z.string().trim().max(500),
 };
 
-const NEW_ITEM = { procedure: null, qtyPlanned: 1, unitPrice: "0.00", note: "" };
+const NEW_ITEM = { procedure: null, sittingsPlanned: 1, quotedPrice: "0.00", note: "" };
 
 const newPlanSchema = z.object({
   practitionerId: z.string().min(1, "Choose a practitioner"),
@@ -70,6 +70,13 @@ const REASON_DIALOGS = {
 /** The item a plan dialog sends, once the picked procedure is mapped onto its id. */
 function itemInput({ procedure, note, ...rest }: z.output<typeof addItemSchema>) {
   return { catalogItemId: procedure.id, note: note || undefined, ...rest };
+}
+
+/** The live split the doctor sees while quoting; the last sitting also takes any rounding. */
+function sittingShare(price: string, sittings: number) {
+  if (!DECIMAL_PATTERN.test(price) || !Number.isInteger(sittings) || sittings < 1) return null;
+
+  return formatDecimal(parseDecimal(price) / BigInt(sittings));
 }
 
 export function NewPlanDialog({
@@ -128,7 +135,7 @@ export function AddItemDialog({
   return (
     <FormDialog
       title="Add plan item"
-      description="Add accepted work at its quoted price."
+      description="Add accepted work at its total price for the whole course."
       submitLabel="Add item"
       schema={addItemSchema}
       defaultValues={NEW_ITEM}
@@ -170,52 +177,6 @@ export function NextSittingDialog({
     >
       <TextField name="date" label="Date" type="date" />
       <TextField name="note" label="Note" multiline />
-    </FormDialog>
-  );
-}
-
-export type PostTarget = {
-  itemId: string;
-  description: string;
-  remaining: number;
-  billed: boolean;
-};
-
-export function PostItemDialog({
-  orgSlug,
-  appointmentId,
-  target,
-  onClose,
-}: {
-  orgSlug: string;
-  appointmentId: string;
-  target: PostTarget;
-  onClose: () => void;
-}) {
-  return (
-    <FormDialog
-      title="Post to this visit"
-      description={
-        target.billed
-          ? `This visit already bills ${target.description} as a service. If that was this work, void or credit it in Billing after posting.`
-          : `${target.description}: ${target.remaining} left in the plan.`
-      }
-      submitLabel="Post to this visit"
-      schema={z.object({ qty: z.coerce.number().int().min(1).max(target.remaining) })}
-      defaultValues={{ qty: 1 }}
-      success="Work posted to this visit"
-      onClose={onClose}
-      run={({ qty }) =>
-        orpc.treatment.postToVisit.call({ orgSlug, appointmentId, itemId: target.itemId, qty })
-      }
-    >
-      <TextField
-        name="qty"
-        label="Quantity delivered"
-        type="number"
-        min={1}
-        max={target.remaining}
-      />
     </FormDialog>
   );
 }
@@ -339,18 +300,21 @@ function ProcedureSearch({
 function ItemFields({ orgSlug }: { orgSlug: string }) {
   const { control, setValue, setFocus } = useFormContext<{
     procedure: Procedure | null;
-    qtyPlanned: number;
-    unitPrice: string;
+    sittingsPlanned: number;
+    quotedPrice: string;
   }>();
 
-  // The quote follows the picked service; the desk can still change the price after.
+  // The quote follows the picked service; the doctor sets this patient's course price after.
   // Picking unmounts the search input, so hand the caret to the next field rather than
   // letting it fall back to the dialog.
   const choose = (item: Procedure) => {
     setValue("procedure", item, { shouldDirty: true, shouldValidate: true });
-    setValue("unitPrice", formatDecimal(item.unitPrice), { shouldDirty: true });
-    setFocus("qtyPlanned");
+    setValue("quotedPrice", formatDecimal(item.unitPrice), { shouldDirty: true });
+    setFocus("quotedPrice");
   };
+
+  const [price, sittings] = useWatch({ control, name: ["quotedPrice", "sittingsPlanned"] });
+  const perSitting = sittingShare(price, Number(sittings));
 
   return (
     <div className="grid gap-3 sm:grid-cols-2">
@@ -394,8 +358,13 @@ function ItemFields({ orgSlug }: { orgSlug: string }) {
           </FormItem>
         )}
       />
-      <TextField name="qtyPlanned" label="Planned quantity" type="number" min={1} />
-      <TextField name="unitPrice" label="Quoted unit price" inputMode="decimal" />
+      <TextField name="quotedPrice" label="Total price" inputMode="decimal" />
+      <TextField name="sittingsPlanned" label="Estimated sittings" type="number" min={1} max={99} />
+      <p className="text-muted-foreground tabular-nums sm:col-span-2" aria-live="polite">
+        {perSitting === null
+          ? "\u00a0"
+          : `About ${perSitting} per sitting; the last sitting bills the rest`}
+      </p>
       <TextField
         name="note"
         label="Note"

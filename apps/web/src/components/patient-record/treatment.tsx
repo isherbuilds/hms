@@ -112,8 +112,10 @@ function PlanCard({
           </dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">Quoted</dt>
-          <dd className="tabular-nums">{formatMoney(plan.quotedTotal, currency)}</dd>
+          <dt className="text-muted-foreground">Posted / total</dt>
+          <dd className="tabular-nums">
+            {formatMoney(plan.postedAmount, currency)} / {formatMoney(plan.quotedTotal, currency)}
+          </dd>
         </div>
       </dl>
       {plan.status === "open" && plan.nextSittingNote ? (

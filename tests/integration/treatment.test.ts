@@ -99,7 +99,7 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     practitionerId: setup.practitioner.id,
-    item: { catalogItemId: setup.service.id, qtyPlanned: 1 },
+    item: { catalogItemId: setup.service.id, sittingsPlanned: 1 },
     nextSittingOn: "2000-01-01",
     nextSittingNote: "Call before booking",
   });
@@ -136,7 +136,7 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     practitionerId: setup.practitioner.id,
-    item: { catalogItemId: setup.service.id, qtyPlanned: 1 },
+    item: { catalogItemId: setup.service.id, sittingsPlanned: 1 },
   });
 
   const future = await setup.api.treatment.create({
@@ -144,7 +144,7 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
     patientId: setup.patient.id,
     practitionerId: setup.practitioner.id,
     nextSittingOn: "2999-01-01",
-    item: { catalogItemId: setup.service.id, qtyPlanned: 1 },
+    item: { catalogItemId: setup.service.id, sittingsPlanned: 1 },
   });
 
   const bookedPlan = await setup.api.treatment.create({
@@ -152,7 +152,7 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
     patientId: setup.patient.id,
     practitionerId: setup.practitioner.id,
     nextSittingOn: "2000-01-02",
-    item: { catalogItemId: setup.service.id, qtyPlanned: 1 },
+    item: { catalogItemId: setup.service.id, sittingsPlanned: 1 },
   });
 
   const settings = await setup.api.settings.get({ orgSlug: setup.organization.slug });
@@ -201,7 +201,7 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
 
   const detail = await planDetail(setup, plan.id);
 
-  expect(detail.items[0]).toMatchObject({ postedQty: 0, done: false });
+  expect(detail.items[0]).toMatchObject({ postedSittings: 0, done: false });
 
   // D038: the service billed at intake stays ordinary work; the plan post is its own charge.
   const posted = await setup.api.treatment.postToVisit({
@@ -226,7 +226,10 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
     ]),
   );
   expect(posted.charge.sourceId).toBe(detail.items[0]!.id);
-  expect((await planDetail(setup, plan.id)).items[0]).toMatchObject({ postedQty: 1, done: true });
+  expect((await planDetail(setup, plan.id)).items[0]).toMatchObject({
+    postedSittings: 1,
+    done: true,
+  });
   expect(detail.sittings.map((sitting) => sitting.id)).toEqual([
     first.appointment.id,
     second.appointment.id,
@@ -290,7 +293,7 @@ test("a crown added mid-course remains on the RCT plan and each charge names its
       orgSlug: setup.organization.slug,
       patientId: setup.patient.id,
       practitionerId: setup.practitioner.id,
-      item: { catalogItemId: consultation.id, qtyPlanned: 1 },
+      item: { catalogItemId: consultation.id, sittingsPlanned: 1 },
     }),
     "NOT_FOUND",
   );
@@ -319,7 +322,7 @@ test("a crown added mid-course remains on the RCT plan and each charge names its
     patientId: setup.patient.id,
     practitionerId: setup.practitioner.id,
     appointmentId: booked.id,
-    item: { catalogItemId: setup.service.id, qtyPlanned: 1 },
+    item: { catalogItemId: setup.service.id, sittingsPlanned: 1 },
   });
 
   await expectORPCCode(
@@ -328,7 +331,7 @@ test("a crown added mid-course remains on the RCT plan and each charge names its
       patientId: setup.patient.id,
       practitionerId: setup.practitioner.id,
       appointmentId: booked.id,
-      item: { catalogItemId: setup.service.id, qtyPlanned: 1 },
+      item: { catalogItemId: setup.service.id, sittingsPlanned: 1 },
     }),
     "CONFLICT",
   );
@@ -378,7 +381,7 @@ test("a crown added mid-course remains on the RCT plan and each charge names its
     setup.api.treatment.addItem({
       orgSlug: setup.organization.slug,
       planId: plan.id,
-      item: { catalogItemId: crown.id, qtyPlanned: 1, unitPrice: 75_00n },
+      item: { catalogItemId: crown.id, sittingsPlanned: 1, quotedPrice: 75_00n },
     }),
     "BAD_REQUEST",
   );
@@ -388,8 +391,8 @@ test("a crown added mid-course remains on the RCT plan and each charge names its
     planId: plan.id,
     item: {
       catalogItemId: crown.id,
-      qtyPlanned: 1,
-      unitPrice: 75_00n,
+      sittingsPlanned: 1,
+      quotedPrice: 75_00n,
       note: "Quoted package rate",
     },
   });
@@ -411,11 +414,11 @@ test("a crown added mid-course remains on the RCT plan and each charge names its
   expect(detail.label).toBe(`${setup.service.name} + Crown 36`);
 
   expect(detail.items).toEqual([
-    expect.objectContaining({ catalogItemId: setup.service.id, postedQty: 1, done: true }),
+    expect.objectContaining({ catalogItemId: setup.service.id, postedSittings: 1, done: true }),
     expect.objectContaining({
       catalogItemId: crown.id,
-      unitPrice: 75_00n,
-      postedQty: 1,
+      quotedPrice: 75_00n,
+      postedSittings: 1,
       done: true,
     }),
   ]);
@@ -444,13 +447,13 @@ test("two teeth of one procedure post to one sitting, and voiding delivery reope
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     practitionerId: setup.practitioner.id,
-    item: { catalogItemId: setup.service.id, qtyPlanned: 1, note: "Tooth 36" },
+    item: { catalogItemId: setup.service.id, sittingsPlanned: 1, note: "Tooth 36" },
   });
 
   const second = await setup.api.treatment.addItem({
     orgSlug: setup.organization.slug,
     planId: plan.id,
-    item: { catalogItemId: setup.service.id, qtyPlanned: 1, note: "Tooth 46" },
+    item: { catalogItemId: setup.service.id, sittingsPlanned: 1, note: "Tooth 46" },
   });
 
   const sitting = await createCheckedInSitting(setup, plan.id, 10);
@@ -507,7 +510,7 @@ test("closing a plan ahead of queued item writes leaves no dependent change behi
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     practitionerId: setup.practitioner.id,
-    item: { catalogItemId: setup.service.id, qtyPlanned: 1 },
+    item: { catalogItemId: setup.service.id, sittingsPlanned: 1 },
   });
 
   const extra = await setup.api.catalog.create({
@@ -562,7 +565,7 @@ test("closing a plan ahead of queued item writes leaves no dependent change behi
       setup.api.treatment.addItem({
         orgSlug: setup.organization.slug,
         planId: plan.id,
-        item: { catalogItemId: extra.id, qtyPlanned: 1 },
+        item: { catalogItemId: extra.id, sittingsPlanned: 1 },
       }),
       "CONFLICT",
     );
@@ -620,7 +623,12 @@ test("three irregular plan advances settle three physiotherapy sittings before u
     orgSlug: setup.organization.slug,
     patientId: setup.patient.id,
     practitionerId: setup.practitioner.id,
-    item: { catalogItemId: setup.service.id, qtyPlanned: 3 },
+    item: {
+      catalogItemId: setup.service.id,
+      sittingsPlanned: 3,
+      quotedPrice: 150_00n,
+      note: "Three-session course",
+    },
   });
 
   await expectORPCCode(
@@ -778,7 +786,7 @@ test("check-in cannot change patient when a plan was linked while it waited", as
     orgSlug,
     patientId: setup.patient.id,
     practitionerId: setup.practitioner.id,
-    item: { catalogItemId: setup.service.id, qtyPlanned: 1 },
+    item: { catalogItemId: setup.service.id, sittingsPlanned: 1 },
   });
 
   const settings = await setup.api.settings.get({ orgSlug });
@@ -850,7 +858,7 @@ test("credit allocation does not spend receipts created after its lock statement
     orgSlug,
     patientId: setup.patient.id,
     practitionerId: setup.practitioner.id,
-    item: { catalogItemId: setup.service.id, qtyPlanned: 1 },
+    item: { catalogItemId: setup.service.id, sittingsPlanned: 1 },
   });
 
   const sitting = await createCheckedInSitting(setup, plan.id, 10);
@@ -928,4 +936,97 @@ test("credit allocation does not spend receipts created after its lock statement
     await locker.query("rollback");
     await locker.end();
   }
+});
+
+test("a four-sitting estimate allows billing the rest early and finishing the plan", async () => {
+  const setup = await fixture("treatment-course-split");
+
+  const plan = await setup.api.treatment.create({
+    orgSlug: setup.organization.slug,
+    patientId: setup.patient.id,
+    practitionerId: setup.practitioner.id,
+    item: { catalogItemId: setup.service.id, sittingsPlanned: 4 },
+  });
+
+  const [item] = (await planDetail(setup, plan.id)).items;
+
+  if (!item) throw new Error("Expected the plan's first item");
+
+  const first = await createCheckedInSitting(setup, plan.id, 10);
+
+  const firstPost = await setup.api.treatment.postToVisit({
+    orgSlug: setup.organization.slug,
+    appointmentId: first.appointment.id,
+    itemId: item.id,
+  });
+
+  expect(firstPost.charge.unitPrice).toBe(12_50n);
+
+  const second = await createCheckedInSitting(setup, plan.id, 20);
+
+  const restPost = await setup.api.treatment.postToVisit({
+    orgSlug: setup.organization.slug,
+    appointmentId: second.appointment.id,
+    itemId: item.id,
+    rest: true,
+  });
+
+  expect(restPost.charge.unitPrice).toBe(37_50n);
+
+  expect(await planDetail(setup, plan.id)).toMatchObject({
+    quotedTotal: 50_00n,
+    postedAmount: 50_00n,
+    items: [expect.objectContaining({ postedSittings: 2, nextSittingPrice: null, done: true })],
+  });
+
+  const third = await createCheckedInSitting(setup, plan.id, 30);
+  await expectORPCCode(
+    setup.api.treatment.postToVisit({
+      orgSlug: setup.organization.slug,
+      appointmentId: third.appointment.id,
+      itemId: item.id,
+    }),
+    "CONFLICT",
+  );
+
+  expect(
+    await setup.api.treatment.complete({ orgSlug: setup.organization.slug, planId: plan.id }),
+  ).toMatchObject({ status: "completed" });
+});
+
+test("a free course needs one posted sitting before completion", async () => {
+  const setup = await fixture("treatment-free-course");
+  const orgSlug = setup.organization.slug;
+
+  const plan = await setup.api.treatment.create({
+    orgSlug,
+    patientId: setup.patient.id,
+    practitionerId: setup.practitioner.id,
+    item: {
+      catalogItemId: setup.service.id,
+      sittingsPlanned: 2,
+      quotedPrice: 0n,
+      note: "No-charge treatment",
+    },
+  });
+
+  await expectORPCCode(setup.api.treatment.complete({ orgSlug, planId: plan.id }), "CONFLICT");
+
+  const sitting = await createCheckedInSitting(setup, plan.id, 10);
+  const item = (await planDetail(setup, plan.id)).items[0]!;
+
+  const posted = await setup.api.treatment.postToVisit({
+    orgSlug,
+    appointmentId: sitting.appointment.id,
+    itemId: item.id,
+  });
+
+  expect(posted.charge.unitPrice).toBe(0n);
+  expect((await planDetail(setup, plan.id)).items[0]).toMatchObject({
+    postedSittings: 1,
+    done: true,
+  });
+  expect(await setup.api.treatment.complete({ orgSlug, planId: plan.id })).toMatchObject({
+    status: "completed",
+  });
 });

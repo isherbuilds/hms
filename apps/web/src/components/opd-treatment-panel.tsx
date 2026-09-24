@@ -5,14 +5,13 @@ import { skipToken, useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/confirm-dialog";
 import { ErrorNote } from "@/components/page";
 import { PlanItemRow } from "@/components/treatment-plan-item";
 import {
   AddItemDialog,
   NewPlanDialog,
   NextSittingDialog,
-  PostItemDialog,
-  type PostTarget,
   ReasonDialog,
   type TreatmentAction,
 } from "@/components/treatment-dialogs";
@@ -44,7 +43,7 @@ export function OpdTreatmentPanel({
   const [action, setAction] = useState<TreatmentAction | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [dropping, setDropping] = useState<string | null>(null);
-  const [posting, setPosting] = useState<PostTarget | null>(null);
+  const [confirm, confirmDialog] = useConfirm();
 
   const plans = useQuery(
     orpc.treatment.listForPatient.queryOptions({
@@ -66,7 +65,7 @@ export function OpdTreatmentPanel({
   );
 
   const post = useMutation(
-    orpc.treatment.postToVisit.mutationOptions(done("Work posted to this visit")),
+    orpc.treatment.postToVisit.mutationOptions(done("Sitting posted to this visit")),
   );
 
   const complete = useMutation(
@@ -158,60 +157,84 @@ export function OpdTreatmentPanel({
                 : plan.nextSittingOn
                   ? `next ${formatBusinessDate(plan.nextSittingOn)}`
                   : "next not set"}{" "}
-              · quoted {formatMoney(plan.quotedTotal, currency)}
+              · posted {formatMoney(plan.postedAmount, currency)} of{" "}
+              {formatMoney(plan.quotedTotal, currency)}
             </p>
           </div>
           <div className="flex flex-col divide-y">
-            {plan.items.map((item) => (
-              <PlanItemRow
-                key={item.id}
-                item={item}
-                currency={currency}
-                action={
-                  plan.status === "open" && item.status === "open" && !item.done ? (
-                    <>
-                      {authorize(roles, { billing: ["write"] }) && checkedIn ? (
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          disabled={post.isPending}
-                          onClick={() => {
-                            const remaining = item.qtyPlanned - item.postedQty;
+            {plan.items.map((item) => {
+              const unposted = item.quotedPrice - item.postedAmount;
 
-                            // An ordinary charge for the same service may be this work;
-                            // the desk decides, the server never guesses (D038).
-                            const billed = record.charges.some(
-                              (charge) =>
-                                charge.catalogItemId === item.catalogItemId &&
-                                charge.sourceType === "catalog" &&
-                                charge.status !== "voided",
-                            );
+              const postItem = (rest: boolean) => {
+                const submit = () =>
+                  post.mutate({
+                    orgSlug,
+                    appointmentId,
+                    itemId: item.id,
+                    rest,
+                  });
 
-                            if (remaining > 1 || billed) {
-                              setPosting({
-                                itemId: item.id,
-                                description: item.description,
-                                remaining,
-                                billed,
-                              });
-                            } else {
-                              post.mutate({ orgSlug, appointmentId, itemId: item.id, qty: 1 });
-                            }
-                          }}
-                        >
-                          Post to this visit
-                        </Button>
-                      ) : null}
-                      {editable ? (
-                        <Button size="xs" variant="ghost" onClick={() => setDropping(item.id)}>
-                          Drop
-                        </Button>
-                      ) : null}
-                    </>
-                  ) : null
-                }
-              />
-            ))}
+                // An ordinary charge for the same service may be this work;
+                // the desk decides, the server never guesses (D038).
+                const billed = record.charges.some(
+                  (charge) =>
+                    charge.catalogItemId === item.catalogItemId &&
+                    charge.sourceType === "catalog" &&
+                    charge.status !== "voided",
+                );
+
+                if (!billed) return submit();
+
+                const label = rest ? "Bill rest" : "Post to this visit";
+                confirm({
+                  title: label,
+                  description: `This visit already bills ${item.description} as a service. If that was this work, void or credit it in Billing after posting.`,
+                  confirmLabel: label,
+                  run: submit,
+                });
+              };
+
+              return (
+                <PlanItemRow
+                  key={item.id}
+                  item={item}
+                  currency={currency}
+                  action={
+                    plan.status === "open" && item.status === "open" && !item.done ? (
+                      <>
+                        {authorize(roles, { billing: ["write"] }) && checkedIn ? (
+                          <>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              disabled={post.isPending}
+                              onClick={() => postItem(false)}
+                            >
+                              Post to this visit
+                            </Button>
+                            {item.nextSittingPrice !== unposted ? (
+                              <Button
+                                size="xs"
+                                variant="ghost"
+                                disabled={post.isPending}
+                                onClick={() => postItem(true)}
+                              >
+                                Bill rest
+                              </Button>
+                            ) : null}
+                          </>
+                        ) : null}
+                        {editable ? (
+                          <Button size="xs" variant="ghost" onClick={() => setDropping(item.id)}>
+                            Drop
+                          </Button>
+                        ) : null}
+                      </>
+                    ) : null
+                  }
+                />
+              );
+            })}
           </div>
           {plan.status === "open" && plan.nextSittingNote ? (
             <p className="text-muted-foreground">{plan.nextSittingNote}</p>
@@ -233,14 +256,7 @@ export function OpdTreatmentPanel({
       {editable && action === "next" ? (
         <NextSittingDialog orgSlug={orgSlug} plan={openPlan} onClose={() => setAction(null)} />
       ) : null}
-      {posting ? (
-        <PostItemDialog
-          orgSlug={orgSlug}
-          appointmentId={appointmentId}
-          target={posting}
-          onClose={() => setPosting(null)}
-        />
-      ) : null}
+      {confirmDialog}
       {editable && dropping ? (
         <ReasonDialog
           orgSlug={orgSlug}

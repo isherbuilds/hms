@@ -603,13 +603,13 @@ const GUARDED_CALLS = {
       ...claim,
       patientId: Bun.randomUUIDv7(),
       practitionerId: Bun.randomUUIDv7(),
-      item: { catalogItemId: Bun.randomUUIDv7(), qtyPlanned: 1 },
+      item: { catalogItemId: Bun.randomUUIDv7(), sittingsPlanned: 1 },
     }),
   "treatment.addItem": (api, claim) =>
     api.treatment.addItem({
       ...claim,
       planId: Bun.randomUUIDv7(),
-      item: { catalogItemId: Bun.randomUUIDv7(), qtyPlanned: 1 },
+      item: { catalogItemId: Bun.randomUUIDv7(), sittingsPlanned: 1 },
     }),
   "treatment.dropItem": (api, claim) =>
     api.treatment.dropItem({ ...claim, itemId: Bun.randomUUIDv7(), reason: "Intrusion" }),
@@ -825,7 +825,7 @@ async function createTreatmentScopeFixture(
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
-    item: { catalogItemId: service.id, qtyPlanned: 1 },
+    item: { catalogItemId: service.id, sittingsPlanned: 1 },
   });
 
   const advance = await api.billing.recordAdvance({

@@ -373,14 +373,14 @@ instead of D007's rolling release. A change that alters the unit
 or meaning of stored money again needs the same treatment: stop every writer,
 migrate, and start only code that reads the new unit.
 
-### D033 — A treatment plan item is a quote and may price below catalog
+### D033 — A treatment plan item quotes a course and may price below catalog
 
 **Accepted 2026-09-15; evidence: [research ledger](./research/README.md#adopted-findings).**
 A Treatment plan item snapshots the catalog description, tax facts, revenue
-category, planned quantity, and quoted unit price. The catalog price is the
-default. A different price requires the item's `note`, the same free-text field
-that records which tooth or site the work is for. A delivered Charge uses the
-plan price, while the catalog item stays unchanged.
+category, whole-course `quotedPrice`, and estimated sitting count. The catalog
+price is the default course price. A different price requires the item's `note`,
+the same free-text field that records which tooth or site the work is for.
+Delivered Charges use that quote; the catalog item stays unchanged.
 
 ### D034 — Course fees post on delivery
 
@@ -431,8 +431,8 @@ tenant boundary.
 ### D038 — Plan work is identified by its plan item, at posting
 
 **Accepted 2026-09-16.** `treatment.postToVisit` is the only path that creates
-plan work. It refuses the same plan item twice on one visit and a quantity above
-the plan, and always inserts its own Charge (`sourceType: "treatment_plan"`,
+plan work. It refuses a plan item already posted to this visit or whose full
+price was already posted, and always inserts its own Charge (`sourceType: "treatment_plan"`,
 `sourceId` = the item). An ordinary Charge for the same catalog service stays
 ordinary: the server cannot tell a second tooth from the same delivery, so it
 never adopts, reprices, or refuses because of one. The Clinical panel warns when
@@ -440,9 +440,9 @@ the visit already bills that service, and the desk voids or credits the ordinary
 Charge if it was this work. A sitting carries its plan link at intake so a plan
 with a booked sitting drops off the Follow-ups call sheet.
 
-Completion counts non-voided Charges, so every void goes through
+Completion uses non-voided Charges, so every void goes through
 `voidPendingCharges`, which locks the delivering plans and reopens a completed
-plan that loses a non-dropped item's delivery.
+plan that loses a non-dropped item's posted work.
 
 **Rejected:** matching by catalog item. Refusing on a same-service Charge blocked
 two teeth sharing one procedure; adopting the first pending one merged distinct
@@ -626,3 +626,29 @@ Services for any purpose". This matches the risk class the owner accepted
 for 1mg, but the owner has not confirmed it for these sources. Written
 permission is needed before commercial launch. If one source fails, the
 other still suggests; if both fail, manual entry remains available.
+
+### D047 — A course is priced once and split across estimated sittings
+
+**Accepted 2026-09-24 on the owner's instruction; amends D033 and D038.**
+The pilot entered a ₹7,000 denture as unit price × 4 and quoted ₹28,000.
+An item instead quotes the whole course. Each posted sitting bills the unbilled
+price divided across the estimated sittings left; once the estimate is used up,
+the next post bills all that remains. **Bill rest** bills it all sooner. The
+sitting count is an estimate, never a posting limit. A plan completes when
+every non-dropped priced item has its full price posted. A free item still needs one
+posted sitting before completion.
+
+Patients pay at will: paying less leaves the sitting's Invoice outstanding;
+paying more creates an Advance Receipt tagged to the plan. The OPD Billing tab
+shows the plan total and posted amount beside the existing Invoice and Advance
+actions. An Invoice can include tax and non-plan services, so there is no
+plan-specific collection balance or payment allocation rule.
+
+Existing rows migrate by multiplying unit price by planned quantity
+(`0007_treatment_item_sittings.sql` and `0008_treatment_course_price_data.sql`).
+This changes the meaning of stored money,
+so D031 requires a stop-the-world cutover.
+
+**Rejected:** billing the whole course at the first sitting books revenue
+before delivery (D034); an editable sitting count with floor rules adds more
+logic than the desk needs.

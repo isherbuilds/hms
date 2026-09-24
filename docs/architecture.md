@@ -215,7 +215,7 @@ it does not create a Visit/Encounter wrapper. Details live in [OPD](./opd.md).
 A Treatment plan groups a course of care for one Patient and Practitioner. Its
 items are quote snapshots, not earned work. Each Sitting is an ordinary
 plan-linked OPD Appointment. Posting a plan item to a checked-in Sitting creates
-the Charge; completed quantity and sitting counts are derived from those source
+the Charge; billed amount and sitting counts are derived from those source
 rows. The plan stores no name of its own: its label is derived from the item
 descriptions on read. Its free text is the requested next-sitting note and,
 once closed, the close reason.

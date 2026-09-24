@@ -1653,10 +1653,10 @@ test("advances held pages unspent receipts and drops one once its credit is appl
     treatmentPlanId: planId,
     catalogItemId: sitting.id,
     description: sitting.name,
-    unitPrice: sitting.unitPrice,
+    quotedPrice: sitting.unitPrice * 2n,
     taxRatePercent: sitting.taxRatePercent,
     revenueCategory: sitting.category,
-    qtyPlanned: 2,
+    sittingsPlanned: 2,
     createdBy: owner.user.id,
   });
 
@@ -1708,10 +1708,10 @@ test("advances held pages unspent receipts and drops one once its credit is appl
     treatmentPlanId: planId,
     catalogItemId: crown.id,
     description: crown.name,
-    unitPrice: crown.unitPrice,
+    quotedPrice: crown.unitPrice,
     taxRatePercent: crown.taxRatePercent,
     revenueCategory: crown.category,
-    qtyPlanned: 1,
+    sittingsPlanned: 1,
     createdBy: owner.user.id,
   });
 
@@ -1719,7 +1719,7 @@ test("advances held pages unspent receipts and drops one once its credit is appl
 
   expect(page.items[0]).toMatchObject({
     id: planned.id,
-    purpose: "Root canal treatment ×2",
+    purpose: "Root canal treatment · 2 sittings",
     planStatus: "open",
     remaining: 300_00n,
   });

@@ -1,0 +1,6 @@
+version: 1
+
+reviews:
+  ignore:
+    files:
+      - packages/db/src/migrations/**
