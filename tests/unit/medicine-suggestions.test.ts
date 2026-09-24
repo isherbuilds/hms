@@ -90,6 +90,15 @@ test("Medbuzz maps strength, trailing form and counted packs without a form list
   });
 
   expect(inhaler).toMatchObject({ strength: "200mcg / 6mcg", form: "inhaler", unitsPerPack: 2 });
+
+  expect(
+    mapMedbuzzProduct({
+      productName: "EXAMPLE POWDER",
+      genericName: null,
+      manufacturedBy: null,
+      packing: "Bottle of 100 gms",
+    }).unitsPerPack,
+  ).toBeNull();
 });
 
 test("Truemeds counts Units strips but not measured bottles", () => {

@@ -36,7 +36,8 @@ export type MedicineSuggestion = {
   packSizeLabel: string | null;
 };
 
-const MEASURE = /^(ml|mg|g|gm|kg|l|mcg|µg|iu)$/i;
+const COUNT_UNIT =
+  /^(tablets?|capsules?|softgels?|inhalers?|ampoules?|vials?|sachets?|patches?|suppositories?|units?)$/i;
 
 export function mapTruemedsProduct(product: TruemedsProduct): MedicineSuggestion {
   return {
@@ -62,7 +63,7 @@ export function mapMedbuzzProduct(data: MedbuzzProduct): MedicineSuggestion {
     strength: data.genericName?.match(/\d+(?:\.\d+)?[a-zµ%]+/gi)?.join(" / ") ?? null,
     form: data.productName.split(/\s+/).at(-1)?.toLowerCase() ?? null,
     manufacturer: data.manufacturedBy || null,
-    unitsPerPack: pack && !MEASURE.test(pack[2]!) ? Number(pack[1]) : null,
+    unitsPerPack: pack && COUNT_UNIT.test(pack[2]!) ? Number(pack[1]) : null,
     packSizeLabel: data.packing || null,
   };
 }

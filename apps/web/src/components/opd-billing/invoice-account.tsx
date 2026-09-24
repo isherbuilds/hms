@@ -46,7 +46,7 @@ import { PaymentLineFields } from "@/components/payment-lines";
 import { RecordPaymentForm } from "@/components/record-payment-form";
 import { formatMoney, parseMoneyInput, ZERO } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
-import { openingCredit } from "@/lib/patient-credit";
+import { openingCredit, type PatientCredit } from "@/lib/patient-credit";
 import { paymentLineFields } from "@/lib/settlement";
 
 const refundSchema = paymentLineFields
@@ -104,7 +104,7 @@ type InvoiceHeader = {
 const DOCUMENT_LINK = "underline underline-offset-4";
 
 // The payment form takes the credit as a snapshot, so opening it carries the figure.
-type Action = { kind: "payment"; credit: bigint } | { kind: "credit" } | { kind: "refund" };
+type Action = { kind: "payment"; credit: PatientCredit } | { kind: "credit" } | { kind: "refund" };
 
 export function InvoiceAccount({
   orgSlug,
@@ -132,7 +132,7 @@ export function InvoiceAccount({
   const openPayment = async () => {
     const credit = invoice.patientId
       ? await openingCredit(queryClient, orgSlug, invoice.patientId, treatmentPlanId)
-      : ZERO;
+      : { usable: ZERO, total: ZERO };
 
     if (credit === null) return;
     setAction({ kind: "payment", credit });
@@ -297,7 +297,7 @@ function PaymentDialog({
   orgSlug: string;
   invoiceId: string;
   outstanding: bigint;
-  availableCredit: bigint;
+  availableCredit: PatientCredit;
   currency: string;
   onIssueCreditNote?: () => void;
 }) {

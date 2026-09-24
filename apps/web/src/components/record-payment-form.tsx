@@ -21,6 +21,7 @@ import { useZodForm } from "@/hooks/use-zod-form";
 import { DECIMAL_PATTERN, formatDecimal, parseDecimal } from "@hms/api/core/money";
 import { formatMoney, parseMoneyInput, ZERO } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
+import { creditAvailableLabel, type PatientCredit } from "@/lib/patient-credit";
 import { closeOnConflict } from "@/lib/orpc-error";
 import {
   collectedPaise,
@@ -42,7 +43,7 @@ type RecordPaymentFormProps = {
   /** The server's figure; the form never recomputes it. */
   outstanding: bigint;
   /** Read when the overlay opened, so nothing here waits on a credit query. */
-  availableCredit: bigint;
+  availableCredit: PatientCredit;
   currency: string;
   /** After a recorded payment, and on CONFLICT: the overlay holds a stale snapshot. */
   onClose: () => void;
@@ -67,7 +68,7 @@ export function RecordPaymentForm({
   actions,
 }: RecordPaymentFormProps) {
   // Credit is applied unless the cashier says otherwise; the line covers what is left.
-  const seededCredit = availableCredit < outstanding ? availableCredit : outstanding;
+  const seededCredit = availableCredit.usable < outstanding ? availableCredit.usable : outstanding;
 
   const form = useZodForm(recordPaymentSchema, {
     defaultValues: {
@@ -121,7 +122,7 @@ export function RecordPaymentForm({
         noValidate
         className="flex flex-col gap-3"
         onSubmit={form.handleSubmit((values) => {
-          if (values.applyCredit > availableCredit) {
+          if (values.applyCredit > availableCredit.total) {
             form.setError("applyCredit", { message: "That credit is no longer available" });
 
             return;
@@ -158,7 +159,7 @@ export function RecordPaymentForm({
           });
         })}
       >
-        {availableCredit > ZERO ? (
+        {availableCredit.total > ZERO ? (
           <RegisteredFormField
             name="applyCredit"
             render={({ field }) => (
@@ -167,7 +168,7 @@ export function RecordPaymentForm({
                     id on its child, which would leave the label pointing at nothing. */}
                 <FormLabel className="text-muted-foreground tabular-nums">
                   <span className="font-medium text-foreground">Use advance credit</span> ·{" "}
-                  {formatMoney(availableCredit, currency)} available
+                  {creditAvailableLabel(availableCredit, currency)}
                 </FormLabel>
                 <FormControl>
                   <Input

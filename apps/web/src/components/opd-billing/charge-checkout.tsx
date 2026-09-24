@@ -20,7 +20,7 @@ import { formatMoney, ZERO } from "@/lib/money";
 import { servicePreview } from "@/lib/opd-service-preview";
 import { orpc } from "@/lib/orpc";
 import { closeOnConflict } from "@/lib/orpc-error";
-import { openingCredit } from "@/lib/patient-credit";
+import { openingCredit, type PatientCredit } from "@/lib/patient-credit";
 
 type PendingCharge = {
   id: string;
@@ -75,7 +75,7 @@ export function ChargeCheckout({
   const queryClient = useQueryClient();
   const [reviewed, setReviewed] = useState(() => ({ pending, chargeRevision }));
   // The credit the overlay opens with, read on the click; null while it is closed.
-  const [collecting, setCollecting] = useState<bigint | null>(null);
+  const [collecting, setCollecting] = useState<PatientCredit | null>(null);
 
   const chargesChanged = chargeRevision !== reviewed.chargeRevision;
   // Shown charges follow the reviewed snapshot, so a total cannot change mid-count.

@@ -44,7 +44,7 @@ import { type WalkInQuote } from "@/lib/opd-service-preview";
 import { formatBusinessDate, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { closeOnConflict, errorMessage } from "@/lib/orpc-error";
-import { openingCredit } from "@/lib/patient-credit";
+import { openingCredit, type PatientCredit } from "@/lib/patient-credit";
 import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 const intakeSchema = z
@@ -720,7 +720,7 @@ export function OpdIntakeForm({
   };
 
   // The credit the overlay opens with, read on Confirm; null while it is closed.
-  const [settlement, setSettlement] = useState<bigint | null>(null);
+  const [settlement, setSettlement] = useState<PatientCredit | null>(null);
 
   const goToAppointment = async (appointmentId: string) => {
     await navigate({

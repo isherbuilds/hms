@@ -36,7 +36,7 @@ import { formatMoney, ZERO } from "@/lib/money";
 import { OPERATIONAL_INFINITE_REFETCH, OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { openingCredit } from "@/lib/patient-credit";
+import { openingCredit, type PatientCredit } from "@/lib/patient-credit";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 // "all" is the absent view, so it is a filter to remove, never one to pick.
@@ -103,7 +103,7 @@ function BillingIndexRoute() {
   const facet: Facet = view ?? "all";
   // The sheet holds a key and the credit read when it opened, never a row: the row
   // itself always comes from the list, so a refetch cannot leave it behind.
-  const [open, setOpen] = useState<{ key: string; credit: bigint } | null>(null);
+  const [open, setOpen] = useState<{ key: string; credit: PatientCredit } | null>(null);
   const currency = useMembership(orgSlug, (membership) => membership.currency);
 
   const worklist = useQuery({
@@ -139,7 +139,7 @@ function BillingIndexRoute() {
     const credit =
       row.invoiceId && row.patientId
         ? await openingCredit(queryClient, orgSlug, row.patientId, row.treatmentPlanId)
-        : ZERO;
+        : { usable: ZERO, total: ZERO };
 
     if (credit === null || latestClick.current !== row.key) return;
     setOpen({ key: row.key, credit });

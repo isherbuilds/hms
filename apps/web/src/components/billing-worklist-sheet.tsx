@@ -10,9 +10,10 @@ import { RecordPaymentForm } from "@/components/record-payment-form";
 import type { WorklistRow } from "@/lib/billing-worklist-row";
 import { formatMoney } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
+import type { PatientCredit } from "@/lib/patient-credit";
 
 /** The row as the list shows it, with the credit read when the desk opened it. */
-type OpenRow = { row: WorklistRow; credit: bigint };
+type OpenRow = { row: WorklistRow; credit: PatientCredit };
 
 export function BillingWorklistSheet({
   orgSlug,

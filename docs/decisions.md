@@ -606,8 +606,10 @@ Suggestions come from two sources queried in parallel by the browser:
 Medbuzz's product search (stocked rows only) and Truemeds' search. Results
 are merged with names starting with the typed text first (Medbuzz can answer
 a brand with its substitutes), then Medbuzz before Truemeds, de-duplicated by
-name ignoring case and punctuation, and capped at six. Requests carry only the search text plus fixed request
-constants, never tenant or user identity. Web CSP `connect-src` allows
+name ignoring case and punctuation, and capped at six. Each lookup has a
+four-second limit. Requests carry search text, fixed request constants, and
+the browser's site origin, never tenant or user identity. The web response uses
+`Referrer-Policy: no-referrer` so the org route is not sent. Web CSP `connect-src` allows
 `https://searchapi.medbuzz.in` and `https://nal.tmmumbai.in`.
 
 A suggestion must fill strength, manufacturer and pack, not just a name.
@@ -633,7 +635,7 @@ other still suggests; if both fail, manual entry remains available.
 The pilot entered a ₹7,000 denture as unit price × 4 and quoted ₹28,000.
 An item instead quotes the whole course. Each posted sitting bills the unbilled
 price divided across the estimated sittings left; once the estimate is used up,
-the next post bills all that remains. **Bill rest** bills it all sooner. The
+the next post bills all that remains. **Bill all remaining** bills it all sooner. The
 sitting count is an estimate, never a posting limit. A plan completes when
 every non-dropped priced item has its full price posted. A free item still needs one
 posted sitting before completion.

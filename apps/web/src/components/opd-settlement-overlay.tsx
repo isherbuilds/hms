@@ -30,6 +30,7 @@ import {
   type PaymentMethod,
   settlementProblems,
 } from "@/lib/settlement";
+import { creditAvailableLabel, type PatientCredit } from "@/lib/patient-credit";
 
 export type SettlementDraft = {
   discountAmount: bigint;
@@ -47,7 +48,7 @@ type SettlementOverlayProps = {
   description: string;
   label: string;
   pending: boolean;
-  availableCredit: bigint;
+  availableCredit: PatientCredit;
   /** A sale nobody can owe: a short payment is refused here, not by the server. */
   fullPayment?: boolean;
   /**
@@ -93,7 +94,8 @@ export function SettlementOverlay({
   const [note, setNote] = useState("");
 
   // Credit is applied unless the cashier says otherwise; cash covers what is left.
-  const seededCredit = availableCredit < quote.grandTotal ? availableCredit : quote.grandTotal;
+  const seededCredit =
+    availableCredit.usable < quote.grandTotal ? availableCredit.usable : quote.grandTotal;
 
   // Null until the cashier types, so the field follows the post-discount cap. A seeded
   // string would sit above that cap the moment a discount is entered and block the submit.
@@ -121,9 +123,16 @@ export function SettlementOverlay({
       : quote;
 
   const creditCap =
-    availableCredit < discounted.grandTotal ? availableCredit : discounted.grandTotal;
+    availableCredit.total < discounted.grandTotal ? availableCredit.total : discounted.grandTotal;
 
-  const creditValue = credit ?? formatDecimal(creditCap);
+  const creditValue =
+    credit ??
+    formatDecimal(
+      availableCredit.usable < discounted.grandTotal
+        ? availableCredit.usable
+        : discounted.grandTotal,
+    );
+
   const parsedCredit = parseMoneyInput(creditValue.trim() || "0");
   const creditInvalid = parsedCredit === null || parsedCredit > creditCap;
   const appliedCredit = creditInvalid ? ZERO : parsedCredit;
@@ -186,7 +195,7 @@ export function SettlementOverlay({
               {blockedReason}
             </p>
           ) : null}
-          {availableCredit > ZERO ? (
+          {availableCredit.total > ZERO ? (
             <label
               className="flex flex-col gap-1 text-muted-foreground"
               htmlFor="settlement-credit"
@@ -194,7 +203,7 @@ export function SettlementOverlay({
               <span>
                 <span className="font-medium text-foreground">Use advance credit</span> ·{" "}
                 <span className="tabular-nums">
-                  {formatMoney(availableCredit, quote.currency)} available
+                  {creditAvailableLabel(availableCredit, quote.currency)}
                 </span>
               </span>
               <Input

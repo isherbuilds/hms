@@ -11,7 +11,7 @@ export default defineConfig({
     "/**": {
       headers: {
         "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=()",
-        "referrer-policy": "strict-origin-when-cross-origin",
+        "referrer-policy": "no-referrer",
         "x-content-type-options": "nosniff",
       },
     },

@@ -443,7 +443,7 @@ export const treatmentRouter = {
 
       if (posted.onVisit) {
         throw new ORPCError("CONFLICT", {
-          message: `${row.item.description} is already posted to this visit.`,
+          message: `${row.item.description} is already billed on this visit.`,
         });
       }
 
@@ -451,7 +451,7 @@ export const treatmentRouter = {
 
       if (nextPrice === null) {
         throw new ORPCError("CONFLICT", {
-          message: `Everything for ${row.item.description} is already posted.`,
+          message: `Everything for ${row.item.description} is already billed.`,
         });
       }
 
@@ -558,7 +558,7 @@ export const treatmentRouter = {
           )
         ) {
           throw new ORPCError("CONFLICT", {
-            message: "Post or drop every planned item before completion.",
+            message: "Bill or drop every planned item before completion.",
           });
         }
 

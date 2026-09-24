@@ -32,7 +32,7 @@ import type { WalkInQuote } from "@/lib/opd-service-preview";
 import { formatBusinessDate } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { closeOnConflict } from "@/lib/orpc-error";
-import { openingCredit } from "@/lib/patient-credit";
+import { openingCredit, type PatientCredit } from "@/lib/patient-credit";
 
 type Buyer = "walk-in" | "patient";
 
@@ -195,7 +195,7 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
   const [prescriptionReference, setPrescriptionReference] = useState("");
   const [attempted, setAttempted] = useState(false);
   // The credit the overlay opens with, read on Collect; null while it is closed.
-  const [settlement, setSettlement] = useState<bigint | null>(null);
+  const [settlement, setSettlement] = useState<PatientCredit | null>(null);
 
   // Freezes the buyer while the credit read is in flight, so the overlay cannot open on
   // one patient's credit while the sale names another.
@@ -302,7 +302,7 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
       return;
     }
 
-    setSettlement(ZERO);
+    setSettlement({ usable: ZERO, total: ZERO });
   };
 
   const settle = (draft: SettlementDraft) => {
