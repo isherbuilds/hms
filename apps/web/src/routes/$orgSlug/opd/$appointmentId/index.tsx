@@ -261,7 +261,7 @@ function PrescriptionDocuments({
 
       {prescriptions.length === 0 ? (
         <p className="text-muted-foreground">
-          No scan attached. Keep the doctor's signed image or PDF as the source record.
+          No scan attached yet.
         </p>
       ) : (
         <Table>

@@ -84,15 +84,18 @@ When the chosen Patient has an open Treatment plan, **Sitting for** links the ne
 appointment to that plan, which is what drops the plan off the Follow-ups call
 sheet. Booking and walk-in creation re-read the plan under the verified
 Organization scope and require the same Patient and an open status. The Clinical
-tab's Treatment panel is where a plan is started and
+tab's Treatment plan section is where a plan is started and
 worked: **New plan** presets the visit's practitioner and makes this visit the
-plan's first sitting, **Link to plan** attaches the visit to an existing open
-plan, and both refuse a visit that is not booked or checked in, belongs to
+plan's first sitting, **Add visit to plan** attaches the visit to an existing open
+plan (named directly when the patient has only one, otherwise picked from a list),
+and both refuse a visit that is not booked or checked in, belongs to
 another patient, or already names a plan. `opd.get` does not carry the plan: the
 record layout loads the Patient's plans once, and the Clinical panel and the
 Billing tab's advance form both read that one query. For a
-checked-in sitting, **Post to this visit** creates a Charge for one sitting's
-share of the item's whole-course quote. **Bill rest** bills everything left.
+checked-in sitting, **Add to bill** (`treatment.postToVisit`) creates a Charge for
+one sitting's share of the item's whole-course quote. **Bill remaining**, in the
+item's `⋯` menu beside **Drop item**, bills everything left. **Complete plan**
+appears only once every item is fully billed or dropped.
 Posting refuses an item whose full course price is already posted or which is
 already posted to this visit.
 An ordinary Charge for the same service stays separate; the panel warns before

@@ -112,7 +112,7 @@ function PlanCard({
           </dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">Posted / total</dt>
+          <dt className="text-muted-foreground">Billed / total</dt>
           <dd className="tabular-nums">
             {formatMoney(plan.postedAmount, currency)} / {formatMoney(plan.quotedTotal, currency)}
           </dd>

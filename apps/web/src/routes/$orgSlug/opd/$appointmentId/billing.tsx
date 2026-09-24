@@ -81,8 +81,8 @@ function BillingOpdAppointmentRoute() {
         <section className="flex flex-col gap-1">
           <h2 className="text-muted-foreground">Treatment plan · {linkedPlan.label}</h2>
           <p className="tabular-nums">
-            Posted {formatMoney(linkedPlan.postedAmount, currency)} of{" "}
-            {formatMoney(linkedPlan.quotedTotal, currency)}
+            {formatMoney(linkedPlan.postedAmount, currency)} of{" "}
+            {formatMoney(linkedPlan.quotedTotal, currency)} billed
           </p>
         </section>
       ) : null}

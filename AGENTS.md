@@ -65,4 +65,5 @@ Tests prove this change; they do not fill historical gaps or build a test system
 - `packages/ui` is `shadcn` `base-lyra` on Base UI: `text-xs` body, compact controls, radius scale in `docs/design.md` §4. Match it.
 - Base UI primitives emit `data-pressed`, `data-checked`, `data-disabled`, never Radix's `data-state="on"`. A `data-[state=…]:` variant styles nothing; use `data-pressed:` / `data-checked:`.
 - All-day console, so motion is rationed: none on frequent or keyboard-driven actions; `ease-out` enter/exit under 200ms only where it carries spatial continuity. `prefers-reduced-motion` is honoured globally.
+- The desk is run by receptionists, not technical staff: each fact appears once per screen (no identity repeated between `PageHeader` and body), one visible action per row with rare ones in a `⋯` menu, and plain labels ("Add to bill", not ledger terms). See `docs/design.md` "Say it once".
 - Keyboard focus comes from an unlayered `:focus-visible` rule in `globals.css`; do not remove it. Hover effects are gated to `(hover: hover) and (pointer: fine)`.

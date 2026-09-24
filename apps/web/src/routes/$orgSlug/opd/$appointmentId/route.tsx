@@ -406,7 +406,7 @@ function OpdRecordFacts({ orgSlug, record }: { orgSlug: string; record: OpdRecor
               className="inline-flex items-center gap-1 underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
             >
               <span className="capitalize">{patient.name}</span>
-              <ArrowUpRightIcon aria-hidden className="size-3 text-muted-foreground" />
+              <ArrowUpRightIcon aria-hidden className="size-3.5 text-muted-foreground" />
             </Link>
             {guardian ? (
               <span className="font-normal text-muted-foreground">

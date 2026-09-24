@@ -1,7 +1,16 @@
 import { authorize } from "@hms/auth/access";
 import { Button } from "@hms/ui/components/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@hms/ui/components/dropdown-menu";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { skipToken, useMutation, useQuery } from "@tanstack/react-query";
+import { ClientOnly } from "@tanstack/react-router";
+import { MoreHorizontalIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -62,11 +71,11 @@ export function OpdTreatmentPanel({
   });
 
   const link = useMutation(
-    orpc.treatment.linkVisit.mutationOptions(done("Visit linked to treatment plan")),
+    orpc.treatment.linkVisit.mutationOptions(done("Visit added to treatment plan")),
   );
 
   const post = useMutation(
-    orpc.treatment.postToVisit.mutationOptions(done("Sitting posted to this visit")),
+    orpc.treatment.postToVisit.mutationOptions(done("Added to this visit's bill")),
   );
 
   const complete = useMutation(
@@ -87,82 +96,101 @@ export function OpdTreatmentPanel({
   const openPlan = plan?.status === "open" ? plan : undefined;
   const editable = canEdit && openPlan !== undefined;
 
+  // Completion is refused while work is unbilled, so it is offered only once it can succeed.
+  const finished = openPlan?.items.every((item) => item.status === "dropped" || item.done);
+  // One open plan is the usual case: name it and offer one button instead of a picker.
+  const onlyOpenPlan = openPlans.length === 1 ? openPlans[0] : undefined;
+  const chosenPlanId = onlyOpenPlan?.id ?? selectedPlanId;
+
+  const sitting =
+    plan &&
+    // A visit not yet checked in is not a sitting; it would be the next one.
+    (plan.sittings.findIndex((entry) => entry.id === appointmentId) + 1 ||
+      plan.sittings.length + 1);
+
   return (
-    <section className="flex flex-col gap-3 rounded-lg border bg-card p-4 print:hidden">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="min-h-6 text-xs text-muted-foreground">Treatment</h2>
+    <section className="flex flex-col gap-2 print:hidden">
+      <header className="flex min-h-6 flex-wrap items-center justify-between gap-2">
+        <h2 className="text-muted-foreground">Treatment plan</h2>
         {!planId && canLink ? (
-          <Button size="xs" onClick={() => setAction("new")}>
+          <Button size="xs" variant="outline" onClick={() => setAction("new")}>
             New plan
           </Button>
         ) : null}
         {editable ? (
           <div className="flex flex-wrap gap-1">
-            <Button size="xs" variant="outline" onClick={() => setAction("add")}>
+            <Button size="xs" variant="ghost" onClick={() => setAction("add")}>
               Add item
             </Button>
             <Button size="xs" variant="outline" onClick={() => setAction("next")}>
               Next sitting
             </Button>
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={complete.isPending}
-              onClick={() => complete.mutate({ orgSlug, planId: openPlan.id })}
-            >
-              Complete
-            </Button>
+            {finished ? (
+              <Button
+                size="xs"
+                disabled={complete.isPending}
+                onClick={() => complete.mutate({ orgSlug, planId: openPlan.id })}
+              >
+                Complete plan
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </header>
       {!planId ? (
         canLink && openPlans.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2">
-            <NativeSelect
-              className="max-w-sm"
-              aria-label="Open treatment plan"
-              value={selectedPlanId}
-              onChange={(event) => setSelectedPlanId(event.target.value)}
-            >
-              <option value="">Choose an open plan</option>
-              {openPlans.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.label}
-                </option>
-              ))}
-            </NativeSelect>
+            {onlyOpenPlan ? (
+              <p>
+                Open plan: <span className="font-medium">{onlyOpenPlan.label}</span>
+              </p>
+            ) : (
+              <NativeSelect
+                className="max-w-sm"
+                aria-label="Open treatment plan"
+                value={selectedPlanId}
+                onChange={(event) => setSelectedPlanId(event.target.value)}
+              >
+                <option value="">Choose an open plan</option>
+                {openPlans.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            )}
             <Button
               size="xs"
-              variant="outline"
-              disabled={!selectedPlanId || link.isPending}
-              onClick={() => link.mutate({ orgSlug, appointmentId, planId: selectedPlanId })}
+              disabled={!chosenPlanId || link.isPending}
+              onClick={() => link.mutate({ orgSlug, appointmentId, planId: chosenPlanId })}
             >
-              Link to plan
+              Add visit to plan
             </Button>
           </div>
         ) : (
-          <p className="text-muted-foreground">This visit is not linked to a treatment plan.</p>
+          <p className="text-muted-foreground">No treatment plan for this visit.</p>
         )
       ) : plan ? (
         <>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div className="flex flex-col gap-0.5">
             <p className="font-medium">{plan.label}</p>
             <p className="tabular-nums text-muted-foreground">
-              {/* A visit not yet checked in is not a sitting; it would be the next one. */}
-              Sitting{" "}
-              {plan.sittings.findIndex((entry) => entry.id === appointmentId) + 1 ||
-                plan.sittings.length + 1}{" "}
-              ·{" "}
-              {plan.status !== "open"
-                ? plan.status
-                : plan.nextSittingOn
-                  ? `next ${formatBusinessDate(plan.nextSittingOn)}`
-                  : "next not set"}{" "}
-              · posted {formatMoney(plan.postedAmount, currency)} of{" "}
-              {formatMoney(plan.quotedTotal, currency)}
+              Sitting {sitting} · {formatMoney(plan.postedAmount, currency)} of{" "}
+              {formatMoney(plan.quotedTotal, currency)} billed
+            </p>
+            <p className="text-muted-foreground">
+              {plan.status !== "open" ? (
+                <span className="capitalize">{plan.status}</span>
+              ) : (
+                <>
+                  Next sitting:{" "}
+                  {plan.nextSittingOn ? formatBusinessDate(plan.nextSittingOn) : "not set"}
+                  {plan.nextSittingNote ? ` · ${plan.nextSittingNote}` : null}
+                </>
+              )}
             </p>
           </div>
-          <div className="flex flex-col divide-y">
+          <div className="flex flex-col divide-y border-t">
             {plan.items.map((item) => {
               const unposted = item.quotedPrice - item.postedAmount;
 
@@ -186,14 +214,17 @@ export function OpdTreatmentPanel({
 
                 if (!billed) return submit();
 
-                const label = rest ? "Bill rest" : "Post to this visit";
+                const label = rest ? "Bill remaining" : "Add to bill";
                 confirm({
-                  title: label,
-                  description: `This visit already bills ${item.description} as a service. If that was this work, void or credit it in Billing after posting.`,
+                  title: `${label}?`,
+                  description: `This visit's bill already has ${item.description}. If that was the same work, add this and then remove the other charge in Billing.`,
                   confirmLabel: label,
                   run: submit,
                 });
               };
+
+              const open = plan.status === "open" && item.status === "open" && !item.done;
+              const canBillRest = canPost && item.nextSittingPrice !== unposted;
 
               return (
                 <PlanItemRow
@@ -201,45 +232,54 @@ export function OpdTreatmentPanel({
                   item={item}
                   currency={currency}
                   action={
-                    plan.status === "open" && item.status === "open" && !item.done ? (
-                      <>
+                    open && (canPost || editable) ? (
+                      <div className="flex items-center gap-1">
                         {canPost ? (
-                          <>
-                            <Button
-                              size="xs"
-                              variant="outline"
-                              disabled={post.isPending}
-                              onClick={() => postItem(false)}
-                            >
-                              Post to this visit
-                            </Button>
-                            {item.nextSittingPrice !== unposted ? (
-                              <Button
-                                size="xs"
-                                variant="ghost"
-                                disabled={post.isPending}
-                                onClick={() => postItem(true)}
-                              >
-                                Bill rest
-                              </Button>
-                            ) : null}
-                          </>
-                        ) : null}
-                        {editable ? (
-                          <Button size="xs" variant="ghost" onClick={() => setDropping(item.id)}>
-                            Drop
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            disabled={post.isPending}
+                            onClick={() => postItem(false)}
+                          >
+                            Add to bill
                           </Button>
                         ) : null}
-                      </>
+                        {canBillRest || editable ? (
+                          <ClientOnly fallback={<span className="inline-block size-6" />}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger
+                                render={<Button variant="ghost" size="icon-xs" />}
+                                aria-label={`More actions for ${item.description}`}
+                              >
+                                <MoreHorizontalIcon />
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="min-w-40">
+                                <DropdownMenuGroup>
+                                  {canBillRest ? (
+                                    <DropdownMenuItem
+                                      disabled={post.isPending}
+                                      onClick={() => postItem(true)}
+                                    >
+                                      Bill remaining {formatMoney(unposted, currency)}
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                  {editable ? (
+                                    <DropdownMenuItem onClick={() => setDropping(item.id)}>
+                                      Drop item
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                </DropdownMenuGroup>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </ClientOnly>
+                        ) : null}
+                      </div>
                     ) : null
                   }
                 />
               );
             })}
           </div>
-          {plan.status === "open" && plan.nextSittingNote ? (
-            <p className="text-muted-foreground">{plan.nextSittingNote}</p>
-          ) : null}
         </>
       ) : null}
       {canLink && action === "new" && !planId ? (

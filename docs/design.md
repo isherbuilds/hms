@@ -239,6 +239,16 @@ Reach for these before writing a `div` with padding. All in
   Once the desktop rail is visible, the title uses `pl-6` for the small optical
   inset it needs beside the raised content panel.
 
+**Say it once.** The people at the desk are receptionists, not technical staff,
+and every repeated fact is one more thing to read past. A fact appears once per
+screen: the record page's identity block owns name, MRN and phone; the
+PageHeader description owns `Token N` and nothing else; a summary row never
+repeats either. Where a name is shown, it is also the link to that record, with
+a muted `ArrowUpRight` icon. A row shows one visible action — the common next
+step — and moves rare or destructive ones into a `⋯` menu. An action the server
+would refuse is not offered until it can succeed. Labels use desk words ("Add to
+bill", "Bill remaining", "Add visit to plan"), never ledger verbs like "post".
+
 **Page-header grammar.** Every page uses `PageHeader`. The title is a static noun
 of at most two words. Never put data in the title. Put durable context in the
 description: `Token N` identity on record pages, or a short phrase with no
@@ -442,3 +452,5 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
 - [ ] Panels hold their height when empty, and say what would be there.
 - [ ] No placeholder stands in for loading data.
 - [ ] The page uses `PageBody` / `PageHeader`, not a bespoke wrapper.
+- [ ] No fact repeats on one screen (header vs body, summary vs detail); names link to their record.
+- [ ] Each row has at most one visible action; the rest sit in a `⋯` menu.

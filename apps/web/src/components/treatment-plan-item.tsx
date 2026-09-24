@@ -36,10 +36,11 @@ export function PlanItemRow({
         {item.note ? <span className="text-muted-foreground">{item.note}</span> : null}
       </span>
       <span className="tabular-nums text-muted-foreground">
-        Sitting {item.postedSittings} of ~{item.sittingsPlanned} ·{" "}
-        {formatMoney(item.postedAmount, currency)} of {formatMoney(item.quotedPrice, currency)}
+        {item.postedSittings} of ~{item.sittingsPlanned} sittings ·{" "}
+        {formatMoney(item.postedAmount, currency)} of {formatMoney(item.quotedPrice, currency)}{" "}
+        billed
         {item.done
-          ? " · posted in full"
+          ? " · fully billed"
           : item.nextSittingPrice !== null
             ? ` · next ${formatMoney(item.nextSittingPrice, currency)}`
             : null}
