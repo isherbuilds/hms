@@ -1,16 +1,17 @@
 import { authorize } from "@hms/auth/access";
+import { Button } from "@hms/ui/components/button";
 import { skipToken, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { ChargeCheckout } from "@/components/opd-billing/charge-checkout";
-import { AdvanceForm } from "@/components/advance-form";
+import { AdvanceForm, AdvanceRefundDialog } from "@/components/advance-form";
 import { InvoiceAccount } from "@/components/opd-billing/invoice-account";
 import { VoidChargeDialog } from "@/components/opd-billing/void-charge-dialog";
 import { ErrorNote } from "@/components/page";
 import { StaleDataNotice } from "@/components/stale-data-notice";
 import { useMembership } from "@/lib/membership";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
 import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 
@@ -39,6 +40,8 @@ function BillingOpdAppointmentRoute() {
   const canCredit = authorize(roles, { billing: ["creditNote"] });
   const canWrite = authorize(roles, { billing: ["write"] });
   const canReadPlans = authorize(roles, { treatment: ["read"] });
+  const canRefundAdvance = authorize(roles, { billing: ["advanceRefund"] });
+  const [refunding, setRefunding] = useState<{ id: string; remaining: bigint } | null>(null);
 
   const invoices = useQuery({
     ...orpc.billing.listInvoices.queryOptions({ input: { orgSlug, appointmentId } }),
@@ -51,6 +54,16 @@ function BillingOpdAppointmentRoute() {
       input: canReadPlans && patientId ? { orgSlug, patientId } : skipToken,
     }),
   );
+
+  // Unused advance is patient credit; showing it here means the desk sees it at the
+  // visit where a refund or the next sitting is decided, not only on the patient record.
+  const account = useQuery(
+    orpc.patient.account.queryOptions({
+      input: patientId ? { orgSlug, patientId } : skipToken,
+    }),
+  );
+
+  const heldAdvances = account.data?.advanceReceipts.filter((receipt) => receipt.remaining > ZERO);
 
   const openPlans = plans.data?.filter((plan) => plan.status === "open");
 
@@ -77,27 +90,49 @@ function BillingOpdAppointmentRoute() {
         />
       ) : null}
 
-      {linkedPlan || (canWrite && patientId && openPlans) ? (
-        <section className="flex items-center justify-between gap-2">
-          {linkedPlan ? (
-            <div className="flex min-w-0 flex-col gap-1">
-              <h2 className="text-muted-foreground">Treatment plan · {linkedPlan.label}</h2>
+      {linkedPlan || heldAdvances?.length || (canWrite && patientId && openPlans) ? (
+        <section className="flex flex-col gap-3 rounded-lg bg-muted/60 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <h2 className="text-muted-foreground">
+                {linkedPlan ? `Treatment plan · ${linkedPlan.label}` : "Advance"}
+              </h2>
+              {linkedPlan ? (
+                <p className="text-sm font-medium tabular-nums">
+                  {formatMoney(linkedPlan.postedAmount, currency)} of{" "}
+                  {formatMoney(linkedPlan.quotedTotal, currency)} billed
+                </p>
+              ) : null}
+            </div>
+            {canWrite && patientId && openPlans ? (
+              <div className="ml-auto shrink-0">
+                <AdvanceForm
+                  orgSlug={orgSlug}
+                  patientId={patientId}
+                  plans={openPlans}
+                  linkedPlanId={record.appointment.treatmentPlanId ?? undefined}
+                />
+              </div>
+            ) : null}
+          </div>
+          {heldAdvances?.map((receipt) => (
+            <div key={receipt.id} className="flex flex-wrap items-center justify-between gap-2">
               <p className="tabular-nums">
-                {formatMoney(linkedPlan.postedAmount, currency)} of{" "}
-                {formatMoney(linkedPlan.quotedTotal, currency)} billed
+                <span className="font-medium text-clinical-clear">
+                  Advance held {formatMoney(receipt.remaining, receipt.currency)}
+                </span>
+                <span className="text-muted-foreground">
+                  {" · "}
+                  <span className="font-mono">{receipt.receiptNumber}</span> · {receipt.purpose}
+                </span>
               </p>
+              {canRefundAdvance ? (
+                <Button variant="outline" onClick={() => setRefunding(receipt)}>
+                  Refund
+                </Button>
+              ) : null}
             </div>
-          ) : null}
-          {canWrite && patientId && openPlans ? (
-            <div className="ml-auto shrink-0">
-              <AdvanceForm
-                orgSlug={orgSlug}
-                patientId={patientId}
-                plans={openPlans}
-                linkedPlanId={record.appointment.treatmentPlanId ?? undefined}
-              />
-            </div>
-          ) : null}
+          ))}
         </section>
       ) : null}
 
@@ -122,11 +157,9 @@ function BillingOpdAppointmentRoute() {
         )}
       </section>
 
-      {/* Each invoice already carries its own surface and its own actions, so
-          the list stays flat: a card around a stack of boxes is noise. The
-          hairline is what separates it from the tray above — the same rule the
-          clinical tab follows. */}
-      <section className="flex flex-col gap-2 border-t border-border pt-4">
+      {/* Each invoice carries its own card and actions, so the list itself stays flat
+          and spacing, not a rule, separates it from the charges above. */}
+      <section className="flex flex-col gap-2">
         <h2 className="flex min-h-6 items-center text-muted-foreground">Invoices</h2>
         {invoices.data.length === 0 ? (
           <p className="text-muted-foreground">No invoices yet</p>
@@ -144,6 +177,14 @@ function BillingOpdAppointmentRoute() {
           </div>
         )}
       </section>
+
+      {canRefundAdvance && refunding ? (
+        <AdvanceRefundDialog
+          orgSlug={orgSlug}
+          receipt={refunding}
+          onClose={() => setRefunding(null)}
+        />
+      ) : null}
 
       {canChangeCharges && canWrite && voiding ? (
         <VoidChargeDialog charge={voiding} orgSlug={orgSlug} onClose={() => setVoiding(null)} />

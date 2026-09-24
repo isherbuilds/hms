@@ -124,7 +124,7 @@ function PlanCard({
       {plan.closeReason ? (
         <p className="text-muted-foreground">Closed: {plan.closeReason}</p>
       ) : null}
-      <div className="flex flex-col divide-y border-t">
+      <div className="flex flex-col gap-2">
         {plan.items.map((item) => (
           <PlanItemRow
             key={item.id}

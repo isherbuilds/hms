@@ -245,9 +245,13 @@ screen: the record page's identity block owns name, MRN and phone; the
 PageHeader description owns `Token N` and nothing else; a summary row never
 repeats either. Where a name is shown, it is also the link to that record, with
 a muted `ArrowUpRight` icon. A row shows one visible action — the common next
-step — and moves rare or destructive ones into a `⋯` menu. An action the server
-would refuse is not offered until it can succeed. Labels use desk words ("Add to
-bill", "Bill remaining", "Add visit to plan"), never ledger verbs like "post".
+step, with its amount when it moves money — and moves rare or destructive ones into
+a `⋯` menu. Money actions use the default control height, not `xs`. An action the
+server would refuse is not offered until it can succeed; say what already happened
+instead ("Billed for this visit"). Group a record's parts as tinted blocks
+(`bg-muted/60`, `rounded-lg`) rather than stacking hairlines, and show progress
+toward a total as a bar beside the figures. Labels use desk words ("Bill this
+sitting", "Bill all remaining", "Add visit to plan"), never ledger verbs like "post".
 
 **Page-header grammar.** Every page uses `PageHeader`. The title is a static noun
 of at most two words. Never put data in the title. Put durable context in the

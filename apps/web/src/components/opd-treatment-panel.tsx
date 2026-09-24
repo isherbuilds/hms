@@ -108,26 +108,25 @@ export function OpdTreatmentPanel({
       plan.sittings.length + 1);
 
   return (
-    <section className="flex flex-col gap-2 print:hidden">
+    <section className="flex flex-col gap-3 print:hidden">
       <header className="flex min-h-6 flex-wrap items-center justify-between gap-2">
         <h2 className="text-muted-foreground">Treatment plan</h2>
         {!planId && canLink ? (
-          <Button size="xs" variant="outline" onClick={() => setAction("new")}>
+          <Button variant="outline" onClick={() => setAction("new")}>
             New plan
           </Button>
         ) : null}
         {editable ? (
           <div className="flex flex-wrap gap-1">
-            <Button size="xs" variant="ghost" onClick={() => setAction("add")}>
+            <Button variant="ghost" onClick={() => setAction("add")}>
               Add item
             </Button>
             {/* Kept after full billing: a course can run past its estimate. */}
-            <Button size="xs" variant="outline" onClick={() => setAction("next")}>
+            <Button variant="outline" onClick={() => setAction("next")}>
               Next sitting
             </Button>
             {finished ? (
               <Button
-                size="xs"
                 disabled={complete.isPending}
                 onClick={() => complete.mutate({ orgSlug, planId: openPlan.id })}
               >
@@ -153,7 +152,6 @@ export function OpdTreatmentPanel({
               ))}
             </NativeSelect>
             <Button
-              size="xs"
               disabled={link.isPending}
               onClick={() => link.mutate({ orgSlug, appointmentId, planId: chosenPlanId })}
             >
@@ -168,7 +166,7 @@ export function OpdTreatmentPanel({
           {/* The items below name the plan and carry their own amounts; a plan total
               adds something only when there is more than one item. */}
           <p className="tabular-nums text-muted-foreground">
-            Sitting {sitting}
+            <span className="font-medium text-foreground">Sitting {sitting}</span>
             {plan.items.length > 1
               ? ` · ${formatMoney(plan.postedAmount, currency)} of ${formatMoney(plan.quotedTotal, currency)} billed`
               : null}
@@ -183,7 +181,7 @@ export function OpdTreatmentPanel({
               </>
             )}
           </p>
-          <div className="flex flex-col divide-y border-t">
+          <div className="flex flex-col gap-2">
             {plan.items.map((item) => {
               const unposted = item.quotedPrice - item.postedAmount;
 
@@ -207,11 +205,10 @@ export function OpdTreatmentPanel({
 
                 if (!billed) return submit();
 
-                const label = rest ? "Bill remaining" : "Add to bill";
                 confirm({
-                  title: `${label}?`,
-                  description: `This visit's bill already has ${item.description}. If that was the same work, add this and then remove the other charge in Billing.`,
-                  confirmLabel: label,
+                  title: "Already on this bill?",
+                  description: `This visit's bill already has ${item.description}. If that was the same work, bill it here and then remove the other charge in Billing.`,
+                  confirmLabel: "Bill anyway",
                   run: submit,
                 });
               };
@@ -219,16 +216,12 @@ export function OpdTreatmentPanel({
               const open = plan.status === "open" && item.status === "open" && !item.done;
 
               // One sitting per visit: the server refuses a second posting here.
-              const canBill =
-                canPost &&
-                !record.charges.some(
-                  (charge) =>
-                    charge.sourceType === "treatment_plan" &&
-                    charge.sourceId === item.id &&
-                    charge.status !== "voided",
-                );
-
-              const canBillRest = canBill && item.nextSittingPrice !== unposted;
+              const billedHere = record.charges.some(
+                (charge) =>
+                  charge.sourceType === "treatment_plan" &&
+                  charge.sourceId === item.id &&
+                  charge.status !== "voided",
+              );
 
               return (
                 <PlanItemRow
@@ -236,54 +229,50 @@ export function OpdTreatmentPanel({
                   item={item}
                   currency={currency}
                   action={
-                    open ? (
-                      <>
-                        {canBill ? (
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            disabled={post.isPending}
-                            onClick={() => postItem(false)}
+                    open && editable ? (
+                      <ClientOnly fallback={<span className="inline-block size-8" />}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={<Button variant="ghost" size="icon" />}
+                            aria-label={`More actions for ${item.description}`}
                           >
-                            Add to bill
-                          </Button>
-                        ) : null}
-                        {canBillRest || editable ? (
-                          <ClientOnly fallback={<span className="inline-block size-6" />}>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={<Button variant="ghost" size="icon-xs" />}
-                                aria-label={`More actions for ${item.description}`}
+                            <MoreHorizontalIcon />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-36">
+                            <DropdownMenuGroup>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => setDropping(item.id)}
                               >
-                                <MoreHorizontalIcon />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="min-w-40">
-                                <DropdownMenuGroup>
-                                  {canBillRest ? (
-                                    <DropdownMenuItem
-                                      disabled={post.isPending}
-                                      onClick={() => postItem(true)}
-                                    >
-                                      Bill remaining {formatMoney(unposted, currency)}
-                                    </DropdownMenuItem>
-                                  ) : null}
-                                  {editable ? (
-                                    <DropdownMenuItem
-                                      variant="destructive"
-                                      onClick={() => setDropping(item.id)}
-                                    >
-                                      Drop item
-                                    </DropdownMenuItem>
-                                  ) : null}
-                                </DropdownMenuGroup>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </ClientOnly>
-                        ) : null}
-                      </>
+                                Drop item
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </ClientOnly>
                     ) : null
                   }
-                />
+                >
+                  {open && billedHere ? (
+                    <p className="font-medium text-clinical-clear">Billed for this visit</p>
+                  ) : open && canPost && item.nextSittingPrice !== null ? (
+                    <div className="flex flex-wrap gap-2">
+                      <Button disabled={post.isPending} onClick={() => postItem(false)}>
+                        Bill this sitting · {formatMoney(item.nextSittingPrice, currency)}
+                      </Button>
+                      {/* Finishing early: the whole balance in one go. */}
+                      {item.nextSittingPrice !== unposted ? (
+                        <Button
+                          variant="outline"
+                          disabled={post.isPending}
+                          onClick={() => postItem(true)}
+                        >
+                          Bill all remaining · {formatMoney(unposted, currency)}
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </PlanItemRow>
               );
             })}
           </div>

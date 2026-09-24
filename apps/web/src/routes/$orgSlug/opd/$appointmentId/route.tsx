@@ -186,7 +186,6 @@ function OpdRecordLayout() {
               ) : undefined
             }
           />
-          <Separator />
           <OpdRecordFacts orgSlug={orgSlug} record={record} />
           <Separator />
         </div>

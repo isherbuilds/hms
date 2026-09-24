@@ -22,3 +22,8 @@ export function formatMoney(paise: bigint, currency: string): string {
 
   return format(formatDecimal(paise));
 }
+
+/** Whole-number share of `whole` that `part` covers, for progress bars; a zero whole reads as 0. */
+export function percentOf(part: bigint, whole: bigint): number {
+  return whole > ZERO ? Number((part * 100n) / whole) : 0;
+}

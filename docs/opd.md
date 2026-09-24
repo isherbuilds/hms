@@ -92,9 +92,12 @@ and both refuse a visit that is not booked or checked in, belongs to
 another patient, or already names a plan. `opd.get` does not carry the plan: the
 record layout loads the Patient's plans once, and the Clinical panel and the
 Billing tab's advance form both read that one query. For a
-checked-in sitting, **Add to bill** (`treatment.postToVisit`) creates a Charge for
-one sitting's share of the item's whole-course quote. **Bill remaining**, in the
-item's `⋯` menu beside **Drop item**, bills everything left. **Complete plan**
+checked-in sitting, **Bill this sitting · ₹X** (`treatment.postToVisit`) creates a
+Charge for one sitting's share of the item's whole-course quote. **Bill all
+remaining · ₹Y** sits beside it whenever the two differ, for a course that finishes
+early; once billed, the item reads "Billed for this visit". **Drop item** is in the
+item's `⋯` menu. The Billing tab shows each advance receipt with unused credit,
+with **Refund** for roles holding `billing:advanceRefund`. **Complete plan**
 appears beside **Next sitting** once every item is fully billed or dropped.
 Posting refuses an item whose full course price is already posted or which is
 already posted to this visit.
