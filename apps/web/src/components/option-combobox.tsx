@@ -19,6 +19,8 @@ export function OptionCombobox(props: OptionComboboxProps) {
           placeholder={placeholder}
           className={className}
           aria-label={props["aria-label"]}
+          aria-describedby={props["aria-describedby"]}
+          aria-invalid={props["aria-invalid"]}
           value={label}
           readOnly
           disabled

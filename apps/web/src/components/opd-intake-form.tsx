@@ -373,7 +373,8 @@ export function OpdIntakeForm({
 
   const quoteState: QuoteState = {
     data:
-      input !== null && quote.data
+      // keepPreviousData holds the last good quote through a failed refetch; never show it.
+      input !== null && quote.data && !quote.isError
         ? quote.data
         : {
             currency,

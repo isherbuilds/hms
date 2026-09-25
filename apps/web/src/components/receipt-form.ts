@@ -150,7 +150,7 @@ function productFields(product: PickedProduct | null, line: ReceiptLineInput) {
     unitsPerPack: product?.unitsPerPack ?? 1,
     loose: product?.unitsPerPack === 1,
     gst: product?.taxRatePercent ? String(Number(product.taxRatePercent)) : line.gst,
-    hsn: product?.taxCode ?? line.hsn,
+    hsn: product?.taxCode || line.hsn,
   };
 }
 
@@ -166,7 +166,8 @@ export function fillLine(form: ReceiptForm, index: number, product: PickedProduc
     { shouldDirty: true },
   );
 
-  if (form.getFieldState(`lines.${index}.productId`).error) {
-    void form.trigger(`lines.${index}.productId`);
+  // Refresh errors the product may have just answered, such as a missing GST rate.
+  if (form.getFieldState(`lines.${index}`).error) {
+    void form.trigger(`lines.${index}`);
   }
 }

@@ -29,7 +29,9 @@ const practitionerSchema = z.object({
     .min(1, "Enter a practitioner name")
     .max(200, "Keep the name under 200 characters"),
   departmentId: z.string().min(1, "Choose a department"),
-  registrationNumber: optionalText(z.string()),
+  registrationNumber: optionalText(
+    z.string().max(50, "Keep the registration number under 50 characters"),
+  ),
   memberUserId: optionalText(z.string()),
   consultFeeItemId: optionalText(z.string()),
   followUpFeeItemId: optionalText(z.string()),

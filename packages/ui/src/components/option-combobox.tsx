@@ -55,7 +55,8 @@ function OptionCombobox({
       items={options}
       value={selected}
       onValueChange={(option) => {
-        if (option != null) onChange(option.value);
+        // Clearing the text clears the choice, so the field never keeps a hidden id.
+        onChange(option?.value ?? "");
         setQuery("");
       }}
       onInputValueChange={(input, details) => {

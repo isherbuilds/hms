@@ -27,7 +27,7 @@ export function SaleLines({
 }) {
   const commitQty = (line: SaleLine, input: HTMLInputElement) => {
     // The shelf is the ceiling: the server refuses more, so the field never offers it.
-    const qty = Math.min(line.shelfQty, Math.max(1, input.valueAsNumber || 1));
+    const qty = Math.min(line.shelfQty, Math.max(1, Math.trunc(input.valueAsNumber) || 1));
     input.value = String(qty);
     setCart((current) =>
       current.map((each) => (each.batchId === line.batchId ? { ...each, qty } : each)),
