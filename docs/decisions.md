@@ -634,7 +634,9 @@ other still suggests; if both fail, manual entry remains available.
 **Accepted 2026-09-24 on the owner's instruction; amends D033 and D038.**
 The pilot entered a ₹7,000 denture as unit price × 4 and quoted ₹28,000.
 An item instead quotes the whole course. Each posted sitting bills the unbilled
-price divided across the estimated sittings left; once the estimate is used up,
+price divided across the estimated sittings left, rounded to the nearest ₹100
+(to the rupee below ₹1,000, so a ₹150 session stays exact) and the last
+estimated sitting takes the exact rest; once the estimate is used up,
 the next post bills all that remains. The desk may bill a sitting at another
 amount, up to the unbilled price, such as a round figure or the whole balance to
 finish early; the split then re-divides what remains. The

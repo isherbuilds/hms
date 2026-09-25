@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { formatDecimal, parseDecimal } from "@hms/api/core/money";
+import { formatDecimal, parseDecimal, sittingShare } from "@hms/api/core/money";
 import {
   calculateInvoiceBalance,
   computeInvoiceLines,
@@ -245,4 +245,13 @@ test("invoice balance accounts for credits, payments, and returned refunds", () 
     refundsTotal: 2_500n,
     outstanding: -2_500n,
   });
+});
+
+test("a course splits into sittings the desk can collect", () => {
+  // ₹7,000 over three: ₹100 steps, the last sitting takes the exact rest.
+  expect(sittingShare(7000_00n, 3)).toBe(2300_00n);
+  expect(sittingShare(4700_00n, 2)).toBe(2400_00n);
+  expect(sittingShare(2300_00n, 1)).toBe(2300_00n);
+  // A small session price stays to the rupee.
+  expect(sittingShare(1500_00n, 10)).toBe(150_00n);
 });

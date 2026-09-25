@@ -1008,7 +1008,7 @@ test("a four-sitting estimate takes a chosen amount, re-splits the rest, and fin
     itemId: item.id,
   });
 
-  expect(firstPost.charge.unitPrice).toBe(12_50n);
+  expect(firstPost.charge.unitPrice).toBe(13_00n);
 
   const second = await createCheckedInSitting(setup, plan.id, 20);
 
@@ -1017,7 +1017,7 @@ test("a four-sitting estimate takes a chosen amount, re-splits the rest, and fin
       orgSlug: setup.organization.slug,
       appointmentId: second.appointment.id,
       itemId: item.id,
-      amount: 37_51n,
+      amount: 37_01n,
     }),
     "CONFLICT",
   );
@@ -1030,16 +1030,16 @@ test("a four-sitting estimate takes a chosen amount, re-splits the rest, and fin
   });
 
   expect(chosenPost.charge.unitPrice).toBe(20_00n);
-  expect((await planDetail(setup, plan.id)).items[0]).toMatchObject({ nextSittingPrice: 8_75n });
+  expect((await planDetail(setup, plan.id)).items[0]).toMatchObject({ nextSittingPrice: 9_00n });
 
   const restPost = await setup.api.treatment.postToVisit({
     orgSlug: setup.organization.slug,
     appointmentId: (await createCheckedInSitting(setup, plan.id, 25)).appointment.id,
     itemId: item.id,
-    amount: 17_50n,
+    amount: 17_00n,
   });
 
-  expect(restPost.charge.unitPrice).toBe(17_50n);
+  expect(restPost.charge.unitPrice).toBe(17_00n);
 
   expect(await planDetail(setup, plan.id)).toMatchObject({
     quotedTotal: 50_00n,
