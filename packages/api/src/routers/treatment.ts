@@ -371,7 +371,8 @@ export const treatmentRouter = {
     orgInput.extend({
       itemId: z.string(),
       appointmentId: z.string(),
-      rest: z.boolean().optional(),
+      /** This sitting's charge, up to the unbilled price; the even split when omitted. */
+      amount: money.optional(),
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
@@ -455,7 +456,14 @@ export const treatmentRouter = {
         });
       }
 
-      const price = input.rest ? row.item.quotedPrice - posted.amount : nextPrice;
+      // The desk may bill a round figure; later sittings split whatever stays unbilled.
+      if (input.amount !== undefined && input.amount > row.item.quotedPrice - posted.amount) {
+        throw new ORPCError("CONFLICT", {
+          message: `That is more than is left to bill for ${row.item.description}.`,
+        });
+      }
+
+      const price = input.amount ?? nextPrice;
 
       const [inserted] = await tx
         .insert(charges)

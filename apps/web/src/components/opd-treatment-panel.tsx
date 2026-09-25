@@ -21,11 +21,13 @@ import {
   AddItemDialog,
   NewPlanDialog,
   NextSittingDialog,
+  PostAmountDialog,
+  type PostTarget,
   ReasonDialog,
   type TreatmentAction,
 } from "@/components/treatment-dialogs";
 import { useMembership } from "@/lib/membership";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { formatBusinessDate } from "@/lib/org-datetime";
 import { useOpdRecord } from "@/lib/opd-record";
 import { orpc } from "@/lib/orpc";
@@ -53,6 +55,7 @@ export function OpdTreatmentPanel({
   const [action, setAction] = useState<TreatmentAction | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [dropping, setDropping] = useState<string | null>(null);
+  const [posting, setPosting] = useState<PostTarget | null>(null);
   const [confirm, confirmDialog] = useConfirm();
 
   const plans = useQuery(
@@ -180,14 +183,17 @@ export function OpdTreatmentPanel({
             {plan.items.map((item) => {
               const unposted = item.quotedPrice - item.postedAmount;
 
-              const postItem = (rest: boolean) => {
+              // Without a chosen figure the server bills the even split.
+              const postItem = (custom: boolean) => {
                 const submit = () =>
-                  post.mutate({
-                    orgSlug,
-                    appointmentId,
-                    itemId: item.id,
-                    rest,
-                  });
+                  custom && item.nextSittingPrice !== null
+                    ? setPosting({
+                        itemId: item.id,
+                        description: item.description,
+                        nextSittingPrice: item.nextSittingPrice,
+                        unposted,
+                      })
+                    : post.mutate({ orgSlug, appointmentId, itemId: item.id });
 
                 // An ordinary charge for the same service may be this work;
                 // the desk decides, the server never guesses (D038).
@@ -255,14 +261,14 @@ export function OpdTreatmentPanel({
                       <Button disabled={post.isPending} onClick={() => postItem(false)}>
                         Bill this sitting · {formatMoney(item.nextSittingPrice, currency)}
                       </Button>
-                      {/* Finishing early: the whole balance in one go. */}
-                      {item.nextSittingPrice !== unposted ? (
+                      {/* A round figure, or the whole balance to finish early. */}
+                      {unposted > ZERO ? (
                         <Button
                           variant="outline"
                           disabled={post.isPending}
                           onClick={() => postItem(true)}
                         >
-                          Bill all remaining · {formatMoney(unposted, currency)}
+                          Other amount
                         </Button>
                       ) : null}
                     </div>
@@ -289,6 +295,15 @@ export function OpdTreatmentPanel({
         <NextSittingDialog orgSlug={orgSlug} plan={openPlan} onClose={() => setAction(null)} />
       ) : null}
       {confirmDialog}
+      {posting ? (
+        <PostAmountDialog
+          orgSlug={orgSlug}
+          appointmentId={appointmentId}
+          currency={currency}
+          target={posting}
+          onClose={() => setPosting(null)}
+        />
+      ) : null}
       {editable && dropping ? (
         <ReasonDialog
           orgSlug={orgSlug}

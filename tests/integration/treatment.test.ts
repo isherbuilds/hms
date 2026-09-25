@@ -986,7 +986,7 @@ test("a plan's advance is offered only on that plan's bills", async () => {
   ).toEqual({ total: 40_00n, usable: 10_00n });
 });
 
-test("a four-sitting estimate allows billing the rest early and finishing the plan", async () => {
+test("a four-sitting estimate takes a chosen amount, re-splits the rest, and finishes early", async () => {
   const setup = await fixture("treatment-course-split");
 
   const plan = await setup.api.treatment.create({
@@ -1012,19 +1012,39 @@ test("a four-sitting estimate allows billing the rest early and finishing the pl
 
   const second = await createCheckedInSitting(setup, plan.id, 20);
 
-  const restPost = await setup.api.treatment.postToVisit({
+  await expectORPCCode(
+    setup.api.treatment.postToVisit({
+      orgSlug: setup.organization.slug,
+      appointmentId: second.appointment.id,
+      itemId: item.id,
+      amount: 37_51n,
+    }),
+    "CONFLICT",
+  );
+
+  const chosenPost = await setup.api.treatment.postToVisit({
     orgSlug: setup.organization.slug,
     appointmentId: second.appointment.id,
     itemId: item.id,
-    rest: true,
+    amount: 20_00n,
   });
 
-  expect(restPost.charge.unitPrice).toBe(37_50n);
+  expect(chosenPost.charge.unitPrice).toBe(20_00n);
+  expect((await planDetail(setup, plan.id)).items[0]).toMatchObject({ nextSittingPrice: 8_75n });
+
+  const restPost = await setup.api.treatment.postToVisit({
+    orgSlug: setup.organization.slug,
+    appointmentId: (await createCheckedInSitting(setup, plan.id, 25)).appointment.id,
+    itemId: item.id,
+    amount: 17_50n,
+  });
+
+  expect(restPost.charge.unitPrice).toBe(17_50n);
 
   expect(await planDetail(setup, plan.id)).toMatchObject({
     quotedTotal: 50_00n,
     postedAmount: 50_00n,
-    items: [expect.objectContaining({ postedSittings: 2, nextSittingPrice: null, done: true })],
+    items: [expect.objectContaining({ postedSittings: 3, nextSittingPrice: null, done: true })],
   });
 
   const third = await createCheckedInSitting(setup, plan.id, 30);

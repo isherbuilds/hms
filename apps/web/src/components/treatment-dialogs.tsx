@@ -12,6 +12,7 @@ import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
 import { OptionCombobox } from "@/components/option-combobox";
 import { useCatalogSearch } from "@/hooks/use-catalog-search";
+import { formatMoney } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
 import { practitionerDisplayName } from "@/lib/practitioner-name";
 
@@ -193,6 +194,53 @@ export function NextSittingDialog({
     >
       <TextField name="date" label="Date" type="date" />
       <TextField name="note" label="Note" multiline />
+    </FormDialog>
+  );
+}
+
+export type PostTarget = {
+  itemId: string;
+  description: string;
+  nextSittingPrice: bigint;
+  unposted: bigint;
+};
+
+/** A sitting billed at a figure the desk chooses; later sittings split what stays unbilled. */
+export function PostAmountDialog({
+  orgSlug,
+  appointmentId,
+  currency,
+  target,
+  onClose,
+}: {
+  orgSlug: string;
+  appointmentId: string;
+  currency: string;
+  target: PostTarget;
+  onClose: () => void;
+}) {
+  const left = formatMoney(target.unposted, currency);
+
+  return (
+    <FormDialog
+      title="Bill another amount"
+      description={`${target.description}: ${left} left to bill. Later sittings split whatever stays unbilled.`}
+      submitLabel="Bill this sitting"
+      schema={z.object({
+        amount: z
+          .string()
+          .regex(DECIMAL_PATTERN, "Amount like 150.00")
+          .transform(parseDecimal)
+          .refine((amount) => amount <= target.unposted, `At most ${left}`),
+      })}
+      defaultValues={{ amount: formatDecimal(target.nextSittingPrice) }}
+      success="Added to this visit's bill"
+      onClose={onClose}
+      run={({ amount }) =>
+        orpc.treatment.postToVisit.call({ orgSlug, appointmentId, itemId: target.itemId, amount })
+      }
+    >
+      <TextField name="amount" label="Amount" inputMode="decimal" />
     </FormDialog>
   );
 }

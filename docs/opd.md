@@ -93,9 +93,10 @@ another patient, or already names a plan. `opd.get` does not carry the plan: the
 record layout loads the Patient's plans once, and the Clinical panel and the
 Billing tab's advance form both read that one query. For a
 checked-in sitting, **Bill this sitting · ₹X** (`treatment.postToVisit`) creates a
-Charge for one sitting's share of the item's whole-course quote. **Bill all
-remaining · ₹Y** sits beside it whenever the two differ, for a course that finishes
-early; once billed, the item reads "Billed for this visit". **Drop item** is in the
+Charge for one sitting's share of the item's whole-course quote. **Other amount**
+bills a figure the desk chooses, up to what is left unbilled: a round number, or
+the whole balance for a course that finishes early. Later sittings split whatever
+stays unbilled; once billed, the item reads "Billed for this visit". **Drop item** is in the
 item's `⋯` menu. The Billing tab shows each advance receipt with unused credit,
 with **Refund** for roles holding `billing:advanceRefund`. **Complete plan**
 appears beside **Next sitting** once every item is fully billed or dropped.

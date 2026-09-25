@@ -635,7 +635,9 @@ other still suggests; if both fail, manual entry remains available.
 The pilot entered a ₹7,000 denture as unit price × 4 and quoted ₹28,000.
 An item instead quotes the whole course. Each posted sitting bills the unbilled
 price divided across the estimated sittings left; once the estimate is used up,
-the next post bills all that remains. **Bill all remaining** bills it all sooner. The
+the next post bills all that remains. The desk may bill a sitting at another
+amount, up to the unbilled price, such as a round figure or the whole balance to
+finish early; the split then re-divides what remains. The
 sitting count is an estimate, never a posting limit. A plan completes when
 every non-dropped priced item has its full price posted. A free item still needs one
 posted sitting before completion.
