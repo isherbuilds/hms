@@ -1,5 +1,4 @@
 import { Badge } from "@hms/ui/components/badge";
-import { DropdownMenuCheckboxItem } from "@hms/ui/components/dropdown-menu";
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -16,7 +15,7 @@ import { BillingWorklistSheet } from "@/components/billing-worklist-sheet";
 import {
   FilterChips,
   FilterMenu,
-  FilterSubmenu,
+  OptionFilter,
   focusSearch,
   type ActiveFilter,
 } from "@/components/list-filter";
@@ -225,19 +224,14 @@ function BillingIndexRoute() {
             onQueryChange={(next) => void setFilters({ q: next || undefined })}
             trailing={
               <FilterMenu anchor={field} active={chips.length > 0}>
-                <FilterSubmenu icon={CircleDotIcon} label="View">
-                  {VIEWS.map((candidate) => (
-                    <DropdownMenuCheckboxItem
-                      key={candidate}
-                      checked={view === candidate}
-                      onCheckedChange={(checked) =>
-                        void setFilters({ view: checked ? candidate : undefined })
-                      }
-                    >
-                      {VIEW_LABELS[candidate]}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </FilterSubmenu>
+                <OptionFilter
+                  icon={CircleDotIcon}
+                  label="View"
+                  options={VIEWS}
+                  labels={VIEW_LABELS}
+                  value={view}
+                  onChange={(value) => void setFilters({ view: value })}
+                />
               </FilterMenu>
             }
           />

@@ -2,6 +2,7 @@ import {
   Form,
   FormControl,
   FormDescription,
+  FormField,
   FormItem,
   FormLabel,
   FormMessage,
@@ -23,7 +24,8 @@ import { useFormContext, useFormState, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { TextField } from "@/components/form-fields";
+import { ControlledField, TextField } from "@/components/form-fields";
+import { OptionCombobox } from "@/components/option-combobox";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { optionalNumberText, optionalText, patientFieldSchema } from "@/lib/form-schema";
@@ -278,21 +280,23 @@ function SponsorFields({
 
   return (
     <div className="flex flex-col gap-3">
-      <RegisteredFormField
+      <FormField
+        control={control}
         name="sponsorPayerId"
         render={({ field }) => (
           <FormItem>
             <FormLabel>Covered by</FormLabel>
             <FormControl>
-              <NativeSelect {...field}>
-                <option value="">Self-paying</option>
-                {options.map((payer) => (
-                  <option key={payer.id} value={payer.id}>
-                    {payer.name}
-                    {payer.active ? "" : " (inactive)"}
-                  </option>
-                ))}
-              </NativeSelect>
+              <OptionCombobox
+                {...field}
+                options={[
+                  { value: "", label: "Self-paying" },
+                  ...options.map((payer) => ({
+                    value: payer.id,
+                    label: payer.active ? payer.name : `${payer.name} (inactive)`,
+                  })),
+                ]}
+              />
             </FormControl>
             <FormDescription>
               {payers.isPending ? (
@@ -392,23 +396,20 @@ function EmergencyContactFields() {
               </FormItem>
             )}
           />
-          <RegisteredFormField
+          <ControlledField
             name="emergencyContact.relation"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Relation</FormLabel>
-                <FormControl>
-                  <NativeSelect {...field} className="capitalize">
-                    <option value="">Not recorded</option>
-                    {emergencyContactRelation.options.map((relation) => (
-                      <option key={relation} value={relation}>
-                        {relation}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+            label="Relation"
+            render={(field) => (
+              <FormControl>
+                <NativeSelect {...field} className="capitalize">
+                  <option value="">Not recorded</option>
+                  {emergencyContactRelation.options.map((relation) => (
+                    <option key={relation} value={relation}>
+                      {relation}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </FormControl>
             )}
           />
         </div>
@@ -565,24 +566,23 @@ export function PatientForm({
 
           <PatientPhoneDuplicateWarning orgSlug={orgSlug} selfId={record?.id} />
 
-          <RegisteredFormField
+          <ControlledField
             name="sex"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Sex <span className="text-destructive">*</span>
-                </FormLabel>
-                <FormControl>
-                  <NativeSelect {...field}>
-                    <option value="">Choose sex</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="other">Other</option>
-                    <option value="unknown">Unknown</option>
-                  </NativeSelect>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+            label={
+              <>
+                Sex <span className="text-destructive">*</span>
+              </>
+            }
+            render={(field) => (
+              <FormControl>
+                <NativeSelect {...field}>
+                  <option value="">Choose sex</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                  <option value="unknown">Unknown</option>
+                </NativeSelect>
+              </FormControl>
             )}
           />
 
@@ -635,23 +635,20 @@ export function PatientForm({
           <PatientFormSection title="Contacts">
             {/* One row: the relation reads as a prefix of the name, "W/o Gurmeet Singh". */}
             <div className="grid grid-cols-[6rem_1fr] gap-2">
-              <RegisteredFormField
+              <ControlledField
                 name="guardian.relation"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Relation</FormLabel>
-                    <FormControl>
-                      <NativeSelect {...field}>
-                        <option value="">None</option>
-                        {guardianRelation.options.map((relation) => (
-                          <option key={relation} value={relation}>
-                            {relation}
-                          </option>
-                        ))}
-                      </NativeSelect>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+                label="Relation"
+                render={(field) => (
+                  <FormControl>
+                    <NativeSelect {...field}>
+                      <option value="">None</option>
+                      {guardianRelation.options.map((relation) => (
+                        <option key={relation} value={relation}>
+                          {relation}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </FormControl>
                 )}
               />
               <TextField
@@ -707,26 +704,20 @@ export function PatientForm({
             <SponsorFields orgSlug={orgSlug} current={record?.sponsor?.payerId} />
           </PatientFormSection>
           <PatientFormSection title="Medical details">
-            <RegisteredFormField
+            <ControlledField
               name="bloodGroup"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Blood group</FormLabel>
-                  <FormControl>
-                    <NativeSelect {...field}>
-                      <option value="">Not recorded</option>
-                      <option value="A+">A+</option>
-                      <option value="A-">A-</option>
-                      <option value="B+">B+</option>
-                      <option value="B-">B-</option>
-                      <option value="AB+">AB+</option>
-                      <option value="AB-">AB-</option>
-                      <option value="O+">O+</option>
-                      <option value="O-">O-</option>
-                    </NativeSelect>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+              label="Blood group"
+              render={(field) => (
+                <FormControl>
+                  <NativeSelect {...field}>
+                    <option value="">Not recorded</option>
+                    {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((group) => (
+                      <option key={group} value={group}>
+                        {group}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </FormControl>
               )}
             />
 

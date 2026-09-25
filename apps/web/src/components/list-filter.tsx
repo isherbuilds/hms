@@ -109,6 +109,37 @@ export function FilterSubmenu({
   );
 }
 
+/** A single-choice submenu; checking the applied option again clears it. */
+export function OptionFilter<T extends string>({
+  icon,
+  label,
+  options,
+  labels,
+  value,
+  onChange,
+}: {
+  icon: LucideIcon;
+  label: string;
+  options: readonly T[];
+  labels: Record<T, string>;
+  value: T | undefined;
+  onChange: (value: T | undefined) => void;
+}) {
+  return (
+    <FilterSubmenu icon={icon} label={label}>
+      {options.map((option) => (
+        <DropdownMenuCheckboxItem
+          key={option}
+          checked={value === option}
+          onCheckedChange={(checked) => onChange(checked ? option : undefined)}
+        >
+          {labels[option]}
+        </DropdownMenuCheckboxItem>
+      ))}
+    </FilterSubmenu>
+  );
+}
+
 /**
  * Move focus to the search box before the focused control unmounts. `empty` clears the
  * text first: SearchInput never syncs a focused box, so a cleared `q` would

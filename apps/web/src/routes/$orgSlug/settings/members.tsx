@@ -154,9 +154,9 @@ function InviteDialog({
                   <FormControl>
                     <NativeSelect {...field} value={field.value ?? ""}>
                       <option value="" disabled />
-                      {ORG_ROLES.map((option) => (
-                        <option key={option} value={option}>
-                          {ROLE_LABELS[option]}
+                      {ORG_ROLES.map((role) => (
+                        <option key={role} value={role}>
+                          {ROLE_LABELS[role]}
                         </option>
                       ))}
                     </NativeSelect>

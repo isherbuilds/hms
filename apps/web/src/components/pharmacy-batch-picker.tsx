@@ -6,7 +6,7 @@ import { ClientOnly } from "@tanstack/react-router";
 import { SearchIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
-import { searchEmptyMessage, useSearchTerm } from "@/hooks/use-remote-search";
+import { SEARCH_RESULT_LIMIT, searchEmptyMessage, useSearchTerm } from "@/hooks/use-remote-search";
 import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { formatBusinessDate } from "@/lib/org-datetime";
@@ -54,23 +54,25 @@ export function PharmacyBatchPicker({
     enabled: search.searching,
   });
 
-  const results: Batch[] = (stock.data ?? []).flatMap((product) =>
-    product.batches
-      .filter((batch) => !chosen.has(batch.batchId))
-      .map((batch) => ({
-        batchId: batch.batchId,
-        productName: product.name,
-        code: product.code,
-        batchNumber: batch.batchNumber,
-        expiryDate: batch.expiryDate,
-        mrp: batch.mrp,
-        mrpUnits: batch.mrpUnits,
-        taxRatePercent: product.taxRatePercent,
-        schedule: product.schedule,
-        stockUnit: product.stockUnit,
-        shelfQty: batch.shelfQty,
-      })),
-  );
+  const results: Batch[] = (stock.data ?? [])
+    .flatMap((product) =>
+      product.batches
+        .filter((batch) => !chosen.has(batch.batchId))
+        .map((batch) => ({
+          batchId: batch.batchId,
+          productName: product.name,
+          code: product.code,
+          batchNumber: batch.batchNumber,
+          expiryDate: batch.expiryDate,
+          mrp: batch.mrp,
+          mrpUnits: batch.mrpUnits,
+          taxRatePercent: product.taxRatePercent,
+          schedule: product.schedule,
+          stockUnit: product.stockUnit,
+          shelfQty: batch.shelfQty,
+        })),
+    )
+    .slice(0, SEARCH_RESULT_LIMIT);
 
   const emptyMessage = searchEmptyMessage(search.searching, stock, {
     noMatch: "No batch on the shelf matches",

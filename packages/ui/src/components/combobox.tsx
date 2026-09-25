@@ -54,8 +54,6 @@ function Combobox<T>({
   popupClassName,
   itemClassName,
 }: ComboboxProps<T>) {
-  const itemClass = cn(ITEM_CLASS, itemClassName);
-
   return (
     <ComboboxPrimitive.Root<T>
       items={items}
@@ -90,44 +88,77 @@ function Combobox<T>({
           inputProps?.onKeyDown?.(event);
         }}
       />
-      <ComboboxPrimitive.Portal>
-        <ComboboxPrimitive.Positioner
-          className="isolate z-50 outline-none"
-          sideOffset={4}
-          align="start"
-        >
-          <ComboboxPrimitive.Popup
-            data-slot="combobox-content"
-            className={cn(
-              "z-50 w-(--anchor-width) max-w-(--available-width) overflow-hidden rounded-md bg-popover text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none",
-              emptyContent == null && "data-empty:hidden",
-              popupClassName,
-            )}
-          >
-            <ComboboxPrimitive.Empty data-slot="combobox-empty" className="text-muted-foreground">
-              {emptyContent}
-            </ComboboxPrimitive.Empty>
-            <ComboboxPrimitive.List
-              data-slot="combobox-list"
-              className="max-h-[min(18rem,var(--available-height))] overflow-y-auto overscroll-contain p-1 outline-none data-empty:p-0"
-            >
-              {(item: T) => (
-                <ComboboxPrimitive.Item
-                  key={getItemKey(item)}
-                  value={item}
-                  disabled={isItemDisabled?.(item)}
-                  data-slot="combobox-item"
-                  className={itemClass}
-                >
-                  {renderItem(item)}
-                </ComboboxPrimitive.Item>
-              )}
-            </ComboboxPrimitive.List>
-          </ComboboxPrimitive.Popup>
-        </ComboboxPrimitive.Positioner>
-      </ComboboxPrimitive.Portal>
+      <ComboboxPopup
+        getItemKey={getItemKey}
+        renderItem={renderItem}
+        isItemDisabled={isItemDisabled}
+        emptyContent={emptyContent}
+        popupClassName={popupClassName}
+        itemClassName={itemClassName}
+      />
     </ComboboxPrimitive.Root>
   );
 }
 
-export { Combobox, type ComboboxProps };
+type ComboboxPopupProps<T> = Pick<
+  ComboboxProps<T>,
+  | "getItemKey"
+  | "renderItem"
+  | "isItemDisabled"
+  | "emptyContent"
+  | "popupClassName"
+  | "itemClassName"
+>;
+
+/** The popup every combobox root shares; the root alone decides value semantics. */
+function ComboboxPopup<T>({
+  getItemKey,
+  renderItem,
+  isItemDisabled,
+  emptyContent,
+  popupClassName,
+  itemClassName,
+}: ComboboxPopupProps<T>) {
+  const itemClass = cn(ITEM_CLASS, itemClassName);
+
+  return (
+    <ComboboxPrimitive.Portal>
+      <ComboboxPrimitive.Positioner
+        className="isolate z-50 outline-none"
+        sideOffset={4}
+        align="start"
+      >
+        <ComboboxPrimitive.Popup
+          data-slot="combobox-content"
+          className={cn(
+            "z-50 w-(--anchor-width) max-w-(--available-width) overflow-hidden rounded-md bg-popover text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none",
+            emptyContent == null && "data-empty:hidden",
+            popupClassName,
+          )}
+        >
+          <ComboboxPrimitive.Empty data-slot="combobox-empty" className="text-muted-foreground">
+            {emptyContent}
+          </ComboboxPrimitive.Empty>
+          <ComboboxPrimitive.List
+            data-slot="combobox-list"
+            className="max-h-[min(18rem,var(--available-height))] overflow-y-auto overscroll-contain p-1 outline-none data-empty:p-0"
+          >
+            {(item: T) => (
+              <ComboboxPrimitive.Item
+                key={getItemKey(item)}
+                value={item}
+                disabled={isItemDisabled?.(item)}
+                data-slot="combobox-item"
+                className={itemClass}
+              >
+                {renderItem(item)}
+              </ComboboxPrimitive.Item>
+            )}
+          </ComboboxPrimitive.List>
+        </ComboboxPrimitive.Popup>
+      </ComboboxPrimitive.Positioner>
+    </ComboboxPrimitive.Portal>
+  );
+}
+
+export { Combobox, ComboboxPopup, type ComboboxProps };

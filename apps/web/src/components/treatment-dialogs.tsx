@@ -2,7 +2,6 @@ import { DECIMAL_PATTERN, formatDecimal, parseDecimal } from "@hms/api/core/mone
 import { Combobox } from "@hms/ui/components/combobox";
 import { Button } from "@hms/ui/components/button";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@hms/ui/components/form";
-import { NativeSelect } from "@hms/ui/components/native-select";
 import { useQuery } from "@tanstack/react-query";
 import { SearchIcon } from "lucide-react";
 import type { ComponentPropsWithoutRef } from "react";
@@ -11,6 +10,7 @@ import { z } from "zod";
 
 import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
+import { OptionCombobox } from "@/components/option-combobox";
 import { useCatalogSearch } from "@/hooks/use-catalog-search";
 import { orpc } from "@/lib/orpc";
 import { practitionerDisplayName } from "@/lib/practitioner-name";
@@ -240,14 +240,16 @@ function PractitionerField({ orgSlug }: { orgSlug: string }) {
       label="Practitioner"
       render={(field) => (
         <FormControl>
-          <NativeSelect {...field} className="capitalize">
-            <option value="">Choose a practitioner</option>
-            {practitioners.data?.map((practitioner) => (
-              <option key={practitioner.id} value={practitioner.id}>
-                {practitionerDisplayName(practitioner.name)}
-              </option>
-            ))}
-          </NativeSelect>
+          <OptionCombobox
+            {...field}
+            options={(practitioners.data ?? []).map((practitioner) => ({
+              value: practitioner.id,
+              label: practitionerDisplayName(practitioner.name),
+            }))}
+            placeholder="Choose a practitioner"
+            className="capitalize"
+            itemClassName="capitalize"
+          />
         </FormControl>
       )}
     />

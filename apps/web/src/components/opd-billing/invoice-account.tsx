@@ -22,7 +22,6 @@ import {
   FormMessage,
 } from "@hms/ui/components/form";
 import { Input } from "@hms/ui/components/input";
-import { NativeSelect } from "@hms/ui/components/native-select";
 import {
   Table,
   TableBody,
@@ -41,6 +40,7 @@ import { z } from "zod";
 
 import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
+import { OptionCombobox } from "@/components/option-combobox";
 import { ErrorNote } from "@/components/page";
 import { PaymentLineFields } from "@/components/payment-lines";
 import { RecordPaymentForm } from "@/components/record-payment-form";
@@ -492,14 +492,14 @@ function RefundDialog({
         label="Credit note"
         render={(field) => (
           <FormControl>
-            <NativeSelect {...field}>
-              <option value="">Choose a credit note</option>
-              {creditNotes.map((note) => (
-                <option key={note.id} value={note.id}>
-                  {note.creditNoteNumber} · {formatMoney(note.total, currency)}
-                </option>
-              ))}
-            </NativeSelect>
+            <OptionCombobox
+              {...field}
+              options={creditNotes.map((note) => ({
+                value: note.id,
+                label: `${note.creditNoteNumber} · ${formatMoney(note.total, currency)}`,
+              }))}
+              placeholder="Choose a credit note"
+            />
           </FormControl>
         )}
       />

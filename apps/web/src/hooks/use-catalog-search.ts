@@ -14,7 +14,7 @@ export function useCatalogSearch({
   /** Shown once a search returned nothing. */
   noMatch: string;
 }) {
-  const search = useSearchTerm(250, 1);
+  const search = useSearchTerm();
 
   const catalog = useQuery({
     ...orpc.catalog.searchServices.queryOptions({

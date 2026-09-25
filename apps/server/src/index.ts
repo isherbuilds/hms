@@ -41,7 +41,9 @@ app.use(
     crossOriginOpenerPolicy: false,
     originAgentCluster: false,
     referrerPolicy: "no-referrer",
-    strictTransportSecurity: isProduction ? "max-age=31536000; includeSubDomains" : false,
+    strictTransportSecurity: isProduction
+      ? "max-age=31536000; includeSubDomains"
+      : false,
     xContentTypeOptions: "nosniff",
     xDnsPrefetchControl: false,
     xDownloadOptions: false,

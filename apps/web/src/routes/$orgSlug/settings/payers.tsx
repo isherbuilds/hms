@@ -17,7 +17,6 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  RegisteredFormField,
 } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
@@ -27,7 +26,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { TextField } from "@/components/form-fields";
+import { ControlledField, TextField } from "@/components/form-fields";
 import { DataList, ListState, PageBody, PageHeader, Panel } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { useMembership } from "@/lib/membership";
@@ -230,22 +229,19 @@ function PayerDialog(props: PayerDialogProps) {
             <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <TextField name="name" label="Name" autoFocus disabled={isPending} />
-                <RegisteredFormField
+                <ControlledField
                   name="type"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Type</FormLabel>
-                      <FormControl>
-                        <NativeSelect {...field} disabled={isPending}>
-                          {PAYER_TYPES.map((type) => (
-                            <option key={type} value={type}>
-                              {PAYER_TYPE_LABELS[type]}
-                            </option>
-                          ))}
-                        </NativeSelect>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
+                  label="Type"
+                  render={(field) => (
+                    <FormControl>
+                      <NativeSelect {...field} disabled={isPending}>
+                        {PAYER_TYPES.map((type) => (
+                          <option key={type} value={type}>
+                            {PAYER_TYPE_LABELS[type]}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </FormControl>
                   )}
                 />
               </div>

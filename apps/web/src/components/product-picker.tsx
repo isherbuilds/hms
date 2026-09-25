@@ -3,7 +3,7 @@ import { Combobox } from "@hms/ui/components/combobox";
 import { Input } from "@hms/ui/components/input";
 import { useQuery } from "@tanstack/react-query";
 import { ClientOnly } from "@tanstack/react-router";
-import type { ComponentPropsWithoutRef } from "react";
+import { memo, type ComponentPropsWithoutRef } from "react";
 
 import { SEARCH_RESULT_LIMIT, searchEmptyMessage, useSearchTerm } from "@/hooks/use-remote-search";
 import { orpc } from "@/lib/orpc";
@@ -29,8 +29,11 @@ type ProductPickerProps = {
   "id" | "aria-describedby" | "aria-invalid" | "aria-label"
 >;
 
-/** Remote type-ahead over the product master; the caller keeps the selection. */
-export function ProductPicker({
+/**
+ * Remote type-ahead over the product master; the caller keeps the selection. Memoized:
+ * it sits in a Controller render prop, which re-runs on every form change.
+ */
+export const ProductPicker = memo(function ProductPicker({
   orgSlug,
   value,
   onChange,
@@ -146,4 +149,4 @@ export function ProductPicker({
       />
     </ClientOnly>
   );
-}
+});

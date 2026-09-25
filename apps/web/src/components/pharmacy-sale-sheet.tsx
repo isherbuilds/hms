@@ -27,7 +27,7 @@ import { useFormContext, useFormState } from "react-hook-form";
 import { z } from "zod";
 
 import { FormDialog } from "@/components/form-dialog";
-import { TextField } from "@/components/form-fields";
+import { ControlledField, TextField } from "@/components/form-fields";
 import { ErrorNote } from "@/components/page";
 import { numberText } from "@/lib/form-schema";
 import { billingPdfUrl } from "@/lib/billing-document";
@@ -401,22 +401,19 @@ function ReturnDialog({
     >
       <ReturnLines lines={lines} />
 
-      <RegisteredFormField
+      <ControlledField
         name="reasonCode"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>Reason</FormLabel>
-            <FormControl>
-              <NativeSelect {...field}>
-                {RETURN_REASON_CODES.map((code) => (
-                  <option key={code} value={code}>
-                    {REASON_LABELS[code]}
-                  </option>
-                ))}
-              </NativeSelect>
-            </FormControl>
-            <FormMessage />
-          </FormItem>
+        label="Reason"
+        render={(field) => (
+          <FormControl>
+            <NativeSelect {...field}>
+              {RETURN_REASON_CODES.map((reason) => (
+                <option key={reason} value={reason}>
+                  {REASON_LABELS[reason]}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormControl>
         )}
       />
 
@@ -440,22 +437,19 @@ function ReturnDialog({
             </FormItem>
           )}
         />
-        <RegisteredFormField
+        <ControlledField
           name="refund.method"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Refund method</FormLabel>
-              <FormControl>
-                <NativeSelect {...field}>
-                  {PAYMENT_METHODS.map((method) => (
-                    <option key={method} value={method}>
-                      {methodLabel(method)}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
+          label="Refund method"
+          render={(field) => (
+            <FormControl>
+              <NativeSelect {...field}>
+                {PAYMENT_METHODS.map((method) => (
+                  <option key={method} value={method}>
+                    {methodLabel(method)}
+                  </option>
+                ))}
+              </NativeSelect>
+            </FormControl>
           )}
         />
         <TextField name="refund.reference" label="Refund reference" />
