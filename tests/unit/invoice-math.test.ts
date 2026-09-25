@@ -252,6 +252,7 @@ test("a course splits into sittings the desk can collect", () => {
   expect(sittingShare(7000_00n, 3)).toBe(2300_00n);
   expect(sittingShare(4700_00n, 2)).toBe(2400_00n);
   expect(sittingShare(2300_00n, 1)).toBe(2300_00n);
-  // A small session price stays to the rupee.
+  // A small session price stays to the rupee; under ₹1 splits to the paisa, never ₹0.
   expect(sittingShare(1500_00n, 10)).toBe(150_00n);
+  expect(sittingShare(1_00n, 3)).toBe(33n);
 });
