@@ -406,8 +406,8 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
   `p-4`; feature forms compose `SheetHeader`/`SheetFooter` or
   `DialogHeader`/`DialogFooter` rather than recreating their borders and padding.
 - Forms compose `FieldGroup`, `Field`, `FieldSet` and `FieldError`. Fixed choices
-  use `NativeSelect`. Loaded local records use `OptionCombobox` and show up to
-  six matches after two typed characters. Records found by server search use a
+  use `NativeSelect`. Loaded local records use `OptionCombobox`: a click lists
+  every record and typing narrows it. Records found by server search use a
   `Combobox` picker. A two-way toggle keeps a `NativeSelect` or a
   `role="group"` row of buttons that carry `aria-pressed`. Section boundaries
   use `Separator`.

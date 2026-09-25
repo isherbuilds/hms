@@ -15,7 +15,7 @@ const optionValue = (option: Option) => option.value;
 const optionLabel = (option: Option) => option.label;
 
 /**
- * Search a loaded record list while the form stores the selected record's id.
+ * Browse or narrow a loaded record list while the form stores the selected record's id.
  * Fixed choices use NativeSelect; server-searched records use Combobox.
  */
 function OptionCombobox({
@@ -49,7 +49,6 @@ function OptionCombobox({
   "id" | "aria-label" | "aria-describedby" | "aria-invalid"
 >) {
   const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
   const selected = options.find((option) => option.value === value) ?? null;
   const fieldProps = { ...inputProps, name, placeholder, autoComplete: "off", className };
 
@@ -65,9 +64,6 @@ function OptionCombobox({
       onInputValueChange={(input, details) => {
         setQuery(details.reason === "input-change" ? input.trim() : "");
       }}
-      open={open && query.length >= 2}
-      onOpenChange={setOpen}
-      limit={6}
       isItemEqualToValue={sameOption}
       autoHighlight
       loopFocus
