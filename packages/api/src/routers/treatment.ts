@@ -13,6 +13,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { sittingShare } from "../core/money";
 import { advanceRemaining } from "../lib/advance-credit";
 import { businessDate } from "../lib/business-date";
 import { impossible } from "../lib/conflict";
@@ -49,7 +50,7 @@ function planItemCharges(orgId: string) {
 }
 
 /**
- * Split the unposted course price over the estimated sittings remaining.
+ * Split the unposted course price over the estimated sittings remaining, in round figures.
  * The estimate never blocks posting: once used up, the next sitting takes the rest.
  * `null` means the course price has been posted, or a free course has been posted.
  */
@@ -61,7 +62,7 @@ function nextSittingPrice(
 
   if (unposted <= 0n && (item.quotedPrice > 0n || posted.sittings > 0)) return null;
 
-  return unposted / BigInt(Math.max(item.sittingsPlanned - posted.sittings, 1));
+  return sittingShare(unposted, item.sittingsPlanned - posted.sittings);
 }
 
 async function preparePlanItem(

@@ -1,4 +1,4 @@
-import { DECIMAL_PATTERN, formatDecimal, parseDecimal } from "@hms/api/core/money";
+import { DECIMAL_PATTERN, formatDecimal, parseDecimal, sittingShare } from "@hms/api/core/money";
 import { Combobox } from "@hms/ui/components/combobox";
 import { Button } from "@hms/ui/components/button";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@hms/ui/components/form";
@@ -90,10 +90,10 @@ function itemInput({ procedure, note, ...rest }: z.output<typeof addItemSchema>)
 }
 
 /** The live split the doctor sees while quoting; the last sitting also takes any rounding. */
-function sittingShare(price: string, sittings: number) {
+function firstSitting(price: string, sittings: number) {
   if (!DECIMAL_PATTERN.test(price) || !Number.isInteger(sittings) || sittings < 1) return null;
 
-  return formatDecimal(parseDecimal(price) / BigInt(sittings));
+  return formatDecimal(sittingShare(parseDecimal(price), sittings));
 }
 
 export function NewPlanDialog({
@@ -380,7 +380,7 @@ function ItemFields({ orgSlug }: { orgSlug: string }) {
   };
 
   const [price, sittings] = useWatch({ control, name: ["quotedPrice", "sittingsPlanned"] });
-  const perSitting = sittingShare(price, Number(sittings));
+  const perSitting = firstSitting(price, Number(sittings));
 
   return (
     <div className="grid gap-3 sm:grid-cols-2">

@@ -38,3 +38,20 @@ export function divideHalfUp(numerator: bigint, denominator: bigint): bigint {
 
   return negative ? -rounded : rounded;
 }
+
+/**
+ * One sitting's share of what a course has left to bill, in figures the desk can collect:
+ * ₹1,000 and above to the nearest ₹100, smaller shares to the rupee, so a ₹150 session
+ * stays ₹150, and shares under ₹1 to the paisa so delivered work never bills ₹0. The
+ * last estimated sitting takes the exact rest.
+ */
+export function sittingShare(unbilled: bigint, sittingsLeft: number): bigint {
+  if (sittingsLeft <= 1) return unbilled;
+
+  const sittings = BigInt(sittingsLeft);
+
+  const step =
+    unbilled >= 1000_00n * sittings ? 100_00n : unbilled >= 100n * sittings ? 100n : 1n;
+
+  return divideHalfUp(unbilled, sittings * step) * step;
+}
