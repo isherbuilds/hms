@@ -1,15 +1,18 @@
 "use client";
 
 import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
-import { ITEM_CLASS } from "@hms/ui/components/combobox";
+import { ComboboxPopup } from "@hms/ui/components/combobox";
 import { Input } from "@hms/ui/components/input";
-import { cn } from "@hms/ui/lib/utils";
 import type * as React from "react";
 import { useState, type ComponentPropsWithoutRef, type Ref } from "react";
 
 type Option = { value: string; label: string };
 
 const sameOption = (a: Option, b: Option) => a.value === b.value;
+
+const optionValue = (option: Option) => option.value;
+
+const optionLabel = (option: Option) => option.label;
 
 /**
  * Search a loaded record list while the form stores the selected record's id.
@@ -86,33 +89,12 @@ function OptionCombobox({
           }
         }}
       />
-      <ComboboxPrimitive.Portal>
-        <ComboboxPrimitive.Positioner
-          className="isolate z-50 outline-none"
-          sideOffset={4}
-          align="start"
-        >
-          <ComboboxPrimitive.Popup
-            data-slot="combobox-content"
-            className="z-50 w-(--anchor-width) max-w-(--available-width) overflow-hidden rounded-md bg-popover text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none"
-          >
-            <ComboboxPrimitive.Empty className="px-3 py-2 text-muted-foreground empty:hidden">
-              No match
-            </ComboboxPrimitive.Empty>
-            <ComboboxPrimitive.List className="max-h-[min(18rem,var(--available-height))] overflow-y-auto overscroll-contain p-1 outline-none data-empty:p-0">
-              {(option: Option) => (
-                <ComboboxPrimitive.Item
-                  key={option.value}
-                  value={option}
-                  className={cn(ITEM_CLASS, itemClassName)}
-                >
-                  {option.label}
-                </ComboboxPrimitive.Item>
-              )}
-            </ComboboxPrimitive.List>
-          </ComboboxPrimitive.Popup>
-        </ComboboxPrimitive.Positioner>
-      </ComboboxPrimitive.Portal>
+      <ComboboxPopup
+        getItemKey={optionValue}
+        renderItem={optionLabel}
+        emptyContent={<p className="px-3 py-2">No match</p>}
+        itemClassName={itemClassName}
+      />
     </ComboboxPrimitive.Root>
   );
 }

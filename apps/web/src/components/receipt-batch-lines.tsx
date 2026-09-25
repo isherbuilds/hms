@@ -4,6 +4,7 @@ import { FormControl } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { cn } from "@hms/ui/lib/utils";
 import { Trash2Icon } from "lucide-react";
+import { memo } from "react";
 import { useFieldArray, useFormContext, useFormState, useWatch } from "react-hook-form";
 
 import { ControlledField, TextField } from "@/components/form-fields";
@@ -284,8 +285,17 @@ function BatchRow({
 const pickedOf = (line: ReceiptInput["lines"][number]) =>
   line.productId ? { productId: line.productId, name: line.productName } : null;
 
-/** Watches only the product, so typing elsewhere in the row leaves the picker alone. */
-function ProductCell({ index, orgSlug }: { index: number; orgSlug: string }) {
+/**
+ * Watches only the product, and is memoized so the row's per-keystroke render stops
+ * here: typing elsewhere in the row leaves the picker alone.
+ */
+const ProductCell = memo(function ProductCell({
+  index,
+  orgSlug,
+}: {
+  index: number;
+  orgSlug: string;
+}) {
   const form = useFormContext<ReceiptInput, unknown, Receipt>();
   const value = useWatch({ control: form.control, name: `lines.${index}`, compute: pickedOf });
   // Out of the render prop: the Controller calls it on every form change, and a closure
@@ -304,4 +314,4 @@ function ProductCell({ index, orgSlug }: { index: number; orgSlug: string }) {
       )}
     />
   );
-}
+});
