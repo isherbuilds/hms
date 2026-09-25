@@ -14,7 +14,10 @@ export default defineConfig(({ command }) => ({
   resolve: {
     tsconfigPaths: true,
     // Build only: Nitro's single-file bundle lacks takumi's `.wasm`, and dev cannot load the `next` entry.
-    alias: command === "build" ? [{ find: /^takumi-pdf$/, replacement: "takumi-pdf/next" }] : [],
+    alias:
+      command === "build"
+        ? [{ find: /^takumi-pdf$/, replacement: "takumi-pdf/next" }]
+        : [],
   },
   build: {
     // CSP is `font-src 'self'`, so fonts must never inline as data: URLs.

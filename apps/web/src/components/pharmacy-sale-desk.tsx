@@ -2,18 +2,9 @@ import { computeInvoiceLines } from "@hms/api/lib/invoice-math";
 import { Button } from "@hms/ui/components/button";
 import { Input } from "@hms/ui/components/input";
 import { SubmitButton } from "@hms/ui/components/submit-button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@hms/ui/components/table";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ClientOnly, useBlocker, useNavigate } from "@tanstack/react-router";
-import { Trash2Icon } from "lucide-react";
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -26,156 +17,28 @@ import {
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
 import { FormSection, Panel } from "@/components/page";
 import { PharmacyBatchPicker, type SaleLine } from "@/components/pharmacy-batch-picker";
+import { SaleLines } from "@/components/pharmacy-sale-lines";
 import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
 import type { WalkInQuote } from "@/lib/opd-service-preview";
-import { formatBusinessDate } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { closeOnConflict } from "@/lib/orpc-error";
 import { openingCredit, type PatientCredit } from "@/lib/patient-credit";
 
 type Buyer = "walk-in" | "patient";
 
+const EMPTY_DETAILS = {
+  walkInName: "",
+  walkInPhone: "",
+  forName: "",
+  prescriberName: "",
+  prescriptionReference: "",
+};
+
 const BUYER_LABELS = [
   ["walk-in", "Walk-in"],
   ["patient", "Patient"],
 ] as const satisfies readonly (readonly [Buyer, string])[];
-
-function SaleLines({
-  lines,
-  currency,
-  onChange,
-  onRemove,
-}: {
-  lines: Array<SaleLine & { lineSubtotal: bigint }>;
-  currency: string;
-  onChange: (batchId: string, qty: number) => void;
-  onRemove: (batchId: string) => void;
-}) {
-  const commitQty = (line: SaleLine, input: HTMLInputElement) => {
-    // The shelf is the ceiling: the server refuses more, so the field never offers it.
-    const qty = Math.min(line.shelfQty, Math.max(1, input.valueAsNumber || 1));
-    input.value = String(qty);
-    onChange(line.batchId, qty);
-  };
-
-  const qtyField = (line: SaleLine) => (
-    <Input
-      key={`${line.batchId}:${line.qty}`}
-      type="number"
-      min={1}
-      max={line.shelfQty}
-      defaultValue={line.qty}
-      aria-label={`${line.productName} quantity`}
-      className="w-16 tabular-nums"
-      onBlur={(event) => commitQty(line, event.currentTarget)}
-      onKeyDown={(event) => {
-        if (event.key !== "Enter") return;
-        event.preventDefault();
-        commitQty(line, event.currentTarget);
-      }}
-    />
-  );
-
-  const removeButton = (line: SaleLine) => (
-    <Button
-      type="button"
-      size="icon-xs"
-      variant="destructive"
-      aria-label={`Remove ${line.productName}`}
-      onClick={() => onRemove(line.batchId)}
-    >
-      <Trash2Icon />
-    </Button>
-  );
-
-  if (lines.length === 0) {
-    return <p className="text-muted-foreground">No batches in this sale</p>;
-  }
-
-  return (
-    <>
-      <div className="hidden overflow-hidden rounded-lg ring-1 ring-border md:block">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Product</TableHead>
-              <TableHead>Batch</TableHead>
-              <TableHead>Expiry</TableHead>
-              <TableHead className="w-20">Qty</TableHead>
-              <TableHead className="text-right">MRP</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
-              <TableHead className="w-10">
-                <span className="sr-only">Actions</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {lines.map((line) => (
-              <TableRow key={line.batchId}>
-                <TableCell>
-                  <p className="font-medium capitalize">{line.productName}</p>
-                  <p className="font-mono text-muted-foreground">{line.code}</p>
-                </TableCell>
-                <TableCell className="font-mono">{line.batchNumber}</TableCell>
-                <TableCell className="whitespace-nowrap">
-                  {formatBusinessDate(line.expiryDate)}
-                </TableCell>
-                <TableCell>{qtyField(line)}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatMoney(line.mrp, currency)}
-                  {line.mrpUnits > 1 ? ` / ${line.mrpUnits}` : ""}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatMoney(line.lineSubtotal, currency)}
-                </TableCell>
-                <TableCell>{removeButton(line)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      <div className="grid gap-2 md:hidden">
-        {lines.map((line) => (
-          <article
-            key={line.batchId}
-            className="grid min-w-0 gap-3 rounded-lg border border-border p-3"
-          >
-            <div className="min-w-0">
-              <p className="wrap-break-words font-medium capitalize">{line.productName}</p>
-              <p className="break-all font-mono text-muted-foreground">{line.code}</p>
-              <p className="break-all font-mono text-muted-foreground">Batch {line.batchNumber}</p>
-              <p className="text-muted-foreground">Expires {formatBusinessDate(line.expiryDate)}</p>
-            </div>
-            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-end gap-3">
-              <label className="grid gap-1 text-muted-foreground">
-                Qty
-                {qtyField(line)}
-              </label>
-              <div className="min-w-0">
-                <p className="text-muted-foreground">MRP</p>
-                <p className="wrap-break-words tabular-nums">
-                  {formatMoney(line.mrp, currency)}
-                  {line.mrpUnits > 1 ? ` / ${line.mrpUnits}` : ""}
-                </p>
-              </div>
-            </div>
-            <div className="flex min-w-0 items-end justify-between gap-2 border-t border-border pt-2">
-              <div className="min-w-0">
-                <p className="text-muted-foreground">Amount</p>
-                <p className="wrap-break-words font-medium tabular-nums">
-                  {formatMoney(line.lineSubtotal, currency)}
-                </p>
-              </div>
-              {removeButton(line)}
-            </div>
-          </article>
-        ))}
-      </div>
-    </>
-  );
-}
 
 export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
   const navigate = useNavigate();
@@ -186,13 +49,10 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
 
   const [cart, setCart] = useState<SaleLine[]>([]);
   const [buyerKind, setBuyerKind] = useState<Buyer>("walk-in");
-  const [walkInName, setWalkInName] = useState("");
-  const [walkInPhone, setWalkInPhone] = useState("");
   const [patient, setPatient] = useState<SelectedPatient | null>(null);
   const [showPrescription, setShowPrescription] = useState(false);
-  const [forName, setForName] = useState("");
-  const [prescriberName, setPrescriberName] = useState("");
-  const [prescriptionReference, setPrescriptionReference] = useState("");
+  // The desk's free-text fields; each input binds one key through `text`.
+  const [details, setDetails] = useState(EMPTY_DETAILS);
   const [attempted, setAttempted] = useState(false);
   // The credit the overlay opens with, read on Collect; null while it is closed.
   const [settlement, setSettlement] = useState<PatientCredit | null>(null);
@@ -213,6 +73,14 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
     enableBeforeUnload: dirty,
     withResolver: true,
   });
+
+  const text = (key: keyof typeof EMPTY_DETAILS) => ({
+    value: details[key],
+    onChange: (event: ChangeEvent<HTMLInputElement>) =>
+      setDetails((current) => ({ ...current, [key]: event.target.value })),
+  });
+
+  const { walkInName, walkInPhone, forName, prescriberName, prescriptionReference } = details;
 
   const add = (line: Omit<SaleLine, "qty">) =>
     setCart((current) => [...current, { ...line, qty: 1 }]);
@@ -387,18 +255,13 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                       <label className="flex flex-col gap-2 text-muted-foreground">
                         Name <span className="sr-only">required</span>
                         <Input
-                          value={walkInName}
+                          {...text("walkInName")}
                           aria-invalid={attempted && walkInName.trim() === ""}
-                          onChange={(event) => setWalkInName(event.target.value)}
                         />
                       </label>
                       <label className="flex flex-col gap-2 text-muted-foreground">
                         Phone
-                        <Input
-                          value={walkInPhone}
-                          inputMode="tel"
-                          onChange={(event) => setWalkInPhone(event.target.value)}
-                        />
+                        <Input {...text("walkInPhone")} inputMode="tel" />
                       </label>
                     </div>
                   ) : patient ? (
@@ -416,18 +279,7 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                     chosen={new Set(cart.map((line) => line.batchId))}
                     onAdd={add}
                   />
-                  <SaleLines
-                    lines={displayLines}
-                    currency={currency}
-                    onChange={(batchId, qty) =>
-                      setCart((current) =>
-                        current.map((line) => (line.batchId === batchId ? { ...line, qty } : line)),
-                      )
-                    }
-                    onRemove={(batchId) =>
-                      setCart((current) => current.filter((line) => line.batchId !== batchId))
-                    }
-                  />
+                  <SaleLines lines={displayLines} currency={currency} setCart={setCart} />
                   <div className="border-t border-border pt-3 lg:hidden">
                     <FinancialSummary quote={quote} />
                   </div>
@@ -460,25 +312,18 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                     <div className="grid gap-3 sm:grid-cols-3">
                       <label className="flex flex-col gap-2 text-muted-foreground">
                         For whom
-                        <Input
-                          value={forName}
-                          onChange={(event) => setForName(event.target.value)}
-                        />
+                        <Input {...text("forName")} />
                       </label>
                       <label className="flex flex-col gap-2 text-muted-foreground">
                         Prescriber {scheduleH1 ? <span className="text-destructive">*</span> : null}
                         <Input
-                          value={prescriberName}
+                          {...text("prescriberName")}
                           aria-invalid={scheduleH1 && attempted && prescriberName.trim() === ""}
-                          onChange={(event) => setPrescriberName(event.target.value)}
                         />
                       </label>
                       <label className="flex flex-col gap-2 text-muted-foreground">
                         Prescription reference
-                        <Input
-                          value={prescriptionReference}
-                          onChange={(event) => setPrescriptionReference(event.target.value)}
-                        />
+                        <Input {...text("prescriptionReference")} />
                       </label>
                     </div>
                   ) : null}

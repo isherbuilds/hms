@@ -1,7 +1,6 @@
 import { authorize } from "@hms/auth/access";
 import { Badge } from "@hms/ui/components/badge";
 import { Button, buttonVariants } from "@hms/ui/components/button";
-import { DropdownMenuCheckboxItem } from "@hms/ui/components/dropdown-menu";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { ClientOnly, Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { CircleDotIcon } from "lucide-react";
@@ -16,7 +15,7 @@ import {
   DateSubmenu,
   FilterChips,
   FilterMenu,
-  FilterSubmenu,
+  OptionFilter,
   focusSearch,
   type ActiveFilter,
 } from "@/components/list-filter";
@@ -329,19 +328,14 @@ function OpdDeskView({
                   onCustom={() => setRangeOpen(true)}
                 />
               )}
-              <FilterSubmenu icon={CircleDotIcon} label="Status">
-                {statuses.map((candidate) => (
-                  <DropdownMenuCheckboxItem
-                    key={candidate}
-                    checked={filters.status === candidate}
-                    onCheckedChange={(checked) =>
-                      void setFilters({ status: checked ? candidate : undefined })
-                    }
-                  >
-                    {STATUS_LABELS[candidate]}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </FilterSubmenu>
+              <OptionFilter
+                icon={CircleDotIcon}
+                label="Status"
+                options={statuses}
+                labels={STATUS_LABELS}
+                value={filters.status}
+                onChange={(value) => void setFilters({ status: value })}
+              />
             </FilterMenu>
           }
         />

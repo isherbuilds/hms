@@ -19,7 +19,7 @@ import { z } from "zod";
 
 import { numberText } from "@/lib/form-schema";
 
-import { TextField } from "@/components/form-fields";
+import { ControlledField, TextField } from "@/components/form-fields";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
@@ -215,29 +215,24 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                   )}
                 />
               </div>
-              <RegisteredFormField
+              <ControlledField
                 name="timeZone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Time zone</FormLabel>
-                    <FormControl>
-                      <NativeSelect {...field}>
-                        {/* Keep a stored zone selectable even when this browser's canonical list omits it. */}
-                        {defaults.timeZone && !supportedTimeZones.includes(defaults.timeZone) ? (
-                          <option value={defaults.timeZone}>{defaults.timeZone}</option>
-                        ) : null}
-                        {supportedTimeZones.map((timeZone) => (
-                          <option key={timeZone} value={timeZone}>
-                            {timeZone}
-                          </option>
-                        ))}
-                      </NativeSelect>
-                    </FormControl>
-                    <FormDescription>
-                      Used for queues, numbering, and reports. Changes apply to new records only.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
+                label="Time zone"
+                description="Used for queues, numbering, and reports. Changes apply to new records only."
+                render={(field) => (
+                  <FormControl>
+                    <NativeSelect {...field}>
+                      {/* Keep a stored zone selectable even when this browser's canonical list omits it. */}
+                      {defaults.timeZone && !supportedTimeZones.includes(defaults.timeZone) ? (
+                        <option value={defaults.timeZone}>{defaults.timeZone}</option>
+                      ) : null}
+                      {supportedTimeZones.map((zone) => (
+                        <option key={zone} value={zone}>
+                          {zone}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </FormControl>
                 )}
               />
             </div>
@@ -265,22 +260,19 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                 <TextField name="creditNotePrefix" label="Credit note prefix" />
                 <TextField name="advanceReceiptPrefix" label="Advance receipt prefix" />
               </div>
-              <RegisteredFormField
+              <ControlledField
                 name="fiscalYearStartMonth"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Fiscal year starts in</FormLabel>
-                    <FormControl>
-                      <NativeSelect {...field}>
-                        {MONTHS.map((month, index) => (
-                          <option key={month} value={index + 1}>
-                            {month}
-                          </option>
-                        ))}
-                      </NativeSelect>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+                label="Fiscal year starts in"
+                render={(field) => (
+                  <FormControl>
+                    <NativeSelect {...field}>
+                      {MONTHS.map((month, index) => (
+                        <option key={month} value={index + 1}>
+                          {month}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </FormControl>
                 )}
               />
             </div>

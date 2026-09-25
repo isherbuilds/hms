@@ -7,7 +7,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@hms/ui/components/dropdown-menu";
-import { NativeSelect } from "@hms/ui/components/native-select";
 import { skipToken, useMutation, useQuery } from "@tanstack/react-query";
 import { ClientOnly } from "@tanstack/react-router";
 import { MoreHorizontalIcon } from "lucide-react";
@@ -15,6 +14,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { OptionCombobox } from "@/components/option-combobox";
 import { ErrorNote } from "@/components/page";
 import { PlanItemRow } from "@/components/treatment-plan-item";
 import {
@@ -139,18 +139,13 @@ export function OpdTreatmentPanel({
       {!planId ? (
         canLink && chosenPlanId ? (
           <div className="flex flex-wrap items-center gap-2">
-            <NativeSelect
+            <OptionCombobox
               className="max-w-sm"
               aria-label="Open treatment plan"
+              options={openPlans.map((entry) => ({ value: entry.id, label: entry.label }))}
               value={chosenPlanId}
-              onChange={(event) => setSelectedPlanId(event.target.value)}
-            >
-              {openPlans.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.label}
-                </option>
-              ))}
-            </NativeSelect>
+              onChange={setSelectedPlanId}
+            />
             <Button
               disabled={link.isPending}
               onClick={() => link.mutate({ orgSlug, appointmentId, planId: chosenPlanId })}

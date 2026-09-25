@@ -10,7 +10,7 @@ import { Monogram } from "@/components/monogram";
 import { ErrorNote } from "@/components/page";
 import { PatientSheet } from "@/components/patient-sheet";
 import { useDebouncedCallback } from "@/hooks/use-debounced-value";
-import { MIN_SEARCH_CHARS } from "@/hooks/use-remote-search";
+import { MIN_SEARCH_CHARS, SEARCH_RESULT_LIMIT } from "@/hooks/use-remote-search";
 import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { patientAgeLabel } from "@/lib/patient-age";
@@ -38,9 +38,6 @@ export function SelectedPatientChip({
     </div>
   );
 }
-
-// Larger than a type-ahead's window: namesakes are common and there is no page two.
-const PATIENT_RESULT_LIMIT = 20;
 
 const HAS_LETTERS = /\p{L}/u;
 
@@ -86,8 +83,8 @@ function PatientSearchInput({
   const results = useQuery({
     ...orpc.patient.search.queryOptions({
       input: isPhone
-        ? { orgSlug, phone: search, limit: PATIENT_RESULT_LIMIT }
-        : { orgSlug, query: search, limit: PATIENT_RESULT_LIMIT },
+        ? { orgSlug, phone: search, limit: SEARCH_RESULT_LIMIT }
+        : { orgSlug, query: search, limit: SEARCH_RESULT_LIMIT },
     }),
     enabled: search.length > 0 && !incomplete,
   });

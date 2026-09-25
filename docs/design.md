@@ -405,9 +405,12 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
 - Sheet and dialog chrome owns its spacing. Headers, bodies and footers use
   `p-4`; feature forms compose `SheetHeader`/`SheetFooter` or
   `DialogHeader`/`DialogFooter` rather than recreating their borders and padding.
-- Forms compose `FieldGroup`, `Field`, `FieldSet` and `FieldError`. Sets of two
-  to five choices use a `NativeSelect` or a `role="group"` row of buttons that
-  carry `aria-pressed`, and section boundaries use `Separator`.
+- Forms compose `FieldGroup`, `Field`, `FieldSet` and `FieldError`. Fixed choices
+  use `NativeSelect`. Loaded local records use `OptionCombobox` and show up to
+  six matches after two typed characters. Records found by server search use a
+  `Combobox` picker. A two-way toggle keeps a `NativeSelect` or a
+  `role="group"` row of buttons that carry `aria-pressed`. Section boundaries
+  use `Separator`.
 - An overlay holding a pending money write ignores Escape, backdrop, and close
   until the write settles.
 - Sheet motion is limited to the existing 150 ms opacity and directional

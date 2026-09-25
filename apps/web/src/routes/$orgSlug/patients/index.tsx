@@ -1,5 +1,4 @@
 import { Button } from "@hms/ui/components/button";
-import { DropdownMenuCheckboxItem } from "@hms/ui/components/dropdown-menu";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { VenusAndMarsIcon } from "lucide-react";
@@ -9,7 +8,7 @@ import { z } from "zod";
 import {
   FilterChips,
   FilterMenu,
-  FilterSubmenu,
+  OptionFilter,
   focusSearch,
   type ActiveFilter,
 } from "@/components/list-filter";
@@ -204,19 +203,14 @@ function PatientsRoute() {
             onQueryChange={(next) => void setFilters({ q: next || undefined })}
             trailing={
               <FilterMenu anchor={field} active={chips.length > 0}>
-                <FilterSubmenu icon={VenusAndMarsIcon} label="Sex">
-                  {PATIENT_SEX.map((candidate) => (
-                    <DropdownMenuCheckboxItem
-                      key={candidate}
-                      checked={sex === candidate}
-                      onCheckedChange={(checked) =>
-                        void setFilters({ sex: checked ? candidate : undefined })
-                      }
-                    >
-                      {SEX_LABELS[candidate]}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </FilterSubmenu>
+                <OptionFilter
+                  icon={VenusAndMarsIcon}
+                  label="Sex"
+                  options={PATIENT_SEX}
+                  labels={SEX_LABELS}
+                  value={sex}
+                  onChange={(value) => void setFilters({ sex: value })}
+                />
               </FilterMenu>
             }
           />

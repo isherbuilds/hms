@@ -142,7 +142,7 @@ export function SettlementFields({
                         value={payment.method}
                         disabled={pending}
                         onChange={(event) => {
-                          // SAFETY: the options are rendered from PAYMENT_METHODS.
+                          // SAFETY: the options are built from PAYMENT_METHODS.
                           replace(payment.id, { method: event.target.value as PaymentMethod });
                         }}
                       >

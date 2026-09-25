@@ -2,12 +2,12 @@ import { formatDecimal } from "@hms/api/core/money";
 import { requirePaymentReference } from "@hms/api/lib/schemas";
 import { Button } from "@hms/ui/components/button";
 import { FormControl } from "@hms/ui/components/form";
-import { NativeSelect } from "@hms/ui/components/native-select";
 import { useState } from "react";
 import { z } from "zod";
 
 import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
+import { OptionCombobox } from "@/components/option-combobox";
 import { PaymentLineFields } from "@/components/payment-lines";
 import { advancePdfUrl } from "@/lib/billing-document";
 import { orpc } from "@/lib/orpc";
@@ -129,14 +129,13 @@ function TakeAdvanceDialog({
         label="Treatment plan"
         render={(field) => (
           <FormControl>
-            <NativeSelect {...field}>
-              <option value="">Patient credit · future services</option>
-              {plans.map((plan) => (
-                <option key={plan.id} value={plan.id}>
-                  {plan.label}
-                </option>
-              ))}
-            </NativeSelect>
+            <OptionCombobox
+              {...field}
+              options={[
+                { value: "", label: "Patient credit · future services" },
+                ...plans.map((plan) => ({ value: plan.id, label: plan.label })),
+              ]}
+            />
           </FormControl>
         )}
       />

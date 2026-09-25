@@ -12,7 +12,7 @@ import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { useMutation } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { useFieldArray, useFormState, Watch } from "react-hook-form";
+import { FormState, useFieldArray, useFormContext, Watch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -36,6 +36,98 @@ import {
 const recordPaymentSchema = paymentFormSchema.extend({
   applyCredit: z.string().regex(DECIMAL_PATTERN, "Amount like 150.00").transform(parseDecimal),
 });
+
+function RecordPaymentLine({
+  index,
+  disabled,
+  removable,
+  remove,
+}: {
+  index: number;
+  disabled: boolean;
+  removable: boolean;
+  remove: (index: number) => void;
+}) {
+  const { control } = useFormContext<z.input<typeof recordPaymentSchema>>();
+
+  return (
+    <PaymentLine
+      disabled={disabled}
+      removeLabel={`Remove payment ${index + 1}`}
+      onRemove={removable ? () => remove(index) : undefined}
+      method={
+        <RegisteredFormField
+          name={`payments.${index}.method`}
+          render={({ field }) => (
+            <FormItem>
+              <FormControl>
+                <NativeSelect
+                  {...field}
+                  aria-label={`Payment ${index + 1} method`}
+                  disabled={disabled}
+                >
+                  {PAYMENT_METHODS.map((option) => (
+                    <option key={option} value={option}>
+                      {methodLabel(option)}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </FormControl>
+            </FormItem>
+          )}
+        />
+      }
+      amount={
+        <RegisteredFormField
+          name={`payments.${index}.amount`}
+          render={({ field }) => (
+            <FormItem>
+              <FormControl>
+                <Input
+                  {...field}
+                  aria-label={`Payment ${index + 1} amount received`}
+                  inputMode="decimal"
+                  disabled={disabled}
+                  className="text-right tabular-nums"
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      }
+      reference={
+        // Only this line watches its method, so choosing one does not
+        // re-render the form around it.
+        <Watch
+          control={control}
+          name={`payments.${index}.method`}
+          exact
+          render={(method) =>
+            needsReference(method) ? (
+              <RegisteredFormField
+                name={`payments.${index}.reference`}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        aria-label={`Payment ${index + 1} reference`}
+                        className="font-mono"
+                        disabled={disabled}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null
+          }
+        />
+      }
+    />
+  );
+}
 
 type RecordPaymentFormProps = {
   orgSlug: string;
@@ -79,8 +171,6 @@ export function RecordPaymentForm({
     },
   });
 
-  // Both rules are on the total rather than on any one line, so they live on the root.
-  const totalProblem = useFormState({ control: form.control }).errors.root?.message;
   const lines = useFieldArray({ control: form.control, name: "payments", keyName: "fieldKey" });
 
   // Reads on demand, so the amounts stay uncontrolled and typing re-renders nothing.
@@ -185,89 +275,26 @@ export function RecordPaymentForm({
         ) : null}
         <PaymentLines removable={lines.fields.length > 1}>
           {lines.fields.map((line, index) => (
-            <PaymentLine
+            <RecordPaymentLine
               key={line.fieldKey}
+              index={index}
               disabled={pending}
-              removeLabel={`Remove payment ${index + 1}`}
-              onRemove={lines.fields.length > 1 ? () => lines.remove(index) : undefined}
-              method={
-                <RegisteredFormField
-                  name={`payments.${index}.method`}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <NativeSelect
-                          {...field}
-                          aria-label={`Payment ${index + 1} method`}
-                          disabled={pending}
-                        >
-                          {PAYMENT_METHODS.map((option) => (
-                            <option key={option} value={option}>
-                              {methodLabel(option)}
-                            </option>
-                          ))}
-                        </NativeSelect>
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-              }
-              amount={
-                <RegisteredFormField
-                  name={`payments.${index}.amount`}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          aria-label={`Payment ${index + 1} amount received`}
-                          inputMode="decimal"
-                          disabled={pending}
-                          className="text-right tabular-nums"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              }
-              reference={
-                // Only this line watches its method, so choosing one does not
-                // re-render the form around it.
-                <Watch
-                  control={form.control}
-                  name={`payments.${index}.method`}
-                  exact
-                  render={(method) =>
-                    needsReference(method) ? (
-                      <RegisteredFormField
-                        name={`payments.${index}.reference`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                aria-label={`Payment ${index + 1} reference`}
-                                className="font-mono"
-                                disabled={pending}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    ) : null
-                  }
-                />
-              }
+              removable={lines.fields.length > 1}
+              remove={lines.remove}
             />
           ))}
         </PaymentLines>
-        {totalProblem ? (
-          <p role="alert" className="text-destructive">
-            {totalProblem}
-          </p>
-        ) : null}
+        {/* Total-level rules live on the root; only this leaf re-renders on errors. */}
+        <FormState
+          control={form.control}
+          render={({ errors }) =>
+            errors.root?.message ? (
+              <p role="alert" className="text-destructive">
+                {errors.root.message}
+              </p>
+            ) : null
+          }
+        />
         {/* Only these controls watch the changing money fields. */}
         <Watch
           control={form.control}

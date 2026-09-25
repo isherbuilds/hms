@@ -31,6 +31,7 @@
   },
   "portless": {
     "name": "api.hms",
-    "script": "dev:app"
+    "script": "dev:app",
+    "appPort": 56443
   }
 }

@@ -18,6 +18,7 @@ import { z } from "zod";
 
 import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
+import { OptionCombobox } from "@/components/option-combobox";
 import {
   FilterChips,
   FilterMenu,
@@ -429,9 +430,9 @@ function AdjustDialog({
         render={(field) => (
           <FormControl>
             <NativeSelect {...field}>
-              {ADJUST_REASONS.map((option) => (
-                <option key={option} value={option}>
-                  {REASON_LABELS[option]}
+              {ADJUST_REASONS.map((reason) => (
+                <option key={reason} value={reason}>
+                  {REASON_LABELS[reason]}
                 </option>
               ))}
             </NativeSelect>
@@ -493,16 +494,15 @@ function DepartmentField({ orgSlug }: { orgSlug: string }) {
       label="Department"
       render={(field) => (
         <FormControl>
-          <NativeSelect {...field} disabled={departments.isPending}>
-            <option value="">
-              {departments.isPending ? "Loading departments…" : "Choose a department"}
-            </option>
-            {(departments.data ?? []).map((department) => (
-              <option key={department.id} value={department.id}>
-                {department.name}
-              </option>
-            ))}
-          </NativeSelect>
+          <OptionCombobox
+            {...field}
+            options={(departments.data ?? []).map((department) => ({
+              value: department.id,
+              label: department.name,
+            }))}
+            placeholder={departments.isPending ? "Loading departments…" : "Choose a department"}
+            disabled={departments.isPending}
+          />
         </FormControl>
       )}
     />
