@@ -124,7 +124,6 @@ async function createBillingFixture(seed: string) {
     const item = await api.catalog.create({
       orgSlug: organization.slug,
       name: description,
-      code: `TEST-${uniqueSuffix()}`,
       category: "other",
       unitPrice,
       taxRatePercent,
@@ -192,7 +191,6 @@ test("catalog charges issue an exact invoice and a full payment settles it", asy
   const item = await api.catalog.create({
     orgSlug: organization.slug,
     name: "Taxable Procedure",
-    code: `BILL-${uniqueSuffix()}`,
     category: "procedure",
     unitPrice: 100_00n,
     taxRatePercent: "18.00",
@@ -329,7 +327,6 @@ test("booked service charges settle with split payments in one transaction", asy
     fixture.api.catalog.create({
       orgSlug: fixture.organization.slug,
       name: "Existing charge",
-      code: `EXISTING-${uniqueSuffix()}`,
       category: "procedure",
       unitPrice: 100_00n,
       taxRatePercent: "0",
@@ -337,7 +334,6 @@ test("booked service charges settle with split payments in one transaction", asy
     fixture.api.catalog.create({
       orgSlug: fixture.organization.slug,
       name: "Staged procedure",
-      code: `STAGED-${uniqueSuffix()}`,
       category: "procedure",
       unitPrice: 200_00n,
       taxRatePercent: "0",
@@ -399,7 +395,6 @@ test("equal-timestamp charges keep one reviewed order through settlement", async
     fixture.api.catalog.create({
       orgSlug: fixture.organization.slug,
       name: "Zero-rated equal line",
-      code: `ORDER-A-${uniqueSuffix()}`,
       category: "other",
       unitPrice: 300_00n,
       taxRatePercent: "0",
@@ -407,7 +402,6 @@ test("equal-timestamp charges keep one reviewed order through settlement", async
     fixture.api.catalog.create({
       orgSlug: fixture.organization.slug,
       name: "Five-percent equal line",
-      code: `ORDER-B-${uniqueSuffix()}`,
       category: "other",
       unitPrice: 300_00n,
       taxRatePercent: "5",
@@ -415,7 +409,6 @@ test("equal-timestamp charges keep one reviewed order through settlement", async
     fixture.api.catalog.create({
       orgSlug: fixture.organization.slug,
       name: "Smaller line",
-      code: `ORDER-C-${uniqueSuffix()}`,
       category: "other",
       unitPrice: 250_00n,
       taxRatePercent: "0",
@@ -482,7 +475,6 @@ test("charge settlement rolls back the invoice on invalid collection", async () 
     fixture.api.catalog.create({
       orgSlug: fixture.organization.slug,
       name: "Existing charge",
-      code: `EXISTING-${uniqueSuffix()}`,
       category: "procedure",
       unitPrice: 100_00n,
       taxRatePercent: "0",
@@ -490,7 +482,6 @@ test("charge settlement rolls back the invoice on invalid collection", async () 
     fixture.api.catalog.create({
       orgSlug: fixture.organization.slug,
       name: "Staged charge",
-      code: `ROLLBACK-${uniqueSuffix()}`,
       category: "procedure",
       unitPrice: 50_00n,
       taxRatePercent: "0",
@@ -652,7 +643,6 @@ test("booked-service settlement has one winner across two terminals", async () =
   const staged = await fixture.api.catalog.create({
     orgSlug: fixture.organization.slug,
     name: "Booked procedure",
-    code: `STAGED-RACE-${uniqueSuffix()}`,
     category: "procedure",
     unitPrice: 100_00n,
     taxRatePercent: "0",
@@ -1415,7 +1405,6 @@ test("members can charge, invoice, and pay but cannot issue credits or refunds",
   const item = await fixture.api.catalog.create({
     orgSlug: fixture.organization.slug,
     name: "Member-added service",
-    code: `MEMBER-${uniqueSuffix()}`,
     category: "procedure",
     unitPrice: 100_00n,
     taxRatePercent: "0",
@@ -1623,7 +1612,6 @@ test("advances held pages unspent receipts and drops one once its credit is appl
     api.catalog.create({
       orgSlug: organization.slug,
       name: "Root canal treatment",
-      code: `PLAN-${uniqueSuffix()}`,
       category: "procedure",
       unitPrice: 150_00n,
       taxRatePercent: "0",
@@ -1631,7 +1619,6 @@ test("advances held pages unspent receipts and drops one once its credit is appl
     api.catalog.create({
       orgSlug: organization.slug,
       name: "Crown",
-      code: `PLAN-${uniqueSuffix()}`,
       category: "procedure",
       unitPrice: 100_00n,
       taxRatePercent: "0",

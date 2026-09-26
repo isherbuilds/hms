@@ -100,7 +100,6 @@ export const Route = createFileRoute("/$orgSlug/settings/catalog")({
 type CatalogItem = {
   id: string;
   name: string;
-  code: string;
   category: CatalogCategory;
   unitPrice: bigint;
   taxRatePercent: string;
@@ -232,7 +231,7 @@ function CatalogRoute() {
         <ListToolbar>
           <SearchInput
             label="Search catalog"
-            placeholder="Code or name"
+            placeholder="Name"
             value={q}
             fieldRef={field}
             onQueryChange={(next) => void setFilters({ q: next || undefined })}
@@ -281,7 +280,6 @@ function CatalogRoute() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Code</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead className="text-right">Unit price</TableHead>
@@ -351,7 +349,6 @@ const CatalogRow = memo(function CatalogRow({
 
   return (
     <TableRow>
-      <TableCell className="font-mono">{item.code}</TableCell>
       <TableCell className="font-medium">{item.name}</TableCell>
       <TableCell>{CATEGORY_LABELS[item.category]}</TableCell>
       <TableCell className="text-right tabular-nums">
@@ -408,7 +405,7 @@ const CatalogMobileRow = memo(function CatalogMobileRow({
         </Badge>
       </div>
       <p className="mt-1 text-muted-foreground">
-        <span className="font-mono">{item.code}</span> · {CATEGORY_LABELS[category]} ·{" "}
+        {CATEGORY_LABELS[category]} ·{" "}
         <span className="tabular-nums">{formatDecimal(item.unitPrice)}</span>
         {item.customRate ? " default" : null} · Tax {item.taxRatePercent}% ·{" "}
         <span className="font-mono">{item.taxCode || "—"}</span>

@@ -10,7 +10,6 @@ import { createOrganization, createTestUser } from "../support/auth";
 import { clientFor, eventually, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
 import { shiftLocalMinute } from "../support/time";
-import { uniqueSuffix } from "../support/unique";
 
 beforeAll(resetTestDatabase);
 
@@ -43,7 +42,6 @@ async function fixture(seed: string) {
   const service = await api.catalog.create({
     orgSlug: organization.slug,
     name: `${seed} Course item`,
-    code: `COURSE-${uniqueSuffix()}`,
     category: "procedure",
     unitPrice: 50_00n,
     taxRatePercent: "0",
@@ -282,7 +280,6 @@ test("a crown added mid-course remains on the RCT plan and each charge names its
   const consultation = await setup.api.catalog.create({
     orgSlug: setup.organization.slug,
     name: "Consultation",
-    code: `CONSULT-${uniqueSuffix()}`,
     category: "consultation",
     unitPrice: 10_00n,
     taxRatePercent: "0",
@@ -301,7 +298,6 @@ test("a crown added mid-course remains on the RCT plan and each charge names its
   const crown = await setup.api.catalog.create({
     orgSlug: setup.organization.slug,
     name: "Crown 36",
-    code: `CROWN-${uniqueSuffix()}`,
     category: "procedure",
     unitPrice: 80_00n,
     taxRatePercent: "0",
@@ -516,7 +512,6 @@ test("closing a plan ahead of queued item writes leaves no dependent change behi
   const extra = await setup.api.catalog.create({
     orgSlug: setup.organization.slug,
     name: "Late course item",
-    code: `LATE-${uniqueSuffix()}`,
     category: "procedure",
     unitPrice: 10_00n,
     taxRatePercent: "0",

@@ -281,8 +281,8 @@ refreshing authoritative state.
 
 **Accepted 2026-09-03; evidence:
 [research ledger](./research/README.md#adopted-findings).** A
-billable item is one `catalog_items` row: name, code, category, price, tax,
-active. When pharmacy, lab, IPD, or OT open (product roadmap gates), each domain
+billable item is one `catalog_items` row: name, category, price, tax,
+active (the code was dropped by D048). When pharmacy, lab, IPD, or OT open (product roadmap gates), each domain
 owns its own master (product and batch, lab test and components, bed type,
 package and components) that carries a composite tenant foreign key to its
 `catalog_items` row, unique on `(orgId, catalogItemId)` where the link is set.
@@ -664,3 +664,15 @@ unexpected at the desk.
 **Rejected:** billing the whole course at the first sitting books revenue
 before delivery (D034); an editable sitting count with floor rules adds more
 logic than the desk needs.
+
+### D048 — Catalog items have no code
+
+**Accepted 2026-09-26 on the owner's instruction.** `catalog_items.code` is
+dropped (`0009_drop_catalog_item_code.sql`). Services and pharmacy products are
+found and shown by name; practitioners never had a code. Staff had to invent and
+check a unique code for every item, and nothing downstream (Charges, Invoices,
+the Billing Ledger) used it. Pharmacy search matches name, generic name, or batch
+number; an internal supply is still marked by a null `catalogItemId`.
+
+**Rejected:** keeping it optional — an unused column still shows up in forms,
+lists, and search, which is the confusion being removed.

@@ -9,7 +9,6 @@ import {
   text,
   timestamp,
   unique,
-  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 import { orgIdColumn } from "./auth";
@@ -37,7 +36,6 @@ export const catalogItems = pgTable(
     id: text("id").primaryKey(),
     orgId: orgIdColumn(),
     name: text("name").notNull(),
-    code: text("code").notNull(),
     category: text("category", { enum: CATALOG_CATEGORIES }).notNull(),
     unitPrice: bigint("unit_price", { mode: "bigint" }).notNull(),
     customRate: boolean("custom_rate").notNull().default(false),
@@ -54,7 +52,6 @@ export const catalogItems = pgTable(
       sql`${table.taxRatePercent} >= 0 and ${table.taxRatePercent} <= 99.99`,
     ),
     unique("catalog_items_org_id_id_unique").on(table.orgId, table.id),
-    uniqueIndex("catalog_items_org_code_idx").on(table.orgId, table.code),
     index("catalog_items_org_category_name_idx").on(table.orgId, table.category, table.name),
     index("catalog_items_org_name_idx").on(table.orgId, table.name),
   ],

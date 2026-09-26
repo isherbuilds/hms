@@ -92,10 +92,7 @@ export function PractitionerDialog({
     },
   });
 
-  const feeOptions = [
-    NONE,
-    ...catalogItems.map((item) => ({ value: item.id, label: `${item.name} (${item.code})` })),
-  ];
+  const feeOptions = [NONE, ...catalogItems.map((item) => ({ value: item.id, label: item.name }))];
 
   const mutationFeedback = (message: string) => ({
     onSuccess: () => {

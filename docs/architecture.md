@@ -201,7 +201,7 @@ millisecond-exact `updatedAt`. A zero-row update is a stale-record `CONFLICT`
 with no second read; the client offers a refresh, which also reveals a Patient
 that no longer exists. The server does not retry a stale write.
 
-The catalog is a flat chargeable-item registry. Charges snapshot name/code,
+The catalog is a flat chargeable-item registry. Charges snapshot name,
 category, unit price, tax rate, and tax code so later catalog edits never
 rewrite financial history. New/follow-up attendance pricing is configured per
 practitioner; a configured zero-price item represents intentional free care.

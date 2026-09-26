@@ -90,7 +90,6 @@ export function SaleLines({
               <TableRow key={line.batchId}>
                 <TableCell>
                   <p className="font-medium capitalize">{line.productName}</p>
-                  <p className="font-mono text-muted-foreground">{line.code}</p>
                 </TableCell>
                 <TableCell className="font-mono">{line.batchNumber}</TableCell>
                 <TableCell className="whitespace-nowrap">
@@ -119,7 +118,6 @@ export function SaleLines({
           >
             <div className="min-w-0">
               <p className="wrap-break-words font-medium capitalize">{line.productName}</p>
-              <p className="break-all font-mono text-muted-foreground">{line.code}</p>
               <p className="break-all font-mono text-muted-foreground">Batch {line.batchNumber}</p>
               <p className="text-muted-foreground">Expires {formatBusinessDate(line.expiryDate)}</p>
             </div>

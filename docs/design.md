@@ -105,7 +105,7 @@ A dense data surface. `text-xs` is the body size, not a small size.
 - **`text-muted-foreground` is the only secondary colour** — not an opacity, not a
   lighter grey.
 - **`font-mono` is for identifiers compared character by character**: MRN,
-  phone, invoice number, token, actor id, catalog code. Never prose, never
+  phone, invoice number, token, actor id, batch number. Never prose, never
   amounts.
 - **`tabular-nums` on every number that can change** — counts, money, times. Without
   it a live-updating figure jitters.

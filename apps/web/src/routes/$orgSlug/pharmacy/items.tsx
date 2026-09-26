@@ -57,7 +57,7 @@ export const Route = createFileRoute("/$orgSlug/pharmacy/items")({
   component: PharmacyItemsRoute,
 });
 
-/** One row of the product master; a null `code` marks an internal supply. */
+/** One row of the product master; a null `catalogItemId` marks an internal supply. */
 type Product = Awaited<ReturnType<typeof orpc.pharmacy.listProducts.call>>["items"][number];
 
 const productSchema = z
@@ -71,7 +71,6 @@ const productSchema = z
     schedule: z.enum(SCHEDULES),
     manufacturer: z.string().trim().max(200),
     sold: z.boolean(),
-    code: z.string().trim().max(20),
     taxRatePercent: z.string().trim(),
     taxCode: productTaxCode,
     active: z.boolean(),
@@ -90,7 +89,6 @@ const EMPTY_VALUES: ProductFormValues = {
   schedule: "none",
   manufacturer: "",
   sold: true,
-  code: "",
   taxRatePercent: "0",
   taxCode: "",
   active: true,
@@ -117,7 +115,7 @@ function PharmacyItemsRoute() {
         <ListToolbar>
           <SearchInput
             label="Search products"
-            placeholder="Name, code, or generic"
+            placeholder="Name or generic"
             onQueryChange={setQuery}
           />
         </ListToolbar>
@@ -131,18 +129,7 @@ function PharmacyItemsRoute() {
           >
             <DataList
               columns={[
-                { head: "Name", cell: (item) => item.name },
-                {
-                  head: "Code",
-                  cell: (item) => (
-                    <span className="font-mono">
-                      {item.code ?? (
-                        <span className="font-sans text-muted-foreground">Internal</span>
-                      )}
-                    </span>
-                  ),
-                  mobile: "title",
-                },
+                { head: "Name", cell: (item) => item.name, mobile: "title" },
                 { head: "Generic", cell: (item) => item.genericName || "—" },
                 {
                   head: "Form",
@@ -238,7 +225,6 @@ function ProductSheet({
               schedule: product.schedule,
               manufacturer: product.manufacturer ?? "",
               sold: lockedSold,
-              code: product.code ?? "",
               taxRatePercent: product.taxRatePercent ?? "0",
               taxCode: product.taxCode ?? "",
               active: product.active ?? true,
@@ -260,7 +246,6 @@ function ProductSheet({
           manufacturer: values.manufacturer || undefined,
           catalog: values.sold
             ? {
-                code: values.code,
                 taxRatePercent: values.taxRatePercent,
                 taxCode: values.taxCode || undefined,
                 active: values.active,
@@ -345,7 +330,6 @@ function CatalogFields() {
       render={(sold) =>
         sold ? (
           <div className="grid gap-3 sm:grid-cols-2">
-            <TextField name="code" label="Code" />
             <TextField name="taxRatePercent" label="GST %" inputMode="decimal" placeholder="12" />
             <TextField name="taxCode" label="HSN (optional)" />
             <ControlledField

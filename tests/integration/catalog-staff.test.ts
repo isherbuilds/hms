@@ -12,11 +12,10 @@ beforeAll(async () => {
   await resetTestDatabase();
 });
 
-function catalogItemInput(orgSlug: string, code: string, name = "Consultation") {
+function catalogItemInput(orgSlug: string, name = "Consultation") {
   return {
     orgSlug,
     name,
-    code,
     category: "consultation" as const,
     unitPrice: 150_00n,
     taxRatePercent: "0",
@@ -28,24 +27,21 @@ test("unique violations remain distinguishable when Postgres omits the constrain
   expect(uniqueViolationConstraint({ cause: { code: "23505" } })).toBeNull();
   expect(
     uniqueViolationConstraint({
-      cause: { code: "23505", constraint: "catalog_items_org_code_idx" },
+      cause: { code: "23505", constraint: "payers_org_name_idx" },
     }),
-  ).toBe("catalog_items_org_code_idx");
+  ).toBe("payers_org_name_idx");
   expect(uniqueViolationConstraint({ cause: { code: "23503" } })).toBeUndefined();
 });
 
-test("catalog CRUD, filters, deactivation, and code uniqueness are organization-scoped", async () => {
+test("catalog CRUD, filters, and deactivation are organization-scoped", async () => {
   const owner = await createTestUser("catalog-crud-owner");
   const one = await createOrganization(owner, "catalog-crud-one");
   const two = await createOrganization(owner, "catalog-crud-two");
   const api = clientFor(owner);
-  const code = `CONS-${uniqueSuffix()}`;
-
-  const created = await api.catalog.create(catalogItemInput(one.slug, code));
+  const created = await api.catalog.create(catalogItemInput(one.slug));
   expect(created).toMatchObject({
     orgId: one.id,
     name: "Consultation",
-    code,
     category: "consultation",
     unitPrice: 150_00n,
     active: true,
@@ -59,7 +55,6 @@ test("catalog CRUD, filters, deactivation, and code uniqueness are organization-
     orgSlug: one.slug,
     itemId: created.id,
     name: created.name,
-    code: created.code,
     category: created.category,
     unitPrice: 200_00n,
     customRate: true,
@@ -88,15 +83,11 @@ test("catalog CRUD, filters, deactivation, and code uniqueness are organization-
     customRate: true,
   });
 
-  await expectORPCCode(
-    api.catalog.create(catalogItemInput(one.slug, code, "Duplicate")),
-    "CONFLICT",
-  );
-  const sameCodeElsewhere = await api.catalog.create(catalogItemInput(two.slug, code));
-  expect(sameCodeElsewhere.orgId).toBe(two.id);
+  const elsewhere = await api.catalog.create(catalogItemInput(two.slug));
+  expect(elsewhere.orgId).toBe(two.id);
 
   const procedure = await api.catalog.create({
-    ...catalogItemInput(one.slug, `PROC-${uniqueSuffix()}`, "Procedure"),
+    ...catalogItemInput(one.slug, "Procedure"),
     category: "procedure",
   });
 
@@ -117,9 +108,7 @@ test("catalog list searches and paginates by name and id", async () => {
   const names = [`${prefix} Alpha`, `${prefix} Bravo`, `${prefix} Charlie`];
 
   await Promise.all(
-    names.map((name) =>
-      api.catalog.create(catalogItemInput(organization.slug, `PAGE-${uniqueSuffix()}`, name)),
-    ),
+    names.map((name) => api.catalog.create(catalogItemInput(organization.slug, name))),
   );
 
   const first = await api.catalog.list({
@@ -154,9 +143,7 @@ test("plain members can read catalog and staff but cannot mutate either domain",
   const ownerClient = clientFor(owner);
   const memberClient = clientFor(member);
 
-  const item = await ownerClient.catalog.create(
-    catalogItemInput(organization.slug, `GATE-${uniqueSuffix()}`),
-  );
+  const item = await ownerClient.catalog.create(catalogItemInput(organization.slug));
 
   expect((await memberClient.catalog.list({ orgSlug: organization.slug })).items).toContainEqual(
     item,
@@ -164,7 +151,7 @@ test("plain members can read catalog and staff but cannot mutate either domain",
   expect(await memberClient.staff.listPractitioners({ orgSlug: organization.slug })).toEqual([]);
 
   await expectORPCCode(
-    memberClient.catalog.create(catalogItemInput(organization.slug, `DENY-${uniqueSuffix()}`)),
+    memberClient.catalog.create(catalogItemInput(organization.slug)),
     "FORBIDDEN",
   );
   await expectORPCCode(
@@ -172,7 +159,6 @@ test("plain members can read catalog and staff but cannot mutate either domain",
       orgSlug: organization.slug,
       itemId: item.id,
       name: item.name,
-      code: item.code,
       category: item.category,
       unitPrice: item.unitPrice,
       customRate: false,
@@ -202,15 +188,13 @@ test("service search returns only the first six active matching additional servi
   await Promise.all([
     ...Array.from({ length: 7 }, (_, index) =>
       api.catalog.create({
-        ...catalogItemInput(organization.slug, `LAB-${index}-${uniqueSuffix()}`, `Panel ${index}`),
+        ...catalogItemInput(organization.slug, `Panel ${index}`),
         category: "lab" as const,
       }),
     ),
-    api.catalog.create(
-      catalogItemInput(organization.slug, `CONS-${uniqueSuffix()}`, "Panel consultation"),
-    ),
+    api.catalog.create(catalogItemInput(organization.slug, "Panel consultation")),
     api.catalog.create({
-      ...catalogItemInput(organization.slug, `PROC-${uniqueSuffix()}`, "Panel procedure"),
+      ...catalogItemInput(organization.slug, "Panel procedure"),
       category: "procedure" as const,
     }),
   ]);
@@ -223,7 +207,7 @@ test("service search returns only the first six active matching additional servi
 
   expect(results.map((item) => item.name)).toEqual(["Panel procedure"]);
   expect(Object.keys(results[0]!).sort()).toEqual(
-    ["category", "code", "customRate", "id", "name", "taxRatePercent", "unitPrice"].sort(),
+    ["category", "customRate", "id", "name", "taxRatePercent", "unitPrice"].sort(),
   );
 });
 
@@ -240,13 +224,9 @@ test("service search includes consultation items only when the caller opts in", 
   const api = clientFor(owner);
   const query = `Desk consultation ${uniqueSuffix()}`;
 
-  const consultation = await api.catalog.create(
-    catalogItemInput(organization.slug, `CONS-${uniqueSuffix()}`, query),
-  );
+  const consultation = await api.catalog.create(catalogItemInput(organization.slug, query));
 
-  await clientFor(otherOwner).catalog.create(
-    catalogItemInput(otherOrganization.slug, `CONS-${uniqueSuffix()}`, query),
-  );
+  await clientFor(otherOwner).catalog.create(catalogItemInput(otherOrganization.slug, query));
 
   const excluded = await api.catalog.searchServices({
     orgSlug: organization.slug,
@@ -272,19 +252,13 @@ test("service search excludes consultations before applying the result cap", asy
   const query = `Later service ${uniqueSuffix()}`;
 
   const eligible = await api.catalog.create({
-    ...catalogItemInput(organization.slug, `PROC-${uniqueSuffix()}`, `${query} Z eligible`),
+    ...catalogItemInput(organization.slug, `${query} Z eligible`),
     category: "procedure",
   });
 
   await Promise.all(
     Array.from({ length: 6 }, (_, index) =>
-      api.catalog.create(
-        catalogItemInput(
-          organization.slug,
-          `CONS-${index}-${uniqueSuffix()}`,
-          `${query} A${index} consultation`,
-        ),
-      ),
+      api.catalog.create(catalogItemInput(organization.slug, `${query} A${index} consultation`)),
     ),
   );
 
@@ -325,9 +299,7 @@ test("departments and practitioners support linked CRUD within an organization",
     "CONFLICT",
   );
 
-  const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, `FEE-${uniqueSuffix()}`, "Consult Fee"),
-  );
+  const fee = await api.catalog.create(catalogItemInput(organization.slug, "Consult Fee"));
 
   const practitioner = await api.staff.createPractitioner({
     orgSlug: organization.slug,
@@ -399,9 +371,7 @@ test("practitioner references cannot cross organization boundaries", async () =>
     name: "Beta Department",
   });
 
-  const betaFee = await betaClient.catalog.create(
-    catalogItemInput(beta.slug, `BETA-${uniqueSuffix()}`),
-  );
+  const betaFee = await betaClient.catalog.create(catalogItemInput(beta.slug));
 
   await expectORPCCode(
     alphaClient.staff.createPractitioner({
@@ -449,13 +419,9 @@ test("catalog, department, and practitioner updates hide unknown and foreign ids
     name: "Beta Update Department",
   });
 
-  const alphaItem = await alphaClient.catalog.create(
-    catalogItemInput(alpha.slug, `ALPHA-${uniqueSuffix()}`),
-  );
+  const alphaItem = await alphaClient.catalog.create(catalogItemInput(alpha.slug));
 
-  const betaItem = await betaClient.catalog.create(
-    catalogItemInput(beta.slug, `BETA-${uniqueSuffix()}`),
-  );
+  const betaItem = await betaClient.catalog.create(catalogItemInput(beta.slug));
 
   const alphaPractitioner = await alphaClient.staff.createPractitioner({
     orgSlug: alpha.slug,
@@ -475,7 +441,6 @@ test("catalog, department, and practitioner updates hide unknown and foreign ids
         orgSlug: alpha.slug,
         itemId,
         name: alphaItem.name,
-        code: alphaItem.code,
         category: alphaItem.category,
         unitPrice: alphaItem.unitPrice,
         customRate: false,
@@ -518,9 +483,7 @@ test("catalog mutations and practitioner creates are audited, with price meta as
   const organization = await createOrganization(owner, "catalog-staff-audit");
   const api = clientFor(owner);
 
-  const item = await api.catalog.create(
-    catalogItemInput(organization.slug, `AUDIT-${uniqueSuffix()}`),
-  );
+  const item = await api.catalog.create(catalogItemInput(organization.slug));
 
   const department = await api.staff.createDepartment({
     orgSlug: organization.slug,
@@ -538,7 +501,6 @@ test("catalog mutations and practitioner creates are audited, with price meta as
     orgSlug: organization.slug,
     itemId: item.id,
     name: item.name,
-    code: item.code,
     category: item.category,
     unitPrice: 225_00n,
     customRate: false,

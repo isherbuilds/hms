@@ -177,7 +177,6 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
   const consult = await api.catalog.create({
     orgSlug: one.slug,
     name: "Consultation",
-    code: "TODAY-CONSULT",
     category: "other",
     unitPrice: 500_00n,
     taxRatePercent: "0",
@@ -432,7 +431,6 @@ const GUARDED_CALLS = {
     api.catalog.create({
       ...claim,
       name: "Intrusion",
-      code: `INTR-${uniqueSuffix()}`,
       category: "other",
       unitPrice: 1_00n,
       taxRatePercent: "0",
@@ -442,7 +440,6 @@ const GUARDED_CALLS = {
       ...claim,
       itemId: Bun.randomUUIDv7(),
       name: "Intrusion",
-      code: `INTR-${uniqueSuffix()}`,
       category: "other",
       unitPrice: 1_00n,
       customRate: false,
@@ -660,7 +657,7 @@ const GUARDED_CALLS = {
     api.pharmacy.createProduct({
       ...claim,
       name: "Intrusion",
-      catalog: { code: `INTR-${uniqueSuffix()}`, taxRatePercent: "12" },
+      catalog: { taxRatePercent: "12" },
       stockUnit: "tablet",
       unitsPerPack: 10,
     }),
@@ -669,7 +666,7 @@ const GUARDED_CALLS = {
       ...claim,
       productId: "missing",
       name: "Intrusion",
-      catalog: { code: `INTR-${uniqueSuffix()}`, taxRatePercent: "12" },
+      catalog: { taxRatePercent: "12" },
       stockUnit: "tablet",
       unitsPerPack: 10,
     }),
@@ -804,7 +801,6 @@ async function createTreatmentScopeFixture(
   const service = await api.catalog.create({
     orgSlug: organization.slug,
     name: `${seed} Service`,
-    code: `TREAT-${uniqueSuffix()}`,
     category: "procedure",
     unitPrice: 10_00n,
     taxRatePercent: "0",
@@ -1061,7 +1057,6 @@ test("catalog rows are invisible from another org and cannot be updated by forei
   const item = await clientFor(alice).catalog.create({
     orgSlug: alpha.slug,
     name: "Alpha Item",
-    code: `ALPHA-${uniqueSuffix()}`,
     category: "other",
     unitPrice: 1_00n,
     taxRatePercent: "0",
@@ -1074,7 +1069,6 @@ test("catalog rows are invisible from another org and cannot be updated by forei
       orgSlug: beta.slug,
       itemId: item.id,
       name: item.name,
-      code: item.code,
       category: item.category,
       unitPrice: item.unitPrice,
       customRate: false,
@@ -1100,7 +1094,7 @@ test("pharmacy stock is invisible from another org", async () => {
   const product = await aliceClient.pharmacy.createProduct({
     orgSlug: alpha.slug,
     name: "Alpha Tablet",
-    catalog: { code: `ALPHA-${uniqueSuffix()}`, taxRatePercent: "12" },
+    catalog: { taxRatePercent: "12" },
     stockUnit: "tablet",
     unitsPerPack: 10,
   });
@@ -1149,7 +1143,6 @@ test("one client concurrently scopes catalog calls to two organizations", async 
     api.catalog.create({
       orgSlug: one.slug,
       name: "Item In One",
-      code: `ONE-${uniqueSuffix()}`,
       category: "other",
       unitPrice: 1_00n,
       taxRatePercent: "0",
@@ -1157,7 +1150,6 @@ test("one client concurrently scopes catalog calls to two organizations", async 
     api.catalog.create({
       orgSlug: two.slug,
       name: "Item In Two",
-      code: `TWO-${uniqueSuffix()}`,
       category: "other",
       unitPrice: 2_00n,
       taxRatePercent: "0",
@@ -1284,7 +1276,6 @@ test("OPD appointment rows are invisible from another org through queue or get",
   const fee = await aliceClient.catalog.create({
     orgSlug: alpha.slug,
     name: "Alpha consultation",
-    code: `ALPHA-CONSULT-${uniqueSuffix()}`,
     category: "consultation",
     unitPrice: 100_00n,
     taxRatePercent: "0",
@@ -1378,7 +1369,6 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
     api.catalog.create({
       orgSlug: one.slug,
       name: "Organization One Consultation",
-      code: `ONE-CONSULT-${uniqueSuffix()}`,
       category: "consultation",
       unitPrice: 100_00n,
       taxRatePercent: "0",
@@ -1386,7 +1376,6 @@ test("one client concurrently scopes OPD calls to two organizations", async () =
     api.catalog.create({
       orgSlug: two.slug,
       name: "Organization Two Consultation",
-      code: `TWO-CONSULT-${uniqueSuffix()}`,
       category: "consultation",
       unitPrice: 100_00n,
       taxRatePercent: "0",
@@ -1491,7 +1480,6 @@ async function createScopedInvoice(
   const fee = await api.catalog.create({
     orgSlug: organization.slug,
     name: `${seed} Consultation`,
-    code: `SCOPE-${uniqueSuffix()}`,
     category: "consultation",
     unitPrice: 100_00n,
     taxRatePercent: "0",

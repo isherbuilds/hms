@@ -18,7 +18,7 @@ import { createOrganization, createTestUser, joinOrganization } from "../support
 import { clientFor, eventually, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
 import { shiftLocalMinute } from "../support/time";
-import { sumMoney, uniqueSuffix } from "../support/unique";
+import { sumMoney } from "../support/unique";
 
 beforeAll(async () => {
   await resetTestDatabase();
@@ -46,11 +46,10 @@ function registration(orgSlug: string, name: string, phone: string) {
   };
 }
 
-function catalogItemInput(orgSlug: string, code: string, name: string, unitPrice = 150_00n) {
+function catalogItemInput(orgSlug: string, name: string, unitPrice = 150_00n) {
   return {
     orgSlug,
     name,
-    code,
     category: "consultation" as const,
     unitPrice,
     taxRatePercent: "5.00",
@@ -77,13 +76,7 @@ async function createOpdAppointmentSetup(seed: string, withDefaultFee = true) {
   );
 
   const defaultFee = withDefaultFee
-    ? await api.catalog.create(
-        catalogItemInput(
-          organization.slug,
-          `DEFAULT-${uniqueSuffix()}`,
-          `${seed} Default Consultation`,
-        ),
-      )
+    ? await api.catalog.create(catalogItemInput(organization.slug, `${seed} Default Consultation`))
     : null;
 
   const department = await api.staff.createDepartment({
@@ -321,7 +314,7 @@ test("a practitioner consult fee creates an immutable snapshot charge", async ()
     await createOpdAppointmentSetup("opd-consult-fee");
 
   const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, `CONS-${uniqueSuffix()}`, "Initial Consultation", 275_00n),
+    catalogItemInput(organization.slug, "Initial Consultation", 275_00n),
   );
 
   const practitioner = await createPractitioner(
@@ -356,7 +349,6 @@ test("a practitioner consult fee creates an immutable snapshot charge", async ()
     orgSlug: organization.slug,
     itemId: fee.id,
     name: fee.name,
-    code: fee.code,
     category: fee.category,
     unitPrice: 425_00n,
     customRate: false,
@@ -384,12 +376,7 @@ test("a walk-in creates the configured consultation charge", async () => {
     await createOpdAppointmentSetup("opd-walk-in-fee");
 
   const fee = await api.catalog.create(
-    catalogItemInput(
-      organization.slug,
-      `WALKIN-${uniqueSuffix()}`,
-      "Walk-in Consultation",
-      325_00n,
-    ),
+    catalogItemInput(organization.slug, "Walk-in Consultation", 325_00n),
   );
 
   const practitioner = await createPractitioner(
@@ -421,7 +408,7 @@ test("the department default fee is used when the practitioner has no consult fe
   const { organization, api, patient } = await createOpdAppointmentSetup("opd-department-fee");
 
   const fee = await api.catalog.create({
-    ...catalogItemInput(organization.slug, `DEPT-${uniqueSuffix()}`, "Department Attendance Fee"),
+    ...catalogItemInput(organization.slug, "Department Attendance Fee"),
     category: "lab" as const,
   });
 
@@ -490,16 +477,11 @@ test("follow-up pricing excludes a cancelled prior attendance", async () => {
     await createOpdAppointmentSetup("opd-follow-up-open");
 
   const consultFee = await api.catalog.create(
-    catalogItemInput(organization.slug, `NEW-${uniqueSuffix()}`, "New Consultation", 300_00n),
+    catalogItemInput(organization.slug, "New Consultation", 300_00n),
   );
 
   const followUpFee = await api.catalog.create(
-    catalogItemInput(
-      organization.slug,
-      `FOLLOW-${uniqueSuffix()}`,
-      "Free Follow-up Consultation",
-      0n,
-    ),
+    catalogItemInput(organization.slug, "Free Follow-up Consultation", 0n),
   );
 
   const practitioner = await createPractitioner(
@@ -550,16 +532,11 @@ test("follow-up fees honor the organization window and a practitioner override",
   });
 
   const consultFee = await api.catalog.create(
-    catalogItemInput(organization.slug, `NEW-${uniqueSuffix()}`, "New Consultation", 300_00n),
+    catalogItemInput(organization.slug, "New Consultation", 300_00n),
   );
 
   const followUpFee = await api.catalog.create(
-    catalogItemInput(
-      organization.slug,
-      `FOLLOW-${uniqueSuffix()}`,
-      "Follow-up Consultation",
-      100_00n,
-    ),
+    catalogItemInput(organization.slug, "Follow-up Consultation", 100_00n),
   );
 
   const practitioner = await createPractitioner(
@@ -640,13 +617,13 @@ test("an inactive practitioner fee falls through to the active department fee", 
   const { organization, api, patient } = await createOpdAppointmentSetup("opd-inactive-fee");
 
   const inactive = await api.catalog.create(
-    catalogItemInput(organization.slug, `INACTIVE-${uniqueSuffix()}`, "Inactive Consultation"),
+    catalogItemInput(organization.slug, "Inactive Consultation"),
   );
 
   await api.catalog.setActive({ orgSlug: organization.slug, itemId: inactive.id, active: false });
 
   const fallback = await api.catalog.create(
-    catalogItemInput(organization.slug, `FALLBACK-${uniqueSuffix()}`, "Fallback Consultation"),
+    catalogItemInput(organization.slug, "Fallback Consultation"),
   );
 
   const department = await api.staff.createDepartment({
@@ -953,7 +930,7 @@ test("cancelling a checked-in OPD appointment voids its pending consult charge",
   const { organization, api, patient, department } = await createOpdAppointmentSetup("opd-cancel");
 
   const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, `CANCEL-${uniqueSuffix()}`, "Cancelable Consultation"),
+    catalogItemInput(organization.slug, "Cancelable Consultation"),
   );
 
   const practitioner = await createPractitioner(
@@ -1112,7 +1089,7 @@ test("clinical cancellation preserves an already-issued invoice", async () => {
     await createOpdAppointmentSetup("opd-cancel-invoiced");
 
   const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, `CONS-${uniqueSuffix()}`, "Consultation", 400_00n),
+    catalogItemInput(organization.slug, "Consultation", 400_00n),
   );
 
   const practitioner = await createPractitioner(
@@ -1152,9 +1129,7 @@ test("a caller-only booking becomes the same queued appointment at check-in", as
   const { organization, api, patient, department } =
     await createOpdAppointmentSetup("opd-book-check-in");
 
-  const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, `BOOK-${uniqueSuffix()}`, "Booked Consultation"),
-  );
+  const fee = await api.catalog.create(catalogItemInput(organization.slug, "Booked Consultation"));
 
   const practitioner = await createPractitioner(
     api,
@@ -1243,9 +1218,7 @@ test("a booking linked to a patient checks in without re-selecting them", async 
   const { organization, api, patient, department } =
     await createOpdAppointmentSetup("opd-book-linked");
 
-  const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, `LINK-${uniqueSuffix()}`, "Linked Consultation"),
-  );
+  const fee = await api.catalog.create(catalogItemInput(organization.slug, "Linked Consultation"));
 
   const practitioner = await createPractitioner(
     api,
@@ -1284,12 +1257,7 @@ test("a scheduled appointment creates the configured consultation charge at chec
   );
 
   const fee = await api.catalog.create(
-    catalogItemInput(
-      organization.slug,
-      `SCHEDULED-${uniqueSuffix()}`,
-      "Scheduled Consultation",
-      475_00n,
-    ),
+    catalogItemInput(organization.slug, "Scheduled Consultation", 475_00n),
   );
 
   const practitioner = await createPractitioner(
@@ -1377,7 +1345,7 @@ test("an outpatient appointment refuses a charge it may not carry", async () => 
   );
 
   const labPanel = await api.catalog.create({
-    ...catalogItemInput(organization.slug, `LAB-${uniqueSuffix()}`, "Lipid panel", 400_00n),
+    ...catalogItemInput(organization.slug, "Lipid panel", 400_00n),
     category: "lab" as const,
   });
 
@@ -1403,12 +1371,7 @@ test("procedure rates flow through booking, walk-in quotes and stored charges", 
   );
 
   const procedure = await api.catalog.create({
-    ...catalogItemInput(
-      organization.slug,
-      `CUSTOM-RATE-${uniqueSuffix()}`,
-      "Custom-rate procedure",
-      30_00n,
-    ),
+    ...catalogItemInput(organization.slug, "Custom-rate procedure", 30_00n),
     category: "procedure" as const,
     customRate: true,
   });
@@ -1476,7 +1439,7 @@ test("procedure rates flow through booking, walk-in quotes and stored charges", 
     (
       await api.catalog.searchServices({
         orgSlug: organization.slug,
-        query: procedure.code,
+        query: procedure.name,
         includeConsultation: false,
       })
     )[0],
@@ -1490,12 +1453,12 @@ test("a custom rate needs the catalog flag and may go below the catalog rate", a
   );
 
   const fixed = await api.catalog.create({
-    ...catalogItemInput(organization.slug, `FIXED-RATE-${uniqueSuffix()}`, "Fixed-rate procedure"),
+    ...catalogItemInput(organization.slug, "Fixed-rate procedure"),
     category: "procedure" as const,
   });
 
   const variable = await api.catalog.create({
-    ...catalogItemInput(organization.slug, `CUSTOM-RATE-${uniqueSuffix()}`, "Variable procedure"),
+    ...catalogItemInput(organization.slug, "Variable procedure"),
     category: "procedure" as const,
     customRate: true,
   });
@@ -1535,12 +1498,7 @@ test("a scheduled appointment keeps selected services until check-in", async () 
     await createOpdAppointmentSetup("opd-scheduled-services");
 
   const service = await api.catalog.create({
-    ...catalogItemInput(
-      organization.slug,
-      `SCHEDULED-SERVICE-${uniqueSuffix()}`,
-      "Booked dressing",
-      350_00n,
-    ),
+    ...catalogItemInput(organization.slug, "Booked dressing", 350_00n),
     category: "procedure" as const,
   });
 
@@ -1734,7 +1692,7 @@ test("day interleaves visits, searches patient keys, returns balances, and close
     await createOpdAppointmentSetup("opd-day");
 
   const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, `DAY-${uniqueSuffix()}`, "Day Consultation", 200_00n),
+    catalogItemInput(organization.slug, "Day Consultation", 200_00n),
   );
 
   const practitioner = await createPractitioner(api, organization.slug, department.id, "Dr. Day", {
@@ -1844,7 +1802,7 @@ test("day interleaves visits, searches patient keys, returns balances, and close
   const pastDay = yesterday.toISOString().slice(0, 10);
 
   const plannedService = await api.catalog.create({
-    ...catalogItemInput(organization.slug, `PAST-SERVICE-${uniqueSuffix()}`, "Past booked service"),
+    ...catalogItemInput(organization.slug, "Past booked service"),
     category: "procedure",
   });
 
@@ -1956,9 +1914,7 @@ test("concurrent check-in mints one token and one consultation charge", async ()
   const { organization, api, patient, department } =
     await createOpdAppointmentSetup("opd-check-in-race");
 
-  const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, `RACE-${uniqueSuffix()}`, "Race Consultation"),
-  );
+  const fee = await api.catalog.create(catalogItemInput(organization.slug, "Race Consultation"));
 
   const practitioner = await createPractitioner(
     api,
@@ -2059,7 +2015,7 @@ test("marking a booking no-show voids its pending charges and audits the write-o
   );
 
   const item = await api.catalog.create(
-    catalogItemInput(organization.slug, `NOSHOW-${uniqueSuffix()}`, "Advance Consultation"),
+    catalogItemInput(organization.slug, "Advance Consultation"),
   );
 
   const booked = await api.opd.book({
@@ -2116,12 +2072,7 @@ test("a walk-in settled at the desk creates the token, invoice and receipt in on
     await createOpdAppointmentSetup("opd-walk-in-settled");
 
   const fee = await api.catalog.create(
-    catalogItemInput(
-      organization.slug,
-      `SETTLE-${uniqueSuffix()}`,
-      "Settled Consultation",
-      200_00n,
-    ),
+    catalogItemInput(organization.slug, "Settled Consultation", 200_00n),
   );
 
   const practitioner = await createPractitioner(
@@ -2260,7 +2211,7 @@ test("leaving a walk-in unpaid needs a note, and so does a discount", async () =
     await createOpdAppointmentSetup("opd-walk-in-credit-note");
 
   const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, `CREDIT-${uniqueSuffix()}`, "Credit Consultation", 100_00n),
+    catalogItemInput(organization.slug, "Credit Consultation", 100_00n),
   );
 
   const practitioner = await createPractitioner(
@@ -2329,12 +2280,7 @@ test("a discounted walk-in persists its reason and settles the discounted total"
     await createOpdAppointmentSetup("opd-walk-in-discount");
 
   const fee = await api.catalog.create(
-    catalogItemInput(
-      organization.slug,
-      `DISCOUNT-${uniqueSuffix()}`,
-      "Discounted Consultation",
-      100_00n,
-    ),
+    catalogItemInput(organization.slug, "Discounted Consultation", 100_00n),
   );
 
   const practitioner = await createPractitioner(
@@ -2384,7 +2330,7 @@ test("a walk-in that fails to settle leaves no token behind", async () => {
   );
 
   const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, `ROLL-${uniqueSuffix()}`, "Rollback Consultation", 100_00n),
+    catalogItemInput(organization.slug, "Rollback Consultation", 100_00n),
   );
 
   const practitioner = await createPractitioner(
@@ -2450,16 +2396,11 @@ test("services chosen at the desk are charged in the same commit as the token", 
     await createOpdAppointmentSetup("opd-walk-in-services");
 
   const fee = await api.catalog.create(
-    catalogItemInput(
-      organization.slug,
-      `SVCFEE-${uniqueSuffix()}`,
-      "Service Consultation",
-      100_00n,
-    ),
+    catalogItemInput(organization.slug, "Service Consultation", 100_00n),
   );
 
   const dressing = await api.catalog.create({
-    ...catalogItemInput(organization.slug, `DRESS-${uniqueSuffix()}`, "Dressing", 50_00n),
+    ...catalogItemInput(organization.slug, "Dressing", 50_00n),
     category: "procedure" as const,
   });
 
@@ -2511,21 +2452,11 @@ test("a walk-in can omit the consultation fee while settling selected services",
     await createOpdAppointmentSetup("opd-walk-in-omit-fee");
 
   const fee = await api.catalog.create(
-    catalogItemInput(
-      organization.slug,
-      `OMIT-FEE-${uniqueSuffix()}`,
-      "Omitted Consultation",
-      100_00n,
-    ),
+    catalogItemInput(organization.slug, "Omitted Consultation", 100_00n),
   );
 
   const service = await api.catalog.create({
-    ...catalogItemInput(
-      organization.slug,
-      `OMIT-SVC-${uniqueSuffix()}`,
-      "Omitted Fee Dressing",
-      50_00n,
-    ),
+    ...catalogItemInput(organization.slug, "Omitted Fee Dressing", 50_00n),
     category: "procedure" as const,
   });
 
@@ -2647,21 +2578,11 @@ test("a walk-in reprices selected services after a stale quote", async () => {
     await createOpdAppointmentSetup("opd-walk-in-reprice");
 
   const fee = await api.catalog.create(
-    catalogItemInput(
-      organization.slug,
-      `REPRICE-FEE-${uniqueSuffix()}`,
-      "Reprice Consultation",
-      100_00n,
-    ),
+    catalogItemInput(organization.slug, "Reprice Consultation", 100_00n),
   );
 
   const service = await api.catalog.create({
-    ...catalogItemInput(
-      organization.slug,
-      `REPRICE-SVC-${uniqueSuffix()}`,
-      "Repriced Dressing",
-      50_00n,
-    ),
+    ...catalogItemInput(organization.slug, "Repriced Dressing", 50_00n),
     category: "procedure" as const,
   });
 
@@ -2688,7 +2609,6 @@ test("a walk-in reprices selected services after a stale quote", async () => {
     orgSlug: organization.slug,
     itemId: service.id,
     name: service.name,
-    code: service.code,
     category: service.category,
     unitPrice: 75_00n,
     customRate: false,
@@ -2747,33 +2667,18 @@ test("a discounted walk-in keeps fee-first quote ordering through settlement", a
   );
 
   const fee = await api.catalog.create({
-    ...catalogItemInput(
-      organization.slug,
-      `ORDER-FEE-${uniqueSuffix()}`,
-      "Zero-rated consultation",
-      300_00n,
-    ),
+    ...catalogItemInput(organization.slug, "Zero-rated consultation", 300_00n),
     taxRatePercent: "0",
     taxCode: undefined,
   });
 
   const fivePercent = await api.catalog.create({
-    ...catalogItemInput(
-      organization.slug,
-      `ORDER-FIVE-${uniqueSuffix()}`,
-      "Five-percent service",
-      300_00n,
-    ),
+    ...catalogItemInput(organization.slug, "Five-percent service", 300_00n),
     category: "procedure" as const,
   });
 
   const smaller = await api.catalog.create({
-    ...catalogItemInput(
-      organization.slug,
-      `ORDER-SMALL-${uniqueSuffix()}`,
-      "Smaller zero-rated service",
-      250_00n,
-    ),
+    ...catalogItemInput(organization.slug, "Smaller zero-rated service", 250_00n),
     category: "procedure" as const,
     taxRatePercent: "0",
     taxCode: undefined,
@@ -2835,21 +2740,11 @@ test("a walk-in can bill a selected consultation instead of the ladder fee", asy
   );
 
   const ladderFee = await api.catalog.create(
-    catalogItemInput(
-      organization.slug,
-      `PRIMARY-${uniqueSuffix()}`,
-      "Primary Consultation",
-      100_00n,
-    ),
+    catalogItemInput(organization.slug, "Primary Consultation", 100_00n),
   );
 
   const selectedConsultation = await api.catalog.create(
-    catalogItemInput(
-      organization.slug,
-      `SELECTED-CONSULT-${uniqueSuffix()}`,
-      "Selected Consultation",
-      50_00n,
-    ),
+    catalogItemInput(organization.slug, "Selected Consultation", 50_00n),
   );
 
   const practitioner = await createPractitioner(
@@ -2913,12 +2808,7 @@ test("booking rejects a consultation catalog item as a selected service", async 
   );
 
   const consultation = await api.catalog.create(
-    catalogItemInput(
-      organization.slug,
-      `BOOK-CONSULT-${uniqueSuffix()}`,
-      "Booked Consultation",
-      50_00n,
-    ),
+    catalogItemInput(organization.slug, "Booked Consultation", 50_00n),
   );
 
   const practitioner = await createPractitioner(
@@ -2960,12 +2850,7 @@ test("walk-in quotes hide consultation items from another organization", async (
   );
 
   const foreignConsultation = await clientFor(otherOwner).catalog.create(
-    catalogItemInput(
-      otherOrganization.slug,
-      `FOREIGN-CONSULT-${uniqueSuffix()}`,
-      "Foreign Consultation",
-      50_00n,
-    ),
+    catalogItemInput(otherOrganization.slug, "Foreign Consultation", 50_00n),
   );
 
   await expectORPCCode(
@@ -2986,7 +2871,7 @@ test("an unknown service leaves no token behind", async () => {
   );
 
   const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, `BADSVC-${uniqueSuffix()}`, "Bad Service Consult", 100_00n),
+    catalogItemInput(organization.slug, "Bad Service Consult", 100_00n),
   );
 
   const practitioner = await createPractitioner(

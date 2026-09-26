@@ -18,13 +18,12 @@ import { practitionerDisplayName } from "@/lib/practitioner-name";
 
 export type TreatmentAction = "new" | "add" | "next";
 
-type Procedure = { id: string; name: string; code: string; unitPrice: bigint };
+type Procedure = { id: string; name: string; unitPrice: bigint };
 
 const procedureField = z
   .object({
     id: z.string(),
     name: z.string(),
-    code: z.string(),
     unitPrice: z.bigint(),
   })
   .nullable()
@@ -341,15 +340,12 @@ function ProcedureSearch({
           ...inputProps,
           name: "catalogItemId",
           autoComplete: "off",
-          placeholder: "Procedure code or name",
+          placeholder: "Procedure name",
         }}
         itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-3"
         renderItem={(item) => (
           <>
-            <span className="min-w-0">
-              <span className="block truncate font-medium">{item.name}</span>
-              <span className="font-mono text-muted-foreground">{item.code}</span>
-            </span>
+            <span className="min-w-0 truncate font-medium">{item.name}</span>
             <span className="tabular-nums">{formatDecimal(item.unitPrice)}</span>
           </>
         )}
@@ -396,9 +392,8 @@ function ItemFields({ orgSlug }: { orgSlug: string }) {
               <div className="flex items-center gap-3 border-b px-3 py-2">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{field.value.name}</span>
-                  <span className="text-muted-foreground">
-                    <span className="font-mono">{field.value.code}</span> ·{" "}
-                    <span className="tabular-nums">{formatDecimal(field.value.unitPrice)}</span>
+                  <span className="text-muted-foreground tabular-nums">
+                    {formatDecimal(field.value.unitPrice)}
                   </span>
                 </span>
                 <Button
