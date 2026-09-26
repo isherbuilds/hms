@@ -47,9 +47,7 @@ export function ServicePicker({
     <>
       <span className="min-w-0">
         <span className="block truncate font-medium">{item.name}</span>
-        <span className="font-mono text-muted-foreground">
-          {item.code} · {item.category}
-        </span>
+        <span className="text-muted-foreground">{item.category}</span>
       </span>
       <span className="tabular-nums">{formatMoney(item.unitPrice, currency)}</span>
     </>

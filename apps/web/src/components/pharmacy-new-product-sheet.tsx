@@ -15,16 +15,12 @@ import { SCHEDULE_LABELS, SCHEDULES, STOCK_UNITS } from "@/lib/pharmacy-labels";
 /** The optional HSN entered for a sold product, shared with the Products form. */
 export const productTaxCode = z.string().trim().max(20);
 
-/** Counter products need a code and a valid GST rate; internal supplies need neither. */
+/** Counter products need a valid GST rate; internal supplies do not. */
 export function validateSoldProduct(
-  value: { sold: boolean; code: string; taxRatePercent: string },
+  value: { sold: boolean; taxRatePercent: string },
   context: z.RefinementCtx,
 ): void {
   if (!value.sold) return;
-
-  if (value.code === "") {
-    context.addIssue({ code: "custom", path: ["code"], message: "Code is required" });
-  }
 
   if (!/^\d{1,2}(\.\d{1,2})?$/.test(value.taxRatePercent)) {
     context.addIssue({
@@ -45,7 +41,6 @@ const newProductSchema = z
     stockUnit: z.enum(STOCK_UNITS),
     schedule: z.enum(SCHEDULES),
     sold: z.boolean(),
-    code: z.string().trim().max(20),
     taxRatePercent: z.string().trim(),
     taxCode: productTaxCode,
   })
@@ -76,7 +71,6 @@ export function NewProductSheet({
         stockUnit: "tablet",
         schedule: "none",
         sold: true,
-        code: "",
         taxRatePercent: "0",
         taxCode: "",
       }}
@@ -94,7 +88,6 @@ export function NewProductSheet({
           schedule: values.schedule,
           catalog: values.sold
             ? {
-                code: values.code,
                 taxRatePercent: values.taxRatePercent,
                 taxCode: values.taxCode || undefined,
                 active: true,
@@ -189,7 +182,6 @@ function SoldFields() {
       render={(sold) =>
         sold ? (
           <div className="grid gap-3 sm:grid-cols-2">
-            <TextField name="code" label="Code" />
             <TextField name="taxRatePercent" label="GST %" inputMode="decimal" placeholder="12" />
             <TextField name="taxCode" label="HSN (optional)" />
           </div>

@@ -91,7 +91,6 @@ async function createPharmacyFixture(seed: string) {
       orgSlug: organization.slug,
       name: overrides.name ?? `${seed} Paracetamol ${uniqueSuffix()}`,
       catalog: {
-        code: `MED-${uniqueSuffix()}`,
         taxRatePercent: overrides.taxRatePercent ?? TAX_RATE,
         taxCode: "3004",
         active: overrides.active ?? true,
@@ -497,7 +496,6 @@ test("an inactive medicine is refused", async () => {
     productId: medicine.productId,
     name: "withdrawn tablet",
     catalog: {
-      code: `MED-${uniqueSuffix()}`,
       taxRatePercent: TAX_RATE,
       active: false,
     },

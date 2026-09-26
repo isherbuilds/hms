@@ -337,7 +337,6 @@ async function seedOrganization(org: OrganizationSeed): Promise<SeedSummary> {
           id: deterministicUuidV7(createdAt, random, 2, org.orgIndex, index),
           orgId: org.id,
           name: `${category[0]!.toUpperCase()}${category.slice(1)} Service ${String(index + 1).padStart(4, "0")}`,
-          code: `VOL-${category.slice(0, 3).toUpperCase()}-${String(index + 1).padStart(4, "0")}`,
           category,
           unitPrice: BigInt(100 + ((index * 137) % 9_900)) * 100n,
           taxRatePercent: TAX_RATES[index % TAX_RATES.length]!,

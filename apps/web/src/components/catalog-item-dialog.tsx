@@ -27,7 +27,6 @@ import { z } from "zod";
 import { ControlledField, TextField } from "@/components/form-fields";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
-import { applyOrpcFieldError } from "@/lib/orpc-error";
 
 // Kept local so no @hms/db server module reaches the client bundle (hard rule 6).
 // Medicines are written only from Pharmacy → Items, so the form never offers that
@@ -51,7 +50,6 @@ export const CATEGORY_LABELS: Record<CatalogCategory, string> = {
 
 const formSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200, "Keep the name under 200 characters"),
-  code: z.string().trim().min(1, "Code is required").max(20, "Keep the code under 20 characters"),
   category: z.enum(EDITABLE_CATEGORIES),
   unitPrice: z.string().regex(DECIMAL_PATTERN, "Amount like 150 or 150.00").transform(parseDecimal),
   taxRatePercent: z.string().regex(/^\d{1,2}(\.\d{1,2})?$/, "Rate like 0, 5, or 12.50"),
@@ -69,7 +67,6 @@ type EditableItem = Omit<CatalogFormValues, "unitPrice" | "taxCode"> & {
 
 const EMPTY_VALUES: CatalogFormValues = {
   name: "",
-  code: "",
   category: "consultation",
   unitPrice: "",
   taxRatePercent: "0",
@@ -93,7 +90,6 @@ export function CatalogItemDialog({
     defaultValues: item
       ? {
           name: item.name,
-          code: item.code,
           category: item.category,
           unitPrice: formatDecimal(item.unitPrice),
           taxRatePercent: item.taxRatePercent,
@@ -113,10 +109,6 @@ export function CatalogItemDialog({
       toast.success(message);
       close();
     },
-    onError: (error: Error) =>
-      applyOrpcFieldError(form, error, {
-        duplicate: { field: "code", message: "Code already in use" },
-      }),
   });
 
   const create = useMutation(orpc.catalog.create.mutationOptions(feedback("Catalog item created")));
@@ -156,7 +148,6 @@ export function CatalogItemDialog({
             <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <TextField name="name" label="Name" autoFocus disabled={isPending} />
-                <TextField name="code" label="Code" disabled={isPending} />
                 <ControlledField
                   name="category"
                   label="Category"

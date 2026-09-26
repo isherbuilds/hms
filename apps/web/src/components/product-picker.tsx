@@ -103,7 +103,7 @@ export const ProductPicker = memo(function ProductPicker({
           aria-describedby={ariaDescribedBy}
           aria-invalid={ariaInvalid}
           aria-label={ariaLabel}
-          placeholder="Product name or code"
+          placeholder="Product name"
           disabled
         />
       }
@@ -132,13 +132,16 @@ export const ProductPicker = memo(function ProductPicker({
           "aria-describedby": ariaDescribedBy,
           "aria-invalid": ariaInvalid,
           "aria-label": ariaLabel,
-          placeholder: "Product name or code",
+          placeholder: "Product name",
           autoComplete: "off",
         }}
         itemClassName="px-3 py-2"
         renderItem={(match) => (
           <span className="min-w-0 truncate">
-            {match.name} <span className="text-muted-foreground">· {match.code ?? "Internal"}</span>
+            {match.name}
+            {match.catalogItemId === null && (
+              <span className="text-muted-foreground"> · Internal</span>
+            )}
           </span>
         )}
         emptyContent={

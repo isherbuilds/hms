@@ -39,7 +39,6 @@ export type Department = {
 export type CatalogOption = {
   id: string;
   name: string;
-  code: string;
 };
 
 export function DepartmentDialog({
@@ -114,10 +113,7 @@ export function DepartmentDialog({
                     {...field}
                     options={[
                       { value: "", label: "None" },
-                      ...catalogItems.map((item) => ({
-                        value: item.id,
-                        label: `${item.name} (${item.code})`,
-                      })),
+                      ...catalogItems.map((item) => ({ value: item.id, label: item.name })),
                     ]}
                     disabled={isSubmitting || catalogPending}
                   />

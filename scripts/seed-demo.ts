@@ -73,24 +73,24 @@ const at = (day: string, hour: number, minute: number) =>
   new Date(`${day}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00+05:30`);
 
 const DEPARTMENTS = [
-  { name: "General Medicine", fee: "400.00", code: "CONS-GEN", share: 4 },
-  { name: "Orthopaedics", fee: "700.00", code: "CONS-ORT", share: 2 },
-  { name: "Dermatology", fee: "650.00", code: "CONS-DRM", share: 2 },
-  { name: "Paediatrics", fee: "500.00", code: "CONS-PED", share: 3 },
-  { name: "ENT", fee: "550.00", code: "CONS-ENT", share: 2 },
-  { name: "Ophthalmology", fee: "600.00", code: "CONS-OPH", share: 1 },
+  { name: "General Medicine", fee: "400.00", share: 4 },
+  { name: "Orthopaedics", fee: "700.00", share: 2 },
+  { name: "Dermatology", fee: "650.00", share: 2 },
+  { name: "Paediatrics", fee: "500.00", share: 3 },
+  { name: "ENT", fee: "550.00", share: 2 },
+  { name: "Ophthalmology", fee: "600.00", share: 1 },
 ];
 
 const PROCEDURES = [
-  { name: "Dressing, minor wound", code: "PROC-DRS", price: "250.00" },
-  { name: "Nebulisation", code: "PROC-NEB", price: "300.00" },
-  { name: "Suture removal", code: "PROC-SUT", price: "200.00" },
-  { name: "Ear syringing", code: "PROC-EAR", price: "350.00" },
-  { name: "Plaster cast, forearm", code: "PROC-PLC", price: "1200.00" },
-  { name: "Cryotherapy, single lesion", code: "PROC-CRY", price: "900.00" },
-  { name: "ECG, 12 lead", code: "PROC-ECG", price: "400.00" },
-  { name: "Vision screening", code: "PROC-VIS", price: "300.00" },
-  { name: "Physiotherapy session", code: "PROC-PHY", price: "500.00", customRate: true },
+  { name: "Dressing, minor wound", price: "250.00" },
+  { name: "Nebulisation", price: "300.00" },
+  { name: "Suture removal", price: "200.00" },
+  { name: "Ear syringing", price: "350.00" },
+  { name: "Plaster cast, forearm", price: "1200.00" },
+  { name: "Cryotherapy, single lesion", price: "900.00" },
+  { name: "ECG, 12 lead", price: "400.00" },
+  { name: "Vision screening", price: "300.00" },
+  { name: "Physiotherapy session", price: "500.00", customRate: true },
 ];
 
 const DOCTORS = [
@@ -107,7 +107,6 @@ const consultItems = DEPARTMENTS.map((d) => ({
   id: id("item"),
   orgId,
   name: `${d.name} consultation`,
-  code: d.code,
   category: "consultation" as const,
   unitPrice: parseDecimal(d.fee),
   taxRatePercent: "0",
@@ -119,7 +118,6 @@ const procedureItems = PROCEDURES.map((p) => ({
   id: id("item"),
   orgId,
   name: p.name,
-  code: p.code,
   category: "procedure" as const,
   unitPrice: parseDecimal(p.price),
   customRate: "customRate" in p,

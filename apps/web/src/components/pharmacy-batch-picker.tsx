@@ -16,7 +16,6 @@ import { orpc } from "@/lib/orpc";
 export type SaleLine = {
   batchId: string;
   productName: string;
-  code: string;
   batchNumber: string;
   expiryDate: string;
   mrp: bigint;
@@ -61,7 +60,6 @@ export function PharmacyBatchPicker({
         .map((batch) => ({
           batchId: batch.batchId,
           productName: product.name,
-          code: product.code,
           batchNumber: batch.batchNumber,
           expiryDate: batch.expiryDate,
           mrp: batch.mrp,
@@ -90,7 +88,7 @@ export function PharmacyBatchPicker({
             id="stock-search"
             name="stock-search"
             className="pl-8"
-            placeholder="Name, code, or generic"
+            placeholder="Name or generic"
             aria-label="Search stock"
             disabled
           />
@@ -115,7 +113,7 @@ export function PharmacyBatchPicker({
             id: "stock-search",
             name: "stock-search",
             autoComplete: "off",
-            placeholder: "Name, code, or generic",
+            placeholder: "Name or generic",
             autoFocus: box > 0,
             onFocus: () => {
               if (typed().length > 0) search.setOpen(true);

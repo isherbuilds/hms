@@ -31,7 +31,7 @@ export const PRODUCT_SCHEDULES = ["none", "h", "h1", "x"] as const;
 // counter; one without it is an internal supply (gloves, soap, cleaning liquid)
 // that is stocked and issued but never billed. `name` is the single display name:
 // the linked catalog row carries the same value, because that row is the invoice
-// snapshot source (D027). Code, HSN, GST rate and active live on the catalog row.
+// snapshot source (D027). HSN, GST rate and active live on the catalog row.
 export const products = pgTable(
   "products",
   {

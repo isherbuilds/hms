@@ -177,7 +177,7 @@ function PharmacyStockRoute() {
         <ListToolbar>
           <SearchInput
             label="Search stock"
-            placeholder="Product, code, or batch"
+            placeholder="Product or batch"
             value={q}
             fieldRef={field}
             delay={150}
@@ -250,10 +250,8 @@ function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFil
                 cell: (row) => (
                   <>
                     {row.name}{" "}
-                    {row.code === null ? (
+                    {row.catalogItemId === null && (
                       <span className="text-muted-foreground">Internal</span>
-                    ) : (
-                      <span className="font-mono text-muted-foreground">{row.code}</span>
                     )}
                   </>
                 ),

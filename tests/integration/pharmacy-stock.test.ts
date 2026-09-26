@@ -11,7 +11,6 @@ import { createOrganization, createTestUser } from "../support/auth";
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
 import { UNPRICED } from "../support/pharmacy";
-import { uniqueSuffix } from "../support/unique";
 
 beforeAll(async () => {
   await resetTestDatabase();
@@ -26,7 +25,6 @@ function productInput(orgSlug: string, name = "Paracetamol 500") {
     orgSlug,
     name,
     catalog: {
-      code: `MED-${uniqueSuffix()}`,
       taxRatePercent: "12",
       taxCode: "3004",
     },
@@ -816,7 +814,6 @@ test("a product's stock unit is fixed once it has a batch and the catalog refuse
     api.catalog.create({
       orgSlug: org.slug,
       name: "Hand-written medicine",
-      code: `CAT-${uniqueSuffix()}`,
       category: "pharmacy",
       unitPrice: 0n,
       taxRatePercent: "12",

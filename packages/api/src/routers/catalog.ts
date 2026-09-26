@@ -9,15 +9,12 @@ import { and, asc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
-import { conflict } from "../lib/conflict";
-import { uniqueViolationConstraint } from "../lib/db-errors";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { formatDecimal } from "../core/money";
 import { likePattern, money, pageLimit, searchQuery, shortName } from "../lib/schemas";
 
 const catalogFields = z.object({
   name: shortName,
-  code: z.string().trim().min(1).max(20),
   category: z.enum(CATALOG_CATEGORIES),
   unitPrice: money,
   customRate: z.boolean(),
@@ -41,7 +38,6 @@ export const catalogRouter = {
     const rows = await db
       .select({
         id: catalogItems.id,
-        code: catalogItems.code,
         name: catalogItems.name,
         category: catalogItems.category,
         unitPrice: catalogItems.unitPrice,
@@ -56,11 +52,7 @@ export const catalogRouter = {
           inArray(catalogItems.category, [...OPD_BILLABLE_CATEGORIES]),
           input.includeConsultation ? undefined : ne(catalogItems.category, "consultation"),
           pattern
-            ? or(
-                ilike(catalogItems.code, pattern),
-                ilike(catalogItems.name, pattern),
-                ilike(catalogItems.category, pattern),
-              )
+            ? or(ilike(catalogItems.name, pattern), ilike(catalogItems.category, pattern))
             : undefined,
         ),
       )
@@ -90,9 +82,7 @@ export const catalogRouter = {
           eq(catalogItems.orgId, context.scope.orgId),
           input.category ? eq(catalogItems.category, input.category) : undefined,
           input.activeOnly ? eq(catalogItems.active, true) : undefined,
-          pattern
-            ? or(ilike(catalogItems.code, pattern), ilike(catalogItems.name, pattern))
-            : undefined,
+          pattern ? ilike(catalogItems.name, pattern) : undefined,
           input.cursor
             ? sql`(${catalogItems.name}, ${catalogItems.id}) > (${input.cursor.name}, ${input.cursor.id})`
             : undefined,
@@ -130,43 +120,35 @@ export const catalogRouter = {
       });
     }
 
-    try {
-      const [item] = await db
-        .insert(catalogItems)
-        .values({
-          ...fields,
-          id,
-          orgId: scope.orgId,
-          taxCode: fields.taxCode ?? null,
-        })
-        .returning();
-
-      if (!item) {
-        throw new ORPCError("INTERNAL_SERVER_ERROR", {
-          message: "Failed to create catalog item",
-        });
-      }
-
-      audit({
-        action: "catalog.create",
-        actorId: scope.userId,
+    const [item] = await db
+      .insert(catalogItems)
+      .values({
+        ...fields,
+        id,
         orgId: scope.orgId,
-        target: `catalogItem:${id}`,
-        meta: {
-          unitPrice: formatDecimal(item.unitPrice),
-          taxRatePercent: item.taxRatePercent,
-          active: item.active,
-        },
+        taxCode: fields.taxCode ?? null,
+      })
+      .returning();
+
+    if (!item) {
+      throw new ORPCError("INTERNAL_SERVER_ERROR", {
+        message: "Failed to create catalog item",
       });
-
-      return item;
-    } catch (error) {
-      if (uniqueViolationConstraint(error) !== undefined) {
-        throw conflict("duplicate", "A catalog item with this code already exists.");
-      }
-
-      throw error;
     }
+
+    audit({
+      action: "catalog.create",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `catalogItem:${id}`,
+      meta: {
+        unitPrice: formatDecimal(item.unitPrice),
+        taxRatePercent: item.taxRatePercent,
+        active: item.active,
+      },
+    });
+
+    return item;
   }),
 
   update: orgProcedure(
@@ -194,41 +176,33 @@ export const catalogRouter = {
       });
     }
 
-    try {
-      const [item] = await db
-        .update(catalogItems)
-        .set({
-          ...fields,
-          taxCode: fields.taxCode ?? null,
-          updatedAt: new Date(),
-        })
-        .where(and(eq(catalogItems.orgId, scope.orgId), eq(catalogItems.id, itemId)))
-        .returning();
+    const [item] = await db
+      .update(catalogItems)
+      .set({
+        ...fields,
+        taxCode: fields.taxCode ?? null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(catalogItems.orgId, scope.orgId), eq(catalogItems.id, itemId)))
+      .returning();
 
-      if (!item) {
-        throw new ORPCError("NOT_FOUND", { message: "That catalog item no longer exists." });
-      }
-
-      audit({
-        action: "catalog.update",
-        actorId: scope.userId,
-        orgId: scope.orgId,
-        target: `catalogItem:${itemId}`,
-        meta: {
-          unitPrice: formatDecimal(item.unitPrice),
-          taxRatePercent: item.taxRatePercent,
-          active: item.active,
-        },
-      });
-
-      return item;
-    } catch (error) {
-      if (uniqueViolationConstraint(error) !== undefined) {
-        throw conflict("duplicate", "A catalog item with this code already exists.");
-      }
-
-      throw error;
+    if (!item) {
+      throw new ORPCError("NOT_FOUND", { message: "That catalog item no longer exists." });
     }
+
+    audit({
+      action: "catalog.update",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `catalogItem:${itemId}`,
+      meta: {
+        unitPrice: formatDecimal(item.unitPrice),
+        taxRatePercent: item.taxRatePercent,
+        active: item.active,
+      },
+    });
+
+    return item;
   }),
 
   setActive: orgProcedure(

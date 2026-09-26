@@ -20,7 +20,7 @@ import { createOrganization, createTestUser } from "../support/auth";
 import { addPendingCatalogCharge, settlePendingCharges } from "../support/billing";
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
-import { sumMoney, uniqueSuffix } from "../support/unique";
+import { sumMoney } from "../support/unique";
 
 beforeAll(async () => {
   await resetTestDatabase();
@@ -145,7 +145,6 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     const item = await api.catalog.create({
       orgSlug: organization.slug,
       name: description,
-      code: `ACCT-${uniqueSuffix().toUpperCase()}`,
       category: "other",
       unitPrice,
       taxRatePercent,
@@ -171,7 +170,6 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     const item = await api.catalog.create({
       orgSlug: organization.slug,
       name: options.name,
-      code: `ACCT-${uniqueSuffix().toUpperCase()}`,
       category: "consultation",
       unitPrice: options.unitPrice,
       taxRatePercent: options.taxRatePercent,
@@ -213,7 +211,6 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     const item = await api.catalog.create({
       orgSlug: organization.slug,
       name: options.name,
-      code: `ACCT-${uniqueSuffix().toUpperCase()}`,
       category: options.category,
       unitPrice: options.unitPrice,
       taxRatePercent: options.taxRatePercent,
@@ -918,7 +915,6 @@ test("invoice and credit note keep the revenue category captured when the charge
     orgSlug: fixture.organization.slug,
     itemId: item.id,
     name: item.name,
-    code: item.code,
     category: "lab",
     unitPrice: item.unitPrice,
     customRate: false,

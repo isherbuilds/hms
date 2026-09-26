@@ -64,6 +64,13 @@
       "when": 1790235425993,
       "tag": "0008_treatment_course_price_data",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790409231524,
+      "tag": "0009_drop_catalog_item_code",
+      "breakpoints": true
     }
   ]
 }

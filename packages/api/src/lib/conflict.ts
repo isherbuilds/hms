@@ -3,7 +3,7 @@ import { ORPCError } from "@orpc/server";
 /**
  * Why a CONFLICT happened when the web client must branch on it:
  *
- * - `duplicate` — a catalog code is already in use (mapped to the code field).
+ * - `duplicate` — that payer name is already in use (mapped to the name field).
  * - `uid_taken` — that patient UID belongs to someone else (mapped to the UID field).
  * - `stale_record` — the patient row moved after the operator opened it (offers Refresh).
  *
