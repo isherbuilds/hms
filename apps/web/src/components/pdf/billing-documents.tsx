@@ -438,18 +438,18 @@ export function CreditNoteDocument({
   invoiceLines: InvoiceBundle["lines"];
   note: CreditNote;
 }) {
-  const descriptions = new Map(invoiceLines.map((line) => [line.id, line.description]));
+  const sourceLines = new Map(invoiceLines.map((line) => [line.id, line]));
 
   const rows = note.lines.map((line) => {
-    const description = descriptions.get(line.invoiceLineId);
+    const source = sourceLines.get(line.invoiceLineId);
 
-    if (!description) {
+    if (!source) {
       throw new Error(
         `Invoice line ${line.invoiceLineId} is missing from ${invoice.invoiceNumber}`,
       );
     }
 
-    return { line, description };
+    return { line, source };
   });
 
   return (
@@ -486,9 +486,15 @@ export function CreditNoteDocument({
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ line, description }) => (
+          {rows.map(({ line, source }) => (
             <tr key={line.id}>
-              <td style={cellStyle}>{description}</td>
+              <td style={cellStyle}>
+                {source.description}
+                <div style={{ color: colors.muted, fontSize: 8 }}>
+                  Unit {formatDecimal(source.unitPrice)}
+                  {source.priceUnits > 1 ? ` / ${source.priceUnits}` : ""}
+                </div>
+              </td>
               <td style={{ ...cellStyle, textAlign: "right" }}>
                 {formatDecimal(line.taxableValue)}
               </td>

@@ -1,8 +1,6 @@
-import { Button } from "@hms/ui/components/button";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
-import { toast } from "sonner";
 
 import { FilterChips } from "@/components/list-filter";
 import {
@@ -15,10 +13,9 @@ import {
   Panel,
 } from "@/components/page";
 import { formatDateTime, formatDay, useOrgDateTime } from "@/lib/org-datetime";
-import { openOrgFile } from "@/lib/org-files";
 import { orpc } from "@/lib/orpc";
-import { errorMessage, loadRouteQuery } from "@/lib/orpc-error";
-import { REASON_LABELS } from "@/lib/pharmacy-labels";
+import { loadRouteQuery } from "@/lib/orpc-error";
+import { formatStockQty, REASON_LABELS } from "@/lib/pharmacy-labels";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 import { PharmacyTabs } from "./route";
@@ -113,7 +110,7 @@ function PharmacyMovementsRoute() {
                   head: "Qty",
                   cell: (movement) => (
                     <span className="whitespace-nowrap tabular-nums">
-                      {movement.qty} {movement.stockUnit}
+                      {formatStockQty(movement)}
                     </span>
                   ),
                   className: "text-right",
@@ -130,26 +127,6 @@ function PharmacyMovementsRoute() {
               ]}
               rows={rows}
               rowKey={(movement) => movement.id}
-              action={(movement) => {
-                const receipt = movement.receipt;
-                const fileId = receipt?.fileId;
-
-                if (!fileId) return null;
-
-                return (
-                  <Button
-                    variant="link"
-                    size="xs"
-                    onClick={() =>
-                      openOrgFile(orgSlug, fileId).catch((error) =>
-                        toast.error(errorMessage(error, "Could not open that receipt file")),
-                      )
-                    }
-                  >
-                    {receipt.opening ? "Sheet" : "Delivery note"}
-                  </Button>
-                );
-              }}
             />
           </ListState>
         </Panel>

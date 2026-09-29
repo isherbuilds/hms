@@ -1,6 +1,6 @@
 import { db } from "@hms/db";
 import { organization } from "@hms/db/schema/auth";
-import { CATALOG_CATEGORIES, catalogItems } from "@hms/db/schema/catalog-items";
+import { SERVICE_CATEGORIES, catalogItems } from "@hms/db/schema/catalog-items";
 import { counter } from "@hms/db/schema/counter";
 import { SETTINGS_DEFAULTS, organizationSettings } from "@hms/db/schema/organization-settings";
 import { patients } from "@hms/db/schema/patients";
@@ -331,7 +331,7 @@ async function seedOrganization(org: OrganizationSeed): Promise<SeedSummary> {
       const end = Math.min(start + BATCH_SIZE, CATALOG_ITEM_COUNT);
 
       for (let index = start; index < end; index += 1) {
-        const category = CATALOG_CATEGORIES[index % CATALOG_CATEGORIES.length]!;
+        const category = SERVICE_CATEGORIES[index % SERVICE_CATEGORIES.length]!;
         const createdAt = new Date(ANCHOR_DATE.getTime() - (index % 365) * DAY_MS);
         rows.push({
           id: deterministicUuidV7(createdAt, random, 2, org.orgIndex, index),

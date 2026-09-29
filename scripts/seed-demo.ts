@@ -7,6 +7,8 @@ import { organization, user } from "@hms/db/schema/auth";
 import { catalogItems } from "@hms/db/schema/catalog-items";
 import { charges } from "@hms/db/schema/charges";
 import { departments } from "@hms/db/schema/departments";
+import { goodsReceiptLines } from "@hms/db/schema/goods-receipt-lines";
+import { goodsReceipts } from "@hms/db/schema/goods-receipts";
 import { invoiceLines } from "@hms/db/schema/invoice-lines";
 import { invoices } from "@hms/db/schema/invoices";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
@@ -14,6 +16,9 @@ import { organizationSettings } from "@hms/db/schema/organization-settings";
 import { patients } from "@hms/db/schema/patients";
 import { payments } from "@hms/db/schema/payments";
 import { practitioners } from "@hms/db/schema/practitioners";
+import { products } from "@hms/db/schema/products";
+import { stockBatches } from "@hms/db/schema/stock-batches";
+import { stockMovements } from "@hms/db/schema/stock-movements";
 import { env } from "@hms/env/server";
 import { and, eq, like } from "drizzle-orm";
 
@@ -151,6 +156,269 @@ const doctorRows = DOCTORS.map((doc) => {
     share: dept.share,
   };
 });
+
+const productRows: (typeof products.$inferInsert)[] = [
+  {
+    id: id("product"),
+    orgId,
+    name: "Paracetamol 500 mg",
+    genericName: "Paracetamol",
+    form: "tablet",
+    strength: "500 mg",
+    stockUnit: "tablet",
+    unitsPerPack: 10,
+    expires: true,
+    pack: "10 tablets",
+    schedule: "none",
+    manufacturer: "Mercy Pharma",
+    sold: true,
+    taxRatePercent: "12.00",
+    taxCode: "3004",
+    active: true,
+  },
+  {
+    id: id("product"),
+    orgId,
+    name: "Cough syrup 100 ml",
+    genericName: "Dextromethorphan",
+    form: "syrup",
+    strength: "100 ml",
+    stockUnit: "bottle",
+    unitsPerPack: 1,
+    expires: true,
+    pack: "100 ml",
+    schedule: "h",
+    manufacturer: "Mercy Pharma",
+    sold: true,
+    taxRatePercent: "12.00",
+    taxCode: "3004",
+    active: true,
+  },
+  {
+    id: id("product"),
+    orgId,
+    name: "Digital BP monitor",
+    stockUnit: "piece",
+    unitsPerPack: 1,
+    expires: false,
+    schedule: "none",
+    sold: true,
+    taxRatePercent: "18.00",
+    taxCode: "9018",
+    active: true,
+  },
+  {
+    id: id("product"),
+    orgId,
+    name: "Examination gloves",
+    stockUnit: "piece",
+    unitsPerPack: 100,
+    expires: false,
+    pack: "Box of 100",
+    schedule: "none",
+    sold: false,
+    taxRatePercent: "0",
+    active: true,
+  },
+  {
+    id: id("product"),
+    orgId,
+    name: "Old antiseptic cream",
+    stockUnit: "tube",
+    unitsPerPack: 1,
+    expires: true,
+    schedule: "none",
+    sold: true,
+    taxRatePercent: "12.00",
+    active: false,
+  },
+];
+
+const openingReceiptId = id("receipt");
+
+const supplierReceiptId = id("receipt");
+
+const productBatches: (typeof stockBatches.$inferInsert)[] = [
+  {
+    id: id("batch"),
+    orgId,
+    productId: productRows[0]!.id,
+    batchNumber: "PCM-EXP",
+    expiryDate: dayBefore(-25),
+    mrp: 8000n,
+    mrpUnits: 10,
+  },
+  {
+    id: id("batch"),
+    orgId,
+    productId: productRows[0]!.id,
+    batchNumber: "PCM-LONG",
+    expiryDate: dayBefore(-400),
+    mrp: 8000n,
+    mrpUnits: 10,
+  },
+  {
+    id: id("batch"),
+    orgId,
+    productId: productRows[1]!.id,
+    batchNumber: "SYR-01",
+    expiryDate: dayBefore(-180),
+    mrp: 12000n,
+    mrpUnits: 1,
+  },
+  {
+    id: id("batch"),
+    orgId,
+    productId: productRows[2]!.id,
+    batchNumber: "BP-01",
+    expiryDate: null,
+    mrp: 250000n,
+    mrpUnits: 1,
+  },
+  {
+    id: id("batch"),
+    orgId,
+    productId: productRows[3]!.id,
+    batchNumber: "GLV-01",
+    expiryDate: null,
+    mrp: 0n,
+    mrpUnits: 100,
+  },
+];
+
+const receiptRows: (typeof goodsReceipts.$inferInsert)[] = [
+  {
+    id: openingReceiptId,
+    orgId,
+    opening: true,
+    receivedOn: dayBefore(7),
+    receivedBy: userId,
+    note: "Demo opening count",
+  },
+  {
+    id: supplierReceiptId,
+    orgId,
+    opening: false,
+    supplierName: "Pune Medical Supplies",
+    supplierReference: "PMS-DEMO-01",
+    receivedOn: dayBefore(2),
+    billTotal: 760800n,
+    receivedBy: userId,
+    note: "Demo supplier delivery",
+  },
+];
+
+const receiptLineRows: (typeof goodsReceiptLines.$inferInsert)[] = [
+  {
+    id: id("receipt-line"),
+    orgId,
+    receiptId: supplierReceiptId,
+    batchId: productBatches[0]!.id,
+    qty: 120,
+    freeQty: 10,
+    rate: 5000n,
+    packSize: 10,
+    discountPercent: "0",
+    gstPercent: "12.00",
+    hsnCode: "3004",
+  },
+  {
+    id: id("receipt-line"),
+    orgId,
+    receiptId: supplierReceiptId,
+    batchId: productBatches[2]!.id,
+    qty: 30,
+    freeQty: 0,
+    rate: 8000n,
+    packSize: 1,
+    discountPercent: "0",
+    gstPercent: "12.00",
+    hsnCode: "3004",
+  },
+  {
+    id: id("receipt-line"),
+    orgId,
+    receiptId: supplierReceiptId,
+    batchId: productBatches[3]!.id,
+    qty: 2,
+    freeQty: 0,
+    rate: 180000n,
+    packSize: 1,
+    discountPercent: "0",
+    gstPercent: "18.00",
+    hsnCode: "9018",
+  },
+];
+
+const movementRows: (typeof stockMovements.$inferInsert)[] = [
+  {
+    id: id("movement"),
+    orgId,
+    batchId: productBatches[0]!.id,
+    bucket: "shelf",
+    qty: 130,
+    reason: "receipt",
+    sourceType: "goods_receipt",
+    sourceId: supplierReceiptId,
+    createdBy: userId,
+  },
+  {
+    id: id("movement"),
+    orgId,
+    batchId: productBatches[1]!.id,
+    bucket: "shelf",
+    qty: 85,
+    reason: "opening",
+    sourceType: "goods_receipt",
+    sourceId: openingReceiptId,
+    createdBy: userId,
+  },
+  {
+    id: id("movement"),
+    orgId,
+    batchId: productBatches[2]!.id,
+    bucket: "shelf",
+    qty: 30,
+    reason: "receipt",
+    sourceType: "goods_receipt",
+    sourceId: supplierReceiptId,
+    createdBy: userId,
+  },
+  {
+    id: id("movement"),
+    orgId,
+    batchId: productBatches[3]!.id,
+    bucket: "shelf",
+    qty: 2,
+    reason: "receipt",
+    sourceType: "goods_receipt",
+    sourceId: supplierReceiptId,
+    createdBy: userId,
+  },
+  {
+    id: id("movement"),
+    orgId,
+    batchId: productBatches[4]!.id,
+    bucket: "shelf",
+    qty: 300,
+    reason: "opening",
+    sourceType: "goods_receipt",
+    sourceId: openingReceiptId,
+    createdBy: userId,
+  },
+  {
+    id: id("movement"),
+    orgId,
+    batchId: productBatches[1]!.id,
+    bucket: "quarantine",
+    qty: 3,
+    reason: "count_correction",
+    sourceType: "adjustment",
+    sourceId: id("adjustment"),
+    createdBy: userId,
+    note: "Demo quarantine count",
+  },
+];
 
 const DOCTOR_POOL = doctorRows.flatMap((doc) => Array<typeof doc>(doc.share).fill(doc));
 
@@ -472,6 +740,11 @@ for (let offset = HISTORY_DAYS; offset >= 0; offset--) {
 
 await db.transaction(async (tx) => {
   for (const table of [
+    stockMovements,
+    goodsReceiptLines,
+    stockBatches,
+    goodsReceipts,
+    products,
     invoiceLines,
     payments,
     charges,
@@ -526,6 +799,11 @@ await db.transaction(async (tx) => {
   await tx.insert(charges).values(chargeRows);
   await tx.insert(invoiceLines).values(invoiceLineRows);
   await tx.insert(payments).values(paymentRows);
+  await tx.insert(products).values(productRows);
+  await tx.insert(goodsReceipts).values(receiptRows);
+  await tx.insert(stockBatches).values(productBatches);
+  await tx.insert(goodsReceiptLines).values(receiptLineRows);
+  await tx.insert(stockMovements).values(movementRows);
 });
 
 const collectedToday = paymentRows
@@ -537,6 +815,7 @@ console.info(
     "",
     "Demo practice seeded.",
     `  ${HISTORY_DAYS + 1} days, ${appointmentRows.length} appointments, ${invoiceRows.length} invoices, ${paymentRows.length} receipts.`,
+    `  Pharmacy: ${productRows.length} products, ${productBatches.length} batches, ${movementRows.length} stock movements.`,
     `  Today (${today}): ₹${formatDecimal(collectedToday)} collected.`,
     `  Sign in as owner@example.com / password123 and open /${SLUG}/dashboard`,
     "",

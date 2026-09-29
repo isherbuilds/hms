@@ -6,11 +6,21 @@ import {
   mergeSuggestions,
 } from "../../apps/web/src/lib/medicine-suggestions";
 
-const empty = { strength: "", form: "", manufacturer: "", unitsPerPack: "1" };
+const empty = { strength: "", form: "", manufacturer: "", pack: "" };
 
-const first = { strength: "500 mg", form: "tablet", manufacturer: "Maker A", unitsPerPack: 10 };
+const first = {
+  strength: "500 mg",
+  form: "tablet",
+  manufacturer: "Maker A",
+  packSizeLabel: "Strip of 10 Units",
+};
 
-const second = { strength: "250 mg", form: "capsule", manufacturer: "Maker B", unitsPerPack: 20 };
+const second = {
+  strength: "250 mg",
+  form: "capsule",
+  manufacturer: "Maker B",
+  packSizeLabel: "Strip of 20 Units",
+};
 
 // The component imports the web client, whose environment is validated during module loading.
 async function mergeSuggestion() {
@@ -26,46 +36,53 @@ async function mergeSuggestion() {
   }
 }
 
-test("a second medicine pick replaces the first pick's attributes and pack conversion", async () => {
+test("a second medicine pick replaces attributes owned by the first pick", async () => {
   const merge = await mergeSuggestion();
-  const pickedA = merge(empty, {}, first, false);
-  const pickedB = merge({ ...empty, ...pickedA }, pickedA, second, false);
+  const pickedA = merge(empty, {}, first);
+  const pickedB = merge({ ...empty, ...pickedA }, pickedA, second);
 
   expect(pickedB).toEqual({
     strength: "250 mg",
     form: "capsule",
     manufacturer: "Maker B",
-    unitsPerPack: "20",
+    pack: "20 units",
   });
 });
 
-test("a second pick preserves operator edits and cannot reconfigure an existing product pack", async () => {
+test("a second pick preserves operator edits, including pack", async () => {
   const merge = await mergeSuggestion();
-  const pickedA = merge(empty, {}, first, false);
-  const current = { ...empty, ...pickedA, strength: "custom strength", unitsPerPack: "24" };
-  expect(merge(current, pickedA, second, false)).toEqual({
-    form: "capsule",
-    manufacturer: "Maker B",
-  });
-  expect(merge({ ...empty, ...pickedA }, pickedA, second, true)).toEqual({
-    strength: "250 mg",
+  const pickedA = merge(empty, {}, first);
+  const current = { ...empty, ...pickedA, strength: "custom strength", pack: "custom pack" };
+
+  expect(merge(current, pickedA, second)).toEqual({
     form: "capsule",
     manufacturer: "Maker B",
   });
 });
 
-test("a second pick preserves an edited pack and ignores missing pack sizes", async () => {
+test("a measured bottle fills pack and a missing label clears a previous pick", async () => {
   const merge = await mergeSuggestion();
-  const pickedA = merge(empty, {}, first, false);
-  const current = { ...empty, ...pickedA };
 
-  expect(merge(current, pickedA, second, false, true).unitsPerPack).toBeUndefined();
-  expect(
-    merge(current, pickedA, { ...second, unitsPerPack: null }, false).unitsPerPack,
-  ).toBeUndefined();
+  const suggestion = mapTruemedsProduct({
+    skuName: "Omee Mps Mint Flavour Liquid 170Ml",
+    strength: null,
+    packSize: "170",
+    unit: "ML",
+    packForm: "Bottle of 170 ml",
+    drugType: "LIQUID",
+    manufacturerName: null,
+    isAd: false,
+  });
+
+  expect(merge(empty, {}, suggestion).pack).toBe("170 ml");
+
+  const pickedA = merge(empty, {}, first);
+  expect(merge({ ...empty, ...pickedA }, pickedA, { ...second, packSizeLabel: null }).pack).toBe(
+    "",
+  );
 });
 
-test("Medbuzz maps strength, trailing form and counted packs without a form list", () => {
+test("Medbuzz maps strength, trailing form and printed pack labels without a form list", () => {
   expect(
     mapMedbuzzProduct({
       productName: "ZALMOX EYE DROPS",
@@ -78,7 +95,6 @@ test("Medbuzz maps strength, trailing form and counted packs without a form list
     strength: "0.5%",
     form: "drops",
     manufacturer: "LXIR MEDILABS PVT LTD",
-    unitsPerPack: null,
     packSizeLabel: "Bottle of 5ml",
   });
 
@@ -89,7 +105,11 @@ test("Medbuzz maps strength, trailing form and counted packs without a form list
     packing: "Box of 2 Inhalers",
   });
 
-  expect(inhaler).toMatchObject({ strength: "200mcg / 6mcg", form: "inhaler", unitsPerPack: 2 });
+  expect(inhaler).toMatchObject({
+    strength: "200mcg / 6mcg",
+    form: "inhaler",
+    packSizeLabel: "Box of 2 Inhalers",
+  });
 
   expect(
     mapMedbuzzProduct({
@@ -97,11 +117,11 @@ test("Medbuzz maps strength, trailing form and counted packs without a form list
       genericName: null,
       manufacturedBy: null,
       packing: "Bottle of 100 gms",
-    }).unitsPerPack,
-  ).toBeNull();
+    }).packSizeLabel,
+  ).toBe("Bottle of 100 gms");
 });
 
-test("Truemeds counts Units strips but not measured bottles", () => {
+test("Truemeds preserves strip and measured bottle labels", () => {
   const strip = {
     skuName: "Example Tablet",
     strength: "100 MG",
@@ -118,21 +138,19 @@ test("Truemeds counts Units strips but not measured bottles", () => {
     strength: "100 MG",
     form: "tablet",
     manufacturer: "Factory",
-    unitsPerPack: 10,
     packSizeLabel: "Strip of 10 Units",
   });
 
   expect(
     mapTruemedsProduct({ ...strip, packSize: "5", unit: "ML", packForm: "Bottle of 5 ML" })
-      .unitsPerPack,
-  ).toBeNull();
+      .packSizeLabel,
+  ).toBe("Bottle of 5 ML");
 });
 
 test("merge ranks the typed brand first, keeps source order, and de-duplicates by name", () => {
   const suggestion = (name: string) => ({
     ...second,
     name,
-    unitsPerPack: null,
     packSizeLabel: null,
   });
 

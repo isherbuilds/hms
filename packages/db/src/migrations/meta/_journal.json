@@ -71,6 +71,20 @@
       "when": 1790409231524,
       "tag": "0009_drop_catalog_item_code",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790678273000,
+      "tag": "0010_product_pack_and_goods",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790678935327,
+      "tag": "0011_goods_without_expiry",
+      "breakpoints": true
     }
   ]
 }

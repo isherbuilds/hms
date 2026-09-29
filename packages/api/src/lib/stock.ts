@@ -29,7 +29,7 @@ export async function lockBatchStock(
     .select({ id: stockBatches.id })
     .from(stockBatches)
     .where(and(eq(stockBatches.orgId, orgId), inArray(stockBatches.id, ids)))
-    .orderBy(asc(stockBatches.expiryDate), asc(stockBatches.id))
+    .orderBy(sql`${stockBatches.expiryDate} asc nulls last`, asc(stockBatches.id))
     .for("update");
 
   if (locked.length !== ids.length) {

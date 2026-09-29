@@ -32,12 +32,8 @@ export type MedicineSuggestion = {
   strength: string | null;
   form: string | null;
   manufacturer: string | null;
-  unitsPerPack: number | null;
   packSizeLabel: string | null;
 };
-
-const COUNT_UNIT =
-  /^(tablets?|capsules?|softgels?|inhalers?|ampoules?|vials?|sachets?|patches?|suppositories?|units?)$/i;
 
 export function mapTruemedsProduct(product: TruemedsProduct): MedicineSuggestion {
   return {
@@ -45,25 +41,16 @@ export function mapTruemedsProduct(product: TruemedsProduct): MedicineSuggestion
     strength: product.strength || null,
     form: product.drugType?.toLowerCase() ?? null,
     manufacturer: product.manufacturerName || null,
-    unitsPerPack:
-      product.unit === "Units" && /^[1-9]\d*$/.test(product.packSize)
-        ? Number(product.packSize)
-        : null,
     packSizeLabel: product.packForm || null,
   };
 }
 
 export function mapMedbuzzProduct(data: MedbuzzProduct): MedicineSuggestion {
-  // Medbuzz has no form field; the product name ends with it ("… EYE DROPS", "… DRY SYRUP").
-  // "Strip of 10 Tablets" counts; "Bottle of 5ml" is a measure, not a count.
-  const pack = data.packing?.match(/of\s+(\d+)\s*([a-z]+)/i);
-
   return {
     name: data.productName,
     strength: data.genericName?.match(/\d+(?:\.\d+)?[a-zµ%]+/gi)?.join(" / ") ?? null,
     form: data.productName.split(/\s+/).at(-1)?.toLowerCase() ?? null,
     manufacturer: data.manufacturedBy || null,
-    unitsPerPack: pack && COUNT_UNIT.test(pack[2]!) ? Number(pack[1]) : null,
     packSizeLabel: data.packing || null,
   };
 }

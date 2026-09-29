@@ -2,7 +2,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 
 import type { DbTransaction } from "@hms/db/counter";
 import { accounts, type AccountType } from "@hms/db/schema/accounts";
-import type { CatalogCategory } from "@hms/db/schema/catalog-items";
+import type { RevenueCategory } from "@hms/db/schema/catalog-items";
 import { journalEntries } from "@hms/db/schema/journal-entries";
 import { journalLines } from "@hms/db/schema/journal-lines";
 
@@ -70,7 +70,7 @@ function isSystemAccountKey(value: string): value is SystemAccountKey {
   return SYSTEM_ACCOUNTS.some((account) => account.key === value);
 }
 
-const REVENUE_ACCOUNTS: Record<CatalogCategory, SystemAccountKey> = {
+const REVENUE_ACCOUNTS: Record<RevenueCategory, SystemAccountKey> = {
   consultation: "revenue_consultation",
   procedure: "revenue_procedure",
   lab: "revenue_lab",
@@ -79,7 +79,7 @@ const REVENUE_ACCOUNTS: Record<CatalogCategory, SystemAccountKey> = {
   other: "revenue_other",
 };
 
-export function revenueAccountFor(category: CatalogCategory): SystemAccountKey {
+export function revenueAccountFor(category: RevenueCategory): SystemAccountKey {
   return REVENUE_ACCOUNTS[category];
 }
 

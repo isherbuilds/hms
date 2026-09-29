@@ -1,7 +1,6 @@
 import { db } from "@hms/db";
 import { advanceAllocations } from "@hms/db/schema/advance-allocations";
 import { user } from "@hms/db/schema/auth";
-import { catalogItems } from "@hms/db/schema/catalog-items";
 import { charges } from "@hms/db/schema/charges";
 import { creditNoteLines } from "@hms/db/schema/credit-note-lines";
 import { creditNotes } from "@hms/db/schema/credit-notes";
@@ -182,22 +181,20 @@ export const pharmacyRouter = {
           mrpUnits: stockBatches.mrpUnits,
           productId: products.id,
           schedule: products.schedule,
-          catalogItemId: catalogItems.id,
           name: products.name,
-          active: catalogItems.active,
-          taxRatePercent: catalogItems.taxRatePercent,
-          taxCode: catalogItems.taxCode,
+          sold: products.sold,
+          active: products.active,
+          taxRatePercent: products.taxRatePercent,
+          taxCode: products.taxCode,
         })
         .from(stockBatches)
         .innerJoin(
           products,
           and(eq(products.orgId, scope.orgId), eq(products.id, stockBatches.productId)),
         )
-        .innerJoin(
-          catalogItems,
-          and(eq(catalogItems.orgId, scope.orgId), eq(catalogItems.id, products.catalogItemId)),
-        )
-        .where(and(eq(stockBatches.orgId, scope.orgId), inArray(stockBatches.id, batchIds)));
+        .where(and(eq(stockBatches.orgId, scope.orgId), inArray(stockBatches.id, batchIds)))
+        .orderBy(asc(products.id), asc(stockBatches.id))
+        .for("update", { of: products });
 
       if (rows.length !== batchIds.length) {
         throw new ORPCError("NOT_FOUND", { message: "That batch no longer exists." });
@@ -206,13 +203,13 @@ export const pharmacyRouter = {
       const batchById = new Map(rows.map((row) => [row.batchId, row]));
 
       for (const batch of rows) {
-        if (batch.expiryDate < today) {
+        if (batch.expiryDate !== null && batch.expiryDate < today) {
           throw new ORPCError("BAD_REQUEST", {
             message: `${batch.name} batch ${batch.batchNumber} has expired`,
           });
         }
 
-        if (!batch.active) {
+        if (!batch.sold || !batch.active) {
           throw new ORPCError("BAD_REQUEST", { message: `${batch.name} is no longer sold` });
         }
 
@@ -230,35 +227,6 @@ export const pharmacyRouter = {
         }
       }
 
-      await tx.insert(charges).values(
-        input.lines.map((line) => {
-          const batch = batchById.get(line.batchId);
-
-          if (!batch) throw impossible(`batch ${line.batchId} vanished after its read`);
-
-          return {
-            id: Bun.randomUUIDv7(),
-            orgId: scope.orgId,
-            opdAppointmentId: null,
-            pharmacySaleId: saleId,
-            catalogItemId: batch.catalogItemId,
-            description: `${batch.name} · batch ${batch.batchNumber}`,
-            unitPrice: batch.mrp,
-            priceUnits: batch.mrpUnits,
-            taxRatePercent: batch.taxRatePercent,
-            taxCode: batch.taxCode,
-            revenueCategory: "pharmacy" as const,
-            qty: line.qty,
-            sourceType: "pharmacy_batch" as const,
-            sourceId: line.batchId,
-            status: "pending" as const,
-            createdBy: scope.userId,
-            createdAt: now,
-            updatedAt: now,
-          };
-        }),
-      );
-
       const wanted = aggregateByBatch(input.lines);
       const onHand = await lockBatchStock(tx, scope.orgId, [...wanted.keys()]);
 
@@ -274,6 +242,36 @@ export const pharmacyRouter = {
           });
         }
       }
+
+      await tx.insert(charges).values(
+        input.lines.map((line) => {
+          const batch = batchById.get(line.batchId);
+
+          if (!batch) throw impossible(`batch ${line.batchId} vanished after its read`);
+
+          return {
+            id: Bun.randomUUIDv7(),
+            orgId: scope.orgId,
+            opdAppointmentId: null,
+            pharmacySaleId: saleId,
+            catalogItemId: null,
+            description: `${batch.name} · batch ${batch.batchNumber}`,
+            unitPrice: batch.mrp,
+            priceUnits: batch.mrpUnits,
+            taxRatePercent: batch.taxRatePercent,
+            taxCode: batch.taxCode,
+            revenueCategory: "pharmacy" as const,
+            qty: line.qty,
+            sourceType: "pharmacy_batch" as const,
+            sourceId: null,
+            stockBatchId: line.batchId,
+            status: "pending" as const,
+            createdBy: scope.userId,
+            createdAt: now,
+            updatedAt: now,
+          };
+        }),
+      );
 
       const parent: InvoiceParent = {
         stream: "pharmacy",
@@ -433,7 +431,7 @@ export const pharmacyRouter = {
             taxableValue: invoiceLines.taxableValue,
             taxAmount: invoiceLines.taxAmount,
             gross: invoiceLines.gross,
-            batchId: charges.sourceId,
+            batchId: charges.stockBatchId,
           })
           .from(invoiceLines)
           .innerJoin(
@@ -527,8 +525,6 @@ export const pharmacyRouter = {
 
         if (!source) throw impossible(`invoice line ${line.invoiceLineId} vanished after its read`);
 
-        if (source.batchId === null) throw impossible("a pharmacy charge without a batch");
-
         const alreadyReturned = returnedQtyByLine.get(source.id) ?? 0;
 
         if (alreadyReturned + line.qty > source.qty) {
@@ -561,6 +557,8 @@ export const pharmacyRouter = {
                 return { taxableValue, taxAmount: gross - taxableValue, gross };
               })();
 
+        if (source.batchId === null) throw impossible(`pharmacy charge ${source.id} has no batch`);
+
         return { invoiceLineId: source.id, batchId: source.batchId, qty: line.qty, ...credited };
       });
 
@@ -585,6 +583,10 @@ export const pharmacyRouter = {
       // Cap a partial return at the invoice balance; the final return absorbs
       // any round-off not already carried by earlier credit notes.
       const roundOff = fullyReturned || excess < 0n ? excess : 0n;
+
+      const returning = aggregateByBatch(computed);
+
+      await lockBatchStock(tx, scope.orgId, [...returning.keys()]);
 
       const creditNote =
         moneyLines.length > 0 || roundOff > 0n
@@ -624,10 +626,6 @@ export const pharmacyRouter = {
           gross: line.gross,
         })),
       );
-
-      const returning = aggregateByBatch(computed);
-
-      await lockBatchStock(tx, scope.orgId, [...returning.keys()]);
 
       await insertStockMovements(tx, {
         orgId: scope.orgId,
@@ -766,7 +764,7 @@ export const pharmacyRouter = {
             )
             .innerJoin(
               stockBatches,
-              and(eq(stockBatches.orgId, scope.orgId), eq(stockBatches.id, charges.sourceId)),
+              and(eq(stockBatches.orgId, scope.orgId), eq(stockBatches.id, charges.stockBatchId)),
             )
             .where(and(eq(invoiceLines.orgId, scope.orgId), eq(invoiceLines.invoiceId, invoiceId)))
             .orderBy(asc(invoiceLines.id)),

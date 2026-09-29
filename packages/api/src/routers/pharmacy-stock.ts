@@ -1,7 +1,6 @@
 import { db } from "@hms/db";
 import type { DbTransaction } from "@hms/db/counter";
 import { user } from "@hms/db/schema/auth";
-import { catalogItems } from "@hms/db/schema/catalog-items";
 import { departments } from "@hms/db/schema/departments";
 import { goodsReceiptLines } from "@hms/db/schema/goods-receipt-lines";
 import { goodsReceipts } from "@hms/db/schema/goods-receipts";
@@ -37,13 +36,11 @@ import {
 import { readOrgSettings } from "../lib/settings-cache";
 import { insertStockMovements, lockBatchStock, type StockMovementInput } from "../lib/stock";
 
-// Present only for a product that is sold across the counter. Without it the product is
-// an internal supply: stocked and issued, never billed.
-const catalogDetails = z.object({
-  taxRatePercent: z.string().regex(/^\d{1,2}(\.\d{1,2})?$/),
-  taxCode: z.string().trim().max(20).optional(),
-  active: z.boolean().default(true),
-});
+// Sale facts belong to the Product, not a copied service row.
+const saleTaxRate = z
+  .string()
+  .regex(/^\d{1,2}(\.\d{1,2})?$/)
+  .optional();
 
 const productFields = {
   name: shortName.transform((value) => value.replace(/\s+/g, " ")),
@@ -52,9 +49,14 @@ const productFields = {
   strength: z.string().trim().max(50).optional(),
   stockUnit: z.enum(STOCK_UNITS),
   unitsPerPack: z.number().int().min(1).max(MAX_STOCK_QTY),
+  expires: z.boolean(),
+  pack: z.string().trim().max(50).optional(),
   schedule: z.enum(PRODUCT_SCHEDULES).default("none"),
   manufacturer: z.string().trim().max(200).optional(),
-  catalog: catalogDetails.optional(),
+  sold: z.boolean(),
+  taxRatePercent: saleTaxRate,
+  taxCode: z.string().trim().max(20).optional(),
+  active: z.boolean(),
 };
 
 // A pack prints a month, so the receipt names one; the batch is good until its last day.
@@ -67,9 +69,9 @@ function monthEnd(month: string): string {
 const batchLine = z.object({
   productId: z.string(),
   batchNumber: z.string().trim().min(1).max(50),
-  expiryDate: expiryMonth.transform(monthEnd),
-  pricedPer: z.enum(["pack", "unit"]),
+  expiryDate: expiryMonth.transform(monthEnd).nullish(),
   mrp: money,
+  pricedPer: z.enum(["pack", "unit"]),
 });
 
 // Quantities are stock units; the locked product determines the priced-unit divisor.
@@ -95,16 +97,16 @@ function bucketSum(orgId: string, bucket: StockBucket) {
 type BatchRequest = {
   productId: string;
   batchNumber: string;
-  expiryDate: string;
-  pricedPer: "pack" | "unit";
+  expiryDate?: string | null;
   mrp: bigint;
+  pricedPer: "pack" | "unit";
 };
 
 type ResolvedBatch = {
   id: string;
   productId: string;
   batchNumber: string;
-  expiryDate: string;
+  expiryDate: string | null;
   mrp: bigint;
   mrpUnits: number;
 };
@@ -114,10 +116,7 @@ type ResolvedLine = { batch: ResolvedBatch; divisor: number };
 const batchKey = (line: { productId: string; batchNumber: string }) =>
   `${line.productId}\0${line.batchNumber}`;
 
-/**
- * Batches are immutable. Product locks determine each priced-unit divisor before
- * comparing printed MRPs as ratios, preserving the products → batches lock order.
- */
+// Lock products before batches, then compare printed MRPs as exact ratios.
 async function resolveBatches(
   tx: DbTransaction,
   args: { orgId: string; now: Date; lines: readonly BatchRequest[] },
@@ -127,7 +126,7 @@ async function resolveBatches(
 
   // Lock order: products (by id) → stock batches.
   const known = await tx
-    .select({ id: products.id, unitsPerPack: products.unitsPerPack })
+    .select({ id: products.id, unitsPerPack: products.unitsPerPack, expires: products.expires })
     .from(products)
     .where(and(eq(products.orgId, orgId), inArray(products.id, productIds)))
     .orderBy(asc(products.id))
@@ -137,7 +136,7 @@ async function resolveBatches(
     throw new ORPCError("NOT_FOUND", { message: "That product no longer exists." });
   }
 
-  const unitsPerPack = new Map(known.map((product) => [product.id, product.unitsPerPack]));
+  const productById = new Map(known.map((product) => [product.id, product]));
 
   const existing = await tx
     .select({
@@ -166,16 +165,24 @@ async function resolveBatches(
   const lines: ResolvedLine[] = [];
 
   for (const line of args.lines) {
-    const lineKey = batchKey(line);
-    const packUnits = unitsPerPack.get(line.productId);
+    const product = productById.get(line.productId)!;
+    const expiryDate = line.expiryDate ?? null;
 
-    if (packUnits === undefined) throw impossible("a locked receipt product vanished");
-    const divisor = line.pricedPer === "pack" ? packUnits : 1;
+    if (product.expires ? expiryDate === null : expiryDate !== null) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: product.expires
+          ? "This product requires an expiry date."
+          : "This product does not have an expiry date.",
+      });
+    }
+
+    const divisor = line.pricedPer === "pack" ? product.unitsPerPack : 1;
+    const lineKey = batchKey(line);
     const canonical = resolved.get(lineKey);
 
     if (canonical) {
       if (
-        canonical.expiryDate !== line.expiryDate ||
+        canonical.expiryDate !== expiryDate ||
         canonical.mrp * BigInt(divisor) !== line.mrp * BigInt(canonical.mrpUnits)
       ) {
         throw new ORPCError("BAD_REQUEST", {
@@ -191,7 +198,7 @@ async function resolveBatches(
 
     if (match) {
       if (
-        match.expiryDate !== line.expiryDate ||
+        match.expiryDate !== expiryDate ||
         match.mrp * BigInt(divisor) !== line.mrp * BigInt(match.mrpUnits)
       ) {
         throw new ORPCError("CONFLICT", {
@@ -209,7 +216,7 @@ async function resolveBatches(
       orgId,
       productId: line.productId,
       batchNumber: line.batchNumber,
-      expiryDate: line.expiryDate,
+      expiryDate,
       mrp: line.mrp,
       mrpUnits: divisor,
       createdAt: args.now,
@@ -233,43 +240,35 @@ export const pharmacyStockRouter = {
     orgInput.extend(productFields),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
-    const { catalog } = input;
-    const catalogItemId = catalog ? Bun.randomUUIDv7() : null;
+
+    if (input.sold && input.taxRatePercent === undefined) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "A sold product needs an explicit GST rate.",
+      });
+    }
+
     const productId = Bun.randomUUIDv7();
     const now = new Date();
 
-    await db.transaction(async (tx) => {
-      if (catalog && catalogItemId) {
-        await tx.insert(catalogItems).values({
-          id: catalogItemId,
-          orgId: scope.orgId,
-          name: input.name,
-          category: "pharmacy",
-          unitPrice: 0n,
-          customRate: false,
-          taxRatePercent: catalog.taxRatePercent,
-          taxCode: catalog.taxCode ?? null,
-          active: catalog.active,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-
-      await tx.insert(products).values({
-        id: productId,
-        orgId: scope.orgId,
-        catalogItemId,
-        name: input.name,
-        genericName: input.genericName ?? null,
-        form: input.form ?? null,
-        strength: input.strength ?? null,
-        stockUnit: input.stockUnit,
-        unitsPerPack: input.unitsPerPack,
-        schedule: input.schedule,
-        manufacturer: input.manufacturer ?? null,
-        createdAt: now,
-        updatedAt: now,
-      });
+    await db.insert(products).values({
+      id: productId,
+      orgId: scope.orgId,
+      name: input.name,
+      genericName: input.genericName ?? null,
+      form: input.form ?? null,
+      strength: input.strength ?? null,
+      stockUnit: input.stockUnit,
+      unitsPerPack: input.unitsPerPack,
+      expires: input.expires,
+      pack: input.pack || null,
+      schedule: input.schedule,
+      manufacturer: input.manufacturer ?? null,
+      sold: input.sold,
+      active: input.active,
+      taxRatePercent: input.sold ? input.taxRatePercent! : "0",
+      taxCode: input.sold ? (input.taxCode ?? null) : null,
+      createdAt: now,
+      updatedAt: now,
     });
 
     audit({
@@ -277,10 +276,10 @@ export const pharmacyStockRouter = {
       actorId: scope.userId,
       orgId: scope.orgId,
       target: `product:${productId}`,
-      meta: { name: input.name, sold: catalog !== undefined, schedule: input.schedule },
+      meta: { name: input.name, sold: input.sold, schedule: input.schedule },
     });
 
-    return { productId, catalogItemId };
+    return { productId };
   }),
 
   updateProduct: orgProcedure(
@@ -288,15 +287,21 @@ export const pharmacyStockRouter = {
     orgInput.extend({ productId: z.string(), ...productFields }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
-    const { catalog } = input;
+
+    if (input.sold && input.taxRatePercent === undefined) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "A sold product needs an explicit GST rate.",
+      });
+    }
+
     const now = new Date();
 
-    const catalogItemId = await db.transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       const [existing] = await tx
         .select({
-          catalogItemId: products.catalogItemId,
           stockUnit: products.stockUnit,
           unitsPerPack: products.unitsPerPack,
+          expires: products.expires,
         })
         .from(products)
         .where(and(eq(products.orgId, scope.orgId), eq(products.id, input.productId)))
@@ -308,16 +313,11 @@ export const pharmacyStockRouter = {
         throw new ORPCError("NOT_FOUND", { message: "That product no longer exists." });
       }
 
-      if (!catalog && existing.catalogItemId) {
-        throw new ORPCError("BAD_REQUEST", {
-          message: "This product is sold at the counter, so it needs a tax rate.",
-        });
-      }
-
-      const unitsChanged =
-        existing.stockUnit !== input.stockUnit || existing.unitsPerPack !== input.unitsPerPack;
-
-      if (unitsChanged) {
+      if (
+        existing.stockUnit !== input.stockUnit ||
+        existing.unitsPerPack !== input.unitsPerPack ||
+        existing.expires !== input.expires
+      ) {
         const [batch] = await tx
           .select({ id: stockBatches.id })
           .from(stockBatches)
@@ -328,61 +328,32 @@ export const pharmacyStockRouter = {
 
         if (batch) {
           throw new ORPCError("CONFLICT", {
-            message: "This product already has stock, so its unit and pack size are fixed.",
+            message:
+              "This product already has a batch, so its counted unit, pack size and expiry setting are fixed.",
           });
         }
-      }
-
-      // The catalog row is the invoice snapshot source (D027), so its name follows the
-      // product's inside this transaction.
-      let catalogItemId = existing.catalogItemId;
-
-      if (catalog && catalogItemId) {
-        await tx
-          .update(catalogItems)
-          .set({
-            name: input.name,
-            taxRatePercent: catalog.taxRatePercent,
-            taxCode: catalog.taxCode ?? null,
-            active: catalog.active,
-            updatedAt: now,
-          })
-          .where(and(eq(catalogItems.orgId, scope.orgId), eq(catalogItems.id, catalogItemId)));
-      } else if (catalog) {
-        catalogItemId = Bun.randomUUIDv7();
-
-        await tx.insert(catalogItems).values({
-          id: catalogItemId,
-          orgId: scope.orgId,
-          name: input.name,
-          category: "pharmacy",
-          unitPrice: 0n,
-          customRate: false,
-          taxRatePercent: catalog.taxRatePercent,
-          taxCode: catalog.taxCode ?? null,
-          active: catalog.active,
-          createdAt: now,
-          updatedAt: now,
-        });
       }
 
       await tx
         .update(products)
         .set({
-          catalogItemId,
           name: input.name,
           genericName: input.genericName ?? null,
           form: input.form ?? null,
           strength: input.strength ?? null,
           stockUnit: input.stockUnit,
           unitsPerPack: input.unitsPerPack,
+          expires: input.expires,
+          pack: input.pack || null,
           schedule: input.schedule,
           manufacturer: input.manufacturer ?? null,
+          sold: input.sold,
+          active: input.active,
+          taxRatePercent: input.sold ? input.taxRatePercent! : "0",
+          taxCode: input.sold ? (input.taxCode ?? null) : null,
           updatedAt: now,
         })
         .where(and(eq(products.orgId, scope.orgId), eq(products.id, input.productId)));
-
-      return catalogItemId;
     });
 
     audit({
@@ -390,10 +361,10 @@ export const pharmacyStockRouter = {
       actorId: scope.userId,
       orgId: scope.orgId,
       target: `product:${input.productId}`,
-      meta: { name: input.name, active: catalog?.active ?? null },
+      meta: { name: input.name, sold: input.sold, active: input.active },
     });
 
-    return { productId: input.productId, catalogItemId };
+    return { productId: input.productId };
   }),
 
   listProducts: orgProcedure(
@@ -410,24 +381,22 @@ export const pharmacyStockRouter = {
     const items = await db
       .select({
         productId: products.id,
-        catalogItemId: products.catalogItemId,
         name: products.name,
         genericName: products.genericName,
         form: products.form,
         strength: products.strength,
         stockUnit: products.stockUnit,
         unitsPerPack: products.unitsPerPack,
+        expires: products.expires,
+        pack: products.pack,
         schedule: products.schedule,
         manufacturer: products.manufacturer,
-        taxRatePercent: catalogItems.taxRatePercent,
-        taxCode: catalogItems.taxCode,
-        active: catalogItems.active,
+        sold: products.sold,
+        taxRatePercent: products.taxRatePercent,
+        taxCode: products.taxCode,
+        active: products.active,
       })
       .from(products)
-      .leftJoin(
-        catalogItems,
-        and(eq(catalogItems.orgId, products.orgId), eq(catalogItems.id, products.catalogItemId)),
-      )
       .where(
         and(
           eq(products.orgId, scope.orgId),
@@ -467,8 +436,7 @@ export const pharmacyStockRouter = {
     const pattern = likePattern(input.query);
     const shelf = bucketSum(scope.orgId, "shelf");
 
-    // The inner join and existence check are the sale rule: only a non-Schedule-X product
-    // with an active catalog row and sellable shelf stock can consume the result limit.
+    // Only active, sold, non-Schedule-X goods with shelf stock can consume the result limit.
     const found = await db
       .select({
         productId: products.id,
@@ -476,18 +444,17 @@ export const pharmacyStockRouter = {
         genericName: products.genericName,
         stockUnit: products.stockUnit,
         unitsPerPack: products.unitsPerPack,
+        expires: products.expires,
+        pack: products.pack,
         schedule: products.schedule,
-        taxRatePercent: catalogItems.taxRatePercent,
+        taxRatePercent: products.taxRatePercent,
       })
       .from(products)
-      .innerJoin(
-        catalogItems,
-        and(eq(catalogItems.orgId, products.orgId), eq(catalogItems.id, products.catalogItemId)),
-      )
       .where(
         and(
           eq(products.orgId, scope.orgId),
-          eq(catalogItems.active, true),
+          eq(products.sold, true),
+          eq(products.active, true),
           ne(products.schedule, "x"),
           exists(
             db
@@ -497,7 +464,7 @@ export const pharmacyStockRouter = {
                 and(
                   eq(stockBatches.orgId, scope.orgId),
                   eq(stockBatches.productId, products.id),
-                  sql`${stockBatches.expiryDate} >= ${today}::date`,
+                  sql`(${stockBatches.expiryDate} >= ${today}::date or ${stockBatches.expiryDate} is null)`,
                   sql`${shelf} > 0`,
                 ),
               ),
@@ -528,11 +495,11 @@ export const pharmacyStockRouter = {
             stockBatches.productId,
             found.map((product) => product.productId),
           ),
-          sql`${stockBatches.expiryDate} >= ${today}::date`,
+          sql`(${stockBatches.expiryDate} >= ${today}::date or ${stockBatches.expiryDate} is null)`,
           sql`${shelf} > 0`,
         ),
       )
-      .orderBy(asc(stockBatches.expiryDate), asc(stockBatches.id));
+      .orderBy(sql`${stockBatches.expiryDate} asc nulls last`, asc(stockBatches.id));
 
     return found.map((product) => ({
       ...product,
@@ -550,7 +517,7 @@ export const pharmacyStockRouter = {
       expiringWithinDays: z.number().int().min(0).max(3650).optional(),
       quarantineOnly: z.boolean().default(false),
       includeZero: z.boolean().default(false),
-      cursor: z.object({ expiryDate: z.iso.date(), batchId: z.string() }).optional(),
+      cursor: z.object({ expiryDate: z.iso.date().nullable(), batchId: z.string() }).optional(),
       limit: pageLimit,
     }),
   ).handler(async ({ context, input }) => {
@@ -565,8 +532,10 @@ export const pharmacyStockRouter = {
       .select({
         batchId: stockBatches.id,
         name: products.name,
-        catalogItemId: products.catalogItemId,
         stockUnit: products.stockUnit,
+        unitsPerPack: products.unitsPerPack,
+        sold: products.sold,
+        active: products.active,
         batchNumber: stockBatches.batchNumber,
         expiryDate: stockBatches.expiryDate,
         mrp: stockBatches.mrp,
@@ -577,7 +546,11 @@ export const pharmacyStockRouter = {
       .from(stockBatches)
       .innerJoin(
         products,
-        and(eq(products.orgId, stockBatches.orgId), eq(products.id, stockBatches.productId)),
+        and(
+          eq(products.orgId, scope.orgId),
+          eq(products.orgId, stockBatches.orgId),
+          eq(products.id, stockBatches.productId),
+        ),
       )
       .where(
         and(
@@ -592,11 +565,18 @@ export const pharmacyStockRouter = {
           input.quarantineOnly ? sql`${quarantine} > 0` : undefined,
           input.includeZero ? undefined : sql`${shelf} + ${quarantine} <> 0`,
           input.cursor
-            ? sql`(${stockBatches.expiryDate}, ${stockBatches.id}) > (${input.cursor.expiryDate}::date, ${input.cursor.batchId})`
+            ? input.cursor.expiryDate === null
+              ? sql`${stockBatches.expiryDate} is null and ${stockBatches.id} > ${input.cursor.batchId}`
+              : sql`(
+                  ${stockBatches.expiryDate} > ${input.cursor.expiryDate}::date
+                  or (${stockBatches.expiryDate} = ${input.cursor.expiryDate}::date
+                    and ${stockBatches.id} > ${input.cursor.batchId})
+                  or ${stockBatches.expiryDate} is null
+                )`
             : undefined,
         ),
       )
-      .orderBy(asc(stockBatches.expiryDate), asc(stockBatches.id))
+      .orderBy(sql`${stockBatches.expiryDate} asc nulls last`, asc(stockBatches.id))
       .limit(input.limit + 1);
 
     const hasNextPage = rows.length > input.limit;
@@ -637,7 +617,9 @@ export const pharmacyStockRouter = {
         id: stockMovements.id,
         productName: products.name,
         batchNumber: stockBatches.batchNumber,
+        expiryDate: stockBatches.expiryDate,
         stockUnit: products.stockUnit,
+        unitsPerPack: products.unitsPerPack,
         bucket: stockMovements.bucket,
         qty: stockMovements.qty,
         reason: stockMovements.reason,
@@ -651,7 +633,6 @@ export const pharmacyStockRouter = {
           supplierName: goodsReceipts.supplierName,
           supplierReference: goodsReceipts.supplierReference,
           receivedOn: goodsReceipts.receivedOn,
-          fileId: goodsReceipts.fileId,
         },
       })
       .from(stockMovements)
@@ -787,7 +768,9 @@ export const pharmacyStockRouter = {
       });
 
       if (today !== null) {
-        const expired = resolvedLines.find(({ batch }) => batch.expiryDate < today);
+        const expired = resolvedLines.find(
+          ({ batch }) => batch.expiryDate !== null && batch.expiryDate < today,
+        );
 
         if (expired) {
           throw new ORPCError("CONFLICT", {
@@ -816,7 +799,9 @@ export const pharmacyStockRouter = {
         if (!line.cost) continue;
 
         if (line.qty % divisor !== 0) {
-          throw new ORPCError("BAD_REQUEST", { message: "Quantity must be whole priced units" });
+          throw new ORPCError("BAD_REQUEST", {
+            message: "Billed quantity must contain whole priced packs.",
+          });
         }
 
         exactNet += receiptLineCost({ qty: line.qty, packSize: divisor, ...line.cost }).net;
@@ -827,8 +812,8 @@ export const pharmacyStockRouter = {
           batchId: batch.id,
           qty: line.qty,
           freeQty,
-          packSize: divisor,
           rate: line.cost.rate,
+          packSize: divisor,
           discountPercent: line.cost.discountPercent,
           gstPercent: line.cost.gstPercent,
           hsnCode: line.cost.hsnCode || null,
@@ -858,12 +843,12 @@ export const pharmacyStockRouter = {
         createdAt: now,
       });
 
-      if (priced.length > 0) await tx.insert(goodsReceiptLines).values(priced);
-
       const batchIds = [...wanted.keys()];
 
       // Receiving only adds, but the lock keeps every stock writer in one order.
       await lockBatchStock(tx, scope.orgId, batchIds);
+
+      if (priced.length > 0) await tx.insert(goodsReceiptLines).values(priced);
 
       if (input.opening) {
         const touched = await tx

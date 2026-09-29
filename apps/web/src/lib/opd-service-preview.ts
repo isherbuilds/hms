@@ -8,8 +8,8 @@ export type WalkInQuote = {
     description: string;
     category: string;
     qty: number;
-    priceUnits: number;
     unitPrice: bigint;
+    priceUnits: number;
     taxRatePercent: string;
     taxCode: string | null;
     gross: bigint;

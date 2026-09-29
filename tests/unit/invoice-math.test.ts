@@ -155,22 +155,23 @@ test("splits an inclusive discount across two rates and extracts each line's tax
   expect([result.subtotal, result.taxTotal, result.grandTotal]).toEqual([21_700n, 1_622n, 20_700n]);
 });
 
-test("allocates fractional strip prices by largest remainder without line rounding drift", () => {
-  const result = computeInvoiceLines(
+test("allocates pack-priced loose units by largest remainder and a full pack exactly", () => {
+  const loose = computeInvoiceLines(
     [
-      { ...charge("a", "76.19", "0", 3), priceUnits: 10 },
-      { ...charge("b", "76.19", "0", 3), priceUnits: 10 },
-      { ...charge("c", "76.19", "0", 4), priceUnits: 10 },
+      { ...charge("a", "85.00", "0", 4), priceUnits: 15 },
+      { ...charge("b", "85.00", "0", 4), priceUnits: 15 },
+      { ...charge("c", "85.00", "0", 4), priceUnits: 15 },
     ],
     0n,
     "pharmacy",
   );
 
-  expect(result.lines.map((line) => line.lineSubtotal)).toEqual([2_286n, 2_286n, 3_047n]);
-  expect(sumMoney(result.lines.map((line) => line.lineSubtotal))).toBe(7_619n);
-  expect(result.subtotal).toBe(7_619n);
-  expect(result.grandTotal).toBe(7_600n);
-  expect(result.roundOff).toBe(-19n);
+  expect(loose.lines.map((line) => line.lineSubtotal)).toEqual([2_267n, 2_267n, 2_266n]);
+  expect(loose.subtotal).toBe(6_800n);
+  expect(
+    computeInvoiceLines([{ ...charge("pack", "85.00", "0", 15), priceUnits: 15 }], 0n, "pharmacy")
+      .subtotal,
+  ).toBe(8_500n);
 });
 
 test("rounds only the inclusive pharmacy document total to rupees, with halves up", () => {

@@ -2,6 +2,8 @@ import { beforeAll, expect, test } from "bun:test";
 
 import { formatDecimal } from "@hms/api/core/money";
 import { uniqueViolationConstraint } from "@hms/api/lib/db-errors";
+import { db } from "@hms/db";
+import { sql } from "drizzle-orm";
 
 import { createOrganization, createTestUser, joinOrganization } from "../support/auth";
 import { clientFor, eventually, expectORPCCode } from "../support/client";
@@ -98,6 +100,29 @@ test("catalog CRUD, filters, and deactivation are organization-scoped", async ()
   const procedures = await api.catalog.list({ orgSlug: one.slug, category: "procedure" });
   expect(procedures.items.map((item) => item.id)).toEqual([procedure.id]);
   expect(procedures.items.every((item) => item.category === "procedure")).toBe(true);
+});
+
+test("services reject pharmacy even outside the RPC schema", async () => {
+  const owner = await createTestUser("catalog-services-only-owner");
+  const organization = await createOrganization(owner, "catalog-services-only");
+  const api = clientFor(owner);
+
+  // SAFETY: Intentionally bypass the service type to exercise RPC input validation.
+  await expectORPCCode(
+    api.catalog.create({
+      ...catalogItemInput(organization.slug),
+      category: "pharmacy" as never,
+    }),
+    "BAD_REQUEST",
+  );
+
+  const inserted =
+    db.execute(sql`insert into catalog_items (id, org_id, name, category, unit_price, tax_rate_percent)
+      values (${Bun.randomUUIDv7()}, ${organization.id}, 'Forbidden medicine', 'pharmacy', 0, 0)`);
+
+  await expect(Promise.resolve(inserted)).rejects.toMatchObject({
+    cause: { constraint: "catalog_items_category_check" },
+  });
 });
 
 test("catalog list searches and paginates by name and id", async () => {

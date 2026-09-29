@@ -1,5 +1,5 @@
 import { Badge } from "@hms/ui/components/badge";
-import { Combobox } from "@hms/ui/components/combobox";
+import { Combobox, ComboboxInput, ComboboxPopup } from "@hms/ui/components/combobox";
 import { Input } from "@hms/ui/components/input";
 import { useQuery } from "@tanstack/react-query";
 import { ClientOnly } from "@tanstack/react-router";
@@ -11,13 +11,16 @@ import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { formatBusinessDate } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
+import { formatStockQty } from "@/lib/pharmacy-labels";
 
 /** One shelf batch on the counter, with everything the sale and its money need. */
 export type SaleLine = {
   batchId: string;
   productName: string;
+  pack: string | null;
+  unitsPerPack: number;
   batchNumber: string;
-  expiryDate: string;
+  expiryDate: string | null;
   mrp: bigint;
   mrpUnits: number;
   taxRatePercent: string;
@@ -43,9 +46,8 @@ export function PharmacyBatchPicker({
   onAdd: (batch: Batch) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [inputValue, setInputValue] = useState("");
   const currency = useMembership(orgSlug, (membership) => membership.currency);
-  // Remounts the combobox after a pick, which is what clears its input.
-  const [box, setBox] = useState(0);
   const search = useSearchTerm();
 
   const stock = useQuery({
@@ -60,6 +62,8 @@ export function PharmacyBatchPicker({
         .map((batch) => ({
           batchId: batch.batchId,
           productName: product.name,
+          pack: product.pack,
+          unitsPerPack: product.unitsPerPack,
           batchNumber: batch.batchNumber,
           expiryDate: batch.expiryDate,
           mrp: batch.mrp,
@@ -94,66 +98,89 @@ export function PharmacyBatchPicker({
           />
         }
       >
-        <Combobox
-          key={box}
+        <Combobox<Batch>
           items={results}
-          getItemKey={(batch) => batch.batchId}
-          getItemLabel={(batch) => batch.productName}
-          onInputValueChange={search.onInputValueChange}
-          onSelect={(batch) => {
+          filteredItems={results}
+          value={null}
+          inputValue={inputValue}
+          itemToStringLabel={(batch) =>
+            batch ? `${batch.productName}${batch.pack ? ` · ${batch.pack}` : ""}` : ""
+          }
+          onInputValueChange={(value, { reason }) => {
+            setInputValue(value);
+
+            if (reason === "input-change") search.onInputValueChange(value);
+          }}
+          onValueChange={(batch) => {
+            if (!batch) return;
+
             onAdd(batch);
             search.clear();
-            setBox((mounted) => mounted + 1);
+            setInputValue("");
           }}
           open={search.open}
           onOpenChange={search.setOpen}
-          inputRef={inputRef}
-          inputClassName="pl-8"
-          inputProps={{
-            id: "stock-search",
-            name: "stock-search",
-            autoComplete: "off",
-            placeholder: "Name or generic",
-            autoFocus: box > 0,
-            onFocus: () => {
+          loopFocus
+        >
+          <ComboboxInput
+            ref={inputRef}
+            className="pl-8"
+            id="stock-search"
+            name="stock-search"
+            autoComplete="off"
+            placeholder="Name or generic"
+            aria-label="Search stock"
+            onFocus={() => {
               if (typed().length > 0) search.setOpen(true);
-            },
-            "aria-label": "Search stock",
-          }}
-          itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2"
-          renderItem={(batch) => (
-            <>
-              <span className="min-w-0">
-                <span className="flex min-w-0 items-baseline gap-2">
-                  <span className="truncate font-medium capitalize">{batch.productName}</span>
-                  {batch.schedule === "none" ? null : (
-                    <Badge variant="muted" className="uppercase">
-                      Schedule {batch.schedule}
-                    </Badge>
-                  )}
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && typed().length > 0) event.preventDefault();
+            }}
+          />
+          <ComboboxPopup
+            getItemKey={(batch: Batch) => batch.batchId}
+            itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2"
+            renderItem={(batch: Batch) => (
+              <>
+                <span className="min-w-0">
+                  <span className="flex min-w-0 items-baseline gap-2">
+                    <span className="truncate font-medium capitalize">
+                      {batch.productName}
+                      {batch.pack ? (
+                        <span className="text-muted-foreground"> · {batch.pack}</span>
+                      ) : null}
+                    </span>
+                    {batch.schedule === "none" ? null : (
+                      <Badge variant="muted" className="uppercase">
+                        Schedule {batch.schedule}
+                      </Badge>
+                    )}
+                  </span>
+                  <span className="text-muted-foreground">
+                    <span className="font-mono">{batch.batchNumber}</span> ·{" "}
+                    {batch.expiryDate
+                      ? `expires ${formatBusinessDate(batch.expiryDate)}`
+                      : "No expiry"}
+                  </span>
                 </span>
-                <span className="text-muted-foreground">
-                  <span className="font-mono">{batch.batchNumber}</span> · expires{" "}
-                  {formatBusinessDate(batch.expiryDate)}
+                <span className="grid justify-items-end">
+                  <span className="tabular-nums">
+                    {formatMoney(batch.mrp, currency)}
+                    {batch.mrpUnits > 1 ? ` / ${batch.mrpUnits}` : ""}
+                  </span>
+                  <span className="text-muted-foreground tabular-nums">
+                    {formatStockQty({ qty: batch.shelfQty, ...batch })}
+                  </span>
                 </span>
-              </span>
-              <span className="grid justify-items-end">
-                <span className="tabular-nums">
-                  {formatMoney(batch.mrp, currency)}
-                  {batch.mrpUnits > 1 ? ` / ${batch.mrpUnits}` : ""}
-                </span>
-                <span className="text-muted-foreground tabular-nums">
-                  {batch.shelfQty} {batch.stockUnit}
-                </span>
-              </span>
-            </>
-          )}
-          emptyContent={
-            emptyMessage ? (
-              <p className="px-3 py-2 text-muted-foreground">{emptyMessage}</p>
-            ) : undefined
-          }
-        />
+              </>
+            )}
+            emptyContent={
+              emptyMessage ? (
+                <p className="px-3 py-2 text-muted-foreground">{emptyMessage}</p>
+              ) : undefined
+            }
+          />
+        </Combobox>
       </ClientOnly>
     </div>
   );

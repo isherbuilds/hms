@@ -29,28 +29,27 @@ import { useZodForm } from "@/hooks/use-zod-form";
 import { orpc } from "@/lib/orpc";
 
 // Kept local so no @hms/db server module reaches the client bundle (hard rule 6).
-// Medicines are written only from Pharmacy → Items, so the form never offers that
-// category while the list still shows and filters by it.
-const EDITABLE_CATEGORIES = ["consultation", "procedure", "lab", "radiology", "other"] as const;
+export const SERVICE_CATEGORIES = [
+  "consultation",
+  "procedure",
+  "lab",
+  "radiology",
+  "other",
+] as const;
 
-export type EditableCategory = (typeof EDITABLE_CATEGORIES)[number];
+export type ServiceCategory = (typeof SERVICE_CATEGORIES)[number];
 
-export const CATALOG_CATEGORIES = [...EDITABLE_CATEGORIES, "pharmacy"] as const;
-
-export type CatalogCategory = (typeof CATALOG_CATEGORIES)[number];
-
-export const CATEGORY_LABELS: Record<CatalogCategory, string> = {
+export const CATEGORY_LABELS: Record<ServiceCategory, string> = {
   consultation: "Consultation",
   procedure: "Procedure",
   lab: "Lab",
   radiology: "Radiology",
-  pharmacy: "Pharmacy",
   other: "Other",
 };
 
 const formSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200, "Keep the name under 200 characters"),
-  category: z.enum(EDITABLE_CATEGORIES),
+  category: z.enum(SERVICE_CATEGORIES),
   unitPrice: z.string().regex(DECIMAL_PATTERN, "Amount like 150 or 150.00").transform(parseDecimal),
   taxRatePercent: z.string().regex(/^\d{1,2}(\.\d{1,2})?$/, "Rate like 0, 5, or 12.50"),
   taxCode: z.string().trim().max(20, "Keep the tax code under 20 characters").optional(),
@@ -111,8 +110,8 @@ export function CatalogItemDialog({
     },
   });
 
-  const create = useMutation(orpc.catalog.create.mutationOptions(feedback("Catalog item created")));
-  const update = useMutation(orpc.catalog.update.mutationOptions(feedback("Catalog item updated")));
+  const create = useMutation(orpc.catalog.create.mutationOptions(feedback("Service created")));
+  const update = useMutation(orpc.catalog.update.mutationOptions(feedback("Service updated")));
 
   const onSubmit = form.handleSubmit((values) => {
     const shared = { ...values, orgSlug, taxCode: values.taxCode || null };
@@ -136,10 +135,10 @@ export function CatalogItemDialog({
       <Dialog open={open} onOpenChange={changeOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>{item ? "Edit catalog item" : "New catalog item"}</DialogTitle>
+            <DialogTitle>{item ? "Edit service" : "New service"}</DialogTitle>
             {!item ? (
               <DialogDescription>
-                Billable services appear in the organization's catalog
+                Set the price and tax treatment for this service.
               </DialogDescription>
             ) : null}
           </DialogHeader>
@@ -154,7 +153,7 @@ export function CatalogItemDialog({
                   render={(field) => (
                     <FormControl>
                       <NativeSelect {...field} disabled={isPending}>
-                        {EDITABLE_CATEGORIES.map((category) => (
+                        {SERVICE_CATEGORIES.map((category) => (
                           <option key={category} value={category}>
                             {CATEGORY_LABELS[category]}
                           </option>
@@ -208,7 +207,7 @@ export function CatalogItemDialog({
                   Cancel
                 </Button>
                 <SubmitButton isSubmitting={isPending}>
-                  {item ? "Save changes" : "Create item"}
+                  {item ? "Save changes" : "Create service"}
                 </SubmitButton>
               </DialogFooter>
             </form>

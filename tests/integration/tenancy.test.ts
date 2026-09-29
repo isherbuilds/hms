@@ -657,18 +657,26 @@ const GUARDED_CALLS = {
     api.pharmacy.createProduct({
       ...claim,
       name: "Intrusion",
-      catalog: { taxRatePercent: "12" },
+      sold: true,
+      taxRatePercent: "12",
+      active: true,
       stockUnit: "tablet",
       unitsPerPack: 10,
+      expires: true,
+      pack: "10 tablets",
     }),
   "pharmacy.updateProduct": (api, claim) =>
     api.pharmacy.updateProduct({
       ...claim,
       productId: "missing",
       name: "Intrusion",
-      catalog: { taxRatePercent: "12" },
+      sold: true,
+      taxRatePercent: "12",
+      active: true,
       stockUnit: "tablet",
       unitsPerPack: 10,
+      expires: true,
+      pack: "10 tablets",
     }),
   "pharmacy.listProducts": (api, claim) => api.pharmacy.listProducts({ ...claim }),
   "pharmacy.searchStock": (api, claim) =>
@@ -1094,9 +1102,13 @@ test("pharmacy stock is invisible from another org", async () => {
   const product = await aliceClient.pharmacy.createProduct({
     orgSlug: alpha.slug,
     name: "Alpha Tablet",
-    catalog: { taxRatePercent: "12" },
+    sold: true,
+    taxRatePercent: "12",
+    active: true,
     stockUnit: "tablet",
     unitsPerPack: 10,
+    expires: true,
+    pack: "10 tablets",
   });
 
   const receipt = await aliceClient.pharmacy.receiveGoods({
@@ -1129,6 +1141,16 @@ test("pharmacy stock is invisible from another org", async () => {
   ).toEqual([]);
   await expectORPCCode(
     bobClient.pharmacy.listMovements({ orgSlug: beta.slug, batchId: batch.batchId }),
+    "NOT_FOUND",
+  );
+  await expectORPCCode(
+    bobClient.pharmacy.sell({
+      orgSlug: beta.slug,
+      lines: [{ batchId: batch.batchId, qty: 1 }],
+      buyer: { name: "Foreign buyer" },
+      payments: [],
+      expectedGrandTotal: 1_00n,
+    }),
     "NOT_FOUND",
   );
 });

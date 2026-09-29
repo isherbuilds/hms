@@ -27,11 +27,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FinancialAside, IntakeFooter, type QuoteState } from "@/components/opd-intake-quote";
 import { omitsConsultFee, ServicesFields } from "@/components/opd-intake-service-fields";
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
-import {
-  OpdPatientSearch,
-  SelectedPatientChip,
-  type SelectedPatient,
-} from "@/components/opd-patient-picker";
+import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
 import { OptionCombobox } from "@/components/option-combobox";
 import { FormSection } from "@/components/page";
 import { type ServiceLine } from "@/components/opd-service-picker";
@@ -94,28 +90,16 @@ function quoteInput(orgSlug: string, values: IntakeValues) {
 }
 
 function PatientField({ orgSlug }: { orgSlug: string }) {
-  const { control, setValue, setFocus } = useFormContext<IntakeValues>();
+  const { control, setValue } = useFormContext<IntakeValues>();
   const patient = useWatch({ control, name: "patient", exact: true });
-
-  if (patient) {
-    return (
-      <SelectedPatientChip
-        patient={patient}
-        onClear={() => {
-          setValue("patient", null, { shouldDirty: true });
-          setValue("treatmentPlanId", "", { shouldDirty: true });
-        }}
-      />
-    );
-  }
 
   return (
     <OpdPatientSearch
       orgSlug={orgSlug}
-      onSelect={(selected) => {
+      selected={patient}
+      onChange={(selected) => {
         setValue("patient", selected, { shouldDirty: true });
         setValue("treatmentPlanId", "", { shouldDirty: true });
-        requestAnimationFrame(() => setFocus("departmentId"));
       }}
     />
   );

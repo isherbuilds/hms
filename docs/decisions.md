@@ -277,34 +277,31 @@ second read only changes the error label, adds latency, and races with another
 write; clients recover from the combined conflict by closing stale overlays and
 refreshing authoritative state.
 
-### D027 — `catalog_items` is the only billable identity; domain masters link to it
+### D027 — Services own catalog identity; goods own sale facts
 
-**Accepted 2026-09-03; evidence:
-[research ledger](./research/README.md#adopted-findings).** A
-billable item is one `catalog_items` row: name, category, price, tax,
-active (the code was dropped by D048). When pharmacy, lab, IPD, or OT open (product roadmap gates), each domain
-owns its own master (product and batch, lab test and components, bed type,
-package and components) that carries a composite tenant foreign key to its
-`catalog_items` row, unique on `(orgId, catalogItemId)` where the link is set.
-The link is nullable, because a domain master also holds rows that are never
-billed: a pharmacy `products` row with no catalog row is an internal supply
-(gloves, soap, cleaning liquid) that is stocked and issued but not sellable, and
-every sale and stock-search path joins the catalog row inner, so it cannot be
-sold. The domain master owns the display `name` and writes it onto the linked
-catalog row in the same transaction, because that row remains the snapshot
-source for the Charge. The catalog never
-grows a kind column, nullable domain columns, or a details blob, and no second
-items table with its own name, price, tax, or invoice type is created. Price
-_source_ may be domain-specific (batch MRP, occupancy × rate); the Charge
-snapshot remains the single money record, and `charges.sourceType`/`sourceId`
-is the extension point. `category` stays the revenue routing key and
-`revenueAccountFor` is exhaustive over it, so a new category cannot post to a
-fallback account. D025 still owns invoice granularity.
+**Accepted 2026-09-03; amended 2026-09-29 on the owner's instruction;
+evidence: [research ledger](./research/README.md#adopted-findings).**
+`catalog_items` holds services only (consultation, procedure, lab, radiology,
+other); a database CHECK excludes pharmacy. A service Charge links to its
+tenant-scoped catalog row. Stocked goods live in `products`, which own their
+`sold`, GST rate, HSN code and `active` facts. An internal supply is not sold;
+counter selection requires both `sold` and `active`. Batch MRP supplies the
+pharmacy price, not a zero-priced copied catalog row.
 
-**Context:** Marley/ERPNext (`Item` + linking templates) and Danphe
-(`BillServiceItem` + integrated masters) converge on this shape; Danphe's
-separate pharmacy item master is the counter-example, forking its invoice,
-worklists, and ledger mapping. No domain table is created before its gate opens.
+A pharmacy Charge has `catalogItemId = null`, `sourceType = pharmacy_batch`,
+`stockBatchId` referencing its batch by `(orgId, stockBatchId)`, and a null
+`sourceId`. The Charge remains the single description, quantity, price, tax
+and revenue-category snapshot; OPD and pharmacy retain one Invoice path.
+`SERVICE_CATEGORIES` type the catalog, while
+`REVENUE_CATEGORIES` include pharmacy and make `revenueAccountFor` exhaustive
+without a fallback. No second invoice or accounting path is needed (D025).
+There is no data backfill migration: the pilot had no production data, and
+production migration is handled manually by the owner.
+
+**Context:** The catalog copy duplicated Product names and tax facts without
+providing a service identity for stock goods. Keeping goods separate from
+services removes the synchronization and join while preserving the Charge
+snapshot and batch trace.
 
 ### D028 — Organization currency is immutable
 
@@ -515,17 +512,17 @@ column. The database keeps what zod cannot see: sign and money checks, the
 and foreign keys. A new value then costs a constant and a deploy, not a
 migration, and the two statements of the same list can no longer drift.
 
-**`medications` becomes `products`, with a nullable catalog link.** The table,
-the `stock_batches.productId` column, and the API procedures rename. The link
-to `catalog_items` is nullable and its unique index is partial, so the store
-holds internal supplies beside sellable medicines (D027).
+**`medications` becomes `products`.** The table, the
+`stock_batches.productId` column, and the API procedures rename. Products
+hold both internal supplies and sellable medicines; their sale facts are owned
+by Product (D027).
 
 **Opening stock is a goods receipt.** `stock_counts` and `postOpeningCount` are
-deleted. `goods_receipts` gains `opening` and a nullable `fileId` for the
-retained count sheet, and `supplierName` becomes nullable. `receiveGoods` with
-`opening` posts `opening` movements and refuses a batch that already moved,
-exactly as the count document did. One receiving path replaces two documents
-that shared every line, batch and lock rule.
+deleted. `goods_receipts` gains `opening`, and `supplierName` becomes nullable.
+`receiveGoods` with `opening` posts `opening` movements and refuses a batch that
+already moved, exactly as the count document did. One receiving path replaces
+two documents that shared every line, batch and lock rule. The count-sheet
+attachment was subsequently removed by D045 and D049.
 
 **An internal issue names its department.** `stock_movements.departmentId` is a
 nullable composite foreign key that only reason `internal_issue` sets; the zod
@@ -561,36 +558,33 @@ module is the one place the date preset and business-date rule lives.
 
 ### D044 — Exact prices; only a document total rounds
 
-**Accepted 2026-09-23 on the owner's instruction.** A price is paise per N
-stock units, stored exactly as printed: batch `mrp`/`mrpUnits`, and Charge and
-Invoice-line `unitPrice`/`priceUnits`. No tablet, product, or line price is
-rounded. Invoice line subtotals allocate the rounded document subtotal by
-largest exact remainder, breaking ties in input order. Pharmacy rounds only
-the grand total to the nearest rupee, storing `roundOff` (−49..50 paise) and
-posting it to the round-off account. OPD rounds to the paisa (`roundOff = 0`).
-A credit note completing a full pharmacy return reverses the invoice
-round-off.
+**Accepted 2026-09-23 on the owner's instruction; restored 2026-09-29 by D049.**
+Prices are paise per `priceUnits` stock units, as printed. Invoice subtotals
+round once at the document level; line subtotals take floors and receive
+remaining paise by largest remainder, breaking ties in input order. Pharmacy
+rounds only the grand total to the nearest rupee, storing `roundOff` (−49..50
+paise) and posting it to the round-off account. OPD rounds to the paisa
+(`roundOff = 0`). A credit note completing a full pharmacy return reverses
+the invoice round-off.
 
-Supplier receipt lines store only billed and free quantity, pack size, rate,
-discount %, GST %, and HSN; `receiptLineCost` derives their amounts exactly.
-Only the bill sum rounds, and it must reconcile to the printed bill total
-within ±₹0.99. There is no persisted unit cost: later valuation must use
-the exact receipt facts, never a rounded cost per stock unit. D031 still
-applies: every stored money column is `bigint` paise.
+Supplier receipt lines store billed and free stock-unit quantity, printed rate
+per `packSize` stock units, discount %, GST % and HSN; `receiptLineCost`
+derives their amounts exactly. Only the bill sum
+rounds, and it must reconcile to the printed bill total within ±₹0.99. There
+is no persisted unit cost: later valuation must use the exact receipt facts,
+never a rounded cost per stock unit. D031 still applies: every stored money
+column is `bigint` paise.
 
-**Rejected:** flooring or half-up rounding a unit MRP loses the printed
-strip price on loose-unit sales; storing fractional-paise numeric amounts
-creates a second money representation instead of retaining exact price and
-receipt facts.
+**Rejected:** storing fractional-paise numeric amounts creates a second money
+representation instead of retaining exact price and receipt facts.
 
 ### D045 — Receive goods without an attachment
 
 **Accepted 2026-09-23 on the owner's instruction; amends D042.** Neither
 opening counts nor supplier deliveries attach a signed count sheet or bill
 copy. Requiring a document adds friction during cutover, and the uploaded
-evidence was not used in the receiving workflow. The `goods_receipts.file_id`
-column remains nullable for existing receipts and their retained files;
-new receipts leave it null. There is no destructive migration.
+evidence was not used in the receiving workflow. The `goods_receipts.fileId`
+column was removed by D049: no pharmacy receipts existed in production.
 
 ### D046 — Medicine-name suggestions assist, not define, the product master
 
@@ -619,6 +613,8 @@ Truemeds 6 (mainstream) and Medbuzz 6 (the pilot's LXIR ophthalmic line);
 the two useful sets are disjoint
 ([source comparison](./research/medicine-name-sources.md)). 1mg returned
 403 from the production server IP and has no browser CORS access.
+
+Amended by D049.
 
 **Consequence:** both endpoints are unofficial and can change or block.
 Medbuzz's endpoint sits under `/admin/` with an empty ApiKey and no
@@ -672,7 +668,28 @@ dropped (`0009_drop_catalog_item_code.sql`). Services and pharmacy products are
 found and shown by name; practitioners never had a code. Staff had to invent and
 check a unique code for every item, and nothing downstream (Charges, Invoices,
 the Billing Ledger) used it. Pharmacy search matches name, generic name, or batch
-number; an internal supply is still marked by a null `catalogItemId`.
+number; an internal supply is marked by `products.sold = false` (D027).
 
 **Rejected:** keeping it optional — an unused column still shows up in forms,
 lists, and search, which is the confusion being removed.
+
+### D049 — Count products in smallest units, retain printed pack prices
+
+**Accepted 2026-09-29 on the owner's instruction; restores D044 and amends D046.**
+A Product counts, receives, sells and returns whole quantities of its smallest
+`stockUnit`. Its required `unitsPerPack` is at least one; one means no conversion.
+The optional `pack` is printed text (for example, "170 ml"), never a divisor.
+`stockUnit` and `unitsPerPack` freeze once a batch exists; a different strip size
+requires a new Product. Staff can receive five strips of ten as 50 tablets,
+sell four tablets, and return loose tablets to quarantine against that sale.
+
+Prices stay in paise per N stock units as printed: batch `mrp` / `mrpUnits`,
+supplier receipt `rate` / `packSize`, and Charge and Invoice-line `unitPrice` /
+`priceUnits`. A pack-priced supplier bill requires a billed quantity divisible
+by the pack size; opening stock can include loose units. A batch's first
+printed price representation stays, and later receipts compare exact price
+ratios rather than rounded unit prices. Invoice lines follow D044's exact
+subtotal and largest-remainder allocation; OPD prices retain `priceUnits = 1`.
+A pharmacy Charge has a tenant-scoped composite foreign key to its batch through
+`stockBatchId`, with `sourceId = null`; a database CHECK enforces the pharmacy
+source, parent and batch pairing. The pilot database has no data to backfill.

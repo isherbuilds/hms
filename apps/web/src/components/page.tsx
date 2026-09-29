@@ -186,6 +186,8 @@ type DataListProps<T> = {
   columns: [Column<T>, ...Column<T>[]];
   rows: readonly T[];
   rowKey: (row: T) => string;
+  /** Dense lists need more room before showing their table columns. */
+  tableAt?: "md" | "xl";
   /** The route the row opens. */
   link?: (row: T) => LinkOptions;
   /** The overlay the row opens. */
@@ -194,7 +196,15 @@ type DataListProps<T> = {
   action?: (row: T) => ReactNode;
 };
 
-export function DataList<T>({ columns, rows, rowKey, link, onActivate, action }: DataListProps<T>) {
+export function DataList<T>({
+  columns,
+  rows,
+  rowKey,
+  tableAt = "md",
+  link,
+  onActivate,
+  action,
+}: DataListProps<T>) {
   const shape = (compact: boolean) =>
     rows.map((row) => (
       <DataRow
@@ -210,7 +220,7 @@ export function DataList<T>({ columns, rows, rowKey, link, onActivate, action }:
 
   return (
     <>
-      <div className="hidden md:block">
+      <div className={tableAt === "xl" ? "hidden xl:block" : "hidden md:block"}>
         <Table>
           <TableHeader>
             <TableRow>
@@ -225,7 +235,7 @@ export function DataList<T>({ columns, rows, rowKey, link, onActivate, action }:
           <TableBody>{shape(false)}</TableBody>
         </Table>
       </div>
-      <ul className="md:hidden">{shape(true)}</ul>
+      <ul className={tableAt === "xl" ? "xl:hidden" : "md:hidden"}>{shape(true)}</ul>
     </>
   );
 }

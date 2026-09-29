@@ -262,10 +262,11 @@ function BillingIndexRoute() {
           >
             <>
               <DataList
+                tableAt="xl"
                 columns={[
                   {
                     head: "Reference",
-                    className: "max-w-0",
+                    className: "w-48 max-w-48",
                     cell: (row) => (
                       <>
                         <span className="block truncate font-mono" title={row.reference}>
@@ -279,7 +280,7 @@ function BillingIndexRoute() {
                   },
                   {
                     head: "Patient",
-                    className: "max-w-0",
+                    className: "w-48 max-w-48",
                     mobile: "title",
                     cell: (row) => (
                       <>

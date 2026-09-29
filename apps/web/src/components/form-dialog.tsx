@@ -36,7 +36,7 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   children,
 }: {
   title: string;
-  description: string;
+  description: ReactNode;
   submitLabel: string;
   schema: T;
   defaultValues: DefaultValues<z.input<T>>;

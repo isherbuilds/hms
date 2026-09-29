@@ -24,11 +24,10 @@ import { memo, useCallback, useRef, useState } from "react";
 import { z } from "zod";
 
 import {
-  CATALOG_CATEGORIES,
+  SERVICE_CATEGORIES,
   CATEGORY_LABELS,
   CatalogItemDialog,
-  type CatalogCategory,
-  type EditableCategory,
+  type ServiceCategory,
 } from "@/components/catalog-item-dialog";
 import {
   FilterChips,
@@ -54,7 +53,7 @@ import { SettingsTabs } from "./route";
 
 const catalogListQuery = (
   orgSlug: string,
-  filters: { query: string; category?: CatalogCategory; activeOnly: boolean },
+  filters: { query: string; category?: ServiceCategory; activeOnly: boolean },
 ) =>
   orpc.catalog.list.infiniteOptions({
     input: (cursor: { name: string; id: string } | undefined) => ({
@@ -71,10 +70,10 @@ const catalogListQuery = (
   });
 
 export const Route = createFileRoute("/$orgSlug/settings/catalog")({
-  head: () => ({ meta: [{ title: "Catalog · HMS" }] }),
+  head: () => ({ meta: [{ title: "Services · HMS" }] }),
   validateSearch: z.object({
     q: z.string().trim().min(1).max(100).optional().catch(undefined),
-    category: z.enum(CATALOG_CATEGORIES).optional().catch(undefined),
+    category: z.enum(SERVICE_CATEGORIES).optional().catch(undefined),
     activeOnly: z.boolean().optional().catch(undefined),
   }),
   loaderDeps: ({ search }) => ({
@@ -100,7 +99,7 @@ export const Route = createFileRoute("/$orgSlug/settings/catalog")({
 type CatalogItem = {
   id: string;
   name: string;
-  category: CatalogCategory;
+  category: ServiceCategory;
   unitPrice: bigint;
   taxRatePercent: string;
   taxCode: string | null;
@@ -110,8 +109,6 @@ type CatalogItem = {
   updatedAt: Date | string;
 };
 
-type EditableCatalogItem = CatalogItem & { category: EditableCategory };
-
 function CatalogRoute() {
   const { orgSlug } = Route.useParams();
   const queryClient = useQueryClient();
@@ -120,7 +117,7 @@ function CatalogRoute() {
   const field = useRef<HTMLDivElement>(null);
   const query = q ?? "";
   const [createOpen, setCreateOpen] = useState(false);
-  const [editing, setEditing] = useState<EditableCatalogItem | null>(null);
+  const [editing, setEditing] = useState<CatalogItem | null>(null);
 
   const toggleActive = useMutation(
     orpc.catalog.setActive.mutationOptions({
@@ -186,7 +183,7 @@ function CatalogRoute() {
 
   const items = catalog.data?.pages.flatMap((page) => page.items) ?? [];
 
-  const setFilters = (patch: { q?: string; category?: CatalogCategory; activeOnly?: true }) =>
+  const setFilters = (patch: { q?: string; category?: ServiceCategory; activeOnly?: true }) =>
     navigate({
       replace: true,
       search: (previous) => ({ ...previous, ...patch }),
@@ -222,15 +219,15 @@ function CatalogRoute() {
   return (
     <>
       <PageHeader
-        title="Service catalog"
-        action={<Button onClick={() => setCreateOpen(true)}>New item</Button>}
+        title="Services"
+        action={<Button onClick={() => setCreateOpen(true)}>New service</Button>}
       />
       <SettingsTabs orgSlug={orgSlug} />
 
       <PageBody>
         <ListToolbar>
           <SearchInput
-            label="Search catalog"
+            label="Search services"
             placeholder="Name"
             value={q}
             fieldRef={field}
@@ -240,7 +237,7 @@ function CatalogRoute() {
                 <OptionFilter
                   icon={TagIcon}
                   label="Category"
-                  options={CATALOG_CATEGORIES}
+                  options={SERVICE_CATEGORIES}
                   labels={CATEGORY_LABELS}
                   value={category}
                   onChange={(next) => void setFilters({ category: next })}
@@ -266,14 +263,14 @@ function CatalogRoute() {
         <Panel grow footer={<LoadMore query={catalog} shown={items.length} />}>
           <ListState
             query={catalog}
-            errorTitle="Could not load service catalog"
+            errorTitle="Could not load services"
             isEmpty={items.length === 0}
             empty={
               query
-                ? "No matching catalog items"
+                ? "No matching services"
                 : category || activeOnly
-                  ? "No catalog items match these filters"
-                  : "No catalog items yet"
+                  ? "No services match these filters"
+                  : "No services yet"
             }
           >
             <div className="hidden md:block">
@@ -342,11 +339,8 @@ const CatalogRow = memo(function CatalogRow({
   item: CatalogItem;
   pending: boolean;
   onToggle: (item: CatalogItem) => void;
-  onEdit: (item: EditableCatalogItem) => void;
+  onEdit: (item: CatalogItem) => void;
 }) {
-  // A const narrows inside the click closure; `item.category` would not.
-  const category = item.category;
-
   return (
     <TableRow>
       <TableCell className="font-medium">{item.name}</TableCell>
@@ -361,7 +355,7 @@ const CatalogRow = memo(function CatalogRow({
         <div className="flex items-center gap-2">
           <Checkbox
             checked={item.active}
-            disabled={pending || item.category === "pharmacy"}
+            disabled={pending}
             aria-label={`Set ${item.name} ${item.active ? "inactive" : "active"}`}
             onCheckedChange={() => onToggle(item)}
           />
@@ -371,13 +365,9 @@ const CatalogRow = memo(function CatalogRow({
         </div>
       </TableCell>
       <TableCell className="text-right">
-        {category === "pharmacy" ? (
-          <span className="text-muted-foreground">Pharmacy → Items</span>
-        ) : (
-          <Button variant="ghost" size="xs" onClick={() => onEdit({ ...item, category })}>
-            Edit
-          </Button>
-        )}
+        <Button variant="ghost" size="xs" onClick={() => onEdit(item)}>
+          Edit
+        </Button>
       </TableCell>
     </TableRow>
   );
@@ -392,10 +382,8 @@ const CatalogMobileRow = memo(function CatalogMobileRow({
   item: CatalogItem;
   pending: boolean;
   onToggle: (item: CatalogItem) => void;
-  onEdit: (item: EditableCatalogItem) => void;
+  onEdit: (item: CatalogItem) => void;
 }) {
-  const category = item.category;
-
   return (
     <li className="border-b px-3 py-2 text-xs">
       <div className="flex items-start justify-between gap-2">
@@ -405,7 +393,7 @@ const CatalogMobileRow = memo(function CatalogMobileRow({
         </Badge>
       </div>
       <p className="mt-1 text-muted-foreground">
-        {CATEGORY_LABELS[category]} ·{" "}
+        {CATEGORY_LABELS[item.category]} ·{" "}
         <span className="tabular-nums">{formatDecimal(item.unitPrice)}</span>
         {item.customRate ? " default" : null} · Tax {item.taxRatePercent}% ·{" "}
         <span className="font-mono">{item.taxCode || "—"}</span>
@@ -413,17 +401,13 @@ const CatalogMobileRow = memo(function CatalogMobileRow({
       <div className="mt-1 flex items-center justify-between gap-2">
         <Checkbox
           checked={item.active}
-          disabled={pending || category === "pharmacy"}
+          disabled={pending}
           aria-label={`Set ${item.name} ${item.active ? "inactive" : "active"}`}
           onCheckedChange={() => onToggle(item)}
         />
-        {category === "pharmacy" ? (
-          <span className="text-muted-foreground">Pharmacy → Items</span>
-        ) : (
-          <Button variant="ghost" size="xs" onClick={() => onEdit({ ...item, category })}>
-            Edit
-          </Button>
-        )}
+        <Button variant="ghost" size="xs" onClick={() => onEdit(item)}>
+          Edit
+        </Button>
       </div>
     </li>
   );
