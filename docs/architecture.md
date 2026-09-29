@@ -201,12 +201,22 @@ millisecond-exact `updatedAt`. A zero-row update is a stale-record `CONFLICT`
 with no second read; the client offers a refresh, which also reveals a Patient
 that no longer exists. The server does not retry a stale write.
 
-The catalog is a flat chargeable-item registry. Charges snapshot name,
-category, unit price, tax rate, and tax code so later catalog edits never
-rewrite financial history. New/follow-up attendance pricing is configured per
-practitioner; a configured zero-price item represents intentional free care.
-An OPD intake custom rate changes only the new Charge snapshot. It
-does not update the catalog item.
+`catalog_items` is a flat services registry. Its category uses
+`SERVICE_CATEGORIES` (consultation, procedure, lab, radiology, other), and a
+database CHECK excludes pharmacy. `REVENUE_CATEGORIES` adds pharmacy for
+Charge, Invoice line, treatment-plan revenue and exhaustive revenue-account
+routing. Charges snapshot description, quantity, unit price and `priceUnits`,
+tax rate, tax code and revenue category so later source edits never rewrite
+financial history. A service Charge retains its tenant-scoped catalog link; a
+pharmacy Charge has `catalogItemId = null`, `sourceType = pharmacy_batch`,
+`sourceId = null`, and `stockBatchId` referencing `stock_batches` through the
+composite `(orgId, stockBatchId)` foreign key. A partial index covers non-null
+batch keys. The `charges_catalog_item_source_check` requires null catalog
+item and non-null batch key exactly for pharmacy-batch Charges, and requires a
+pharmacy-sale parent and null `sourceId` for that source type. New/follow-up attendance
+pricing is configured per practitioner; a configured zero-price service
+represents intentional free care. An OPD intake custom rate changes only the
+new Charge snapshot, not the catalog item.
 
 One OPD Appointment is the parent for its Patient link, queue lifecycle,
 Charges, Invoices, and prescription attachments. Check-in enriches a booked row;
@@ -232,13 +242,19 @@ shared finance domain: immutable documents, collection, corrections, accounting,
 and authorization (D019). Shared care-setting UI is extracted only after a
 second shipped desk proves the same interaction and state model.
 
-The pharmacy owns `products` (the D027 domain master), `stock_batches`,
-the append-only `stock_movements` ledger, `goods_receipts`,
-`pharmacy_sales`, `pharmacy_returns`, and `pharmacy_return_lines`. A product
-with no `catalogItemId` is an internal supply: stocked and issued, never sold.
-Opening stock is a goods receipt with `opening` set, not a separate document. `invoices`
-and `charges` carry exactly one typed parent, an OPD Appointment or a Pharmacy
-sale, matched to `invoices.stream` by a check constraint.
+The pharmacy owns `products`, `stock_batches`, the append-only
+`stock_movements` ledger, `goods_receipts`, `pharmacy_sales`,
+`pharmacy_returns`, and `pharmacy_return_lines`. A Product owns `sold`,
+GST rate, HSN code and `active` rather than linking to a catalog item. Its
+smallest `stockUnit` counts inventory and `unitsPerPack` gives a fixed conversion
+of at least one stock unit per pack; both freeze after its first batch. `pack`
+remains printed text. Batch `mrp` is paise per `mrpUnits` stock units;
+supplier-line `rate` is paise per `packSize` units. An
+internal supply (`sold = false`) can be stocked and issued but not sold;
+counter selection also requires `active`. Opening stock is a goods receipt
+with `opening` set, not a separate document. `invoices` and `charges`
+carry exactly one typed parent, an OPD Appointment or a Pharmacy sale,
+matched to `invoices.stream` by a check constraint.
 
 ## Writes and concurrency
 
@@ -252,14 +268,16 @@ keeps its own locks (D040).
   statement that starts after the lock sees what committed while it waited.
 - **Lock order.** A transaction takes locks in this order and skips what it
   does not need: OPD Appointment → Treatment plan item → Treatment plan →
-  Charges → Invoice → Products (by `id`) → Stock batches (by `expiryDate`,
-  `id`) → Advance Receipts (by `createdAt`, `id`). Receipts and
-  product updates both lock the Product before reading or inserting its batches.
+  Charges → Invoice → Products (by `id`) → Stock batches (by `expiryDate`
+  ascending, nulls last, then `id`) → Advance Receipts (by `createdAt`, `id`).
+  Receipts and product updates both lock the Product before reading or
+  inserting its batches.
   A new record type is placed in this list in the same change that first locks it.
-  One exception: a pharmacy sale locks its batches before taking the invoice
-  counter, because its Charges and Invoice are created inside that transaction
-  and nothing else can wait on them. No writer holds an invoice lock and then
-  waits on a batch, so the inverse pair that would deadlock cannot form.
+  A pharmacy sale locks Products, then batches before inserting Charges (whose composite
+  batch FK takes a key-share lock), then creates the Invoice and takes its
+  counter. A return locks its existing Invoice first, then its batches before
+  inserting return lines with batch FKs; sales never wait on that existing
+  Invoice. Goods receipts likewise lock batches before inserting priced lines.
 - **Counters are locks.** A counter row stays locked until commit, which keeps a
   series gapless. One transaction takes series in the order token → invoice →
   receipt; every other command takes a single series.
@@ -328,14 +346,16 @@ inputs, PDF cells, audit meta).
 Payments use four methods: Cash, UPI, Card, and Bank transfer.
 
 A pharmacy sale credits Pharmacy Sales Revenue (`4500`). Pharmacy invoices are
-tax-inclusive: `unitPrice` is the batch MRP as printed per `priceUnits` stock
-units (`mrpUnits` on the batch). Exact line values allocate the rounded subtotal
-by largest remainder; taxable value and tax are extracted from discounted gross
-per line. The pharmacy grand total alone rounds to the nearest rupee, with
-`roundOff` (−49..50 paise) posted to the Round-off account and reversed on the
-credit note completing a full return. OPD invoices stay tax-exclusive and
-round to the paisa (`roundOff = 0`). Stored money remains `bigint` paise (D031,
-D044).
+tax-inclusive: `unitPrice` snapshots the batch MRP in paise per `priceUnits`
+stock units (`stock_batches.mrpUnits`). An exact line subtotal is
+`qty × unitPrice / priceUnits`; the document subtotal rounds once and its
+lines receive leftover paise by largest remainder, ties in input order.
+Taxable value and tax are extracted from discounted gross per line. The
+pharmacy grand total alone rounds to the nearest rupee, with `roundOff`
+(−49..50 paise) posted to the Round-off account
+and reversed on the credit note completing a full return. OPD invoices stay
+tax-exclusive and round to the paisa (`roundOff = 0`). Stored money remains
+`bigint` paise (D031, D044, D049).
 
 Split collection is one tenant-scoped transaction containing up to four
 Payments. Every line gets its own Receipt and journal source; lines

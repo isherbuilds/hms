@@ -27,17 +27,17 @@ export const goodsReceiptLines = pgTable(
     // Stock units: billed, and free under a scheme such as 10+1.
     qty: integer("qty").notNull(),
     freeQty: integer("free_qty").notNull(),
-    // Stock units the bill's rate covers: the pack, or 1 for loose units.
-    packSize: integer("pack_size").notNull(),
+    // Printed paise per packSize stock units.
     rate: bigint("rate", { mode: "bigint" }).notNull(),
+    packSize: integer("pack_size").notNull(),
     discountPercent: numeric("discount_percent", { precision: 4, scale: 2 }).notNull(),
     gstPercent: numeric("gst_percent", { precision: 4, scale: 2 }).notNull(),
     hsnCode: text("hsn_code"),
   },
   (table) => [
     check("goods_receipt_lines_qty_check", sql`${table.qty} > 0 and ${table.freeQty} >= 0`),
-    check("goods_receipt_lines_pack_size_check", sql`${table.packSize} > 0`),
     check("goods_receipt_lines_rate_check", sql`${table.rate} >= 0`),
+    check("goods_receipt_lines_pack_size_check", sql`${table.packSize} > 0`),
     check(
       "goods_receipt_lines_discount_percent_check",
       sql`${table.discountPercent} >= 0 and ${table.discountPercent} <= 99.99`,

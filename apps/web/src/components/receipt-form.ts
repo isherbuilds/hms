@@ -27,10 +27,11 @@ const receiptLineSchema = (today: string) =>
       productName: z.string(),
       stockUnit: z.string(),
       unitsPerPack: z.number().int().min(1),
+      expires: z.boolean(),
       batchNumber: z.string().trim().min(1, "Type the batch number").max(50),
-      expiryDate: expiryMonth,
-      count: numberText(z.number().int().min(1, "At least 1")),
+      expiryDate: z.union([expiryMonth, z.literal("")]),
       loose: z.boolean(),
+      count: numberText(z.number().int().min(1, "At least 1")),
       price: z.string().regex(DECIMAL_PATTERN, "A price like 84 or 84.20"),
       free: z.string().trim(),
       rate: z.string().trim(),
@@ -39,7 +40,23 @@ const receiptLineSchema = (today: string) =>
       hsn: z.string().trim().max(20),
     })
     .superRefine((value, context) => {
-      if (monthsUntil(value.expiryDate, today) < 0) {
+      if (value.expires && !value.expiryDate) {
+        context.addIssue({
+          code: "custom",
+          path: ["expiryDate"],
+          message: "Enter the expiry month",
+        });
+      }
+
+      if (!value.expires && value.expiryDate) {
+        context.addIssue({
+          code: "custom",
+          path: ["expiryDate"],
+          message: "This product has no expiry date",
+        });
+      }
+
+      if (value.expiryDate && monthsUntil(value.expiryDate, today) < 0) {
         context.addIssue({
           code: "custom",
           path: ["expiryDate"],
@@ -125,6 +142,7 @@ export function blankLine(): ReceiptLineInput {
     productName: "",
     stockUnit: "",
     unitsPerPack: 1,
+    expires: true,
     batchNumber: "",
     expiryDate: "",
     count: "",
@@ -145,9 +163,11 @@ export function blankLine(): ReceiptLineInput {
 function productFields(product: PickedProduct | null, line: ReceiptLineInput) {
   return {
     productId: product?.productId ?? "",
-    productName: product?.name ?? "",
+    productName: product ? `${product.name}${product.pack ? ` · ${product.pack}` : ""}` : "",
     stockUnit: product?.stockUnit ?? "",
     unitsPerPack: product?.unitsPerPack ?? 1,
+    expires: product?.expires ?? true,
+    expiryDate: product?.expires && product.productId === line.productId ? line.expiryDate : "",
     loose: product?.unitsPerPack === 1,
     gst: product?.taxRatePercent ? String(Number(product.taxRatePercent)) : line.gst,
     hsn: product?.taxCode || line.hsn,

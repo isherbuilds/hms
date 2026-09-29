@@ -9,11 +9,7 @@ import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FinancialSummary } from "@/components/opd-financial-summary";
-import {
-  OpdPatientSearch,
-  SelectedPatientChip,
-  type SelectedPatient,
-} from "@/components/opd-patient-picker";
+import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
 import { FormSection, Panel } from "@/components/page";
 import { PharmacyBatchPicker, type SaleLine } from "@/components/pharmacy-batch-picker";
@@ -48,7 +44,7 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
   const canReadPatients = useCan(orgSlug, { patient: ["read"] });
 
   const [cart, setCart] = useState<SaleLine[]>([]);
-  const [buyerKind, setBuyerKind] = useState<Buyer>("walk-in");
+  const [buyerKind, setBuyerKind] = useState<Buyer>("patient");
   const [patient, setPatient] = useState<SelectedPatient | null>(null);
   const [showPrescription, setShowPrescription] = useState(false);
   // The desk's free-text fields; each input binds one key through `text`.
@@ -264,10 +260,8 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
                         <Input {...text("walkInPhone")} inputMode="tel" />
                       </label>
                     </div>
-                  ) : patient ? (
-                    <SelectedPatientChip patient={patient} onClear={() => setPatient(null)} />
                   ) : (
-                    <OpdPatientSearch orgSlug={orgSlug} onSelect={setPatient} />
+                    <OpdPatientSearch orgSlug={orgSlug} selected={patient} onChange={setPatient} />
                   )}
                 </div>
               </FormSection>

@@ -6,13 +6,13 @@ import { Form } from "@hms/ui/components/form";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link, useBlocker, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { type Control, useFormContext, useFormState, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { TextField } from "@/components/form-fields";
-import { NewProductSheet } from "@/components/pharmacy-new-product-sheet";
+import { ProductSheet } from "@/components/product-sheet";
 import { PageBody, PageHeader } from "@/components/page";
 import { BatchLines } from "@/components/receipt-batch-lines";
 import {
@@ -26,7 +26,7 @@ import {
 import { useZodForm } from "@/hooks/use-zod-form";
 import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
-import { orgToday, useOrgDateTime } from "@/lib/org-datetime";
+import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { billSummary, stockQuantities } from "@/lib/receipt-lines";
 import { requireOrgPermission } from "@/lib/route-permission";
@@ -47,16 +47,16 @@ export const Route = createFileRoute("/$orgSlug/pharmacy/receive")({
 function ReceiveGoodsRoute() {
   const { orgSlug } = Route.useParams();
   const navigate = useNavigate();
-  const { timeZone, today } = useOrgDateTime();
+  const { today } = useOrgDateTime();
   const canManageItems = useCan(orgSlug, { pharmacy: ["manageItems"] });
-  const schema = useMemo(() => receiptSchema(today), [today]);
+  const schema = receiptSchema(today);
 
   const form = useZodForm(schema, {
     defaultValues: {
       opening: false,
       supplierName: "",
       supplierReference: "",
-      receivedOn: orgToday(timeZone),
+      receivedOn: today,
       billTotal: "",
       note: "",
       lines: [blankLine()],
@@ -103,7 +103,7 @@ function ReceiveGoodsRoute() {
         return {
           productId: line.productId,
           batchNumber: line.batchNumber,
-          expiryDate: line.expiryDate,
+          expiryDate: line.expires ? line.expiryDate : undefined,
           qty: quantities.qty,
           pricedPer: quantities.packSize === 1 ? ("unit" as const) : ("pack" as const),
           mrp: parseDecimal(line.price),
@@ -232,10 +232,10 @@ function ReceiveGoodsRoute() {
       </PageBody>
 
       {newProductLine !== null ? (
-        <NewProductSheet
+        <ProductSheet
           orgSlug={orgSlug}
           onClose={() => setNewProductLine(null)}
-          onAdded={(product) => {
+          onSaved={(product) => {
             fillLine(form, newProductLine, product);
             setNewProductLine(null);
           }}

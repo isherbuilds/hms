@@ -8,6 +8,10 @@ the split of Pharmacy into a sale half (this spec) and a purchasing half
 the same day on the owner's instruction to keep the design simple and
 standard; the simplifications are listed under "Simplifications adopted".
 Revised 2026-09-23 for exact printed prices and document-only rounding (D044).
+Revised 2026-09-29 for packs, loose units and goods without expiry:
+[Pharmacy packs and loose units](./pharmacy-packs-and-loose-units.md)
+replaces D049's one-unit rule. Loose sales exceed whole-strip sales at the
+pilot pharmacy.
 Evidence: [Pharmacy reference flows](../research/pharmacy-reference-flows.md)
 and the [research ledger](../research/README.md#adopted-findings) (D027).
 Supersedes: none. Closes D025 (invoice granularity) in Slice 1.
@@ -30,10 +34,11 @@ dropped.
 
 A **Pharmacy** section whose landing page is the sales list at
 `/$orgSlug/pharmacy`, with the counter desk at `/$orgSlug/pharmacy/new`. A
-pharmacist searches a medicine,
-HMS proposes the batch that expires first, the pharmacist confirms quantity and
-collects money. That one action issues an immutable pharmacy Invoice, records
-the Payment and Receipt, and writes the stock movement, all in one transaction.
+pharmacist searches a Product. HMS proposes the earliest-expiring sellable
+batch (undated batches last); the pharmacist confirms a quantity in the
+smallest counted unit and collects money. That one action issues an immutable
+pharmacy Invoice, records the Payment and Receipt, and writes the stock
+movement, all in one transaction.
 A customer needs no Patient record; a Patient or an OPD Appointment can be
 linked when known.
 
@@ -78,16 +83,19 @@ answers below are **assumed defaults**; the pharmacy owner confirms or corrects
 them at the counter, and a correction that changes behaviour is a change to
 this spec. Nothing in the code depends on an answer beyond what is written.
 
-1. **Sale unit.** Assumed: each medicine has one stock unit (the unit the
-   counter sells) and a pack size; there are no fractional units. If loose
-   tablets are sold, the tablet is the stock unit and a strip is a conversion.
+1. **Sale unit.** Corrected by the owner on 2026-09-29: loose tablets sell
+   more often than whole strips. A Product is counted in its smallest
+   `stockUnit`; `unitsPerPack` is the number of those units in one pack
+   (1 means no conversion). `pack` is printed text, not a conversion factor.
+   [Pharmacy packs and loose units](./pharmacy-packs-and-loose-units.md)
+   owns the conversion and printed-price contract.
 2. **Shared stock.** Assumed: the counter stock also supplies wards and free
    hospital use occasionally. Those issues are recorded through
    `pharmacy.adjustStock` with reason `internal_issue`; the IPD spec later
    replaces that with a typed issue.
-3. **Returns.** Assumed: returns are accepted at the counter against the
-   invoice; goods go to quarantine and a supervisor releases or writes them
-   off.
+3. **Returns.** Confirmed by the owner on 2026-09-29: returns are accepted at
+   the counter against the invoice, loose tablets included; goods go to
+   quarantine and a supervisor releases or writes them off.
 4. **Receiving.** Assumed: the pharmacist receives deliveries with the
    supplier's invoice; HMS records supplier name, bill number, bill total, and
    each line as the bill prints it: batch, billed and free quantity, rate,
@@ -140,9 +148,9 @@ this spec. Nothing in the code depends on an answer beyond what is written.
     receipt with the count date and batch quantities, so that cutover starts
     from the physical count without collecting a separate document.
 12. As an **administrator**, I want to maintain the product master (name,
-    generic, form, strength, stock unit, pack size, and, for a product sold at
-    the counter, code, HSN and GST rate), so that sales carry the right tax and
-    an internal supply is stocked without being billable.
+    generic, form, strength, counting unit, optional printed pack description,
+    sold, active, HSN and GST rate), so that a sold Product carries its tax
+    while an internal supply is stocked without being billable.
 13. As an **accountant**, I want pharmacy Invoices in their own printed series
     and pharmacy revenue in its own account, so that the outward register and
     trial balance separate pharmacy from OPD.
@@ -168,9 +176,9 @@ smaller change that satisfies the story.
    `invoice:pharmacy:${fy}`. No counter rows are migrated.
 3. **`stream` only, no `priceBasis` column.** The basis is a pure function of
    the stream in code and in the header check.
-4. **HSN and GST live on the catalog row** (`catalog_items.taxCode`,
-   `taxRatePercent`), which already snapshots to the Charge. `products` holds
-   the display name and the pharmacy facts.
+4. **HSN and GST live on Product** (`products.taxCode`,
+   `taxRatePercent`); sale Charges snapshot those facts, while a goods receipt
+   retains its own purchase tax facts.
 5. **No `blocked` flag.** A supervisor hold is a move to the quarantine bucket
    (`adjustStock`, reason `quarantine`); release is the inverse.
 6. **One adjustment command.** `pharmacy.adjustStock` covers release,
@@ -178,8 +186,8 @@ smaller change that satisfies the story.
    is no separate `releaseQuarantine`.
 7. **Opening stock is a goods receipt.** The same document with `opening` set
    carries no supplier and refuses a batch that already moved; there is no
-   separate count table or procedure. A bulk import by catalog code is a script
-   that calls the same procedure, not a second input shape.
+   separate count table or procedure. A bulk import uses the same procedure,
+   not a second input shape.
 8. **Reconciliation is a read, not a report module.** `pharmacy.listMovements`
    and `pharmacy.stockOnHand` (with the expiring and quarantine filters) are
    the reconciliation surface; the former Slice 4 report procedures are
@@ -243,13 +251,13 @@ that tolerates a pharmacy invoice.
 - `invoices.stream` (`opd | pharmacy`, check-constrained, default `opd` so the
   migration backfills). Basis: `opd` is tax-exclusive, `pharmacy` is
   tax-inclusive.
-- **Price and total snapshots.** `charges.priceUnits` and
-  `invoice_lines.priceUnits` are positive integers (default 1), paired with
-  `unitPrice` in bigint paise per that many stock units. An invoice stores
-  `roundOff` in bigint paise (default 0); its CHECK bounds it to −49..50,
-  requires zero for OPD, and includes it in the grand-total identity.
-  Credit notes also store bigint `roundOff` (default 0), with the note total
-  equal to its line gross sum plus `roundOff`.
+- **Price and total snapshots.** Charges and invoice lines store `unitPrice`
+  in bigint paise per `priceUnits` stock units (1 for OPD and treatment).
+  An invoice stores `roundOff` in bigint
+  paise (default 0); its CHECK bounds it to −49..50, requires zero for OPD,
+  and includes it in the grand-total identity. Credit notes also store bigint
+  `roundOff` (default 0), with the note total equal to its line gross sum plus
+  `roundOff`.
 - **Numbering.** `invoice:${fy}` for OPD (unchanged) and
   `invoice:pharmacy:${fy}` for pharmacy. `organization_settings` gains
   `pharmacyInvoicePrefix` (`SETTINGS_DEFAULTS` value `"PH"`), required, and
@@ -263,13 +271,12 @@ that tolerates a pharmacy invoice.
 - **Buyer.** `invoices.patientId`, `patientMrn`, and `patientPhone` become
   nullable. `patientName` is the printed name for either stream. The PDF and
   worklists print MRN and phone only when present.
-- **Category and account.** `CATALOG_CATEGORIES` gains `pharmacy`;
-  `REVENUE_ACCOUNTS` gains `revenue_pharmacy` (code 4500, income). The
-  category checks on `catalog_items`, `charges`, `invoice_lines`, and
-  `treatment_plan_items` admit it. `OPD_BILLABLE_CATEGORIES` is unchanged
-  (D024). `catalog.create` and `catalog.update` refuse category `pharmacy`:
-  a product's catalog row is written only through `pharmacy.createProduct`
-  and `updateProduct`.
+- **Category and account.** `SERVICE_CATEGORIES` types `catalog_items`
+  (consultation, procedure, lab, radiology, other); its database CHECK rejects
+  pharmacy. `REVENUE_CATEGORIES` adds pharmacy for Charges, Invoice lines,
+  treatment-plan revenue and exhaustive `revenueAccountFor` routing.
+  `REVENUE_ACCOUNTS` includes `revenue_pharmacy` (code 4500, income).
+  `OPD_BILLABLE_CATEGORIES` is unchanged (D024).
 - **Patient credit** may be applied only when the sale names a `patientId`;
   otherwise `applyCredit` must be zero (`BAD_REQUEST`).
 - **Generic credit notes are refused on pharmacy invoices.** `issueCreditNote`
@@ -285,15 +292,10 @@ that tolerates a pharmacy invoice.
 `stream: "opd" | "pharmacy"`, which selects both behaviours: pharmacy prices
 are tax-inclusive and the document total rounds half-up to whole rupees; OPD
 prices are tax-exclusive and the total stays exact to the paisa.
-A price is `unitPrice` paise per `priceUnits` stock units; each exact line
-subtotal is `qty × unitPrice / priceUnits`, never a rounded unit or line
-price. With `L = lcm(priceUnits)` and
-`eᵢ = qtyᵢ × unitPriceᵢ × (L / priceUnitsᵢ)`, the document subtotal is
-`roundHalfUp(Σeᵢ / L)`. Each line receives `floor(eᵢ / L)` plus one paisa
-for each leftover paisa, assigned by largest `eᵢ mod L` (ties in input
-order). Thus the stored integer-paise line subtotals sum exactly to the
-rounded document subtotal without independently rounding lines. Discounts
-are allocated across these subtotals as before. Then:
+Each exact line subtotal is `qty × unitPrice / priceUnits`. The document
+subtotal rounds once to paise; line subtotals take the floor plus leftover
+paise by largest remainder, with ties in input order. Discounts are allocated
+across these subtotals. Then:
 
 ```text
 exclusive (opd):      taxableValue = lineSubtotal − allocatedDiscount
@@ -332,14 +334,17 @@ for the inclusive line.
 ### Sale snapshots
 
 A Charge stays the money snapshot: description (`"<name> · batch <number>"`),
-`unitPrice` (batch MRP exactly as printed), `priceUnits` (batch `mrpUnits`),
-GST rate and `taxCode` (HSN) from the catalog row,
-`revenueCategory = "pharmacy"`, `sourceType = "pharmacy_batch"`,
-`sourceId = batchId`, `pharmacySaleId` set, `opdAppointmentId` null. Batch rows
-are immutable once created (number, expiry, price never change; a conflicting
-arrival is refused), so the batch row is the structural snapshot of batch and
-expiry, and the sale view reads it by `sourceId`. The Invoice line snapshots
-the Charge's `unitPrice` and `priceUnits` (OPD/treatment keep `priceUnits = 1`).
+quantity in stock units, `unitPrice` (the batch MRP), `priceUnits` (the batch
+`mrpUnits`), GST rate and `taxCode` (HSN) from Product,
+`revenueCategory = "pharmacy"`, `catalogItemId = null`,
+`sourceType = "pharmacy_batch"`, `stockBatchId = batchId`, `sourceId = null`,
+`pharmacySaleId` set, `opdAppointmentId` null. The composite tenant foreign
+key enforces the batch link; a CHECK requires it exactly for pharmacy-batch
+Charges with a pharmacy-sale parent. Batch rows are immutable once created
+(number, optional expiry, printed MRP and its divisor never change; a
+conflicting arrival is refused), so sale and return reads join through
+`stockBatchId`. The Invoice line snapshots the Charge's `unitPrice` and
+`priceUnits`.
 
 ### Product master and stock
 
@@ -348,28 +353,25 @@ All tables carry `orgId NOT NULL` with a cascade to `organization` and a
 does. Ids are UUIDv7 text. Reason and unit sets are `text` columns typed by an
 `as const` array; the zod input schemas own their validity (D042).
 
-- **`products`** (D027 domain master): `id`, `orgId`, `catalogItemId`
-  (nullable composite FK, unique per org where it is not null), `name`,
-  `genericName` (nullable), `form` (nullable text, e.g. tablet, syrup),
-  `strength` (nullable text, e.g. 500 mg), `stockUnit` (`tablet | capsule | ml
-| strip | bottle | vial | tube | piece`), `unitsPerPack` (integer ≥ 1, the pack
-  size printed on the box), `schedule` (`none | h | h1 | x`), `manufacturer`
-  (nullable), `createdAt`, `updatedAt`. A product with a catalog row is sold at
-  the counter; one without it is an internal supply (gloves, soap, cleaning
-  liquid) that is stocked and issued but never billed. `name` is the single
-  display name and the create and update commands copy it onto the linked
-  catalog row in the same transaction, because that row is the invoice snapshot
-  source. Code, HSN, GST rate, and active live on the catalog row.
-  `stockUnit` and `unitsPerPack` are frozen once the product has a batch; an
-  update that changes either after that is refused with `CONFLICT`.
+- **`products`** (D027 goods master): `id`, `orgId`, `name`, `genericName`
+  (nullable), `form` (nullable text, e.g. tablet, syrup), `strength` (nullable
+  text, e.g. 500 mg), `stockUnit` (`tablet | capsule | ml | strip | bottle |
+vial | tube | piece`), `unitsPerPack` (integer ≥ 1, 1 means no conversion),
+  `pack` (nullable printed description, at most 50 characters, e.g. "15
+  tablets" or "170 ml"; never parsed), `expires` (boolean), `schedule`
+  (`none | h | h1 | x`), `manufacturer` (nullable), `sold`,
+  `taxRatePercent` (0–99.99, stored as 0 for internal supplies), `taxCode`
+  (HSN, null for internal supplies), `active`, `createdAt`, `updatedAt`.
+  A sold, active Product may be selected at the counter; an internal supply
+  (`sold = false`) is stocked and issued but never billed. `stockUnit`,
+  `unitsPerPack` and `expires` freeze after the first batch (`CONFLICT` on
+  change); `pack` stays editable.
 - **`stock_batches`**: `id`, `orgId`, `productId`, `batchNumber`,
-  `expiryDate` (date; the last day of the printed month), `mrp` (paise as
-  printed per `mrpUnits` stock units, ≥ 0), `mrpUnits` (integer > 0;
-  existing batches default to 1), `createdAt`. Unique on `(orgId, productId,
-batchNumber)`. A receipt naming an existing batch with a different expiry
-  or price is refused (`CONFLICT`); equivalent prices compare by cross-
-  multiplication (`old.mrp × new.mrpUnits = new.mrp × old.mrpUnits`) and keep
-  the first arrival's representation.
+  `expiryDate` (nullable date, last day of the printed month when set),
+  `mrp` (paise per `mrpUnits` stock units, ≥ 0), `mrpUnits` (integer ≥ 1),
+  `createdAt`. Unique on `(orgId, productId, batchNumber)`. An existing
+  batch with a different expiry or MRP is refused (`CONFLICT`); MRP is
+  compared by cross-multiplication across printed divisors.
 - **`stock_movements`**: `id`, `orgId`, `batchId`, `bucket` (`shelf |
 quarantine`), `qty` (non-zero integer), `reason` (`opening | receipt | sale |
 return | release | quarantine | writeoff | breakage | count_correction |
@@ -384,25 +386,23 @@ pharmacy_return | adjustment`), `sourceId`, `departmentId` (nullable composite
   either. Index on `(orgId, batchId, bucket)`. On hand per bucket is
   `sum(qty)`; sellable stock is the shelf bucket.
 - **Every stock writer** (sale, return, adjustment, receipt) locks its
-  batches `SELECT … FOR UPDATE` ordered by `(expiryDate, id)`, then reads the
-  bucket sums in a new statement, and refuses (`CONFLICT`) a result below zero.
+  batches `SELECT … FOR UPDATE` ordered by `(expiryDate ASC NULLS LAST, id
+ASC)`, then reads the bucket sums in a new statement, and refuses
+  (`CONFLICT`) a result below zero.
   Lines are aggregated by batch before the check, so two lines on one batch
   cannot each pass alone. Shared code lives in
   `packages/api/src/lib/stock.ts`.
 - **`goods_receipts`** (no purchase order or supplier ledger): `id`, `orgId`,
-  `opening` (boolean, default false),
-  `supplierName` (nullable), `supplierReference` (nullable), `receivedOn` (a
-  `date`: the day named on the document, not an instant),
-  `fileId` (nullable composite FK to `file`, retained only for legacy receipts;
-  new receipts do not attach files), `note` (nullable), `billTotal`
-  (paise; null on an opening count), `receivedBy`,
-  `createdAt`. Lines create batches as needed; one movement per batch adds
-  billed and free units aggregated across its lines (`sourceType =
-"goods_receipt"`).
+  `opening` (boolean, default false), `supplierName` (nullable),
+  `supplierReference` (nullable), `receivedOn` (a `date`: the day named on the
+  document, not an instant), `note` (nullable), `billTotal` (paise; null on
+  an opening count), `receivedBy`, `createdAt`. Lines create batches as
+  needed; one movement per batch adds billed and free units aggregated across
+  its lines (`sourceType = "goods_receipt"`).
 - **`goods_receipt_lines`** (one per supplier bill or opening-count line):
-  `receiptId`, `batchId`, `qty` and `freeQty` (stock units), `packSize`
-  (stock units the rate covers), `rate` (printed PTR before discount and GST,
-  paise per `packSize` units), `discountPercent`, `gstPercent`, and `hsnCode?`.
+  `receiptId`, `batchId`, `qty` and `freeQty` (stock units), `rate` (printed
+  PTR before discount and GST, paise per `packSize` stock units),
+  `packSize` (integer ≥ 1), `discountPercent`, `gstPercent`, and `hsnCode?`.
   No computed amount or unit cost is stored. Both percentages have database
   CHECKs from 0 through 99.99. `receiptLineCost` in
   `packages/api/src/core/receipt-math.ts` derives gross, discount, taxable,
@@ -416,9 +416,10 @@ pharmacy_return | adjustment`), `sourceId`, `departmentId` (nullable composite
   Opening stock is the same document with `opening` set: it names no supplier
   and posts `opening` movements, so a batch that already has a movement is
   refused (`CONFLICT`). No receipt takes a new attachment (D045). Opening counts
-  reject expired batches: at pilot cutover expired inventory enters through
-  the separate quarantine/write-off process, not the opening count; expired
-  stock is never sellable. A later count is a `count_correction` adjustment.
+  reject expired dated batches: at pilot cutover expired inventory enters
+  through the separate quarantine/write-off process, not the opening count.
+  Undated batches are never expired. A later count is a
+  `count_correction` adjustment.
 - **`pharmacy_sales`**: `id`, `orgId`, `patientId` (nullable, composite FK),
   `opdAppointmentId` (nullable, composite FK), `buyerName`, `buyerPhone`
   (nullable), `forName` (who the medicine is for; the buyer when omitted),
@@ -452,11 +453,11 @@ and `packages/api/src/routers/pharmacy-stock.ts` (stock half), merged into one
    its name, MRN, phone become the buyer; a walk-in buyer is the given name and
    phone); lock the OPD Appointment if given and verify it belongs to the same
    Patient (`CONFLICT` otherwise); insert the sale.
-2. Read the batches with their product and catalog rows; a product with no
-   catalog row is not sellable, so the join refuses it. Refuse
-   (`BAD_REQUEST`, naming the medicine): expired batch (`expiryDate < today`
-   in the org time zone), inactive catalog item, Schedule X, Schedule H1
-   without `forName` and `prescriberName`. Insert one Charge per line.
+2. Read the batches with their Products. Refuse (`BAD_REQUEST`, naming the
+   medicine): unsold or inactive Product, dated expired batch (`expiryDate <
+today` in the org time zone), Schedule X, or Schedule H1 without `forName`
+   and `prescriberName`. Undated batches are never expired. Insert one Charge
+   per line.
 3. Lock batches in order, read shelf sums, refuse (`CONFLICT`) an aggregated
    qty above shelf stock, naming the medicine.
 4. `issueInvoiceTx` (stream `pharmacy`), compare `expectedGrandTotal`
@@ -502,37 +503,39 @@ pair). Audited.
 **`pharmacy.receiveGoods`** (`pharmacy:receive`) takes `opening` (default false),
 `supplierName?`, `supplierReference?`, `receivedOn` (`YYYY-MM-DD`), `note?`,
 `billTotal?`, and
-`lines: [{ productId, batchNumber, expiryDate, qty, pricedPer: "pack" | "unit",
-mrp, cost?: { freeQty, rate, discountPercent, gstPercent, hsnCode? } }]`
-(min 1, positive qty). `mrp` and `rate` are paise per priced unit exactly
-as printed. The client sends no `packSize`: the server derives the divisor
-from the locked product (`unitsPerPack` for `"pack"`, 1 for `"unit"`),
-stores it as batch `mrpUnits` and receipt-line `packSize`, and requires a
-priced line's billed qty to divide by it. Quantities and the movement total
-aggregated per batch stay within the PostgreSQL integer range; free qty need
-not be ≤ billed qty. A non-opening receipt names its supplier, prices every
-line, and reconciles the rounded sum of exact line nets against the printed
-bill total within the explicit ±₹0.99 supplier-bill tolerance.
-An opening receipt carries no cost pricing. The command creates the header
-and one row for each priced line, creates each missing batch (refusing a
-conflicting expiry or non-equivalent MRP), and posts one aggregated movement
-per batch into the shelf: `receipt`, or `opening` when set. Opening refuses
-expired or already-moved batches (`CONFLICT`). New receipts carry no file.
-Audited.
+`lines: [{ productId, batchNumber, expiryDate?, qty, mrp, pricedPer,
+cost?: { freeQty, rate, discountPercent, gstPercent, hsnCode? } }]`
+(min 1, positive qty). `qty` and `freeQty` count stock units. `pricedPer` is
+`"pack" | "unit"`; `mrp` and `rate` are paise per chosen priced unit as printed.
+The locked Product supplies the divisor: `unitsPerPack` for a pack, 1 for a
+unit. Billed `qty` must divide by that divisor (`BAD_REQUEST`); an opening
+count has no cost and may contain loose units. Quantities and aggregated
+movements stay within the PostgreSQL integer range; free qty need not be ≤
+billed qty. A non-opening receipt names its supplier, prices each line, and
+reconciles the rounded sum of exact line nets to the bill within ±₹0.99.
+An expiring Product requires `expiryDate`; a non-expiring Product refuses it
+(`BAD_REQUEST` in either case). The command creates the header, priced lines
+and missing batches; an existing batch must match expiry (null-safe) and MRP
+by cross-multiplication, or it returns `CONFLICT`. One aggregated `receipt`
+or `opening` movement per batch enters the shelf. Opening refuses dated
+expired or already-moved batches (`CONFLICT`). Receipts carry no file. Audited.
 
 **`pharmacy.createProduct`** / **`updateProduct`** (`pharmacy:manageItems`)
-take `name`, the product fields, and an optional `catalog`
-(`code`, `taxRatePercent`, `taxCode?`, `active`). With `catalog` they write the
-`catalog_items` row (category `pharmacy`, `unitPrice` 0, `customRate` false)
-carrying the product's name, and link it; without it the product is an internal
-supply. Update refuses dropping `catalog` from a product that has a catalog row,
-and refuses a change to `stockUnit` or `unitsPerPack` once a batch exists.
+take `name`, the product fields including `stockUnit`, `unitsPerPack` (integer
+≥ 1), required `expires`, and optional, trimmed `pack` (max 50 characters;
+blank or absent stores null), plus flat `sold`, `taxRatePercent?`, `taxCode?`
+and `active`. A sold Product requires an explicit GST rate in 0–99.99
+(including `0` when exempt), or returns `BAD_REQUEST`. An internal Product
+stores tax rate `0` and null HSN; turning `sold` off is allowed. Both return
+`{ productId }`. After the first batch, `stockUnit`, `unitsPerPack` and
+`expires` cannot change (`CONFLICT`); `pack` remains editable.
 
 Lock order (Architecture) becomes: OPD Appointment → Treatment plan item →
 Treatment plan → Charges → Invoice → Products (by `id`) → Stock batches (by
-`expiryDate`, `id`) → Advance Receipts (by `createdAt`, `id`). A return locks
-the Invoice before the batches. A sale has no invoice yet, so it locks batches
-after inserting Charges and before issuing, which keeps the same relative order.
+`expiryDate ASC NULLS LAST`, `id ASC`) → Advance Receipts (by `createdAt`, `id`).
+A return locks the Invoice before the batches. A sale has no invoice yet, so
+it locks batches after inserting Charges and before issuing, keeping the same
+relative order.
 Counters keep the order token → invoice → receipt.
 
 ### Roles and permissions
@@ -552,27 +555,33 @@ read`; `file: read, upload`; `report: readDailyCollections`. No
 
 ### Reads
 
-- `pharmacy.searchStock({ query })` (`pharmacy:read`): active sellable products
-  by name, code, or generic, each with its sellable batches (shelf sum > 0,
-  not expired) ordered by `(expiryDate, id)` with `shelfQty`, printed `mrp`
-  and `mrpUnits`; bounded to 20 products. An internal supply has no catalog
-  row and never appears here.
+- `pharmacy.searchStock({ query })` (`pharmacy:read`): sold, active products
+  by name or generic, each with its sellable batches (shelf sum > 0,
+  undated or not expired) ordered by `(expiryDate ASC NULLS LAST, id ASC)`,
+  with `shelfQty` in stock units, `expires`, `unitsPerPack`, printed `pack`,
+  `expiryDate: string | null`, and `mrp` per `mrpUnits` stock units; bounded
+  to 20 products. Internal supplies never appear here.
 - `pharmacy.stockOnHand({ productId?, expiringWithinDays?, quarantineOnly?,
-includeZero? })` (`pharmacy:read`): every product's batches with `shelfQty`,
-  `quarantineQty`, `mrp` and `mrpUnits`, ordered by expiry; zero-stock batches
-  excluded unless asked.
+includeZero? })` (`pharmacy:read`): batches with `shelfQty`,
+  `quarantineQty`, Product `unitsPerPack`, nullable
+  `expiryDate`, and `mrp` per `mrpUnits` stock units. Order is
+  `(expiryDate ASC NULLS LAST, id ASC)`; the keyset cursor is
+  `{ expiryDate: string | null, batchId: string }` across the dated/undated
+  boundary. `expiringWithinDays` excludes undated batches; zero-stock
+  batches are excluded unless asked.
 - `pharmacy.listMovements({ batchId?, cursor?, limit })` (`pharmacy:read`):
   movements newest first by `(createdAt, id)`, org-wide or for one batch, with
-  product, batch number, unit, the actor name and, for an internal issue, the
-  department.
+  product, batch number, nullable expiry, unit, the actor name and, for an
+  internal issue, the department.
 - `pharmacy.listProducts({ query?, cursor?, limit })` (`pharmacy:read`):
   keyset by `(name, id)` like `catalog.list`, including inactive and
-  internal-supply rows.
+  internal-supply rows, with `expires` and `unitsPerPack`.
 - `pharmacy.getSale({ saleId })` (`pharmacy:read`): the sale, its invoice with
-  `roundOff` and lines (each with batch number and expiry via
-  `charges.sourceId`), payments, returns with lines and credit-note
+  `roundOff` and lines (each with batch number and nullable expiry via
+  `charges.stockBatchId`), payments, returns with lines and credit-note
   `roundOff`, refunds, and the invoice balance (refund due is
-  `-outstanding` when negative).
+  `-outstanding` when negative). Movement and return reads also carry
+  nullable batch expiry.
 - `pharmacy.listSales({ from?, to?, cursor?, limit })` (`pharmacy:read`): sales
   newest first by `(createdAt, id)` with invoice number, buyer, grand total.
 - Reports label pharmacy figures as sales and revenue, never profit.
@@ -600,39 +609,49 @@ and period controls on the other lists so the console keeps one filter idiom.
   OPD intake — a sectioned card beside a sticky payment aside, no tab strip, a
   blocker on an abandoned cart. Sections are buyer (Patient search or free name
   and phone), items (a batch type-ahead over the shelf plus a line table of
-  medicine, batch, expiry, qty, MRP and amount), and a prescription disclosure
-  for for-whom, prescriber and reference that opens itself when an H1 line is
-  present. **Collect** opens the shared `SettlementOverlay` on an inclusive-tax
+  medicine, batch, expiry ("No expiry" for undated stock), quantity in the
+  smallest counted unit, printed MRP per `mrpUnits` and exact amount), and a
+  prescription disclosure for for-whom, prescriber and reference that opens
+  itself when an H1 line is present. **Collect** opens the shared
+  `SettlementOverlay` on an inclusive-tax
   basis, which owns discount, credit, payment lines and note. On success it
   returns to the sales list with the new sale open, where **Print** lives.
-- `/$orgSlug/pharmacy/stock`: batches with shelf and quarantine, filters
-  (product, expiring within 30/90 days, quarantine only); a Sheet for **Adjust**
-  (which needs `pharmacy:adjust`); a batch's **Movements** links to the
+  Sale lines, the sale Sheet and printed Invoice/Credit Note show an undated
+  batch as "No expiry" or "—" and print a price per `priceUnits` stock units.
+- `/$orgSlug/pharmacy/stock`: batches with shelf and quarantine displayed as
+  packs plus loose units (e.g. "9 strips + 5 tablets"), filters (product,
+  expiring within 30/90 days excluding undated batches, quarantine only);
+  undated batches show "No expiry" (or "—" in dense columns). A Sheet for
+  **Adjust** needs `pharmacy:adjust`; a batch's **Movements** links to the
   movements page filtered to it. **Receive goods** links to its own page.
 - `/$orgSlug/pharmacy/movements` (`pharmacy:read`): the movement ledger, its
   own page so the stock list runs no movement query; `?batchId=` narrows it to
   one batch with a removable chip.
+  Quantities use the same packs-plus-loose display as Stock; undated batches
+  show "No expiry" or "—" in dense columns.
 - `/$orgSlug/pharmacy/receive` (`pharmacy:receive`): a page, not a dialog,
   laid out as a ledger that follows the supplier bill (the Ledger prototype,
   promoted 2026-09-23). A two-option mode choice selects supplier delivery
   (supplier, bill number, total and date) or opening count (count date); neither
   attaches a file. Those details sit above one line per product and batch.
-  A line's first row names the stock — product, batch, expiry, billed quantity,
-  count as packs or loose
-  units; its second row prices it — free quantity, rate, discount %, GST %,
-  MRP, HSN and the line total with derived cost per unit, shown as an error
-  when it reaches the MRP. An opening count asks only the
-  printed MRP and refuses expired batches. Picking a product fills GST % and
-  HSN from its counter tax. Line totals and the footer's taxable, GST and
-  lines totals are shown to the paisa; the footer states whether the rounded
-  sum of the lines matches the printed bill total within ±₹0.99.
+  A line's first row names the stock — product, batch, expiry only when the
+  Product expires, billed count, and a pack or loose choice when
+  `unitsPerPack > 1`. The second row prices that choice — free count, rate,
+  discount %, GST %, MRP, HSN and line total with derived cost per smallest
+  counted unit, shown as an error when it reaches the MRP. An opening count
+  asks only the MRP in the chosen price unit and refuses dated expired batches.
+  Picking a product fills GST % and HSN from its counter tax. Line totals and
+  the footer's taxable, GST and lines totals are shown to the paisa; the footer
+  states whether the rounded sum of the lines matches the printed bill total
+  within ±₹0.99.
   **Back to stock** returns through the unsaved-delivery
-  confirmation. The page converts packs with `unitsPerPack`; the receipt
-  stores stock-unit quantities and the MRP with its printed `mrpUnits`
-  denominator, never a rounded per-unit MRP. **New product** opens a Sheet
+  confirmation. Receipts send quantities in smallest counted units and
+  `pricedPer` for the printed rate and MRP. **New product** opens a Sheet
   without leaving the delivery and selects the created product on the line.
 - `/$orgSlug/pharmacy/items`: product master list and create/edit Sheet
-  (`pharmacy:manageItems`).
+  (`pharmacy:manageItems`), with a pack switch and required whole-number
+  counted units per pack when switched on, and **Has an expiry date** on by
+  default. Printed pack size stays optional text.
 - Navigation: one **Pharmacy** entry in the Care group gated on
   `pharmacy:read`; Sales, Stock and Products link to each other from a small tab
   strip. The desk is a task opened from Sales, not a tab.
@@ -640,31 +659,33 @@ and period controls on the other lists so the console keeps one filter idiom.
 
 ## Test Seams
 
-- **Unit, `tests/unit/invoice-math.test.ts`**: inclusive tax, fractional-
-  paisa MRP allocation by largest remainder, rupee grand-total round-off
-  and unchanged OPD paisa math.
+- **Unit, `tests/unit/invoice-math.test.ts`**: inclusive tax, exact rational
+  line subtotals with largest-remainder paise allocation, one document
+  round-off and unchanged OPD paisa math.
 - **Unit, `tests/unit/access.test.ts`**: pharmacist can sell, return, and
   receive but not adjust or manage items and holds no `billing:write`;
   accountant holds no pharmacy write; the matrix gains the `pharmacist` column.
-- **Integration, `tests/integration/pharmacy-stock.test.ts`**: a receipt
-  retains printed pack MRP and exact line facts, allows separate priced lines
-  for a batch while aggregating movements, and reconciles only the bill
-  total; a second arrival with a different
-  expiry or non-equivalent MRP is refused; an opening receipt records its count
-  date and batch quantities and refuses touched or expired batches; an internal
-  issue names its department and is refused without one; quarantine and release
-  move quantity between buckets and a bucket cannot go below zero;
-  `updateProduct` refuses a unit change after a batch exists; `catalog.create`
-  refuses category `pharmacy`; foreign product and batch ids are `NOT_FOUND`
-  across orgs.
-- **Integration, `tests/integration/pharmacy-sale.test.ts`**: a sale reduces
-  shelf per batch, numbers in the pharmacy series with the pharmacy prefix,
-  prices loose units against printed pack MRP, extracts tax from discounted
-  gross, records the receipt and a balanced journal on `revenue_pharmacy`
-  and the round-off account; expired, inactive, over-stock (two lines on one
-  batch), Schedule X, and H1 without prescriber are each refused with no
-  rows written; two concurrent sales of the last unit have one winner;
-  repeated partial returns end in exact reversal of taxable, tax, gross,
+- **Integration, `tests/integration/pharmacy-stock.test.ts`**: a receipt retains
+  printed MRP per `mrpUnits`, rate per `packSize` and exact line facts, requires
+  billed count divisibility for a priced pack but allows loose opening units,
+  aggregates movements and reconciles only the bill total. An existing batch
+  compares MRP by cross-multiplication and expiry null-safely; a different
+  expiry or MRP is refused. A non-expiring Product accepts only undated
+  batches, which never expire and are excluded from expiring-soon; an expiring
+  Product requires a date. Stock paging crosses the dated/undated boundary.
+  Opening refuses touched or dated expired batches; internal issues name their
+  department; quarantine and release preserve nonnegative buckets.
+  `updateProduct` refuses a change to `stockUnit`, `unitsPerPack` or `expires`
+  after a batch exists; Services exclude pharmacy; foreign product and batch
+  ids are `NOT_FOUND` across orgs.
+- **Integration, `tests/integration/pharmacy-sale.test.ts`**: a loose sale
+  reduces shelf per batch and prices in stock units against printed pack MRP.
+  Its Charge carries `stockBatchId` and null `sourceId`; an undated batch is
+  sellable. The invoice extracts tax from discounted gross and posts a balanced
+  journal on `revenue_pharmacy` and the round-off account. Dated expired,
+  inactive, over-stock (two lines on one batch), Schedule X, and H1 without
+  prescriber are refused; two concurrent sales of the last unit have one winner.
+  Repeated partial returns end in exact reversal of taxable, tax, gross,
   and invoice round-off only on the completing return; a return above
   remaining qty is refused; a returned unit sits in quarantine and cannot
   be sold; an immediate refund on return is capped and clears refund due;
@@ -719,7 +740,7 @@ and period controls on the other lists so the console keeps one filter idiom.
   CGST/SGST/IGST split, rejected quantity, freight and other landed costs,
   stock valuation, inventory asset, and cost of goods sold. The purchasing spec
   builds on `goods_receipt_lines`. Reports never present pharmacy revenue as profit.
-- Fractional units and pack splitting beyond the Stage 0 conversion.
+- Fractional units.
 - Prescription-driven dispensing (a digital prescription that becomes lines).
 - Typed IPD and ward issues against an Admission (the interim path is
   `internal_issue`).
@@ -754,7 +775,8 @@ and period controls on the other lists so the console keeps one filter idiom.
 ## Open Questions
 
 1. **Pharmacy owner and the six Stage 0 answers.** Implementation proceeds on
-   the assumed answers; a correction is a spec change.
+   the assumed answers; a correction is a spec change. Answers 1 and 3 have the
+   owner's word as of 2026-09-29; answers 2, 4, 5 and 6 remain assumed.
 2. **Money-only pharmacy correction.** No amount source is defined for a
    credit without goods, and a generic credit note is refused on a pharmacy
    invoice. If the pharmacy owner needs one, this spec must state the amount,

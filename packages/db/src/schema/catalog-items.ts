@@ -13,21 +13,24 @@ import {
 
 import { orgIdColumn } from "./auth";
 
-export const CATALOG_CATEGORIES = [
+export const SERVICE_CATEGORIES = [
   "consultation",
   "procedure",
   "lab",
   "radiology",
-  "pharmacy",
   "other",
 ] as const;
 
-export type CatalogCategory = (typeof CATALOG_CATEGORIES)[number];
+export type ServiceCategory = (typeof SERVICE_CATEGORIES)[number];
+
+export const REVENUE_CATEGORIES = [...SERVICE_CATEGORIES, "pharmacy"] as const;
+
+export type RevenueCategory = (typeof REVENUE_CATEGORIES)[number];
 
 export const OPD_BILLABLE_CATEGORIES = [
   "consultation",
   "procedure",
-] as const satisfies readonly CatalogCategory[];
+] as const satisfies readonly ServiceCategory[];
 
 // Soft-deactivate only: charges snapshot price and tax, so deleting would leave them dangling.
 export const catalogItems = pgTable(
@@ -36,7 +39,7 @@ export const catalogItems = pgTable(
     id: text("id").primaryKey(),
     orgId: orgIdColumn(),
     name: text("name").notNull(),
-    category: text("category", { enum: CATALOG_CATEGORIES }).notNull(),
+    category: text("category", { enum: SERVICE_CATEGORIES }).notNull(),
     unitPrice: bigint("unit_price", { mode: "bigint" }).notNull(),
     customRate: boolean("custom_rate").notNull().default(false),
     taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull().default("0"),
@@ -46,6 +49,7 @@ export const catalogItems = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    check("catalog_items_category_check", sql`${table.category} <> 'pharmacy'`),
     check("catalog_items_unit_price_check", sql`${table.unitPrice} >= 0`),
     check(
       "catalog_items_tax_rate_check",

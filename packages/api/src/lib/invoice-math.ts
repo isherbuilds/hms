@@ -92,7 +92,6 @@ export function computeInvoiceLines(
   let floorTotal = 0n;
 
   for (const line of preparedLines) {
-    // One common denominator preserves the exact price of every stock unit.
     const numerator = BigInt(line.charge.qty) * line.charge.unitPrice * (commonUnits / line.units);
     line.lineSubtotal = numerator / commonUnits;
     line.remainder = numerator % commonUnits;
@@ -103,7 +102,6 @@ export function computeInvoiceLines(
   const subtotalPaise = divideHalfUp(exactSubtotal, commonUnits);
   const leftover = Number(subtotalPaise - floorTotal);
 
-  // Stable sort gives an input-order tie break for equal fractional paise.
   const ranked = [...preparedLines].sort((a, b) =>
     a.remainder === b.remainder ? 0 : a.remainder > b.remainder ? -1 : 1,
   );

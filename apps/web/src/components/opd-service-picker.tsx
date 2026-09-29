@@ -1,4 +1,4 @@
-import { Combobox } from "@hms/ui/components/combobox";
+import { Combobox, ComboboxInput, ComboboxPopup } from "@hms/ui/components/combobox";
 import { Input } from "@hms/ui/components/input";
 import { ClientOnly } from "@tanstack/react-router";
 import { SearchIcon } from "lucide-react";
@@ -31,9 +31,8 @@ export function ServicePicker({
   onAdd: (line: ServiceLine) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [inputValue, setInputValue] = useState("");
   const currency = useMembership(orgSlug, (membership) => membership.currency);
-  // Remounts the combobox after a pick, which is what clears its input.
-  const [box, setBox] = useState(0);
 
   const search = useCatalogSearch({
     orgSlug,
@@ -71,13 +70,20 @@ export function ServicePicker({
             />
           }
         >
-          <Combobox
-            key={box}
+          <Combobox<(typeof results)[number]>
             items={results}
-            getItemKey={(item) => item.id}
-            getItemLabel={(item) => item.name}
-            onInputValueChange={search.onInputValueChange}
-            onSelect={(item) => {
+            filteredItems={results}
+            value={null}
+            inputValue={inputValue}
+            itemToStringLabel={(item) => item?.name ?? ""}
+            onInputValueChange={(value, { reason }) => {
+              setInputValue(value);
+
+              if (reason === "input-change") search.onInputValueChange(value);
+            }}
+            onValueChange={(item) => {
+              if (!item) return;
+
               onAdd({
                 catalogItemId: item.id,
                 name: item.name,
@@ -88,34 +94,38 @@ export function ServicePicker({
                 qty: 1,
               });
               search.clear();
-              setBox((mounted) => mounted + 1);
+              setInputValue("");
             }}
             open={search.open}
             onOpenChange={search.setOpen}
-            inputRef={inputRef}
-            inputClassName="pl-8"
-            inputProps={{
-              id: "service-search",
-              name: "service-search",
-              autoComplete: "off",
-              placeholder: "Service code, name, or category",
-              autoFocus: box > 0,
-              onFocus: () => {
+            loopFocus
+          >
+            <ComboboxInput
+              ref={inputRef}
+              className="pl-8"
+              id="service-search"
+              name="service-search"
+              autoComplete="off"
+              placeholder="Service code, name, or category"
+              aria-label="Search services"
+              onFocus={() => {
                 if (typed().length > 0) search.setOpen(true);
-              },
-              onKeyDown: (event) => {
+              }}
+              onKeyDown={(event) => {
                 if (event.key === "Enter" && typed().length > 0) event.preventDefault();
-              },
-              "aria-label": "Search services",
-            }}
-            itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2"
-            renderItem={renderMatch}
-            emptyContent={
-              search.emptyMessage ? (
-                <p className="px-3 py-2 text-muted-foreground">{search.emptyMessage}</p>
-              ) : undefined
-            }
-          />
+              }}
+            />
+            <ComboboxPopup
+              getItemKey={(item: (typeof results)[number]) => item.id}
+              itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2"
+              renderItem={renderMatch}
+              emptyContent={
+                search.emptyMessage ? (
+                  <p className="px-3 py-2 text-muted-foreground">{search.emptyMessage}</p>
+                ) : undefined
+              }
+            />
+          </Combobox>
         </ClientOnly>
       </div>
     </div>

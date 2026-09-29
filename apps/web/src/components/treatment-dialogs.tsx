@@ -1,10 +1,9 @@
 import { DECIMAL_PATTERN, formatDecimal, parseDecimal, sittingShare } from "@hms/api/core/money";
-import { Combobox } from "@hms/ui/components/combobox";
-import { Button } from "@hms/ui/components/button";
+import { Combobox, ComboboxInput, ComboboxPopup } from "@hms/ui/components/combobox";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@hms/ui/components/form";
 import { useQuery } from "@tanstack/react-query";
 import { SearchIcon } from "lucide-react";
-import type { ComponentPropsWithoutRef } from "react";
+import { useState, type ComponentPropsWithoutRef } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { z } from "zod";
 
@@ -303,20 +302,23 @@ function PractitionerField({ orgSlug }: { orgSlug: string }) {
   );
 }
 
-/** Search only while nothing is picked; a pick becomes a row with Change, like the intake patient. */
 function ProcedureSearch({
   orgSlug,
-  onSelect,
+  value,
+  onChange,
   inputRef,
   ...inputProps
 }: {
   orgSlug: string;
-  onSelect: (item: Procedure) => void;
+  value: Procedure | null;
+  onChange: (item: Procedure | null) => void;
   inputRef: (element: HTMLInputElement | null) => void;
 } & Pick<
   ComponentPropsWithoutRef<"input">,
   "id" | "aria-describedby" | "aria-invalid" | "onBlur"
 >) {
+  const [inputValue, setInputValue] = useState("");
+
   const search = useCatalogSearch({
     orgSlug,
     includeConsultation: false,
@@ -328,51 +330,72 @@ function ProcedureSearch({
       <SearchIcon className="pointer-events-none absolute top-2.5 left-2.5 z-10 size-3.5 text-muted-foreground" />
       <Combobox
         items={search.items}
-        getItemKey={(item) => item.id}
-        getItemLabel={(item) => item.name}
-        onInputValueChange={search.onInputValueChange}
-        onSelect={onSelect}
+        filteredItems={search.items}
+        value={value}
+        inputValue={value?.name ?? inputValue}
+        isItemEqualToValue={(a, b) => a.id === b.id}
+        itemToStringLabel={(item) => item.name}
+        onInputValueChange={(input, { reason }) => {
+          if (reason !== "input-change") return;
+
+          setInputValue(input);
+
+          if (value && input !== value.name) onChange(null);
+
+          search.onInputValueChange(input);
+        }}
+        onValueChange={(item) => {
+          if (item) setInputValue("");
+
+          onChange(item);
+        }}
         open={search.open}
         onOpenChange={search.setOpen}
-        inputRef={inputRef}
-        inputClassName="pl-8"
-        inputProps={{
-          ...inputProps,
-          name: "catalogItemId",
-          autoComplete: "off",
-          placeholder: "Procedure name",
-        }}
-        itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-3"
-        renderItem={(item) => (
-          <>
-            <span className="min-w-0 truncate font-medium">{item.name}</span>
-            <span className="tabular-nums">{formatDecimal(item.unitPrice)}</span>
-          </>
-        )}
-        emptyContent={
-          search.emptyMessage ? (
-            <p className="px-3 py-2 text-muted-foreground">{search.emptyMessage}</p>
-          ) : undefined
-        }
-      />
+        loopFocus
+      >
+        <ComboboxInput
+          {...inputProps}
+          ref={inputRef}
+          className="pl-8"
+          name="catalogItemId"
+          autoComplete="off"
+          placeholder="Procedure name"
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && event.currentTarget.value) event.preventDefault();
+          }}
+        />
+        <ComboboxPopup
+          getItemKey={(item: Procedure) => item.id}
+          itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-3"
+          renderItem={(item: Procedure) => (
+            <>
+              <span className="min-w-0 truncate font-medium">{item.name}</span>
+              <span className="tabular-nums">{formatDecimal(item.unitPrice)}</span>
+            </>
+          )}
+          emptyContent={
+            search.emptyMessage ? (
+              <p className="px-3 py-2 text-muted-foreground">{search.emptyMessage}</p>
+            ) : undefined
+          }
+        />
+      </Combobox>
     </div>
   );
 }
 
 function ItemFields({ orgSlug }: { orgSlug: string }) {
-  const { control, setValue, setFocus } = useFormContext<{
+  const { control, setValue } = useFormContext<{
     procedure: Procedure | null;
     sittingsPlanned: number;
     quotedPrice: string;
   }>();
 
   // The quote follows the picked service; the doctor sets this patient's course price after.
-  // Picking unmounts the search input, so hand the caret to the next field rather than
-  // letting it fall back to the dialog.
-  const choose = (item: Procedure) => {
+  const choose = (item: Procedure | null) => {
     setValue("procedure", item, { shouldDirty: true, shouldValidate: true });
-    setValue("quotedPrice", formatDecimal(item.unitPrice), { shouldDirty: true });
-    setFocus("quotedPrice");
+
+    if (item) setValue("quotedPrice", formatDecimal(item.unitPrice), { shouldDirty: true });
   };
 
   const [price, sittings] = useWatch({ control, name: ["quotedPrice", "sittingsPlanned"] });
@@ -380,41 +403,21 @@ function ItemFields({ orgSlug }: { orgSlug: string }) {
 
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      {/* Not `ControlledField`: the picked row replaces the control instead of filling
-          it, and the typed context keeps `field.value` a `Procedure`. */}
       <FormField
         control={control}
         name="procedure"
         render={({ field }) => (
           <FormItem className="sm:col-span-2">
             <FormLabel>Procedure</FormLabel>
-            {field.value ? (
-              <div className="flex items-center gap-3 border-b px-3 py-2">
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{field.value.name}</span>
-                  <span className="text-muted-foreground tabular-nums">
-                    {formatDecimal(field.value.unitPrice)}
-                  </span>
-                </span>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  onClick={() => setValue("procedure", null, { shouldDirty: true })}
-                >
-                  Change
-                </Button>
-              </div>
-            ) : (
-              <FormControl>
-                <ProcedureSearch
-                  orgSlug={orgSlug}
-                  onBlur={field.onBlur}
-                  inputRef={field.ref}
-                  onSelect={choose}
-                />
-              </FormControl>
-            )}
+            <FormControl>
+              <ProcedureSearch
+                orgSlug={orgSlug}
+                value={field.value}
+                onBlur={field.onBlur}
+                inputRef={field.ref}
+                onChange={choose}
+              />
+            </FormControl>
             <FormMessage />
           </FormItem>
         )}

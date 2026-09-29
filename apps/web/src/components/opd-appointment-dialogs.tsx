@@ -7,24 +7,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@hms/ui/components/dialog";
-import {
-  Form,
-  FormControl,
-  RegisteredFormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@hms/ui/components/form";
-import { Input } from "@hms/ui/components/input";
-import { SubmitButton } from "@hms/ui/components/submit-button";
-import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
-import { toast } from "sonner";
 import { z } from "zod";
 
+import { FormDialog } from "@/components/form-dialog";
+import { TextField } from "@/components/form-fields";
 import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
 import { useOpdCheckIn } from "@/components/opd-appointment";
-import { useZodForm } from "@/hooks/use-zod-form";
 import { localInputValue, nextHalfHour, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { closeOnConflict } from "@/lib/orpc-error";
@@ -60,40 +49,26 @@ export function CheckInOpdAppointmentDialog({
             Find or register the patient to check them in.
           </DialogDescription>
         </DialogHeader>
-        {selected ? (
-          <div className="flex flex-col gap-4">
-            <div className="bg-muted/40 px-3 py-2">
-              <p className="font-medium capitalize">{selected.name}</p>
-              <p className="font-mono text-muted-foreground">{selected.mrn}</p>
-            </div>
-            <DialogFooter>
-              <Button variant="ghost" onClick={() => setSelected(undefined)}>
-                Change patient
-              </Button>
-              <Button
-                disabled={checkIn.isPending}
-                onClick={() => {
-                  void checkIn
-                    .mutateAsync({
-                      orgSlug,
-                      appointmentId,
-                      patientId: selected.id,
-                    })
-                    .then(onClose)
-                    .catch(closeOnConflict(onClose));
-                }}
-              >
-                Check in
-              </Button>
-            </DialogFooter>
-          </div>
-        ) : (
-          <OpdPatientSearch
-            orgSlug={orgSlug}
-            initialQuery={callerPhone ?? undefined}
-            onSelect={setSelected}
-          />
-        )}
+        <OpdPatientSearch
+          orgSlug={orgSlug}
+          initialQuery={callerPhone ?? undefined}
+          selected={selected}
+          onChange={(patient) => setSelected(patient ?? undefined)}
+        />
+        <DialogFooter>
+          <Button
+            disabled={!selected || checkIn.isPending}
+            onClick={() => {
+              if (!selected) return;
+              void checkIn
+                .mutateAsync({ orgSlug, appointmentId, patientId: selected.id })
+                .then(onClose)
+                .catch(closeOnConflict(onClose));
+            }}
+          >
+            Check in
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -116,65 +91,30 @@ export function RescheduleOpdAppointmentDialog({
 }) {
   const { timeZone } = useOrgDateTime();
 
-  const form = useZodForm(rescheduleSchema, {
-    defaultValues: {
-      scheduledFor: scheduledFor
-        ? localInputValue(new Date(scheduledFor), timeZone)
-        : nextHalfHour(timeZone),
-    },
-  });
-
-  const reschedule = useMutation(
-    orpc.opd.reschedule.mutationOptions({
-      onSuccess: () => {
-        onClose();
-        toast.success("Appointment rescheduled");
-      },
-      onError: closeOnConflict(onClose),
-    }),
-  );
-
-  const submit = form.handleSubmit((values) =>
-    reschedule.mutate({
-      orgSlug,
-      appointmentId,
-      scheduledLocal: values.scheduledFor,
-    }),
-  );
-
   return (
-    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Reschedule appointment</DialogTitle>
-          <DialogDescription>Times are shown in {timeZone}.</DialogDescription>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={submit} className="flex flex-col gap-4">
-            <RegisteredFormField
-              name="scheduledFor"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Date and time</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      type="datetime-local"
-                      className="tabular-nums"
-                      autoFocus
-                      disabled={reschedule.isPending}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <DialogFooter>
-              <SubmitButton isSubmitting={reschedule.isPending}>Reschedule</SubmitButton>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+    <FormDialog
+      title="Reschedule appointment"
+      description={`Times are shown in ${timeZone}.`}
+      submitLabel="Reschedule"
+      schema={rescheduleSchema}
+      defaultValues={{
+        scheduledFor: scheduledFor
+          ? localInputValue(new Date(scheduledFor), timeZone)
+          : nextHalfHour(timeZone),
+      }}
+      success="Appointment rescheduled"
+      onClose={onClose}
+      run={({ scheduledFor }) =>
+        orpc.opd.reschedule.call({ orgSlug, appointmentId, scheduledLocal: scheduledFor })
+      }
+    >
+      <TextField
+        name="scheduledFor"
+        label="Date and time"
+        type="datetime-local"
+        className="tabular-nums"
+        autoFocus
+      />
+    </FormDialog>
   );
 }

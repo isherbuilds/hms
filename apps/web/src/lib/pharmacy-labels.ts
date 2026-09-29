@@ -52,3 +52,33 @@ export const SCHEDULE_LABELS: Record<(typeof SCHEDULES)[number], string> = {
   h1: "Schedule H1 · prescription + register",
   x: "Schedule X · not sold here",
 };
+
+/** Render stock in whole packs and remaining counted units, without rounding a price. */
+export function formatStockQty({
+  qty,
+  unitsPerPack,
+  stockUnit,
+}: {
+  qty: number;
+  unitsPerPack: number;
+  stockUnit: string;
+}): string {
+  const plural = stockUnit === "piece" ? "pieces" : `${stockUnit}s`;
+
+  const counted = (count: number) =>
+    `${count} ${stockUnit === "ml" || count === 1 ? stockUnit : plural}`;
+
+  const absolute = Math.abs(qty);
+  const sign = qty < 0 ? "−" : "";
+
+  if (unitsPerPack === 1 || absolute === 0) return `${sign}${counted(absolute)}`;
+
+  const packs = Math.trunc(absolute / unitsPerPack);
+  const loose = absolute % unitsPerPack;
+  const packWord = stockUnit === "tablet" || stockUnit === "capsule" ? "strip" : "pack";
+  const full = packs ? `${packs} ${packWord}${packs === 1 ? "" : "s"}` : "";
+
+  const quantity = loose ? `${full}${full ? " + " : ""}${counted(loose)}` : full;
+
+  return sign && full && loose ? `${sign}(${quantity})` : `${sign}${quantity}`;
+}

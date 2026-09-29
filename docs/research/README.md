@@ -22,6 +22,13 @@ Active temporary memos:
 - [Pharmacy reference flows](./pharmacy-reference-flows.md) — Bahmni, Danphe,
   and Marley observed 2026-09-18; the shared item, batch, movement-ledger,
   FEFO, and return-to-original-batch shape the pharmacy spec adopts.
+- [Pharmacy item master](./pharmacy-item-master.md) — ERPNext, Odoo/Bahmni,
+  Danphe, OpenEMR, OpenBoxes and Marg checked 2026-09-28; direct product/item
+  billing is common, but D049's no-loose-sale premise needs a counter-bill check.
+- [Goods, services, pharmacy and OPD comparison](./goods-services-pharmacy-opd-comparison.md) —
+  Marg ERP and Books, Marley/ERPNext, Bahmni, GNU Health and OpenEMR checked
+  2026-09-29; separates common stock/service behavior from table design and
+  names the pilot checks before revising the goods/services spec.
 - [Hospital-wide financial reports](./hospital-wide-financial-reports.md) —
   ERPNext, Tally and CBIC checked 2026-09-23; proposes one all-stream invoice
   register beside per-stream series (D025 unchanged) and names the CA questions

@@ -42,7 +42,7 @@ import { formatMoney } from "@/lib/money";
 import { formatDay } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
-import { REASON_LABELS } from "@/lib/pharmacy-labels";
+import { formatStockQty, REASON_LABELS } from "@/lib/pharmacy-labels";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 import { PharmacyTabs } from "./route";
@@ -71,7 +71,7 @@ type StockFilters = { q?: string; expiring?: 30 | 90; quarantine?: true; zero?: 
 
 const stockQuery = (orgSlug: string, filters: StockFilters) =>
   orpc.pharmacy.stockOnHand.infiniteOptions({
-    input: (cursor: { expiryDate: string; batchId: string } | undefined) => ({
+    input: (cursor: { expiryDate: string | null; batchId: string } | undefined) => ({
       orgSlug,
       query: filters.q,
       expiringWithinDays: filters.expiring,
@@ -249,10 +249,11 @@ function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFil
                 head: "Product",
                 cell: (row) => (
                   <>
-                    {row.name}{" "}
-                    {row.catalogItemId === null && (
-                      <span className="text-muted-foreground">Internal</span>
-                    )}
+                    {row.name}
+                    {!row.sold ? <span className="text-muted-foreground"> · Internal</span> : null}
+                    {!row.active ? (
+                      <span className="text-muted-foreground"> · Inactive</span>
+                    ) : null}
                   </>
                 ),
               },
@@ -264,7 +265,9 @@ function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFil
               {
                 head: "Expiry",
                 cell: (row) => (
-                  <span className="whitespace-nowrap">{formatDay(row.expiryDate)}</span>
+                  <span className="whitespace-nowrap">
+                    {row.expiryDate ? formatDay(row.expiryDate) : "—"}
+                  </span>
                 ),
               },
               {
@@ -280,12 +283,20 @@ function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFil
               { head: "Unit", cell: (row) => row.stockUnit },
               {
                 head: "Shelf",
-                cell: (row) => <span className="tabular-nums">{row.shelfQty}</span>,
+                cell: (row) => (
+                  <span className="tabular-nums">
+                    {formatStockQty({ qty: row.shelfQty, ...row })}
+                  </span>
+                ),
                 className: "text-right",
               },
               {
                 head: "Quarantine",
-                cell: (row) => <span className="tabular-nums">{row.quarantineQty}</span>,
+                cell: (row) => (
+                  <span className="tabular-nums">
+                    {formatStockQty({ qty: row.quarantineQty, ...row })}
+                  </span>
+                ),
                 className: "text-right",
               },
             ]}

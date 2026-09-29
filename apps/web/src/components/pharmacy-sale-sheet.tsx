@@ -177,7 +177,7 @@ function SaleBody({ orgSlug, saleId }: { orgSlug: string; saleId: string }) {
               <TableRow key={line.id}>
                 <TableCell>{line.description}</TableCell>
                 <TableCell className="font-mono">{line.batchNumber}</TableCell>
-                <TableCell>{formatBusinessDate(line.expiryDate)}</TableCell>
+                <TableCell>{line.expiryDate ? formatBusinessDate(line.expiryDate) : "—"}</TableCell>
                 <TableCell className="text-right tabular-nums">{line.qty}</TableCell>
                 <TableCell className="text-right tabular-nums">
                   {formatMoney(line.gross, currency)}

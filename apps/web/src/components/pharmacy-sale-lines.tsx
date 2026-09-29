@@ -89,11 +89,16 @@ export function SaleLines({
             {lines.map((line) => (
               <TableRow key={line.batchId}>
                 <TableCell>
-                  <p className="font-medium capitalize">{line.productName}</p>
+                  <p className="font-medium capitalize">
+                    {line.productName}
+                    {line.pack ? (
+                      <span className="text-muted-foreground"> · {line.pack}</span>
+                    ) : null}
+                  </p>
                 </TableCell>
                 <TableCell className="font-mono">{line.batchNumber}</TableCell>
                 <TableCell className="whitespace-nowrap">
-                  {formatBusinessDate(line.expiryDate)}
+                  {line.expiryDate ? formatBusinessDate(line.expiryDate) : "—"}
                 </TableCell>
                 <TableCell>{qtyField(line)}</TableCell>
                 <TableCell className="text-right tabular-nums">
@@ -117,9 +122,14 @@ export function SaleLines({
             className="grid min-w-0 gap-3 rounded-lg border border-border p-3"
           >
             <div className="min-w-0">
-              <p className="wrap-break-words font-medium capitalize">{line.productName}</p>
+              <p className="wrap-break-words font-medium capitalize">
+                {line.productName}
+                {line.pack ? <span className="text-muted-foreground"> · {line.pack}</span> : null}
+              </p>
               <p className="break-all font-mono text-muted-foreground">Batch {line.batchNumber}</p>
-              <p className="text-muted-foreground">Expires {formatBusinessDate(line.expiryDate)}</p>
+              <p className="text-muted-foreground">
+                {line.expiryDate ? `Expires ${formatBusinessDate(line.expiryDate)}` : "No expiry"}
+              </p>
             </div>
             <div className="grid grid-cols-[auto_minmax(0,1fr)] items-end gap-3">
               <label className="grid gap-1 text-muted-foreground">

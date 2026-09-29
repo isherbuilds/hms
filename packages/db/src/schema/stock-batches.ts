@@ -5,8 +5,8 @@ import {
   date,
   foreignKey,
   index,
-  integer,
   pgTable,
+  integer,
   text,
   timestamp,
   unique,
@@ -16,8 +16,7 @@ import {
 import { orgIdColumn } from "./auth";
 import { products } from "./products";
 
-// Immutable once created: number, expiry and printed MRP per mrpUnits stock units
-// never change. A conflicting arrival is refused, never merged.
+// Batch number, expiry and MRP are immutable once created.
 export const stockBatches = pgTable(
   "stock_batches",
   {
@@ -25,11 +24,11 @@ export const stockBatches = pgTable(
     orgId: orgIdColumn(),
     productId: text("product_id").notNull(),
     batchNumber: text("batch_number").notNull(),
-    // The last day of the printed month.
-    expiryDate: date("expiry_date").notNull(),
-    // Printed paise per mrpUnits stock units (1 for a loose unit).
+    // The last day of the printed month, or null for a product without expiry.
+    expiryDate: date("expiry_date"),
+    // Printed paise per mrpUnits stock units.
     mrp: bigint("mrp", { mode: "bigint" }).notNull(),
-    mrpUnits: integer("mrp_units").notNull().default(1),
+    mrpUnits: integer("mrp_units").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [

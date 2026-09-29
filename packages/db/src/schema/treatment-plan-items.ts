@@ -13,7 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { orgIdColumn, user } from "./auth";
-import { CATALOG_CATEGORIES, catalogItems } from "./catalog-items";
+import { REVENUE_CATEGORIES, catalogItems } from "./catalog-items";
 import { treatmentPlans } from "./treatment-plans";
 
 const TREATMENT_ITEM_STATUSES = ["open", "dropped"] as const;
@@ -30,7 +30,7 @@ export const treatmentPlanItems = pgTable(
     quotedPrice: bigint("quoted_price", { mode: "bigint" }).notNull(),
     taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull(),
     taxCode: text("tax_code"),
-    revenueCategory: text("revenue_category", { enum: CATALOG_CATEGORIES }).notNull(),
+    revenueCategory: text("revenue_category", { enum: REVENUE_CATEGORIES }).notNull(),
     sittingsPlanned: integer("sittings_planned").notNull(),
     note: text("note"),
     status: text("status", { enum: TREATMENT_ITEM_STATUSES }).notNull().default("open"),

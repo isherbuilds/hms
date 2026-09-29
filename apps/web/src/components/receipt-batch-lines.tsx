@@ -133,8 +133,11 @@ function LinesError() {
   ) : null;
 }
 
-/** A snapshot of the line; RHF mutates it in place, and the copy lets `compute` skip no-op updates. */
-const copyLine = (line: ReceiptInput["lines"][number]) => ({ ...line });
+/**
+ * A snapshot of the line; RHF mutates it in place, and the copy lets `compute` skip no-op
+ * updates. A removed row's watch fires once more before it unmounts, with no line.
+ */
+const copyLine = (line: ReceiptInput["lines"][number] | undefined) => line && { ...line };
 
 /**
  * One product and batch as the bill prints it. The first row names the stock; the second
@@ -156,6 +159,9 @@ function BatchRow({
   const { control } = useFormContext<ReceiptInput, unknown, Receipt>();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const line = useWatch({ control, name: `lines.${index}`, compute: copyLine });
+
+  if (!line) return null;
+
   const row = rowText(line);
   const packSize = packSizeOf(row);
   const perCounted = packSize === 1 ? line.stockUnit || "unit" : "pack";
@@ -174,24 +180,27 @@ function BatchRow({
     <div
       className={cn(
         "grid min-w-0 grid-cols-2 gap-x-3 gap-y-4 border-b border-border p-4 last:border-b-0 md:grid-cols-4",
-        opening ? "lg:grid-cols-[repeat(7,minmax(0,1fr))_auto]" : "lg:grid-cols-7",
+        opening ? "xl:grid-cols-[repeat(8,minmax(0,1fr))_auto]" : "xl:grid-cols-8",
       )}
     >
-      <ProductCell index={index} orgSlug={orgSlug} />
+      <ProductCell index={index} orgSlug={orgSlug} opening={opening} expires={line.expires} />
       <TextField name={`lines.${index}.batchNumber`} label="Batch" placeholder="Printed on pack" />
-      <TextField
-        name={`lines.${index}.expiryDate`}
-        label="Expiry"
-        type="month"
-        min={today.slice(0, 7)}
-        description={
-          monthsLeft !== null && monthsLeft >= 0 && monthsLeft < 6
-            ? monthsLeft === 0
-              ? "Expires this month"
-              : `Only ${monthsLeft} month${monthsLeft === 1 ? "" : "s"} left`
-            : undefined
-        }
-      />
+      {line.expires ? (
+        <TextField
+          name={`lines.${index}.expiryDate`}
+          label="Expiry"
+          type="month"
+          min={today.slice(0, 7)}
+          required
+          description={
+            monthsLeft !== null && monthsLeft >= 0 && monthsLeft < 6
+              ? monthsLeft === 0
+                ? "Expires this month"
+                : `Only ${monthsLeft} month${monthsLeft === 1 ? "" : "s"} left`
+              : undefined
+          }
+        />
+      ) : null}
       <TextField
         name={`lines.${index}.count`}
         label={opening ? "Counted" : "Billed qty"}
@@ -264,7 +273,7 @@ function BatchRow({
       {opening ? null : (
         <>
           <TextField name={`lines.${index}.hsn`} label="HSN" placeholder="3004" />
-          <div className="flex min-w-0 flex-col gap-1 tabular-nums md:items-end md:text-right">
+          <div className="flex min-w-0 flex-col gap-1 tabular-nums md:items-end md:text-right xl:col-span-2">
             <span className="text-muted-foreground">Line total</span>
             <span className="py-2 font-medium">
               {cost ? formatMoney(exactToPaise(cost.net), currency) : "—"}
@@ -282,8 +291,8 @@ function BatchRow({
   );
 }
 
-const pickedOf = (line: ReceiptInput["lines"][number]) =>
-  line.productId ? { productId: line.productId, name: line.productName } : null;
+const pickedOf = (line: ReceiptInput["lines"][number] | undefined) =>
+  line?.productId ? { productId: line.productId, name: line.productName } : null;
 
 /**
  * Watches only the product, and is memoized so the row's per-keystroke render stops
@@ -292,9 +301,13 @@ const pickedOf = (line: ReceiptInput["lines"][number]) =>
 const ProductCell = memo(function ProductCell({
   index,
   orgSlug,
+  opening,
+  expires,
 }: {
   index: number;
   orgSlug: string;
+  opening: boolean;
+  expires: boolean;
 }) {
   const form = useFormContext<ReceiptInput, unknown, Receipt>();
   const value = useWatch({ control: form.control, name: `lines.${index}`, compute: pickedOf });
@@ -306,7 +319,11 @@ const ProductCell = memo(function ProductCell({
     <ControlledField
       name={`lines.${index}.productId`}
       label={`Product ${index + 1}`}
-      className="col-span-2 min-w-0"
+      className={cn(
+        "col-span-2 min-w-0 lg:col-span-3",
+        opening && expires && "lg:col-span-2 xl:col-span-3",
+        !expires && "xl:col-span-4",
+      )}
       render={() => (
         <FormControl>
           <ProductPicker orgSlug={orgSlug} value={value} onChange={onChange} />

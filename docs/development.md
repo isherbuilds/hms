@@ -91,7 +91,10 @@ bun run db:seed
 organization. It uses the app counters for MRNs, OPD tokens, invoices, and
 receipts. Cleanup and inserts commit in one transaction, scoped to that
 organization. A rerun advances counters; a reference from manually created
-data causes the transaction to fail without partial cleanup.
+data causes the transaction to fail without partial cleanup. The same seed adds
+pharmacy products, opening and supplier receipts, priced batches, and shelf and
+quarantine movements. It includes packed tablets, a product without expiry,
+an internal supply, and an inactive product for route exploration.
 
 Only `FOUNDING_EMAIL` may create Organizations. Other accounts receive
 membership through invitation or an operator-managed membership.

@@ -15,41 +15,34 @@ type MedicineFields = {
   strength: string;
   form: string;
   manufacturer: string;
-  unitsPerPack: string;
+  pack: string;
 };
 
 type SuggestedAttributes = {
   strength: string | null;
   form: string | null;
   manufacturer: string | null;
-  unitsPerPack: number | null;
+  packSizeLabel: string | null;
 };
 
-type PickedAttributes = Pick<MedicineFields, "strength" | "form" | "manufacturer" | "unitsPerPack">;
+type PickedAttributes = Pick<MedicineFields, "strength" | "form" | "manufacturer" | "pack">;
 
 /** Only replace defaults and values still owned by the previous suggestion. */
 export function mergeMedicineSuggestion(
   current: PickedAttributes,
   previous: Partial<PickedAttributes>,
   suggestion: SuggestedAttributes,
-  existingProduct: boolean,
-  packEdited = false,
 ): Partial<PickedAttributes> {
   const next: Partial<PickedAttributes> = {};
 
-  for (const key of ["strength", "form", "manufacturer"] as const) {
+  for (const key of ["strength", "form", "manufacturer", "pack"] as const) {
     if (current[key] === "" || current[key] === previous[key]) {
-      next[key] = suggestion[key] ?? "";
+      // "Bottle of 170 ml" → "170 ml": the counting unit already names the container.
+      next[key] =
+        (key === "pack"
+          ? suggestion.packSizeLabel?.replace(/^\w+\s+of\s+/i, "").toLowerCase()
+          : suggestion[key]) ?? "";
     }
-  }
-
-  if (
-    !existingProduct &&
-    !packEdited &&
-    suggestion.unitsPerPack != null &&
-    (current.unitsPerPack === "1" || current.unitsPerPack === previous.unitsPerPack)
-  ) {
-    next.unitsPerPack = String(suggestion.unitsPerPack);
   }
 
   return next;
@@ -137,19 +130,13 @@ function MedicineNameInput({
 
     const current = form.getValues();
 
-    const next = mergeMedicineSuggestion(
-      current,
-      previousPick.current,
-      suggestion,
-      !!productId,
-      form.getFieldState("unitsPerPack").isDirty,
-    );
+    const next = mergeMedicineSuggestion(current, previousPick.current, suggestion);
 
-    for (const key of ["strength", "form", "manufacturer", "unitsPerPack"] as const) {
+    for (const key of ["strength", "form", "manufacturer", "pack"] as const) {
       const value = next[key];
 
       if (value !== undefined && value !== current[key]) {
-        form.setValue(key, value, { shouldDirty: key !== "unitsPerPack", shouldValidate: true });
+        form.setValue(key, value, { shouldDirty: true, shouldValidate: true });
       }
     }
 

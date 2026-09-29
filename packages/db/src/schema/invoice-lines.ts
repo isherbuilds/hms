@@ -13,7 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { orgIdColumn } from "./auth";
-import { CATALOG_CATEGORIES } from "./catalog-items";
+import { REVENUE_CATEGORIES } from "./catalog-items";
 import { charges } from "./charges";
 import { invoices } from "./invoices";
 
@@ -36,11 +36,11 @@ export const invoiceLines = pgTable(
     gross: bigint("gross", { mode: "bigint" }).notNull(),
     taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull(),
     taxCode: text("tax_code"),
-    revenueCategory: text("revenue_category", { enum: CATALOG_CATEGORIES }).notNull(),
+    revenueCategory: text("revenue_category", { enum: REVENUE_CATEGORIES }).notNull(),
   },
   (table) => [
     unique("invoice_lines_org_id_id_unique").on(table.orgId, table.id),
-    check("invoice_lines_price_units_check", sql`${table.priceUnits} > 0`),
+    check("invoice_lines_price_units_check", sql`${table.priceUnits} >= 1`),
     foreignKey({
       columns: [table.orgId, table.invoiceId],
       foreignColumns: [invoices.orgId, invoices.id],

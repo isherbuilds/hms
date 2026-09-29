@@ -1,7 +1,7 @@
 import { divideHalfUp, parseDecimal } from "./money";
 
-// Amounts here are bigints in paise / EXACT_SCALE, not rounded paise. Each billed
-// quantity is a whole number of priced units; only the final bill sum rounds to paise.
+// Amounts here are bigints in paise / EXACT_SCALE, not rounded paise. Only
+// the final bill sum rounds to paise.
 export const MAX_STOCK_QTY = 2_147_483_647;
 
 export const EXACT_SCALE = 10n ** 8n;

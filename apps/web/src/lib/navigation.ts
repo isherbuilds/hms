@@ -115,7 +115,7 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   },
   { to: "/$orgSlug/settings/members", label: "Members", permission: { member: ["read"] } },
   { to: "/$orgSlug/settings/staff", label: "Staff", permission: { staff: ["update"] } },
-  { to: "/$orgSlug/settings/catalog", label: "Catalog", permission: { catalog: ["update"] } },
+  { to: "/$orgSlug/settings/catalog", label: "Services", permission: { catalog: ["update"] } },
   { to: "/$orgSlug/settings/payers", label: "Payers", permission: { payer: ["update"] } },
   { to: "/$orgSlug/settings/audit", label: "Audit", permission: { audit: ["read"] } },
 ];
@@ -207,7 +207,7 @@ export const SETUP_STEPS: readonly SetupStep[] = [
   },
   {
     to: "/$orgSlug/settings/catalog",
-    label: "Build the service catalog",
+    label: "Set up services",
     description: "Define billable services, prices, and tax treatment.",
     icon: ListChecksIcon,
     permission: { catalog: ["update"] },
