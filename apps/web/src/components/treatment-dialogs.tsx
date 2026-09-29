@@ -13,7 +13,7 @@ import { OptionCombobox } from "@/components/option-combobox";
 import { useCatalogSearch } from "@/hooks/use-catalog-search";
 import { formatMoney } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
-import { practitionerDisplayName } from "@/lib/practitioner-name";
+import { practitionerDisplayName } from "@hms/api/lib/labels";
 
 export type TreatmentAction = "new" | "add" | "next";
 

@@ -2,7 +2,7 @@
 // for money are the same question, so the desk works one ordered list.
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/org-datetime";
-import { practitionerDisplayName } from "@/lib/practitioner-name";
+import { practitionerDisplayName } from "@hms/api/lib/labels";
 
 type WorklistState = "to-bill" | "fresh" | "late" | "stale";
 

@@ -6,7 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
@@ -16,7 +16,7 @@ import { ReportActions } from "@/components/report-actions";
 import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
-import { downloadXlsx } from "@/lib/report-export";
+import { saveXlsx } from "@/lib/report-export";
 import { formatMoney } from "@/lib/money";
 import { REPORT_PRINT_LANDSCAPE_CSS } from "@/lib/report-presentation";
 import { orgMonthToDate as defaultRange, useOrgDateTime } from "@/lib/org-datetime";
@@ -61,108 +61,18 @@ function GstReportRoute() {
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const report = useQuery(orpc.report.gst.queryOptions({ input: { orgSlug, from, to } }));
 
-  const exportReport = () => {
-    if (!report.data) return;
-    const { documents, rateSummary, hsnSummary, totals } = report.data;
-    void downloadXlsx(`gst-outward-register-${from}-to-${to}.xlsx`, [
-      {
-        name: "Documents",
-        columns: [
-          { header: "Document type", key: "docType", width: 18 },
-          { header: "Number", key: "number", width: 20 },
-          { header: "Date", key: "date", width: 14 },
-          { header: "Patient", key: "patientName", width: 28 },
-          { header: "MRN", key: "patientMrn", width: 16 },
-          { header: "Taxable value", key: "taxableValue", width: 17 },
-          { header: "CGST", key: "cgst", width: 15 },
-          { header: "SGST", key: "sgst", width: 15 },
-          { header: "Tax amount", key: "taxAmount", width: 16 },
-          { header: "Gross", key: "gross", width: 16 },
-        ],
-        rows: [
-          ...documents.map((row) => ({
-            docType: row.docType,
-            number: row.number,
-            date: row.date,
-            patientName: row.patientName,
-            patientMrn: row.patientMrn ?? "",
-            taxableValue: Number(row.taxableValue),
-            cgst: Number(row.cgst),
-            sgst: Number(row.sgst),
-            taxAmount: Number(row.taxAmount),
-            gross: Number(row.gross),
-          })),
-          {
-            docType: "",
-            number: "Total",
-            date: "",
-            patientName: "",
-            patientMrn: "",
-            taxableValue: Number(totals.taxableValue),
-            cgst: Number(totals.cgst),
-            sgst: Number(totals.sgst),
-            taxAmount: Number(totals.taxAmount),
-            gross: Number(totals.gross),
-          },
-        ],
-      },
-      {
-        name: "Rate summary",
-        columns: [
-          { header: "GST rate %", key: "taxRatePercent", width: 14 },
-          { header: "Taxable value", key: "taxableValue", width: 17 },
-          { header: "CGST", key: "cgst", width: 15 },
-          { header: "SGST", key: "sgst", width: 15 },
-          { header: "Tax amount", key: "taxAmount", width: 16 },
-        ],
-        rows: [
-          ...rateSummary.map((row) => ({
-            taxRatePercent: Number(row.taxRatePercent),
-            taxableValue: Number(row.taxableValue),
-            cgst: Number(row.cgst),
-            sgst: Number(row.sgst),
-            taxAmount: Number(row.taxAmount),
-          })),
-          {
-            taxRatePercent: "Total",
-            taxableValue: Number(totals.taxableValue),
-            cgst: Number(totals.cgst),
-            sgst: Number(totals.sgst),
-            taxAmount: Number(totals.taxAmount),
-          },
-        ],
-      },
-      {
-        name: "HSN summary",
-        columns: [
-          { header: "HSN/SAC", key: "taxCode", width: 18 },
-          { header: "GST rate %", key: "taxRatePercent", width: 14 },
-          { header: "Taxable value", key: "taxableValue", width: 17 },
-          { header: "Tax amount", key: "taxAmount", width: 16 },
-        ],
-        rows: [
-          ...hsnSummary.map((row) => ({
-            taxCode: row.taxCode,
-            taxRatePercent: Number(row.taxRatePercent),
-            taxableValue: Number(row.taxableValue),
-            taxAmount: Number(row.taxAmount),
-          })),
-          {
-            taxCode: "Total",
-            taxRatePercent: "",
-            taxableValue: Number(totals.taxableValue),
-            taxAmount: Number(totals.taxAmount),
-          },
-        ],
-      },
-    ]);
-  };
+  const download = useMutation({ ...orpc.export.gstOutwardXlsx.mutationOptions(), ...saveXlsx });
 
   return (
     <>
       <PageHeader
         title="GST register"
-        action={<ReportActions disabled={!report.data} onExport={exportReport} />}
+        action={
+          <ReportActions
+            disabled={!report.data || download.isPending}
+            onExport={() => download.mutate({ orgSlug, from, to })}
+          />
+        }
       />
       <PageBody>
         <div className="print:hidden">

@@ -59,10 +59,13 @@ and closing balances by account. **Balance Sheet** reads the same billing ledger
 as of the selected date. Both cover HMS billing activity only; they omit expense,
 payroll, inventory valuation, and manual journal accounting.
 
-All five report pages offer **Print / PDF** and **Export Excel**. Report reads
-use the report's permission and verified organization scope. Refresh the page
-and check the date range before handover. Export implementation changes and
-remaining browser checks belong in the work registry.
+All five report pages offer **Print / PDF** and **Export Excel**. Each `export.*Xlsx`
+procedure builds a workbook on the server by calling the matching report procedure
+with the same request context. It reuses the report permission, date limits, and
+verified organization scope. The browser downloads the returned File; it does not
+load the spreadsheet library. Shared labels keep screen and spreadsheet wording
+aligned. Exports read current records, so they can include changes made since the
+page loaded. Refresh the page and check the date range before handover.
 
 ## No-show reconciliation
 

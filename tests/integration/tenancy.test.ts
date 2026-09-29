@@ -644,6 +644,16 @@ const GUARDED_CALLS = {
     api.report.dailyCollections({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
   "report.opdRegister": (api, claim) =>
     api.report.opdRegister({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
+  "export.trialBalanceXlsx": (api, claim) =>
+    api.export.trialBalanceXlsx({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
+  "export.balanceSheetXlsx": (api, claim) =>
+    api.export.balanceSheetXlsx({ ...claim, asOf: "2024-01-31" }),
+  "export.dailyCollectionsXlsx": (api, claim) =>
+    api.export.dailyCollectionsXlsx({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
+  "export.opdRegisterXlsx": (api, claim) =>
+    api.export.opdRegisterXlsx({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
+  "export.gstOutwardXlsx": (api, claim) =>
+    api.export.gstOutwardXlsx({ ...claim, from: "2024-01-01", to: "2024-01-31" }),
   "member.me": (api, claim) => api.member.me({ ...claim }),
   "member.list": (api, claim) => api.member.list({ ...claim }),
   "member.invite": (api, claim) =>

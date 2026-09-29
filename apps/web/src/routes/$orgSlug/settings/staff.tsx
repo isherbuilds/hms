@@ -19,7 +19,7 @@ import {
 import { orpc } from "@/lib/orpc";
 import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
 import { requireOrgPermission } from "@/lib/route-permission";
-import { practitionerDisplayName } from "@/lib/practitioner-name";
+import { practitionerDisplayName } from "@hms/api/lib/labels";
 
 import { SettingsTabs } from "./route";
 

@@ -28,7 +28,7 @@ import { OpdRecordContext, useOpdRecord } from "@/lib/opd-record";
 import { orpc } from "@/lib/orpc";
 import { isAuthorizationError, loadRouteQuery } from "@/lib/orpc-error";
 import { patientAgeLabel } from "@/lib/patient-age";
-import { practitionerDisplayName } from "@/lib/practitioner-name";
+import { practitionerDisplayName } from "@hms/api/lib/labels";
 
 // Two separate screens — the billing surface is large and its mistakes expensive —
 // sharing a URL root so a terminal moves between them without a list in between.

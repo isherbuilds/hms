@@ -25,7 +25,7 @@ import { errorMessage } from "@/lib/orpc-error";
 import { patientAgeLabel } from "@/lib/patient-age";
 
 import { useOpdRecord } from "@/lib/opd-record";
-import { practitionerDisplayName } from "@/lib/practitioner-name";
+import { practitionerDisplayName } from "@hms/api/lib/labels";
 
 const SCAN_EXTENSION_TYPES = new Map([
   ["pdf", "application/pdf"],

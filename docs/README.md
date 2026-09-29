@@ -33,6 +33,10 @@ progress, and **Verification** means implementation is complete but its exit
 evidence is not. Product roadmap items remain evidence-gated—not active work—
 until their trigger is met and they enter this registry.
 
+### Server-built XLSX exports
+
+**Verification.** Five `export.*Xlsx` procedures build workbooks on the server through the existing report guards and queries. Review fixed R1: export failures no longer show a second toast beside the shared mutation error. Type checks, lint, formatting, and the full production build pass. All 50 focused accounting and tenancy tests pass. All five endpoints return parseable workbooks over HTTP; Trial Balance, Balance Sheet, Daily Collections, and OPD Register also saved valid files through their browser buttons. The full suite had 299 passes and three 15-second timeouts (two settings-cache tests and pharmacy-sale setup). Docker and app processes stopped during the longer-timeout retry on 2026-09-29. Next: restart local services, rerun the two affected test files plus the isolated file-delete test, and verify the GST browser download and mobile export action. No functional test assertion failed in the completed runs.
+
 ### [Bot review UI fixes](./design.md#8-layout-primitives)
 
 **Verification.** Start local services, then check mobile audit actor name and email, OPD service rate and large totals, and medicine suggestion pack values after an operator edit. Docker and the web app were unavailable on 2026-09-24.

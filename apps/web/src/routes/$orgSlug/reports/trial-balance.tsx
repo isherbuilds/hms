@@ -6,7 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
@@ -16,7 +16,7 @@ import { ReportActions } from "@/components/report-actions";
 import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
-import { downloadXlsx } from "@/lib/report-export";
+import { saveXlsx } from "@/lib/report-export";
 import { formatMoney } from "@/lib/money";
 import { REPORT_PRINT_LANDSCAPE_CSS } from "@/lib/report-presentation";
 import { orgMonthToDate as defaultRange, useOrgDateTime } from "@/lib/org-datetime";
@@ -61,56 +61,18 @@ function TrialBalanceRoute() {
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const report = useQuery(orpc.report.trialBalance.queryOptions({ input: { orgSlug, from, to } }));
 
-  const exportReport = () => {
-    if (!report.data) return;
-    const { rows, totals } = report.data;
-    void downloadXlsx(`trial-balance-${from}-to-${to}.xlsx`, [
-      {
-        name: "Trial balance",
-        columns: [
-          { header: "Code", key: "code", width: 14 },
-          { header: "Account", key: "name", width: 32 },
-          { header: "Type", key: "type", width: 14 },
-          { header: "Opening debit", key: "openingDebit", width: 16 },
-          { header: "Opening credit", key: "openingCredit", width: 16 },
-          { header: "Debit", key: "debit", width: 16 },
-          { header: "Credit", key: "credit", width: 16 },
-          { header: "Closing debit", key: "closingDebit", width: 16 },
-          { header: "Closing credit", key: "closingCredit", width: 16 },
-        ],
-        rows: [
-          ...rows.map((row) => ({
-            code: row.code,
-            name: row.name,
-            type: row.type,
-            openingDebit: Number(row.openingDebit),
-            openingCredit: Number(row.openingCredit),
-            debit: Number(row.debit),
-            credit: Number(row.credit),
-            closingDebit: Number(row.closingDebit),
-            closingCredit: Number(row.closingCredit),
-          })),
-          {
-            code: "",
-            name: "Total",
-            type: "",
-            openingDebit: Number(totals.openingDebit),
-            openingCredit: Number(totals.openingCredit),
-            debit: Number(totals.debit),
-            credit: Number(totals.credit),
-            closingDebit: Number(totals.closingDebit),
-            closingCredit: Number(totals.closingCredit),
-          },
-        ],
-      },
-    ]);
-  };
+  const download = useMutation({ ...orpc.export.trialBalanceXlsx.mutationOptions(), ...saveXlsx });
 
   return (
     <>
       <PageHeader
         title="Trial balance"
-        action={<ReportActions disabled={!report.data} onExport={exportReport} />}
+        action={
+          <ReportActions
+            disabled={!report.data || download.isPending}
+            onExport={() => download.mutate({ orgSlug, from, to })}
+          />
+        }
       />
       <PageBody>
         <div className="print:hidden">

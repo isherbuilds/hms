@@ -30,7 +30,6 @@
     "@types/mdx": "^2.0.14",
     "better-auth": "catalog:",
     "evlog": "catalog:",
-    "hucre": "^1.1.0",
     "lucide-react": "catalog:",
     "next-themes": "catalog:",
     "nitro": "^3.0.260903-beta",

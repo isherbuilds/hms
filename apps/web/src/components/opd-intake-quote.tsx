@@ -12,7 +12,7 @@ import { formatMoney } from "@/lib/money";
 import { type WalkInQuote } from "@/lib/opd-service-preview";
 import { formatBusinessDate } from "@/lib/org-datetime";
 import { errorMessage } from "@/lib/orpc-error";
-import { practitionerDisplayName } from "@/lib/practitioner-name";
+import { practitionerDisplayName } from "@hms/api/lib/labels";
 
 export type QuoteState = {
   data: WalkInQuote;

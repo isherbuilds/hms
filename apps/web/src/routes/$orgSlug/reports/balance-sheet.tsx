@@ -7,7 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
@@ -16,7 +16,7 @@ import { ReportActions } from "@/components/report-actions";
 import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
-import { downloadXlsx } from "@/lib/report-export";
+import { saveXlsx } from "@/lib/report-export";
 import { formatMoney } from "@/lib/money";
 import { REPORT_PRINT_PORTRAIT_CSS } from "@/lib/report-presentation";
 import { orgToday as today } from "@/lib/org-datetime";
@@ -67,57 +67,7 @@ function BalanceSheetRoute() {
     report.data !== undefined &&
     report.data.totals.assets !== report.data.totals.liabilitiesAndEquity;
 
-  const exportReport = () => {
-    if (!report.data) return;
-    const { assets, liabilities, equity, totals } = report.data;
-    void downloadXlsx(`billing-ledger-balance-sheet-${asOf}.xlsx`, [
-      {
-        name: "Assets",
-        columns: [
-          { header: "Code", key: "code", width: 14 },
-          { header: "Account", key: "name", width: 34 },
-          { header: "Balance", key: "balance", width: 18 },
-        ],
-        rows: [
-          ...assets.map((row) => ({
-            code: row.code,
-            name: row.name,
-            balance: Number(row.balance),
-          })),
-          { code: "", name: "Total assets", balance: Number(totals.assets) },
-        ],
-      },
-      {
-        name: "Liabilities and equity",
-        columns: [
-          { header: "Section", key: "section", width: 16 },
-          { header: "Code", key: "code", width: 14 },
-          { header: "Account", key: "name", width: 34 },
-          { header: "Balance", key: "balance", width: 18 },
-        ],
-        rows: [
-          ...liabilities.map((row) => ({
-            section: "Liability",
-            code: row.code,
-            name: row.name,
-            balance: Number(row.balance),
-          })),
-          ...equity.map((row) => ({
-            section: "Equity",
-            code: row.code,
-            name: row.name,
-            balance: Number(row.balance),
-          })),
-          {
-            section: "",
-            code: "",
-            name: "Total liabilities and equity",
-            balance: Number(totals.liabilitiesAndEquity),
-          },
-        ],
-      },
-    ]);
-  };
+  const download = useMutation({ ...orpc.export.balanceSheetXlsx.mutationOptions(), ...saveXlsx });
 
   return (
     <>
@@ -128,7 +78,10 @@ function BalanceSheetRoute() {
             <span className="text-muted-foreground">As of</span>
             <Input type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} />
           </label>
-          <ReportActions disabled={!report.data} onExport={exportReport} />
+          <ReportActions
+            disabled={!report.data || download.isPending}
+            onExport={() => download.mutate({ orgSlug, asOf })}
+          />
         </div>
 
         {report.isPending ? null : report.isError ? (

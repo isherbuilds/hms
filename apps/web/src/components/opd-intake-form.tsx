@@ -38,7 +38,7 @@ import { useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { closeOnConflict, errorMessage } from "@/lib/orpc-error";
 import { openingCredit, type PatientCredit } from "@/lib/patient-credit";
-import { practitionerDisplayName } from "@/lib/practitioner-name";
+import { practitionerDisplayName } from "@hms/api/lib/labels";
 
 const intakeSchema = z
   .object({

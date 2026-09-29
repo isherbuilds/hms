@@ -6,11 +6,11 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
-import { OPD_STATUS_LABELS, OpdAppointmentStatusBadge } from "@/components/opd-appointment";
+import { OpdAppointmentStatusBadge } from "@/components/opd-appointment";
 import { DateFilter } from "@/components/list-filter";
 import { ErrorNote, ListToolbar, PageBody, PageHeader } from "@/components/page";
 import { ReportActions } from "@/components/report-actions";
@@ -18,20 +18,13 @@ import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
-import { downloadXlsx } from "@/lib/report-export";
+import { saveXlsx } from "@/lib/report-export";
 import { REPORT_PRINT_LANDSCAPE_CSS } from "@/lib/report-presentation";
-import { formatDateTime, orgMonthToDate as defaultRange, useOrgDateTime } from "@/lib/org-datetime";
+import { orgMonthToDate as defaultRange, useOrgDateTime } from "@/lib/org-datetime";
 import { requireOrgPermission } from "@/lib/route-permission";
-import { practitionerDisplayName } from "@/lib/practitioner-name";
+import { arrivalModeLabel, practitionerDisplayName } from "@hms/api/lib/labels";
 
 const MAX_DAYS = 31;
-
-function arrivalModeLabel(mode: "scheduled" | "walk_in"): string {
-  return mode === "walk_in" ? "Walk-in" : "Scheduled";
-}
-
-// Spreadsheet cells want a plain number; nothing else does arithmetic on this.
-const rupees = (paise: bigint) => Number(paise) / 100;
 
 export const Route = createFileRoute("/$orgSlug/reports/opd-register")({
   head: () => ({ meta: [{ title: "OPD register · HMS" }] }),
@@ -70,79 +63,20 @@ function OpdRegisterRoute() {
     navigate({ search: range, replace: true });
 
   const currency = useMembership(orgSlug, (membership) => membership.currency);
-  const { timeZone } = useOrgDateTime();
   const report = useQuery(orpc.report.opdRegister.queryOptions({ input: { orgSlug, from, to } }));
 
-  const exportReport = () => {
-    if (!report.data) return;
-    void downloadXlsx(`opd-register-${from}-to-${to}.xlsx`, [
-      {
-        name: "OPD register",
-        columns: [
-          { header: "Appointment ID", key: "appointmentId", width: 38 },
-          { header: "Business date", key: "businessDate", width: 16 },
-          { header: "Token", key: "tokenNumber", width: 10 },
-          { header: "Patient", key: "patientName", width: 28 },
-          { header: "MRN", key: "patientMrn", width: 16 },
-          { header: "Caller", key: "callerName", width: 28 },
-          { header: "Practitioner", key: "practitionerName", width: 24 },
-          { header: "Department", key: "departmentName", width: 22 },
-          { header: "Mode", key: "arrivalMode", width: 14 },
-          { header: "Status", key: "status", width: 14 },
-          { header: "Arrived at", key: "arrivedAt", width: 24 },
-          { header: "Billed", key: "billed", width: 16 },
-          { header: "Paid", key: "paid", width: 16 },
-          { header: "Credits", key: "credits", width: 16 },
-          { header: "Refunds", key: "refunds", width: 16 },
-          { header: "Outstanding", key: "outstanding", width: 16 },
-        ],
-        rows: report.data.rows.map((row) => ({
-          appointmentId: row.appointmentId,
-          businessDate: row.businessDate,
-          tokenNumber: row.tokenNumber ?? "",
-          patientName: row.patientName ?? "",
-          patientMrn: row.patientMrn ?? "",
-          callerName: row.callerName ?? "",
-          practitionerName: practitionerDisplayName(row.practitionerName),
-          departmentName: row.departmentName,
-          arrivalMode: arrivalModeLabel(row.arrivalMode),
-          status: OPD_STATUS_LABELS[row.status],
-          arrivedAt: row.arrivedAt ? formatDateTime(row.arrivedAt, timeZone) : "",
-          billed: rupees(row.billed),
-          paid: rupees(row.paid),
-          credits: rupees(row.credits),
-          refunds: rupees(row.refunds),
-          outstanding: rupees(row.outstanding),
-        })),
-      },
-      {
-        name: "Summary",
-        columns: [
-          { header: "Metric", key: "metric", width: 20 },
-          { header: "Value", key: "value", width: 16 },
-        ],
-        rows: [
-          { metric: "Currency", value: currency },
-          { metric: "Appointments", value: report.data.totals.appointments },
-          { metric: "Booked", value: report.data.totals.byStatus.booked },
-          { metric: "Checked in", value: report.data.totals.byStatus.checked_in },
-          { metric: "Cancelled", value: report.data.totals.byStatus.cancelled },
-          { metric: "No show", value: report.data.totals.byStatus.no_show },
-          { metric: "Billed", value: rupees(report.data.totals.billed) },
-          { metric: "Paid", value: rupees(report.data.totals.paid) },
-          { metric: "Credits", value: rupees(report.data.totals.credits) },
-          { metric: "Refunds", value: rupees(report.data.totals.refunds) },
-          { metric: "Outstanding", value: rupees(report.data.totals.outstanding) },
-        ],
-      },
-    ]);
-  };
+  const download = useMutation({ ...orpc.export.opdRegisterXlsx.mutationOptions(), ...saveXlsx });
 
   return (
     <>
       <PageHeader
         title="OPD register"
-        action={<ReportActions disabled={!report.data} onExport={exportReport} />}
+        action={
+          <ReportActions
+            disabled={!report.data || download.isPending}
+            onExport={() => download.mutate({ orgSlug, from, to })}
+          />
+        }
       />
       <PageBody>
         <div className="print:hidden">

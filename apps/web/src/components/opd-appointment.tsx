@@ -1,3 +1,4 @@
+import { OPD_STATUS_LABELS, practitionerDisplayName } from "@hms/api/lib/labels";
 import type { AppRouter } from "@hms/api/routers/index";
 import { Badge } from "@hms/ui/components/badge";
 import type { RouterClient } from "@orpc/server";
@@ -10,15 +11,6 @@ import { FormDialog } from "@/components/form-dialog";
 import { TextField } from "@/components/form-fields";
 import type { Column } from "@/components/page";
 import { orpc } from "@/lib/orpc";
-import { practitionerDisplayName } from "@/lib/practitioner-name";
-
-// Staff copy, not the stored value.
-export const OPD_STATUS_LABELS = {
-  booked: "Booked",
-  checked_in: "Checked In",
-  cancelled: "Cancelled",
-  no_show: "No show",
-} as const;
 
 export type OpdAppointmentStatus = keyof typeof OPD_STATUS_LABELS;
 
