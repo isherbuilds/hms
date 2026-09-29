@@ -5,6 +5,9 @@ vocabulary lives in [`product.md`](./product.md); the reasons behind the record,
 lifecycle, pricing, billing-desk, and concurrency choices are recorded in
 [`decisions.md`](./decisions.md), D013–D020.
 
+For staff instructions, use the [OPD desk guide](../apps/fumadocs/content/docs/opd-desk.mdx).
+For remaining acceptance checks, use the [work registry](./README.md#work-lifecycle).
+
 ## Record and lifecycle
 
 One `opd_appointments` row represents one scheduled or walk-in outpatient

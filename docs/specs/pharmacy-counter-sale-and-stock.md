@@ -1,6 +1,6 @@
 # Spec: Pharmacy counter sale and stock
 
-Status: ready (Stage 0 answers assumed; see below)
+Lifecycle and remaining evidence: [work registry](../README.md#work-lifecycle).
 Authority: owner request, 2026-09-18 — the pilot hospital signs only with IPD,
 Emergency, Pharmacy, and Lab; Pharmacy is the next module. The owner accepted
 the split of Pharmacy into a sale half (this spec) and a purchasing half

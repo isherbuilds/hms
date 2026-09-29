@@ -43,11 +43,26 @@ from correlated per-appointment sums. `booked`, `checked_in`, `cancelled`, and
 `no_show` remain distinct; the report never invents a completed state.
 
 Both reports accept an inclusive Organization-local date range, link from
-`/$orgSlug/reports`, export XLSX and print from the same server result, and
-keep their source-of-record tables horizontally scrollable on narrow screens.
-Cashiers can read Daily Collections to close a shift. The patient-level OPD
-Register and the statutory and ledger reports remain restricted to accountants,
+`/$orgSlug/reports`, and offer XLSX export and printing. Their tables remain
+horizontally scrollable on narrow screens. Cashiers and pharmacists can read
+Daily Collections to close a shift. The patient-level OPD Register and the statutory and ledger reports remain restricted to accountants,
 administrators, and owners.
+
+## Financial reports and exports
+
+**GST outward register** reads issued Invoice and Credit Note snapshots across
+billing streams. It shows documents and summaries by rate and HSN/SAC. Its
+CGST/SGST split assumes intra-state supply; it is not a filing-ready export.
+
+**Trial Balance** reads journals for opening balances, period debits and credits,
+and closing balances by account. **Balance Sheet** reads the same billing ledger
+as of the selected date. Both cover HMS billing activity only; they omit expense,
+payroll, inventory valuation, and manual journal accounting.
+
+All five report pages offer **Print / PDF** and **Export Excel**. Report reads
+use the report's permission and verified organization scope. Refresh the page
+and check the date range before handover. Export implementation changes and
+remaining browser checks belong in the work registry.
 
 ## No-show reconciliation
 

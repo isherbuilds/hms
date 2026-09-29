@@ -1,78 +1,324 @@
 ---
 title: OPD desk
-description: Register patients and run Now or Later outpatient appointments
+description: Find patients, make an appointment, and work through an outpatient visit
 ---
 
-## Register a patient
+> **About the pictures:** These pictures use made-up demo records. Names,
+> numbers, dates, and amounts are examples.
 
-Open **Patients** and choose **Register patient**, or register from the patient
-search while creating an appointment. Enter the name, phone, sex, and either a
-date of birth or age. Check any existing patient matches before saving.
+## Find or register a patient
 
-Optional fields start collapsed:
+Choose **Patients** in the left menu. Type a name, phone number, or patient
+number into **Search patients**. Check the results before you register someone.
+This helps stop two records being made for the same person.
 
-- **Contacts** — the patient's relation and guardian name, an optional relation
-  mobile number, and an emergency contact. Choose **Copy from relation** to fill
-  the emergency contact with that person's name and mobile number, then correct
-  it if needed. The relation needs a mobile number before you can copy it.
-- **Personal details** — email, national ID / UID, and address.
-- **Sponsor** — payer, policy number, and employee number when applicable.
+![Patient list with the search box, patient rows, and Register Patient button.](/images/guides/patients-list.png)
+
+Choose **Register Patient** when the person is not already listed. Fill in the
+main details:
+
+1. Type the person's full name and mobile number.
+2. Choose their sex.
+3. Enter their date of birth or their age.
+4. Open any extra sections you need.
+5. Read the details once more, then choose **Save**.
+
+![Patient registration form with the required details and extra sections.](/images/guides/patient-registration.png)
+
+The extra sections are optional:
+
+- **Contacts** — the person's relation or guardian and an emergency contact.
+  If the relation has a mobile number, **Copy from relation** can copy that
+  person's details into the emergency contact. Check the copied details before
+  you save. An emergency contact needs a name and phone number.
+- **Personal details** — email, identity number, and address.
+- **Sponsor** — the insurer, company, or other payer, plus policy and employee
+  numbers when they apply.
 - **Medical details** — blood group, allergies, and medical history.
 
-Closing a section keeps its values. If a field needs correction on save, its
-section opens. The same sections are available when editing a patient record.
-An emergency contact needs a name and phone; its relation is optional.
+You can close an extra section after you enter its details. HMS keeps the
+details in the form. If something needs fixing, HMS opens that section and shows
+you which field to correct. Only enter details the patient or hospital has
+confirmed.
 
-## Start an appointment
+## Read a patient's record
 
-Open **OPD**, choose **New appointment**, and complete the form in order:
+Open a patient's name to see the record. The top strip shows the patient's name,
+number, age, and allergy warning so you can check you opened the right person.
+**Book Appointment** starts an appointment for this patient.
 
-1. **Patient** — search by the available patient details and select the correct
-   record. Register the patient from the same search when no safe match exists.
-2. **Care** — choose the department and practitioner.
-3. **When** — choose **Now** for an arriving patient or **Later** for a future
-   organization-local date and time.
-4. **Services** — add any known billable services. Services are optional in
-   both modes; **Now** also shows the configured attendance fee for review.
+![Patient record with allergy information and the Record, Visits, Billing, and Treatment tabs.](/images/guides/patient-record.png)
 
-HMS warns before leaving a changed form. Resolve that warning instead of opening
-another destination and assuming the draft was saved.
+The tabs show different parts of the same person's record:
 
-### Now
+- **Record** — phone, address, medical details, and **Edit Patient**.
+- **Visits** — earlier appointments. Open a row to see its files and Charges.
+- **Billing** — the person's invoices, payments, and any money kept for future
+  care.
+- **Treatment** — a summary of the patient's treatment plans. Start or bill a
+  plan from a checked-in OPD visit. See
+  [the dentist example](#example-a-dentist-treatment-plan).
 
-**Now** uses server time and creates a checked-in appointment. When a billable
-line remains, a user with billing access reviews the itemized amount, discount
-details, and up to four payment lines before issuing and collecting. When no
-attendance fee or selected service remains, HMS creates only the appointment and
-token; it does not invent an Invoice or Payment.
+![Treatment tab. This example has no treatment plan.](/images/guides/patient-treatment.png)
 
-### Later
+![Visits tab before a row is opened.](/images/guides/patient-visits.png)
 
-**Later** requires a future minute. Selected services are saved at their current
-price but remain pending until check-in. Review them again when the patient
-arrives.
+Open a visit row to see its billable items and any attached files. Choose **Open
+Visit Record** to go to the full visit.
 
-## Work the day list
+![An opened visit row showing its Charges and the Open Visit Record button.](/images/guides/patient-visit-details.png)
 
-The OPD page is a dated list. Search within the selected day, move to another
-date when needed, and include closed rows only when you need to inspect them.
+The Billing tab keeps documents for one patient together. Choose **Take
+Advance** only when you mean to hold money for later care. See [Billing and
+corrections](/billing-and-corrections) for what each document means.
 
-- **Booked** — scheduled but not yet arrived. You can check in, reschedule, mark
-  no-show, or cancel when your role allows it.
-- **Checked In** — the patient arrived. Open the record for the clinical or
-  billing work owned by your role.
-- **Cancelled** and **No show** — closed outcomes. Pending Charges are not left
-  available for billing.
+![Patient Billing tab with invoices and the Take Advance action.](/images/guides/patient-billing.png)
 
-## Use the appointment record
+![Take Advance form. The example is not submitted.](/images/guides/patient-advance.png)
 
-An appointment has two permission-controlled tabs over the same record:
+**Edit Patient** opens the same patient form used at registration. Check the
+record at the top before you change it, then save only details the patient or
+hospital has confirmed.
 
-- **Clinical** shows the patient and attendance facts, prints the OPD slip, and
-  attaches or downloads the signed prescription scan. The signed paper remains
-  the clinical source.
-- **Billing** reviews pending Charges, issues Invoices, records collections, and
-  shows later corrections.
+## Worked example: one patient, from start to medicine
 
-Continue with [Billing and corrections](/billing-and-corrections) before issuing
-or changing a financial document.
+This is a training example with a made-up patient called **Mira Example**, age 8. Do not copy the name or any demo amount into a live record. In a real visit,
+use the details the patient or guardian confirms.
+
+1. **Look first.** Choose **Patients** and search Mira's name or confirmed
+   phone number. If a matching record appears, open it and check the name and
+   age before you continue. Do not register a second record just because the
+   first search did not show the full name.
+2. **Register only if needed.** Enter the patient's full name, confirmed phone
+   number, and sex. Enter the date of birth from a trusted record if you have
+   it. If you do not know the date, enter the patient's age instead; HMS marks
+   the birth date as estimated. For Mira, enter age 8 and the confirmed
+   guardian's details.
+   Add an allergy only when the patient or guardian has told you about it.
+3. **Book the visit.** Choose **OPD** → **New Appointment**. Choose the
+   patient, department, and practitioner. Choose **Now** only when the patient
+   is here. Check the service and price. The training hospital may show
+   **Paediatrics consultation · ₹500**; your hospital's price can be
+   different. Choose **Confirm**. For a billable visit, review the payment
+   and advance credit, then choose **Confirm Walk-In** once. This saves the
+   visit and its invoice together. Record only money actually received.
+4. **Let the clinician decide the care.** Open the visit and check the patient
+   name again. The doctor decides the diagnosis, treatment, medicine, and
+   directions. HMS's **Clinical** tab can hold a scan of the signed paper
+   prescription. This guide does not provide a diagnosis or medicine dose.
+5. **Check the visit bill.** Open the visit's **Billing** tab. The invoice
+   made during **Now** intake is already there; do not bill the same work
+   again. Record any unpaid balance against that invoice. Use **Review And
+   Collect** only when new Charges are waiting to be billed, such as work from
+   a treatment plan. See [Billing and corrections](/billing-and-corrections).
+6. **Record medicine only when it is handed out.** The pharmacist chooses
+   **Patient** and searches for Mira. The pharmacist selects the exact medicine
+   on the signed order, then chooses an in-date batch from stock. If the order
+   names `Crocin Suspension 120 mg/5 mL`, check that the bottle has the same
+   name and strength. Do not substitute the `240 mg/5 mL` product. The
+   clinician's signed order gives the directions; this example gives no dose.
+   Check the pack, expiry, and prescribed quantity. The sale has its own
+   pharmacy Invoice and payment; it does not replace the OPD visit bill. See the
+   [medicine examples](/pharmacy#practice-enter-three-products-correctly).
+7. **Check the result.** Open the patient's record. Use **Visits** to see the
+   visit and **Billing** to see the invoices and receipts. If the patient needs
+   another visit, book it and follow the supervisor's instructions.
+
+Ask for the guardian before entering a child's record. Enter only confirmed
+details. Do not fill an unknown allergy, diagnosis, or medicine direction with a
+guess.
+
+## Book an appointment
+
+Choose **OPD**, then **New Appointment**. You can also choose **Book
+Appointment** in a patient's record. In that case HMS fills in the patient for
+you.
+
+![New appointment form. The example is not submitted.](/images/guides/new-appointment.png)
+
+Fill the form from top to bottom:
+
+1. **Patient** — search and choose the correct person. If there is no safe
+   match, register the person first.
+2. **Care team** — choose the department and practitioner.
+3. **When** — choose **Now** for a person who has arrived, or **Later** for a
+   future appointment.
+4. **Services** — add a billable service if one is known. This part is optional.
+   An attendance fee may also appear. Ask a supervisor if you do not know which
+   service or price to use.
+5. Check the amount and choose **Confirm** once.
+
+If you change the form and then leave, HMS asks what you want to do with the
+unsaved form. Choose to stay if you have more to enter. Choose to leave only if
+you mean to discard those changes.
+
+### Choose Now or Later
+
+**Now** means the patient is here. For a billable visit, **Confirm** opens
+**Review and collect**. Check the amount, advance credit, and payment lines,
+then choose **Confirm Walk-In**. HMS saves the checked-in visit, token, invoice,
+and any payment together. If you received no money, clear the payment amount;
+check any advance credit before saving. The unpaid amount stays due.
+
+If the total is zero, **Confirm** saves the visit and token directly, without an
+invoice or payment. After saving, HMS opens the visit's **Clinical** tab.
+
+**Later** means the patient will come in the future. Pick a future date and
+time. Services are optional. If you add one, HMS saves its current price for the
+visit; check the price again when the patient arrives. Find the appointment in
+the day list and choose **Check In**.
+
+**Check In** changes a linked patient's appointment right away. If an older
+booking has only caller details, HMS first asks you to find or register the
+patient. Check the patient before confirming. Use check-in only after arrival;
+it gives the patient a token and adds the configured attendance fee for billing.
+
+## Work from the OPD day list
+
+Choose **OPD** to see the day's appointments. Search for a patient, choose a
+different date, or open **Filters** to narrow the list. Each row shows the
+patient, token, time, practitioner, visit status, and any balance.
+
+![OPD day list with appointments, visit status, balance, and Check In actions.](/images/guides/opd-day-list.png)
+
+- **Booked** — the patient has a future or planned visit.
+- **Checked In** — the patient has arrived.
+- **Cancelled** — the appointment was cancelled, including a visit that had
+  already checked in.
+- **No show** — the booked patient did not arrive.
+
+For a booked patient who has arrived, choose **Check In** once. For a checked-in
+patient, choose the patient's name to open the visit. If the status or name
+looks wrong, stop and ask the supervisor before changing it.
+
+Use **Load More** at the bottom of a long list to see older rows. Cancelled and
+No show visits are closed. Their waiting Charges are not left available to bill.
+
+## Reschedule, cancel, or record a no-show
+
+Open the appointment by choosing its patient or caller name. Check the date and
+status before choosing an action.
+
+- **Reschedule:** available for a booked appointment. Choose the new date and
+  time, then **Reschedule**. Find the appointment under its new date in OPD.
+- **Cancel:** enter the reason, then choose **Cancel Appointment**. A booked
+  or checked-in appointment can be cancelled.
+- **No Show:** use this for a booked patient who did not arrive. Read the
+  confirmation and choose **Mark No Show**. Reading an older day's list also
+  marks remaining past bookings as no-shows.
+
+Cancellation and no-show remove items still waiting to be billed. They do not
+cancel an issued invoice or return money. Use the [billing correction
+steps](/billing-and-corrections#correct-an-issued-invoice) when money needs a
+separate correction.
+
+## Use the visit screen
+
+The visit screen has two tabs. **Clinical** shows who arrived and which team
+will see them. It also has **Print Slip** and **Paper prescription**.
+
+![Clinical visit screen with Print Slip and Paper prescription controls.](/images/guides/opd-appointment-clinical.png)
+
+To attach a signed prescription scan, check the patient name, choose **Attach
+Scan**, and select an image or PDF. Selecting the file starts the upload and
+attaches it to this visit. Wait for it to appear, then choose **Open** to check
+it. The signed paper remains the clinical source.
+
+If you attached the wrong file, use its remove button. This removes the link
+from the visit but keeps the private file in **Files**. Attach the correct scan.
+An authorized administrator can delete the unused file from **Files**.
+
+Choose **Billing** to see Charges and invoices for this visit. A Charge records
+a priced service or item. A pending Charge is waiting to be billed. Do not issue
+it until the person responsible for billing has checked the patient, item, and
+amount.
+
+![Visit Billing tab with a Charge waiting for review.](/images/guides/opd-appointment-billing.png)
+
+If HMS says the Charges changed since you opened the bill, choose **Review
+Updated Charges** and check the new items and amount before you continue.
+
+Continue with [Billing and corrections](/billing-and-corrections) before you
+issue an invoice, record money, or correct a bill.
+
+## Call patients for their next sitting
+
+A **sitting** is one visit in a treatment plan.
+
+1. Open **OPD**, then choose **Follow-ups** in the **Status** filter.
+2. Check the patient's name, phone number, plan, and next-sitting note.
+3. Agree the next visit with the patient. Use the row's booking button to start
+   an appointment with the patient and plan already selected.
+4. Choose the care team, **Later**, and the agreed date and time. Save once.
+5. Check that the booking appears on that day's OPD list.
+
+This list shows open plans that are due or have no next date, with no sitting
+booked for today or later. Booking a sitting removes the plan from the call
+list.
+
+## Example: a dentist treatment plan
+
+A treatment plan helps the desk track agreed procedure work over several visits.
+It does not choose treatment for the dentist. The dentist decides what work is
+needed, its price, and how many visits it will take.
+
+### Prepare the dental services once
+
+An administrator sets up a **Dental** department, its dentist, a **Dental
+consultation** service, and the procedure services the dentist approves. For
+example, the catalog may have **Root canal treatment** as a procedure. Set the
+real price, tax, and fees from the hospital's approved list. Follow
+[Administration and handover](/administration-and-handover).
+
+### Record one made-up course
+
+Suppose the dentist accepts a two-visit root-canal course for **₹2,400**. This
+amount is only a training example. Use the amount the dentist and hospital
+approved for the real patient.
+
+1. Open the correct patient's **checked-in** dental visit.
+2. In **Treatment plan**, choose **New plan**.
+3. Check the dentist's name. Choose **Root canal treatment** from the
+   procedure list.
+4. Enter **₹2,400** as the total price and **2** as the estimated sittings.
+   The screen shows about **₹1,200 per sitting**. If the price differs from
+   the service list, enter a note that explains the approved price.
+5. Enter the next sitting date and a short note. The dentist should enter any
+   tooth or site detail from the clinical chart. Do not guess a tooth number.
+6. Check the patient, procedure, total, and date. Choose **Create plan** once.
+
+The current visit becomes the first sitting. To bill the work delivered at that
+visit, choose **Bill this sitting**. HMS adds a Charge to that visit. Open its
+**Billing** tab, check the Charge, and issue or collect the bill using the
+[billing
+steps](/billing-and-corrections#check-a-visit-before-making-its-invoice).
+
+For the second sitting, book a new appointment and choose the plan under
+**Sitting for**. If the visit was created without that link, open its
+**Clinical** tab, choose the plan, and use **Add visit to plan**. After
+check-in, check the work before you choose **Bill this sitting**. The last
+sitting takes any small rounding difference that remains. Complete the plan only
+after its work is finished and every item has been billed or dropped with a
+reason.
+
+The patient's **Treatment** tab shows a summary. Use the OPD visit to create a
+plan, add a sitting, or bill work. A plan records procedures and amounts; it is
+not a medicine prescription or a substitute for the dentist's clinical chart.
+
+## Change or finish a treatment plan
+
+Open a linked visit's **Clinical** tab to work on the plan:
+
+- **Add Item:** add another approved procedure and its total course price.
+- **Next Sitting:** save the requested date and a short note. This updates the
+  reminder; it does not book an appointment.
+- **Other Amount:** bill an approved amount for this sitting, up to the amount
+  left on the plan item. Check the figure before saving.
+- **Drop Item** in the item's **⋯** menu: stop the remaining work on that item
+  and enter a reason. This does not undo earlier bills.
+- **Complete Plan:** use it when the course is finished. It appears when each
+  item is fully billed or dropped.
+
+If the patient stops the course early, open the patient's **Treatment** tab,
+choose **Close Plan**, and enter the reason. Check unpaid bills and unused
+advances separately. Closing a plan does not cancel bills or refund money.

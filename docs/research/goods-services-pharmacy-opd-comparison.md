@@ -4,6 +4,13 @@
 services spec](../specs/pharmacy-goods-and-services.md). This compares documented
 behavior. It does not change D027 or D049.
 
+> **Historical comparison.** The HMS code and line references below describe
+> the tree reviewed before the 2026-09-29 cutover. The current contracts are
+> [goods and services](../specs/pharmacy-goods-and-services.md) and
+> [packs and loose units](../specs/pharmacy-packs-and-loose-units.md).
+> Products now own sale facts; stock supports packs and loose units. Do not
+> use the former catalog link or no-loose-sale premise as current guidance.
+
 ## Question
 
 How do Marg, Frappe/Marley and comparable hospital systems identify goods and
@@ -46,7 +53,7 @@ decisions. This follows the current HMS link, pricing and OPD boundaries
 | **GNU Health**                      | Tryton Product types include goods and services; medicines use defined dispensing units. A separate Medicament record adds clinical meaning to the product. [Products](https://docs.gnuhealth.org/his/userguide/healthcenter/products.html)                                                                                                                                                                                                                                                                         | Patient Health Services can include both products and services; lab tests link to priced service products. [Products](https://docs.gnuhealth.org/his/userguide/healthcenter/products.html), [laboratory](https://docs.gnuhealth.org/his/userguide/modules/laboratory.html)                                                                                                                                                                                                                                           | One billable base does not remove clinical records or the need to map them. The online behavior pages are unversioned; the [release page](https://docs.gnuhealth.org/his/techguide/release.html) lists HIS 5.0 as stable on this research date. |
 | **OpenEMR**                         | The documented dispensary uses drug and lot inventory records. [Dispensary](https://www.open-emr.org/wiki/index.php/Pharmacy_Dispensary_Module), [current drug dispense source](https://github.com/openemr/openemr/blob/master/interface/drugs/dispense_drug.php)                                                                                                                                                                                                                                                   | An encounter fee sheet uses service codes; its documented workflow differs from a shared stock Item master. [Fee sheet](https://www.open-emr.org/wiki/index.php/OpenEMR_4.2.0_Fee_Sheet_Custom_Service_Categories)                                                                                                                                                                                                                                                                                                   | A separate service and pharmacy design is possible. The detailed wiki pages are older or unversioned and do not prove the exact UI in [OpenEMR 8.4.1](https://www.open-emr.org/wiki/index.php/OpenEMR_Wiki_Home_Page).                          |
 
-### Current HMS comparison
+### HMS at the time of comparison
 
 - D049 counts and prices one unit per Product and keeps `pack` as printed text;
   Marg's configurable conversion is a direct alternative, not a correction to

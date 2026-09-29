@@ -154,7 +154,8 @@ The committed `bun.lock` makes installs reproducible; exact application-library
 versions are not used as a second lockfile. Shared runtime versions live in the
 root catalog and otherwise stay in the package that imports them. Use a normal
 SemVer range unless an upstream package requires an exact matching peer. The
-current exception is the matched `@fumadocs/base-ui` / `fumadocs-core` pair.
+`@fumadocs/base-ui` / `fumadocs-core` pair uses matching ranges in
+`apps/fumadocs/package.json`; keep the pair compatible when updating it.
 
 `packageManager` remains exact because Bun is the repository's runtime, package
 manager, test runner, and compiler. Upgrade that toolchain pin deliberately and

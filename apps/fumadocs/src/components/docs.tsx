@@ -35,7 +35,7 @@ export function Docs({
           enabled: false,
         }}
         nav={{
-          title: "Fumadocs on Astro",
+          title: "HMS guide",
         }}
       >
         <DocsPage {...page}>{children}</DocsPage>

@@ -1,70 +1,146 @@
 ---
 title: Administration and handover
-description: Configure an organization and use files, audit, and reports safely
+description: Set up the hospital, manage access, and keep files safe
 ---
 
-## Set up the organization
+> **About the pictures:** These pictures use made-up demo records. Names,
+> numbers, dates, and amounts are examples.
 
-Follow the in-app **Setup path**, then return to **Staff** after the catalog and
-members are ready:
+## Set up the hospital in this order
 
-1. **Organization** — confirm legal name, address, tax identifier, currency,
-   timezone, fiscal-year start, and document prefixes. These values shape money,
-   business dates, MRNs, and printed document numbers. Confirm the displayed
-   currency before billing begins; it cannot be changed for the organization.
-2. **Staff** — create departments and practitioners. Leave member links and
-   attendance fee assignments until their required records exist.
-3. **Catalog** — create the active consultation and follow-up items, then
-   maintain every service's code, name, category, price, tax rate, tax code, and
-   active state.
-4. **Members** — invite existing operator-created accounts, then assign the role
-   each person needs:
-   - **Owner** — full organization, operational, billing, reporting, audit, and file access.
-   - **Administrator** — manage people and settings with full operational, billing, reporting, audit, and file access.
-   - **Reception** — register patients, manage OPD visits, collect at intake, and upload or read files.
-   - **Cashier** — view patients and OPD visits, handle billing, read files, and use Daily Collections for the shift close.
-   - **Accountant** — review patients, visits, and billing; issue credit notes; and access reports, audit, and files.
-     You can change a person's role, remove them, or revoke a pending invitation
-     when authorized.
-5. **Staff again** — link practitioners to member logins when applicable and
-   assign the existing consultation and follow-up fee items.
+Choose **Settings** in the left menu. Do this setup with the person responsible
+for the hospital. These choices affect future visits, bills, and printed papers.
 
-Review identifiers, currency, timezone, prices, and taxes with the responsible
-operator before live use. Changing configuration later does not rewrite already
-issued financial documents.
+### 1. Check Organization
 
-## Files and prescription scans
+Open **Organization**. Check the hospital's legal name, address, tax number,
+time zone, financial year, and document numbers. Check the currency before any
+money is recorded. HMS does not let you change the currency later.
 
-**Files** stores organization documents privately. Downloads use signed links
-that expire after 15 minutes. A file attached to an appointment must be detached
-from that record before it can be deleted from Files. Treat a signed link as a
-temporary bearer link and do not place it in messages or logs.
+Choose **Save settings** only after an authorized person has checked the values.
+A later settings change does not rewrite an invoice that was already issued.
 
-The OPD clinical tab is the correct place to attach a signed prescription scan to
-its appointment. The general Files page does not create that clinical link.
+![Organization settings with hospital details and document number settings.](/images/guides/settings-organization.png)
 
-## Audit
+### 2. Add departments
 
-The Audit settings tab records selected sensitive or destructive actions and
-permission denials. It is not a history of every read or every ordinary edit.
-Use it to investigate who performed a recorded action; use the source record and
-financial documents for the business history itself.
+Open **Staff**, choose **Departments**, and add the hospital's departments. Give
+each department its correct default consultation fee after the matching service
+exists.
 
-## Reports and handover
+![New department form. The example is not saved.](/images/guides/settings-new-department.png)
 
-The available reports are derived only from transactions recorded in HMS:
+### 3. Add services and prices
 
-- **Daily collections** — Payments minus Refunds by method and business date, for the shift close.
-- **OPD register** — one row per OPD visit with attendance and billing for a date range.
-- **GST outward register** — Invoice and Credit Note tax reporting for a period.
-- **Trial balance** — opening, movement, and closing balances by billing-ledger account.
-- **Balance sheet** — financial position produced by the HMS billing ledger.
+Open **Services**. A service is a billable item such as a consultation, lab
+test, or procedure. Choose **New Service** and enter the approved name,
+category, price, tax rate, and tax code if one applies. Use the rate-at-intake
+option only when the price can change for each patient.
 
-Filter the required period or date, review the result, then print or export it for
-handover. These views do not include expenses, payroll, inventory accounting,
-manual journals, bank reconciliation, period close, or final accounts. The GST
-register is not a filing return. Reconcile daily and have the pilot's accountant
-approve classifications and statutory fields before relying on an export.
+![Services list with prices, tax rates, and active status.](/images/guides/settings-catalog.png)
 
-Return to [Billing and corrections](/billing-and-corrections) when a discrepancy
-comes from an Invoice, Payment, Credit Note, or Refund rather than setup.
+![New Service form. The example is not saved.](/images/guides/settings-new-service.png)
+
+Changing a price affects future work. It does not change an invoice that was
+already issued.
+
+### 4. Add payers when needed
+
+Open **Payers** to add an insurer, third-party administrator, company, or
+scheme. Choose **New Payer**, type the approved name, choose its type, and save.
+Choose a payer on a patient record only when coverage is confirmed. This records
+the sponsor details; it does not send a claim or move the bill to the sponsor.
+The patient bill still shows any unpaid amount.
+
+![Payers list.](/images/guides/settings-payers.png)
+
+![New Payer form. The example is not saved.](/images/guides/settings-new-payer.png)
+
+### 5. Invite people and choose their access
+
+Open **Members**, then choose **Invite**. Type the person's email address,
+choose the role, and review both before you create the invitation. Copy the
+invitation link and share it directly with that person. HMS does not send it by
+email. They can create an account from the link if they do not have one.
+
+Keep the link private. If it reaches the wrong person, cancel the invitation and
+create a new one. See [Getting started](/getting-started#join-your-hospital).
+
+![Members list with current people and their roles.](/images/guides/settings-members.png)
+
+![Invitation form showing the email and role fields. Nothing is sent.](/images/guides/settings-invite-member.png)
+
+Roles are like keys. Give each person only the key needed for their job:
+
+- **Owner** — full access to the organization.
+- **Administrator** — manages people and settings and can use the work areas.
+- **Reception** — works with patients and OPD visits and can collect at intake.
+- **Cashier** — handles bills, payments, and daily collection reports.
+- **Accountant** — reviews bills and reports and can issue Credit Notes.
+- **Pharmacist** — sells and returns medicine, receives goods, and reads Daily
+  Collections. An Administrator or Owner manages products and stock adjustments.
+
+You can change a person's role, remove a member, or cancel an unused invitation
+when your role allows it. Check with the owner first if you are not sure.
+
+### 6. Add practitioners and link the right records
+
+Return to **Staff**, choose **Practitioners**, and add each practitioner under
+the correct department. If the staff member has an HMS login, link it here.
+Choose the matching consultation and follow-up fee items. Do not guess a
+practitioner number or fee. Ask the person who manages staff if you are unsure.
+
+![Staff list showing practitioners and their departments and fee items.](/images/guides/settings-staff.png)
+
+![New practitioner form. The example is not saved.](/images/guides/settings-new-practitioner.png)
+
+## Change access when staff duties change
+
+Open **Settings → Members** and check the person's name and email.
+
+- To change their role, open their **⋯** menu and choose the new role under
+  **Change role**. The choice saves immediately; check the new role label.
+- To stop their access to this hospital, choose **Remove from organization**
+  and confirm **Remove**. Their history stays on the record.
+- To stop an unused invitation, choose its cancel action and confirm
+  **Cancel Invitation**. Send a new invitation if the person still needs access.
+
+Ask the owner before changing an administrator's access. A staff record under
+**Practitioners** describes care work; removing it from use is not the same as
+removing a person's login access under **Members**.
+
+## Store and find files
+
+Choose **Files**, then **Upload** and select the correct file. HMS uploads the
+file as soon as you choose it. Check the hospital name and the file name before
+you pick it. Use **Search files** to find a file later; choose its download
+button to open it.
+
+![Files page with upload and search controls.](/images/guides/files.png)
+
+Files are private to the hospital. A download link works for a short time. Do
+not paste it into a message or leave it where other people can use it.
+
+Do not delete a file unless an authorized person has checked it. A file linked
+to an appointment must be detached from that appointment before it can be
+deleted. Use the file's delete button, read the confirmation, and choose
+**Delete** only for the file you intend to remove. A delete is permanent.
+
+For a signed prescription scan, attach the file from the visit's **Clinical**
+tab. Uploading a file to **Files** alone does not attach it to a patient's
+visit.
+
+## Read the Audit list
+
+Open **Audit** to look for a recorded sensitive action or a permission problem.
+The list is not a history of every click or every ordinary change. Check the
+patient, invoice, or setting itself to understand the full record.
+
+![Audit list showing recorded events.](/images/guides/settings-audit.png)
+
+## Prepare a handover
+
+Use [Reports and handover](/reports-and-handover) for daily money, OPD, tax, and
+accounting reports. HMS reports include transactions entered in HMS. They do not
+replace expense records, payroll, stock accounting, bank checks, or the
+accountant's final books.

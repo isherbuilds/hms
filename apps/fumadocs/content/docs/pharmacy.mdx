@@ -1,0 +1,261 @@
+---
+title: Pharmacy
+description: Sell medicine, receive stock, and record medicine returns
+---
+
+> **About the pictures:** These pictures use made-up demo records. Names,
+> medicine batches, dates, and amounts are examples.
+
+## Sell medicine
+
+Choose **Pharmacy** in the left menu. The **Sales** tab shows sales already
+recorded for the selected date. Choose a sale number to see the buyer, items,
+payment, and print option.
+
+![Pharmacy sales list with sale number, date, buyer, and total.](/images/guides/pharmacy-sales.png)
+
+Choose **New Sale** to start a sale. First choose **Patient** or **Walk-In**:
+
+- Choose **Patient** when the sale belongs on a patient's account. Search for
+  the right patient and select them.
+- Choose **Walk-In** for a person who is not using a patient record. Type the
+  buyer's name. A phone number is optional.
+
+![New Sale form with buyer, item search, optional prescription details, and total.](/images/guides/pharmacy-new-sale.png)
+
+Next, choose an item from the stock search. Check the product name, batch,
+expiry, price, and quantity before you add it. The batch matters: two boxes of
+the same medicine may have different expiry dates or prices.
+
+For example, a demo shelf has **Paracetamol 500 mg**, batch **PCM-EXP**, at
+**₹80 per 10 tablets**. If that is the right item, choose that batch and check
+the quantity. HMS shows the amount and tax in the Payment box.
+
+![Example sale with a walk-in buyer and one Paracetamol batch in the basket. It is not saved.](/images/guides/pharmacy-sale-item.png)
+
+Open **Add Details** if you need to record the person the medicine is for, the
+prescriber, or the prescription reference. Some medicines require prescriber
+details. HMS will show those fields when needed.
+
+Read the buyer, medicine, batch, quantity, and **Payable** total once more.
+Choose **Collect** once. On the next screen, check the amount and payment
+method. Choose **Split payment** if the buyer used more than one method. Then
+choose **Record sale** once. A saved sale appears in **Sales** and opens its
+sale record.
+
+![Sale payment review with the amount, method, and final Record Sale button. Nothing is saved.](/images/guides/pharmacy-sale-checkout.png)
+
+![Split payment example with two payment lines. Nothing is saved.](/images/guides/pharmacy-split-payment.png)
+
+**Collect** opens the review; **Record Sale** saves the sale, invoice, stock
+movement, and any payment together. A Walk-In buyer must pay in full. A sale
+linked to a Patient can use advance credit or leave an unpaid balance.
+
+If the final result is unclear, open **Sales** and check for the saved sale
+before trying again. A repeated submission can record a second sale.
+
+## Receive a medicine delivery
+
+Choose **Stock**, then **Receive Goods**. Choose **Supplier** for a new delivery
+from a supplier. Use **Opening** only when a supervisor is entering the
+hospital's first counted stock.
+
+![Receive Goods form with supplier bill details and a line for each batch.](/images/guides/pharmacy-receive-goods.png)
+
+For a supplier delivery:
+
+1. Type the supplier name, bill number, and bill total.
+2. Check the date the goods arrived.
+3. Choose the product and enter its batch number and expiry date.
+4. Check whether the line is priced per pack or per counted unit. Enter the
+   billed and free quantities in that unit, then the rate, discount, tax, and
+   printed MRP. For a product without expiry, no expiry date is needed.
+5. Add another batch if the bill has another batch or product.
+6. Check the bill total and stock amounts before you choose **Receive Goods**.
+
+Use one line for each product and batch. Do not guess the batch, expiry, tax, or
+price. An Administrator or Owner can choose **New Product** and enter the
+approved product details. A Pharmacist without that access must ask them to add
+the product before receiving it.
+
+![New Product form with unit, pack, expiry, and prescription choices.](/images/guides/pharmacy-new-product.png)
+
+### Enter the first stock count
+
+Use **Opening** when first bringing a batch into HMS. It is not a supplier bill.
+
+1. Count each product and batch on the shelf.
+2. Open **Receive Goods**, choose **Opening**, and set **Counted on**.
+3. Enter each product, batch, expiry where needed, counted quantity, and printed
+   MRP. Check whether the quantity is in packs or individual units.
+4. Keep the count sheet and enter a short reference in **Note**.
+5. Choose **Receive Goods**, then check the quantities in **Stock**.
+
+If the batch already has movements, use a checked **Count correction** instead
+of entering the opening stock again.
+
+### Practice: enter three products correctly
+
+Use the actual carton or bottle in the hospital. These examples show where each
+label detail goes. They are not instructions to give a medicine to a patient. A
+doctor chooses the medicine and directions. The pharmacist checks the signed
+prescription and the exact product before a sale.
+
+#### Crocin 650 tablet
+
+- **Name:** `Crocin 650 Tablet`
+- **Generic name:** `Paracetamol`
+- **Form and strength:** `tablet`, `650 mg`
+- **Counted in:** `tablet`
+- **Pack:** If the box has 10 tablets, enter `10 tablets` and `10` units per
+  pack. Use the count printed on the box.
+
+#### Crocin Suspension
+
+- **Name:** `Crocin Suspension 120 mg/5 mL`
+- **Generic name:** `Paracetamol`
+- **Form and strength:** `oral suspension`, `120 mg/5 mL`
+- **Counted in:** `bottle`; one bottle is one unit.
+- **Pack:** Enter the bottle volume printed on that bottle.
+
+The manufacturer also lists a different `240 mg/5 mL` suspension. Check the
+exact bottle. Do not swap strengths. See the manufacturer's [Crocin 650 tablet
+page](https://www.crocin.com/crocin-products-for-adult/crocin-650-tablets/) and
+[Crocin suspension
+leaflet](https://www.crocin.com/content/dam/cf-consumer-healthcare/panadol/en_in/kids/crocinchildrensrange/pdfs/Crocin-suspension-and-Crocin-Suspension-DS-Product-Info.pdf).
+
+#### Eye drops
+
+- **Name:** `Carboxymethylcellulose 0.5% eye drops` (example only)
+- **Generic name:** `Carboxymethylcellulose sodium`
+- **Form and strength:** `eye drops`, `0.5%`
+- **Counted in:** `bottle`; one bottle is one unit.
+- **Pack:** Enter the bottle volume printed on the carton.
+
+Use the actual brand, ingredient, strength, and bottle size in your hospital.
+For example, one [official eye-drop
+label](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=3b94f67c-d675-4e16-846a-3ca39b0405e0)
+lists carboxymethylcellulose sodium 0.5%; another product may have different
+ingredients or a different strength.
+
+Then fill the other fields from the product and the hospital's approved list:
+
+1. Set **Has an expiry date** to match the product. Most medicines expire;
+   use the pack to check.
+2. For **Prescription**, follow the product's local legal category and the
+   hospital pharmacist's instructions. Do not choose a category by guessing.
+3. Leave **Sold at the counter** on for medicine sold to a patient. Turn it
+   off only for stock used inside the hospital and never charged to a patient.
+4. Enter **GST %** and **HSN** from the approved tax list or supplier record.
+   Do not copy them from another product.
+5. Choose **Add product**. When stock arrives, record its supplier bill,
+   batch, expiry, quantity, and printed price under **Receive Goods**.
+
+HMS does not have a dose, times-per-day, or number-of-days field in the product
+catalog. Keep those directions on the prescriber's signed order. Never turn a
+training example into a medicine instruction. If a pack differs from this
+example, follow the pack and ask the pharmacist before adding it.
+
+### Count packs and loose units
+
+**Counted in** is the smallest unit tracked in stock. **Units per pack** is the
+number of those units in one pack. The printed **Pack** text describes the pack;
+it does not set the conversion.
+
+For a strip of 10 tablets, set **Counted in** to tablet and **Units per pack**
+to 10. Receiving 5 strips adds 50 tablets. Selling 4 tablets leaves 46 tablets,
+shown as 4 strips and 6 tablets. Enter 10 tablets to sell a whole strip. For a
+bottle sold whole, one bottle is one counted unit.
+
+Check these choices before the first receipt. Once the product has a batch, HMS
+locks its counted unit, units per pack, and expiry setting.
+
+## Check stock
+
+Choose **Products** to look up a medicine. An Administrator or Owner can add or
+edit products. Open **Stock** to see each product batch. The product form is the
+same whether you open it from Products or from **New Product** while receiving a
+delivery.
+
+![Products tab with medicine and supply details.](/images/guides/pharmacy-products.png)
+
+Choose **Stock** to see each product and batch. **Shelf** is the quantity
+available for sale. **Quarantine** is medicine held aside and not available to
+sell. Check the batch and expiry when you count medicine.
+
+![Stock list with batches, expiry dates, shelf amounts, and quarantine amounts.](/images/guides/pharmacy-stock.png)
+
+Use the search box to find a product or batch. **Filters** can show medicine
+expiring within 30 or 90 days, quarantined stock, or batches with zero stock.
+Choose a row's **⋯** menu for **Movements** or **Adjust stock**.
+
+An Administrator or Owner can use **Adjust stock** after checking the real
+shelf. Choose the correct reason, enter the quantity, and write a short note.
+For example, use **Breakage** if one bottle broke. Use **Count correction** only
+to fix a stock count. A count correction can add or remove units, so ask a
+supervisor if you are unsure.
+
+![Adjust Stock form showing the reason, quantity, and note fields. The example is not saved.](/images/guides/pharmacy-adjust-stock.png)
+
+The **Movements** tab shows why stock changed, such as a delivery, sale, return,
+or adjustment. Use it to check a change; do not make a second adjustment just
+because you are still looking for the first one.
+
+![Stock movement history.](/images/guides/pharmacy-movements.png)
+
+### Choose the right stock adjustment
+
+Open the batch's **⋯** menu, then **Adjust Stock**. An Administrator or Owner
+can record these changes:
+
+| Reason             | Use it when                                   | What changes                                   |
+| ------------------ | --------------------------------------------- | ---------------------------------------------- |
+| Hold in quarantine | Stock must be kept out of sale                | Moves units from shelf to quarantine           |
+| Release to shelf   | A pharmacist has approved held stock for sale | Moves units from quarantine to shelf           |
+| Breakage           | Stock broke                                   | Removes units from the selected place          |
+| Write off          | Stock must be discarded                       | Removes units from the selected place          |
+| Count correction   | A checked physical count differs from HMS     | Adds or removes the difference                 |
+| Internal issue     | Stock goes to a hospital department           | Removes shelf units and records the department |
+
+Enter the quantity in counted units and explain the change in **Note**.
+**Bucket** means the place to change: shelf or quarantine. For **Internal
+Issue**, choose the receiving department. Choose **Adjust Stock** once, then
+check **Stock** and **Movements**.
+
+For a count correction, enter the difference, not the new total. If HMS shows 12
+bottles and you counted 10, enter **-2**. If you counted 14, enter **2**. Other
+adjustment reasons take a positive quantity.
+
+### If an item cannot be sold
+
+Check its active status, **Sold at the counter** setting, batch expiry, and
+shelf quantity. Quarantined stock is not available to sell. If another counter
+sold the last units, choose an available batch and review the amount again. Do
+not create a second product or a false receipt to bypass the problem.
+
+## Return medicine from a sale
+
+Choose **Sales**, open the sale number, and check the buyer and item. This panel
+also has **Print**. Choose **Return** only when the medicine is being returned.
+Enter the quantity and choose the reason. Returned medicine goes to quarantine
+and a Credit Note is recorded against that sale. Enter returns in the counted
+unit: returning 3 tablets means 3, not 3 strips. Returned units stay unavailable
+for sale until an authorized stock adjustment releases them from quarantine.
+
+![Sale record with its medicine batch, payment, Print, and Return actions.](/images/guides/pharmacy-sale-details.png)
+
+![Accept a return form showing the quantity, reason, and optional refund fields. Nothing is submitted.](/images/guides/pharmacy-return.png)
+
+Leave **Refund now** blank if the money will be returned later. If the hospital
+is returning money now, enter the approved amount and method. Add the payment
+reference when required. Read the patient, batch, quantity, reason, and refund
+once more, then choose **Record Return** once.
+
+If you only meant to look at the sale, close the panel without choosing
+**Return**. Ask a supervisor if the medicine or amount is not correct.
+
+## Print a sale paper
+
+Open the sale number in **Sales**, check the buyer and total, then choose
+**Print**. Use the invoice for the items sold. A payment receipt is a separate
+paper that proves money was received.

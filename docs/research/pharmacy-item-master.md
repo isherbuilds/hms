@@ -2,6 +2,13 @@
 
 2026-09-28. Research for the Indian hospital counter pharmacy; this memo compares item identity, units, batch price and master fields, while [pharmacy reference flows](./pharmacy-reference-flows.md) covers sale/return and [hospital inventory models](./hospital-inventory-models.md) covers movements and stock architecture.
 
+> **Historical comparison.** The HMS code and line references below describe
+> the tree reviewed before the 2026-09-29 cutover. The current contracts are
+> [goods and services](../specs/pharmacy-goods-and-services.md) and
+> [packs and loose units](../specs/pharmacy-packs-and-loose-units.md).
+> Products now own sale facts; stock supports packs and loose units. Do not
+> use the former catalog link or no-loose-sale premise as current guidance.
+
 ## Question
 
 For an Indian hospital counter pharmacy, how should HMS model (1) goods versus services and the invoice-line item reference, (2) units, pack conversion and loose sale, (3) MRP and batches, and (4) the minimum product-master fields?
