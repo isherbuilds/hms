@@ -7,7 +7,7 @@ import { loader } from "fumadocs-core/source";
 
 export const source = loader({
   source: await createMySource(),
-  baseUrl: "/",
+  baseUrl: import.meta.env.BASE_URL,
 });
 
 export function getStructuredData(entry: CollectionEntry<"docs">): StructuredData {
@@ -17,7 +17,11 @@ export function getStructuredData(entry: CollectionEntry<"docs">): StructuredDat
 export function getPageImageUrl(page: (typeof source)["$inferPage"]) {
   const segments = [...page.slugs, "image.webp"];
 
-  return "/" + [page.locale, "og", "docs", ...segments].filter(Boolean).join("/");
+  return (
+    import.meta.env.BASE_URL +
+    "/" +
+    [page.locale, "og", "docs", ...segments].filter(Boolean).join("/")
+  );
 }
 
 async function createMySource() {

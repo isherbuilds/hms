@@ -36,14 +36,19 @@ apps have stable named HTTPS hosts instead of ports. Portless assigns a free
 port in 4000–4999 to each development process instead of its local default.
 Docker image ports are a separate production concern.
 
-| App             | URL                          |
-| --------------- | ---------------------------- |
-| `apps/web`      | `https://hms.localhost`      |
-| `apps/server`   | `https://api.hms.localhost`  |
-| `apps/fumadocs` | `https://docs.hms.localhost` |
+| App             | URL                               |
+| --------------- | --------------------------------- |
+| `apps/web`      | `https://hms.localhost`           |
+| `apps/server`   | `https://api.hms.localhost`       |
+| `apps/fumadocs` | `https://docs.hms.localhost/docs` |
 
 These are the primary checkout's development hostnames only. Production ports
 are fixed and listed in [Operations](./operations.md#deployment-topology).
+
+The staff guide uses `/docs`. Its development host serves live content; the web
+production build bundles the static guide on the main domain. Run
+`bun run build --filter=web` to build both in dependency order. A direct
+`bun run --cwd apps/web build` requires the guide to be built first.
 
 Portless prefixes these names in a linked Git worktree. HMS does not discover
 that prefix at runtime: that worktree must set matching prefixed values for
@@ -132,7 +137,7 @@ membership through invitation or an operator-managed membership.
 
 `dev:status` is read-only and uses three-second timeouts. It checks the Compose
 service health and published ports, the configured web and API origins, the
-primary checkout's fixed `https://docs.hms.localhost` URL, a database query, and
+primary checkout's fixed `https://docs.hms.localhost/docs` URL, a database query, and
 an exact match between local Drizzle migrations and the database migration
 records. It does not start or stop services, apply migrations, seed data, or reset
 data. A missing service, an unreachable URL or database, or migration history that

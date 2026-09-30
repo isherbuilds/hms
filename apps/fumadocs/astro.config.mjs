@@ -21,6 +21,8 @@ const remarkPlugins = [
 const rehypePlugins = [rehypeCode];
 
 export default defineConfig({
+  base: "/docs",
+  trailingSlash: "never",
   markdown: {
     processor: unified({
       syntaxHighlight: false,

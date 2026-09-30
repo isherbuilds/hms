@@ -176,7 +176,7 @@ const checks = (
     Promise.all([
       urlCheck("Web", configuredOrigin("CORS_ORIGIN")),
       urlCheck("API readiness", configuredOrigin("BETTER_AUTH_URL")),
-      urlCheck("Docs", new URL("https://docs.hms.localhost")),
+      urlCheck("Docs", new URL("https://docs.hms.localhost/docs")),
     ]),
   ])
 ).flat();

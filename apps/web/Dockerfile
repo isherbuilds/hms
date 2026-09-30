@@ -26,6 +26,7 @@ ENV VITE_WHATSAPP_NUMBER=${VITE_WHATSAPP_NUMBER}
 ENV VITE_CONTACT_EMAIL=${VITE_CONTACT_EMAIL}
 ENV SKIP_ENV_VALIDATION=1
 WORKDIR /app/apps/web
+RUN bun run --cwd ../fumadocs build
 RUN bun run build
 
 FROM oven/bun:1.4.2-slim AS runtime
