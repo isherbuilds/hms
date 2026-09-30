@@ -36,6 +36,7 @@ export function Docs({
         }}
         nav={{
           title: "HMS guide",
+          url: import.meta.env.BASE_URL,
         }}
       >
         <DocsPage {...page}>{children}</DocsPage>

@@ -19,6 +19,7 @@ export default function DefaultSearchDialog(props: SharedProps) {
   const { search, setSearch, query } = useDocsSearch({
     client: staticClient({
       locale,
+      from: `${import.meta.env.BASE_URL}/api/search`,
     }),
   });
 

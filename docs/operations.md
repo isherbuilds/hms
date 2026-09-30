@@ -60,6 +60,12 @@ may override it. The API exports its Hono app and lets Bun use `PORT` when suppl
 otherwise Bun listens on 3000. Its Dockerfile's `EXPOSE 3000` documents that
 default but does not configure the listener.
 
+The web image also serves the static staff guide at `/docs`, including page
+links, images, and search. Its builder compiles `apps/fumadocs` before packaging
+the web app. Nitro copies that output into `.output/public/docs`; there is no
+separate production docs service or reverse proxy rule.
+The guide keeps the default `noindex, nofollow` response header (D030).
+
 The portless proxy is development tooling and never runs in production. It is a
 dev dependency, it appears only in each app's `dev` script, and the named
 `*.hms.localhost` hosts in [Development](./development.md#development-urls) have
@@ -76,6 +82,10 @@ filtered by per-app watch paths (`apps/<app>/**`, `packages/**`, and root
 workspace files). Each image declares a `HEALTHCHECK` on `/`; Coolify keeps the
 old container serving until the new one passes it, so a failed migration or
 boot never replaces a running release.
+
+Include `apps/fumadocs/**` in the web application's Coolify watch paths so guide
+changes rebuild the bundled pages. After deployment, check `/docs`, a direct
+guide URL such as `/docs/opd-desk`, screenshots, and search on the main domain.
 
 The server container applies migrations before accepting traffic. A migration
 failure exits startup; concurrent starters serialize through the advisory lock.

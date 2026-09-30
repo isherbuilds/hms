@@ -7,6 +7,10 @@
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": ["dist/**"]
     },
+    "web#build": {
+      "dependsOn": ["^build", "fumadocs#build"],
+      "outputs": [".output/**"]
+    },
     "check-types": {
       "dependsOn": ["^check-types"]
     },
