@@ -1,6 +1,6 @@
 # Spec: Pharmacy goods and services
 
-Status: implemented (2026-09-29); owner browser verification pending.
+Lifecycle and remaining evidence: [work registry](../README.md#work-lifecycle).
 Authority: owner delegation on 2026-09-28 to decide whether Pharmacy needs a linked Catalog row, refined by the 2026-09-29 peer comparison and the owner's decision to discard all MVP pilot data at cutover.
 Supersedes: the pharmacy link in D027 and the “catalog holds HSN/GST” part of [Pharmacy counter sale and stock](./pharmacy-counter-sale-and-stock.md). [Pharmacy packs and loose units](./pharmacy-packs-and-loose-units.md) replaces D049's one-unit rule and supplies the batch key to pharmacy Charges.
 

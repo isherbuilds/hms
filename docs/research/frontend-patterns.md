@@ -6,6 +6,11 @@ HMS/Midday/OpenStatus form comparison). Their settled conclusions are promoted
 into [Development](../development.md) and the [ledger](./README.md). What
 survives here is the **unbuilt work** and the pins that justify it.
 
+The counts and caller paths below are observations at the recorded source pins,
+not an inventory of today's tree. Recheck callers and measure the current
+interaction before adopting a proposed change. Current form and query rules
+live in [Development](../development.md#react-and-forms).
+
 ## Question
 
 How do Midday's `apps/dashboard` and OpenStatus's dashboard keep a large console

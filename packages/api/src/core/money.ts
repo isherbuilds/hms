@@ -50,8 +50,7 @@ export function sittingShare(unbilled: bigint, sittingsLeft: number): bigint {
 
   const sittings = BigInt(sittingsLeft);
 
-  const step =
-    unbilled >= 1000_00n * sittings ? 100_00n : unbilled >= 100n * sittings ? 100n : 1n;
+  const step = unbilled >= 1000_00n * sittings ? 100_00n : unbilled >= 100n * sittings ? 100n : 1n;
 
   return divideHalfUp(unbilled, sittings * step) * step;
 }

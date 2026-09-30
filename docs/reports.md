@@ -43,11 +43,29 @@ from correlated per-appointment sums. `booked`, `checked_in`, `cancelled`, and
 `no_show` remain distinct; the report never invents a completed state.
 
 Both reports accept an inclusive Organization-local date range, link from
-`/$orgSlug/reports`, export XLSX and print from the same server result, and
-keep their source-of-record tables horizontally scrollable on narrow screens.
-Cashiers can read Daily Collections to close a shift. The patient-level OPD
-Register and the statutory and ledger reports remain restricted to accountants,
+`/$orgSlug/reports`, and offer XLSX export and printing. Their tables remain
+horizontally scrollable on narrow screens. Cashiers and pharmacists can read
+Daily Collections to close a shift. The patient-level OPD Register and the statutory and ledger reports remain restricted to accountants,
 administrators, and owners.
+
+## Financial reports and exports
+
+**GST outward register** reads issued Invoice and Credit Note snapshots across
+billing streams. It shows documents and summaries by rate and HSN/SAC. Its
+CGST/SGST split assumes intra-state supply; it is not a filing-ready export.
+
+**Trial Balance** reads journals for opening balances, period debits and credits,
+and closing balances by account. **Balance Sheet** reads the same billing ledger
+as of the selected date. Both cover HMS billing activity only; they omit expense,
+payroll, inventory valuation, and manual journal accounting.
+
+All five report pages offer **Print / PDF** and **Export Excel**. Each `export.*Xlsx`
+procedure builds a workbook on the server by calling the matching report procedure
+with the same request context. It reuses the report permission, date limits, and
+verified organization scope. The browser downloads the returned File; it does not
+load the spreadsheet library. Shared labels keep screen and spreadsheet wording
+aligned. Exports read current records, so they can include changes made since the
+page loaded. Refresh the page and check the date range before handover.
 
 ## No-show reconciliation
 

@@ -11,7 +11,7 @@ import { useCan } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { formatBusinessDate } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { practitionerDisplayName } from "@/lib/practitioner-name";
+import { practitionerDisplayName } from "@hms/api/lib/labels";
 
 type Plan = Awaited<ReturnType<RouterClient<AppRouter>["treatment"]["listForPatient"]>>[number];
 

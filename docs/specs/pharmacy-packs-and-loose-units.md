@@ -1,6 +1,6 @@
 # Spec: Pharmacy packs and loose units
 
-Status: implemented (2026-09-29); owner browser verification pending.
+Lifecycle and remaining evidence: [work registry](../README.md#work-lifecycle).
 Authority: owner statement and delegated decision, 2026-09-29. Loose sales exceed whole-strip sales at the pilot pharmacy, and loose tablets are accepted back as returns. The owner delegated the design choice and accepted the result.
 Supersedes: the one-unit rule in D049, Stage 0 answer 1 in [Pharmacy counter sale and stock](./pharmacy-counter-sale-and-stock.md), and the deferred loose-sale item in [Pharmacy goods and services](./pharmacy-goods-and-services.md). The Product and Service split, D027 as amended, invoice streams, return quarantine and the accounting contracts stay in force.
 

@@ -1,6 +1,6 @@
 # Spec: Payment methods, bank transfer, and sponsor capture
 
-Status: ready
+Lifecycle and remaining evidence: [work registry](../README.md#work-lifecycle).
 Authority: user request, 2026-09-04 — add bank transfer and capture a patient's
 sponsor so payer volume can be measured.
 Evidence: [research ledger](../research/README.md#adopted-findings) (Payer model).
@@ -8,15 +8,14 @@ Supersedes: none
 
 ## Problem
 
-Two separate gaps, all at the cash counter.
+The implemented change addressed two gaps at the cash counter:
 
-1. **The desk can only record cash, UPI, and card.** Bank transfers have
-   nowhere to go, so they get recorded as whichever of the three is closest.
-   The ledger then describes money that never moved that way.
-2. **Nothing records that a patient is covered by an employer or insurer.** So
-   there is no way to answer the question that decides whether the payer domain
-   is worth building at all: what fraction of visits involve someone other than
-   the patient paying.
+1. **The desk could only record cash, UPI, and card.** Bank transfers have
+   no dedicated method, so staff could record them under another method.
+   The ledger would then misstate how money arrived.
+2. **Nothing recorded that a patient was covered by an employer or insurer.**
+   The hospital could not measure the share of visits with another payer
+   before deciding whether to build payer billing.
 
 ## Solution
 

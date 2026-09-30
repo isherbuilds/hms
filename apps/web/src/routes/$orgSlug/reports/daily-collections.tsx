@@ -6,7 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
@@ -17,7 +17,7 @@ import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { orpc } from "@/lib/orpc";
 import { loadRouteQuery } from "@/lib/orpc-error";
-import { downloadXlsx } from "@/lib/report-export";
+import { saveXlsx } from "@/lib/report-export";
 import { REPORT_PRINT_LANDSCAPE_CSS } from "@/lib/report-presentation";
 import { methodLabel } from "@/lib/settlement";
 import { orgMonthToDate as defaultRange, useOrgDateTime } from "@/lib/org-datetime";
@@ -69,74 +69,21 @@ function DailyCollectionsRoute() {
     orpc.report.dailyCollections.queryOptions({ input: { orgSlug, from, to } }),
   );
 
-  const exportReport = () => {
-    if (!report.data) return;
-    const { rows, byMethod, totals } = report.data;
-    void downloadXlsx(`daily-collections-${from}-to-${to}.xlsx`, [
-      {
-        name: "Daily collections",
-        columns: [
-          { header: "Business date", key: "businessDate", width: 16 },
-          ...byMethod.map(({ method }) => ({
-            header: methodLabel(method),
-            key: method,
-            width: 16,
-          })),
-          { header: "Payments", key: "payments", width: 16 },
-          { header: "Advances", key: "advances", width: 16 },
-          { header: "Refunds", key: "refunds", width: 16 },
-          { header: "Advance refunds", key: "advanceRefunds", width: 18 },
-          { header: "Net", key: "net", width: 16 },
-        ],
-        rows: rows.map((row) => ({
-          businessDate: row.businessDate,
-          ...Object.fromEntries(
-            byMethod.map(({ method }) => [method, Number(row.byMethod[method])]),
-          ),
-          payments: Number(row.payments),
-          advances: Number(row.advances),
-          refunds: Number(row.refunds),
-          advanceRefunds: Number(row.advanceRefunds),
-          net: Number(row.net),
-        })),
-      },
-      {
-        name: "By method",
-        columns: [
-          { header: "Method", key: "method", width: 12 },
-          { header: "Payments", key: "payments", width: 16 },
-          { header: "Advances", key: "advances", width: 16 },
-          { header: "Refunds", key: "refunds", width: 16 },
-          { header: "Advance refunds", key: "advanceRefunds", width: 18 },
-          { header: "Net", key: "net", width: 16 },
-        ],
-        rows: [
-          ...byMethod.map((row) => ({
-            method: methodLabel(row.method),
-            payments: Number(row.payments),
-            advances: Number(row.advances),
-            refunds: Number(row.refunds),
-            advanceRefunds: Number(row.advanceRefunds),
-            net: Number(row.net),
-          })),
-          {
-            method: "Total",
-            payments: Number(totals.payments),
-            advances: Number(totals.advances),
-            refunds: Number(totals.refunds),
-            advanceRefunds: Number(totals.advanceRefunds),
-            net: Number(totals.net),
-          },
-        ],
-      },
-    ]);
-  };
+  const download = useMutation({
+    ...orpc.export.dailyCollectionsXlsx.mutationOptions(),
+    ...saveXlsx,
+  });
 
   return (
     <>
       <PageHeader
         title="Daily collections"
-        action={<ReportActions disabled={!report.data} onExport={exportReport} />}
+        action={
+          <ReportActions
+            disabled={!report.data || download.isPending}
+            onExport={() => download.mutate({ orgSlug, from, to })}
+          />
+        }
       />
       <PageBody>
         <div className="print:hidden">

@@ -1,4 +1,5 @@
 import { DECIMAL_PATTERN, formatDecimal, parseDecimal } from "@hms/api/core/money";
+import { PAYMENT_METHOD_LABELS } from "@hms/api/lib/labels";
 import { paymentMethod, requirePaymentReference, type PaymentMethod } from "@hms/api/lib/schemas";
 import { z } from "zod";
 
@@ -7,15 +8,6 @@ import { z } from "zod";
 import { formatMoney, parseMoneyInput } from "./money";
 
 export type { PaymentMethod };
-
-// `satisfies Record<PaymentMethod, …>` pins the labels to the API enum in both
-// directions: a method added on one side without the other fails to compile.
-const PAYMENT_METHOD_LABELS = {
-  cash: "Cash",
-  upi: "UPI",
-  card: "Card",
-  bank: "Bank transfer",
-} satisfies Record<PaymentMethod, string>;
 
 export const PAYMENT_METHODS = paymentMethod.options;
 

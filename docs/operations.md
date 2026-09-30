@@ -94,7 +94,7 @@ compatibility contract for a one-time transition (D031).
 Current behaviour, with the release evidence still to be recorded:
 
 1. Organization roles are `owner`, `admin` (Administrator), `reception`,
-   `cashier`, and `accountant`, each with explicit grants in
+   `cashier`, `accountant`, and `pharmacist`, each with explicit grants in
    `packages/auth/src/access.ts`; any other stored role authorizes nothing and
    fails closed. Walking
    the role map with the shift lead is a [pilot readiness](#pilot-readiness) gate.
@@ -154,9 +154,9 @@ all of these as complete:
 1. The shipped [reports and worklists](./reports.md) have been
    exercised by the pilot cashier and shift lead on representative data, or a
    time-bounded manual handover procedure and owner covers any remaining gap.
-2. Every pilot staff member has an operator-created account and the least
-   privileged role needed for reception, billing, correction, reporting, or
-   administration; the role map has been walked with the shift lead.
+2. Every pilot staff member has an invitation-created or operator-created
+   account and the least privileged role needed for reception, billing,
+   pharmacy, correction, reporting, or administration; the role map has been walked with the shift lead.
 3. Organization, staff, catalog, tax, timezone, currency, and document-prefix
    configuration has been reviewed against representative real records. Confirm
    the displayed Organization currency before billing begins; it cannot be changed.

@@ -695,6 +695,16 @@ test("trial balance is balanced, agrees with invoice outstanding, and carries pr
   expect(revenue?.closingDebit).toBe(0n);
   expect(revenue?.closingCredit).toBe(100_00n);
 
+  const workbook = await fixture.api.export.trialBalanceXlsx({
+    orgSlug: fixture.organization.slug,
+    from: today,
+    to: today,
+  });
+
+  expect(workbook.name).toBe(`trial-balance-${today}-to-${today}.xlsx`);
+  // An .xlsx is a zip archive, which opens with "PK".
+  expect(new TextDecoder().decode((await workbook.arrayBuffer()).slice(0, 2))).toBe("PK");
+
   await db
     .update(journalEntries)
     .set({ entryDate: addDays(today, -1) })

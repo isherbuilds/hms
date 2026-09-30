@@ -1,67 +1,159 @@
 ---
 title: Billing and corrections
-description: Issue invoices, collect payments, correct charges, and print documents
+description: Check a bill, record money, print documents, and correct mistakes safely
 ---
 
-## Find work that needs attention
+> **About the pictures:** These pictures use made-up demo records. Names,
+> numbers, dates, and amounts are examples.
 
-Open **Billing** for the organization-wide worklist. Its views separate all open
-work, Charges waiting to be billed, unpaid Invoices, and Invoices more than seven
-days old. Search stays in temporary client state and applies as you type.
-Select a Reference to keep your place in the worklist and open a quick sheet:
+## Find the work waiting for you
 
-- For an issued Invoice, choose the payment method, amount, and any required
-  reference, then choose **Collect**.
-- For Charges not yet invoiced, choose **Issue invoice** to open the full OPD
-  Appointment Billing tab.
+Choose **Billing** to see open money. This means visits waiting for a bill and
+invoices that still have money due. Use the search box or **Filters** to narrow
+the list.
 
-The Patient link and **Open visit billing** also open the full Billing tab when
-you need to review Charges, issue a document, or make a correction.
+![Billing worklist with visits to bill, invoices, and amount due.](/images/guides/billing-worklist.png)
 
-## Issue from pending Charges
+Choose a visit reference to see a small summary. For a visit that is not yet
+billed, choose **Open Visit Billing** to see all the details before you make an
+invoice.
 
-Open the full OPD Appointment Billing tab from the worklist sheet or Patient
-link. Before issue, review the patient, pending Charge lines, quantity, price,
-tax, and grand total. You may add catalog services or void a pending Charge when
-your role allows it. Enter any required discount note and payment references
-before submitting.
+![Summary for a visit waiting for a bill, with Issue Invoice and Open Visit Billing buttons.](/images/guides/billing-unbilled-sheet.png)
 
-- Choose **Issue invoice** when nothing is collected now.
-- Choose **Issue and collect** when one or more payment lines carry money.
-- A collection can use up to four payment lines. Card and UPI lines require their
-  transaction reference; cash does not.
+Choose an invoice reference to see how much has been paid and what is still
+owed. Enter a payment only after you have the money or proof of payment in front
+of you.
 
-If HMS reports that the Charges changed since review, reload the appointment and
-review the new lines and total. Do not retry against a stale screen.
+![Payment form for an existing invoice. The example is not submitted.](/images/guides/billing-collect-sheet.png)
 
-## Know the documents
+## Check a visit before making its invoice
 
-- A **Charge** is a priced billable event waiting to be included in an Invoice.
-- An **Invoice** is the immutable itemized supply document. Until the pilot's
-  accountant approves a statutory classification, it is labelled simply
-  **Invoice**.
-- A **Payment** records money received. Each payment has its own **Receipt**.
-- A **Credit Note** reduces an issued Invoice; it does not rewrite that Invoice.
-- A **Refund** returns an available credited amount and produces a refund voucher.
+Open the visit's **Billing** tab. Check the patient's name, each Charge, and the
+total. A **Charge** records a priced service or item. Only pending Charges need
+an invoice; invoiced and voided Charges remain in the history.
 
-An itemized Invoice and a Payment Receipt answer different questions. Do not hand
-one to a patient as though it were the other.
+![Visit Billing tab with a Charge waiting to be billed.](/images/guides/opd-appointment-billing.png)
 
-## Correct issued work
+Choose **Review And Collect** to open the final check. Read the amount again. If
+there is a discount, enter it and add the reason in **Note**. Add payment lines
+only for money received now. You can split one collection into up to four
+payment lines.
 
-Issued financial documents are not edited in place:
+![Review and collect form with the total, payment method, amount, and note.](/images/guides/opd-review-and-collect.png)
 
-1. Use **Issue credit note** for the relevant full or partial Invoice lines.
-2. Use **Refund** only against an available Credit Note amount.
-3. Supply the required reason and any non-cash transaction reference.
+The form starts with a cash amount for the balance after the proposed advance
+credit. Check both fields. If you received no money, clear the payment amount.
+Set **Use advance credit** to zero if no advance should pay this bill.
 
-These actions depend on separate permissions. Ask an authorized supervisor when
-the controls are unavailable.
+Choose **Issue Invoice** once. It creates the invoice and records the payment
+lines and advance credit shown in the form. With no payment or credit, the full
+amount stays due. With a partial payment, the rest stays due.
 
-## Print or download
+Cash does not need a transaction reference. Card, UPI, and Bank transfer need
+the reference from the payment machine, app, or bank record. If the amount,
+patient, or service looks wrong, close the form and ask the billing supervisor.
 
-Under **Invoices** on the OPD Appointment Billing tab, use **Invoice print** for the
-itemized document and expand **Documents** for its Receipts, Credit Notes, and
-refund vouchers. Invoices support A4 and 80 mm layouts; the other documents open
-as their own PDFs. Preview, print, and download use the same stored source facts,
-so a later payment or correction does not change an earlier document.
+> **Stop before the final button:** After you issue an invoice or record a
+> payment, do not press the button again. If the result is unclear, check the
+> record first or ask the supervisor.
+
+## Take payment for an invoice
+
+On the Billing worklist, choose an invoice reference. Check the invoice number
+and amount owed. Choose the method used, enter the amount received, and add the
+payment reference when required. Choose **Collect** once.
+
+HMS creates a Payment record and a Receipt. The receipt proves that money was
+received. The Invoice lists what was sold or done. They are different papers.
+
+## Know the papers
+
+- **Charge** — a priced service or item; its status shows whether it is pending,
+  invoiced, or voided.
+- **Invoice** — the itemized bill. An issued invoice is not edited in place.
+- **Payment** — a record of money received.
+- **Receipt** — proof that the payment was recorded.
+- **Credit Note** — a paper that lowers an issued invoice after a correction.
+- **Refund** — money returned against an available Credit Note amount.
+
+## Remove a wrong item before billing
+
+Open the visit's **Billing** tab and find the pending item. Choose **Void**,
+enter the reason, and confirm. Check that the item is no longer in the amount to
+bill. Voiding keeps a record of the change; it does not delete the history. An
+item already on an invoice needs a Credit Note instead.
+
+## Correct an issued invoice
+
+If an issued invoice is wrong, do not try to change the old paper. Ask an
+authorized supervisor to check the lines. If the invoice needs a correction, the
+authorized person can:
+
+1. Open the visit's **Billing** tab.
+2. Open the invoice's **⋯** menu and choose **Issue Credit Note**.
+3. Select the lines to credit, enter the reason, and check the amount.
+4. Choose **Issue credit note** to save the correction. Wait for the dialog to
+   close and the invoice to update.
+5. On the updated invoice, choose **Record refund** when a refund is due and
+   money will be returned. This is a separate action from issuing the Credit Note.
+6. Enter the refund method and its transaction reference when needed. Choose
+   **Record refund** to save it.
+
+The original invoice stays on the record. The new Credit Note shows the
+correction. A Refund voucher shows money given back. Do not issue a Credit Note
+or refund unless you are sure of the reason and amount. For pharmacy goods, use
+[Return medicine](/pharmacy#return-medicine-from-a-sale) so the bill and stock
+change together.
+
+## Money held for later
+
+Choose **Take Advance** on a patient's Billing tab or a visit's Billing tab only
+when money should be held for future care. Pick the treatment plan, or choose
+**Patient credit · future services** when the money is not for a named plan.
+Enter the amount and the method used to receive it. Add the reference for a
+non-cash payment. Choose **Record Advance**, then **Print Receipt**. Check that
+the receipt appears under the patient's **Advance receipts**.
+
+![Take Advance form. This example is open but not saved.](/images/guides/patient-advance.png)
+
+An advance is not the same as paying today's invoice. Check with the supervisor
+before using an advance to pay for care or returning it.
+
+Choose **Refunds due** to see money that may be returned after a Credit Note.
+Choose **Advances held** to see money being held for later care. Open a row and
+check the patient and amount before taking any action.
+
+![Refunds due list showing an invoice and the amount that may be returned.](/images/guides/billing-refunds.png)
+
+![Advances held list showing money saved for future care.](/images/guides/billing-advances.png)
+
+### Use an advance to pay a bill
+
+On the collection form, check **Use advance credit** before saving. HMS starts
+with credit for the bill's treatment plan plus credit not tied to any plan.
+Credit held for another plan is not used by default. Change the amount only when
+the hospital has approved its use for this bill.
+
+For example, a ₹1,000 bill paid with ₹300 of advance credit needs ₹700 more.
+Enter only the money received now in the payment lines. Recheck the payment
+amount after changing credit or a discount; HMS keeps the amount you typed.
+
+### Return unused advance money
+
+1. Open the patient's **Billing** tab and expand **Advance receipts**.
+2. Find the original receipt and check its unused amount.
+3. Choose **Refund**. Enter the amount actually being returned, the method,
+   and a reference for a non-cash refund.
+4. Choose **Record Refund** once, then **Print Voucher**.
+5. Check the receipt's remaining amount.
+
+Only unused money from that receipt can be returned here. A refund against an
+invoice follows the Credit Note steps above.
+
+## Print or download a paper
+
+On the visit's **Billing** tab, use **Invoice print** for the itemized Invoice.
+Use the document links below each invoice to find Receipts, Credit Notes, and
+Refund vouchers. Choose the document you need, then use its print or download
+option. The printout uses the facts saved on that document. A later correction
+does not rewrite an older paper.

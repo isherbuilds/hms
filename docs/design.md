@@ -1,17 +1,15 @@
 # Design
 
-The rules this product's interface is built to. One document, so a screen built
-next month looks like one built today without anyone comparing them side by
-side.
+This document owns HMS interface rules. Use it when creating or changing a
+screen. Shared tokens and primitives keep screens consistent.
 
 Every rule is a default. A deviation needs a comment saying why, and a deviation
 that recurs is a missing primitive, not a style choice.
 
 ## 1. Surfaces
 
-Three greys, and they must stay distinguishable. This is the single most
-important rule in the document, because the card language is built on it and it
-collapses silently when two of them drift together.
+Keep the three grey surfaces distinguishable. Their contrast separates the
+page, the grouping tray, and its content.
 
 | Surface | Token                       | What it is                                                 |
 | ------- | --------------------------- | ---------------------------------------------------------- |

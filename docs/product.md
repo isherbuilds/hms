@@ -2,8 +2,8 @@
 
 HMS is an online, multi-tenant hospital operations system for small and
 mid-sized Indian hospitals. One Better Auth Organization is one hospital. The
-live product covers the OPD front office and billing path; it does not claim to
-model the whole hospital.
+implemented product covers OPD reception, billing, and pharmacy sales and
+stock. Pilot and release checks remain in the [work registry](./README.md#work-lifecycle).
 
 ## Product promise
 
@@ -14,6 +14,7 @@ set:
   queue;
 - cashiers create itemized financial documents and receipts without changing
   care state;
+- pharmacists sell and return medicines, receive goods, and check batch stock;
 - accountants receive traceable source documents, balanced ledger exports, and
   tax classifications;
 - administrators manage configuration, staff access, audit history, and
@@ -25,11 +26,30 @@ AI reconstruction as the clinical source.
 
 ## Scope
 
-| Status             | Capabilities                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Live**           | Tenant/auth spine, patients and MRNs, departments, practitioners, catalog, OPD bookings and walk-ins, treatment plans and sittings, due follow-ups, advance receipts and patient credit, daily queue, prescription attachments, Charges, Invoices, Payments, Receipts, Credit Notes, refunds, billing ledger, GST outward register, trial balance, balance sheet, daily collections, OPD register, billing worklists, dashboard, files, audit, member administration with reception/cashier/accountant/administrator roles, security headers, runtime-only images, upload cleanup, four Payment methods (Cash, UPI, Card, Bank transfer), and measurement-only Sponsor capture (no billing change) |
-| **Next**           | Printer validation, release evidence for the hardened images and headers, and the pilot runbook                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **Evidence-gated** | Patient timeline/vitals, pharmacy and inventory, lab, radiology, IPD/ADT, Emergency, OT, insurance/TPA, ABDM, payment gateway, patient portal, offline mode, and AI assistance                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+### Implemented
+
+- Patients, MRNs, departments, practitioners, and Services.
+- OPD bookings, walk-ins, queue, prescription scans, treatment plans, sittings,
+  and follow-ups.
+- Charges, Invoices, Payments, Receipts, Credit Notes, refunds, advances,
+  patient credit, and the billing ledger.
+- Pharmacy products, batch stock, goods receipts, counter sales, returns,
+  quarantine, stock adjustments, and movement history.
+- Dashboard, billing worklists, and the five [reports](./reports.md).
+- Organization access, member administration, files, audit, security headers,
+  production images, and upload cleanup.
+- Cash, UPI, Card, and Bank transfer; Sponsor capture for measurement only.
+
+Implemented does not mean pilot-verified. Printer checks, release evidence,
+stock reconciliation, and owner walkthroughs remain in the
+[work registry](./README.md#work-lifecycle) and
+[pilot readiness gates](./operations.md#pilot-readiness).
+
+### Evidence-gated
+
+Patient timeline and vitals, purchasing and supplier accounts, lab, radiology,
+IPD/ADT, Emergency, OT, insurance/TPA billing, ABDM, payment gateway, patient
+portal, offline mode, and AI assistance.
 
 Evidence-gated work gets no placeholder route, table, permission, or navigation
 entry. It starts only with a paid/observed need, a named operational owner, and
@@ -143,19 +163,19 @@ adapter is evidence-gated.
 
 ## Roadmap gates
 
-| Increment                   | Trigger before specification                                                                                                                                                                       |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Patient timeline and vitals | Live OPD use identifies fields, authors, signing, and correction rules                                                                                                                             |
-| Pharmacy/inventory          | **Gate open 2026-09-18** — paid scope signed off; the spec's Stage 0 assumptions still await owner confirmation; see [Pharmacy counter sale and stock](./specs/pharmacy-counter-sale-and-stock.md) |
-| Lab/radiology               | Named clinical owner, measured demand, approved order/result boundary, templates, units, and signing rules                                                                                         |
-| IPD/ADT                     | Stable OPD, paid scope, facility master, and signed admission-to-discharge, deposit, nursing, and billing flow                                                                                     |
-| Emergency                   | Separate safety discovery, medical-owner approval, triage/disposition rules, and downtime ownership                                                                                                |
-| OT/surgery                  | Live IPD plus approved consent, anesthesia, resources, consumables, recovery, and billing                                                                                                          |
-| Insurance/TPA               | Meaningful insured volume or signed payer requirement with tariffs and claim lifecycle                                                                                                             |
-| ABDM                        | Sale requirement plus HFR/HPR/ABHA prerequisites, sandbox access, and compliance owner                                                                                                             |
-| Gateway/portal              | Real remote-payment journey with webhook, refund, and reconciliation ownership                                                                                                                     |
-| Offline mode                | Outage evidence proves network/UPS remediation and controlled paper fallback insufficient                                                                                                          |
-| AI assistance               | Owned workflow with consent, provenance, authorization, source linkage, human review, and failure handling                                                                                         |
+| Increment                   | Trigger before specification                                                                                                                                                                          |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Patient timeline and vitals | Live OPD use identifies fields, authors, signing, and correction rules                                                                                                                                |
+| Pharmacy purchasing         | Counter sales and stock are implemented. Supplier accounts and broader purchasing need a separate accepted spec; see [the current boundary](./specs/pharmacy-counter-sale-and-stock.md#out-of-scope). |
+| Lab/radiology               | Named clinical owner, measured demand, approved order/result boundary, templates, units, and signing rules                                                                                            |
+| IPD/ADT                     | Stable OPD, paid scope, facility master, and signed admission-to-discharge, deposit, nursing, and billing flow                                                                                        |
+| Emergency                   | Separate safety discovery, medical-owner approval, triage/disposition rules, and downtime ownership                                                                                                   |
+| OT/surgery                  | Live IPD plus approved consent, anesthesia, resources, consumables, recovery, and billing                                                                                                             |
+| Insurance/TPA               | Meaningful insured volume or signed payer requirement with tariffs and claim lifecycle                                                                                                                |
+| ABDM                        | Sale requirement plus HFR/HPR/ABHA prerequisites, sandbox access, and compliance owner                                                                                                                |
+| Gateway/portal              | Real remote-payment journey with webhook, refund, and reconciliation ownership                                                                                                                        |
+| Offline mode                | Outage evidence proves network/UPS remediation and controlled paper fallback insufficient                                                                                                             |
+| AI assistance               | Owned workflow with consent, provenance, authorization, source linkage, human review, and failure handling                                                                                            |
 
 Before pilot traffic, walk the role map with the shift lead, validate real
 printers, rehearse backups/restores and data import, define cashier handover and

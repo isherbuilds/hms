@@ -445,10 +445,10 @@ plan that loses a non-dropped item's posted work.
 two teeth sharing one procedure; adopting the first pending one merged distinct
 work and rewrote a price the desk had set.
 
-### D039 — A money command carries a request key
+### D039 — Money commands have no replay protection
 
-**Superseded 2026-09-19.** For the MVP, the owner accepted removing the request key,
-`request_keys` table, `claimRequestKey`, and `pharmacy.sell`'s
+**Accepted 2026-09-19.** The owner accepted removing request keys for the MVP.
+The `request_keys` table, `claimRequestKey`, and `pharmacy.sell`'s
 `alreadyRecorded` reply were removed. Money and stock commands rely only on row
 locks (D040), the Charge revision (D020), and document uniqueness. A retry after
 a lost response can record twice; staff resolve it through the normal correction

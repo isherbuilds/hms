@@ -1,7 +1,7 @@
 # HMS
 
-A multi-tenant hospital operations system for OPD front-office and billing
-workflows. It is a Bun/Turborepo monorepo with TanStack Start, Hono/oRPC,
+A multi-tenant hospital operations system for OPD reception, billing, and
+pharmacy sales and stock. It is a Bun/Turborepo monorepo with TanStack Start, Hono/oRPC,
 Drizzle/PostgreSQL, Better Auth, and private S3-compatible storage.
 
 ## Start locally

@@ -22,7 +22,7 @@ import { formatFileSize, openOrgFile } from "@/lib/org-files";
 import { patientVisitsQuery } from "@/lib/patient-queries";
 import { orpc } from "@/lib/orpc";
 import { errorMessage } from "@/lib/orpc-error";
-import { practitionerDisplayName } from "@/lib/practitioner-name";
+import { practitionerDisplayName } from "@hms/api/lib/labels";
 
 function VisitPanel({
   orgSlug,

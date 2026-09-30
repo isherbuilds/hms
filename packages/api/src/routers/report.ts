@@ -33,9 +33,9 @@ import { paymentMethod, type PaymentMethod } from "../lib/schemas";
 
 const reportDate = z.iso.date();
 
-const periodInput = orgInput.extend({ from: reportDate, to: reportDate });
+export const periodInput = orgInput.extend({ from: reportDate, to: reportDate });
 
-const asOfInput = orgInput.extend({ asOf: reportDate });
+export const asOfInput = orgInput.extend({ asOf: reportDate });
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
