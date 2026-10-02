@@ -39,5 +39,18 @@ export default defineConfig({
   ],
   vite: {
     plugins: [tailwindcss()],
+    build: {
+      rolldownOptions: {
+        // Astro emits "use astro:head-inject" in content modules but never reads it.
+        onwarn(warning, warn) {
+          if (
+            warning.code === "MODULE_LEVEL_DIRECTIVE" &&
+            warning.message.includes("astro:head-inject")
+          )
+            return;
+          warn(warning);
+        },
+      },
+    },
   },
 });
