@@ -35,7 +35,15 @@ until their trigger is met and they enter this registry.
 
 ### [Landing page code reduction](./design.md)
 
-**Verification.** The 2026-09-30 pass cut the home page sections and moved their type, radius and spacing onto the standard scale. A browser pass covered desktop light and mobile dark: journey pin, roles stack with settle and chapter clicks, bed tiles, reveals and the FAQ. Still to check: the reduced-motion tabs, desktop dark and mobile light. Known before this pass: on a phone the front-desk and billing role cards are taller than the stack and clip.
+**Verification.** The owner requested restoration of the original landing
+animations, role-stack layout and planned IPD/lab presentation on 2 October 2026.
+Those changes were reversed. The roles section now clips transformed cards at
+its boundary to prevent them painting into the preceding journey on reverse
+scroll; its original animation calculations and layout remain unchanged. A new
+treatment section reuses the application’s plan item row. Desktop/mobile,
+light/dark, reverse-scroll and dashboard failure/loading/empty-state browser
+checks remain pending: the connected Mac browser-control requests timed out on
+2 October 2026. Short-viewport card-content clipping remains unverified.
 
 ### [Bot review UI fixes](./design.md#8-layout-primitives)
 
@@ -79,7 +87,8 @@ until their trigger is met and they enter this registry.
 
 ### Public site owner decisions
 
-**Blocked.** The owner confirms who answers the public contact channels and decides on training-crawler access. The site uses direct contact links. Company-address placeholders and unused marketing pages have been removed.
+**Blocked.** Legal review must approve `/terms`, `/privacy` and `/security` before
+publication; the draft terms are not release approval. The owner confirms who answers the public contact channels and decides on training-crawler access. The site uses direct contact links. Company-address placeholders and unused marketing pages have been removed.
 
 ### [Production hardening](./operations.md#production-hardening)
 

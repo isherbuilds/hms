@@ -1,4 +1,7 @@
-import { Link } from "@tanstack/react-router";
+import { Button } from "@hms/ui/components/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@hms/ui/components/sheet";
+import { MenuIcon } from "lucide-react";
+import { ClientOnly, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { Wordmark } from "@/components/brand/wordmark";
@@ -14,6 +17,7 @@ const LINKS = [
 
 export function LandingNav() {
   const [scrolled, setScrolled] = useState(false);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -37,13 +41,14 @@ export function LandingNav() {
         </Link>
         <nav aria-label="Main" className="hidden flex-1 items-center gap-7 lg:flex">
           {LINKS.map((link) => (
-            <a
+            <Link
               key={link.href}
-              href={link.href}
+              to="/"
+              hash={link.href.slice(2)}
               className="rounded-sm text-sm font-medium text-muted-foreground no-underline transition-colors duration-150 pointer-fine:hover:text-foreground"
             >
               {link.label}
-            </a>
+            </Link>
           ))}
         </nav>
         <div className="flex shrink-0 items-center gap-2">
@@ -53,9 +58,50 @@ export function LandingNav() {
           >
             Log in
           </Link>
-          <a href="/contact" className={buttonClass({ size: "sm" })}>
+          <Link to="/contact" className={buttonClass({ size: "sm", className: "max-sm:hidden" })}>
             Book a free demo
-          </a>
+          </Link>
+          <ClientOnly>
+            <Sheet open={open} onOpenChange={setOpen}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="lg:hidden"
+                aria-label="Open navigation"
+                onClick={() => setOpen(true)}
+              >
+                <MenuIcon />
+              </Button>
+              <SheetContent>
+                <SheetHeader>
+                  <SheetTitle>Menu</SheetTitle>
+                </SheetHeader>
+                <nav aria-label="Mobile" className="flex flex-col gap-2 p-4">
+                  {LINKS.map((link) => (
+                    <Link
+                      key={link.href}
+                      to="/"
+                      hash={link.href.slice(2)}
+                      onClick={() => setOpen(false)}
+                      className="rounded-md px-3 py-3 text-base"
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                  <Link
+                    to="/login"
+                    onClick={() => setOpen(false)}
+                    className={buttonClass({ variant: "secondary" })}
+                  >
+                    Log in
+                  </Link>
+                  <Link to="/contact" onClick={() => setOpen(false)} className={buttonClass({})}>
+                    Book a free demo
+                  </Link>
+                </nav>
+              </SheetContent>
+            </Sheet>
+          </ClientOnly>
         </div>
       </div>
     </header>

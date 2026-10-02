@@ -22,10 +22,10 @@ test("the landing page head carries the complete Open Graph contract with absolu
     ]),
   );
 
-  expect(byKey.title).toBeString();
+  expect(byKey.title).toBe("Edernal Care — hospital management software for Indian hospitals");
   expect(byKey.description).toBeString();
   expect(byKey["og:type"]).toBe("website");
-  expect(byKey["og:site_name"]).toBeString();
+  expect(byKey["og:site_name"]).toBe("Edernal Care");
   expect(byKey["og:title"]).toBe(byKey.title);
   expect(byKey["og:description"]).toBe(byKey.description);
   expect(byKey["og:url"]).toBe("https://hms.example/");

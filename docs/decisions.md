@@ -698,17 +698,21 @@ source, parent and batch pairing. The pilot database has no data to backfill.
 
 **Accepted 2026-09-30 on the owner's instruction; living rules: [Design](./design.md#5-colour).**
 The product is renamed from HMS to Edernal Care. Its green `--brand` accent is
-`oklch(0.469 0.095 165)` in light and `oklch(0.782 0.144 161)` in dark. Paired with
+`oklch(0.532 0.141 132)` in light and `oklch(0.782 0.144 161)` in dark. Paired with
 the Edernal Care wordmark, it marks identity and emphasis only, never state:
 settled or clear remains `--clinical-clear`. Primary actions stay ink
 (`--primary`); keyboard focus stays neutral (`--ring` and `--sidebar-ring`).
 
 The public site keeps the Edernal Care mockup’s visual direction with concise
-product copy. The footer links to Eternal.com, names Eternal Campus and Eternal
-Books, and has no company-address placeholder or divider. Secondary public pages
+product copy. The footer uses verified product and contact links, with no unverified external
+company affiliation or company-address placeholder. Secondary public pages
 omit the repeated demo banner. Empty careers, customer and status pages redirect
 to About or Contact and are not listed in the sitemap. Access is invite-only;
 pricing presents Clinics, Hospitals and Large hospitals cards, each invite-only with
 contact-based pricing. The cards use the shared WhatsApp link, with the phone
 number below them. Public contact links use `lib/contact.ts`. The pocket section shows
 real mobile dashboard captures in light and dark themes.
+
+On 2 October 2026 the owner explicitly retained the existing landing animations,
+role-stack layout and planned IPD/lab presentation for the invite-only product.
+This presentation decision does not expand the implemented product scope.

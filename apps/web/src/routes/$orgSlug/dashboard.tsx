@@ -39,9 +39,9 @@ const deskMoneyQuery = (orgSlug: string) =>
 const trendQuery = (orgSlug: string, to: string | undefined, days: (typeof RANGES)[number]) =>
   orpc.dashboard.trend.queryOptions({ input: { orgSlug, to, days } });
 
-// Open visits (booked and arrived) in the range; a clinic day fits well inside the cap.
+// Exact counts for the range, with a bounded oldest-first waiting list.
 const visitsQuery = (orgSlug: string, range: Range) =>
-  orpc.opd.day.queryOptions({ input: { orgSlug, ...range, limit: 200 } });
+  orpc.dashboard.queue.queryOptions({ input: { orgSlug, ...range } });
 
 export const Route = createFileRoute("/$orgSlug/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard · Edernal Care" }] }),
@@ -58,8 +58,11 @@ export const Route = createFileRoute("/$orgSlug/dashboard")({
       prefetches.push(
         queryClient.query(collectionsQuery(orgSlug, deps)).catch(() => {}),
         queryClient.query(trendQuery(orgSlug, deps.to, 7)).catch(() => {}),
-        queryClient.query(deskMoneyQuery(orgSlug)).catch(() => {}),
       );
+
+      if (!deps.from && !deps.to) {
+        prefetches.push(queryClient.query(deskMoneyQuery(orgSlug)).catch(() => {}));
+      }
     }
 
     if (authorize(roles, { opd: ["read"] })) {
@@ -67,6 +70,8 @@ export const Route = createFileRoute("/$orgSlug/dashboard")({
     }
 
     await Promise.all(prefetches);
+
+    return { now: Date.now() };
   },
   component: DashboardRoute,
 });
@@ -115,14 +120,17 @@ type Part = { key: string; label: string; value: string; weight: number; note?: 
 /** Parts of a whole as one stacked bar, then a two-column legend with shares. */
 function Mix({ parts, link }: { parts: Part[]; link?: (part: Part) => LinkOptions }) {
   const total = parts.reduce((sum, part) => sum + part.weight, 0);
+  const showShares = total > 0 && parts.every((part) => part.weight >= 0);
 
   return (
     <div className="@container flex flex-col gap-4">
-      <span className="flex h-2 gap-0.5 overflow-hidden rounded-full">
-        {parts.map((part, index) => (
-          <span key={part.key} className={tone(index)} style={{ flexGrow: part.weight }} />
-        ))}
-      </span>
+      {showShares && (
+        <span className="flex h-2 gap-0.5 overflow-hidden rounded-full">
+          {parts.map((part, index) => (
+            <span key={part.key} className={tone(index)} style={{ flexGrow: part.weight }} />
+          ))}
+        </span>
+      )}
       <ul className="grid gap-x-6 gap-y-2 @md:grid-cols-2">
         {parts.map((part, index) => {
           const body = (
@@ -133,9 +141,11 @@ function Mix({ parts, link }: { parts: Part[]; link?: (part: Part) => LinkOption
                 {part.note && <span className="text-muted-foreground"> · {part.note}</span>}
               </span>
               <span className="shrink-0 tabular-nums">
-                <span className="text-muted-foreground">
-                  {Math.round((part.weight / total) * 100)}% ·{" "}
-                </span>
+                {showShares && (
+                  <span className="text-muted-foreground">
+                    {Math.round((part.weight / total) * 100)}% ·{" "}
+                  </span>
+                )}
                 <span className="font-medium">{part.value}</span>
               </span>
             </>
@@ -163,10 +173,6 @@ function Mix({ parts, link }: { parts: Part[]; link?: (part: Part) => LinkOption
 
 const SOURCE_LABELS = { opd: "OPD", pharmacy: "Pharmacy", advance: "Advances" } as const;
 
-// Earliest first: arrival time for those checked in, booked time for the rest.
-const byTime = (a: { dayOrderAt: Date | null }, b: { dayOrderAt: Date | null }) =>
-  (a.dayOrderAt?.getTime() ?? 0) - (b.dayOrderAt?.getTime() ?? 0);
-
 const minutesSince = (since: Date, now: number) =>
   Math.max(0, Math.floor((now - since.getTime()) / 60_000));
 
@@ -179,10 +185,10 @@ const weekdayName = (day: string) =>
   );
 
 /** The clinic's hour, not the browser's, so server and client agree. */
-function greeting(timeZone: string) {
+function greeting(timeZone: string, now: number) {
   const hour = Number(
     new Intl.DateTimeFormat("en-IN", { hour: "numeric", hourCycle: "h23", timeZone }).format(
-      new Date(),
+      new Date(now),
     ),
   );
 
@@ -200,6 +206,7 @@ const longDay = (day: string) => longDayFormat.format(new Date(`${day}T00:00:00Z
 
 function DashboardRoute() {
   const { orgSlug } = Route.useParams();
+  const { now: loadedAt } = Route.useLoaderData();
   const { today, timeZone } = useOrgDateTime();
   const navigate = Route.useNavigate();
   const { from, to } = Route.useSearch();
@@ -231,7 +238,7 @@ function DashboardRoute() {
   const desk = useQuery({
     ...deskMoneyQuery(orgSlug),
     ...OPERATIONAL_REFETCH,
-    enabled: canReadBilling,
+    enabled: canReadBilling && isToday,
   });
 
   const visits = useQuery({
@@ -251,7 +258,9 @@ function DashboardRoute() {
     // A usual day only compares a single day in progress; the label names the range.
     if (!isToday) return null;
 
-    if (data.collected <= ZERO) return "No payments yet today.";
+    if (data.collected < ZERO) return "Refunds exceed receipts today";
+
+    if (data.collected === ZERO) return "Net collections are zero today";
 
     if (usualDay <= ZERO) return "Collected so far today";
 
@@ -266,74 +275,65 @@ function DashboardRoute() {
       : `${money(-difference)} less than ${usualLabel} so far`;
   })();
 
-  const methods = (data?.byMethod ?? []).filter((row) => row.amount > ZERO);
-  const open = visits.data?.items ?? [];
-  const capped = Boolean(visits.data?.nextCursor);
-  const arrived = open.filter((visit) => visit.status === "checked_in").toSorted(byTime);
-  const booked = open.filter((visit) => visit.status === "booked").toSorted(byTime);
-  const nextBooked = booked[0];
+  const methods = (data?.byMethod ?? []).filter((row) => row.amount !== ZERO);
+  const arrived = visits.data?.waiting ?? [];
+  const booked = visits.data?.booked ?? 0;
+  const nextBookedAt = visits.data?.nextBookedAt;
   const summary = desk.data?.summary;
 
-  // Per department: who has arrived and who is still to come.
-  const byDepartment = new Map<string, { arrived: number; booked: number }>();
+  const departments = (visits.data?.departments ?? [])
+    .filter((row) => row.arrived > 0)
+    .toSorted((a, b) => b.arrived - a.arrived);
 
-  for (const visit of open) {
-    const name = visit.departmentName ?? "Unassigned";
-    const row = byDepartment.get(name) ?? { arrived: 0, booked: 0 };
+  const sources = (data?.bySource ?? []).filter((row) => row.amount !== ZERO);
+  const now = visits.data?.now.getTime() ?? loadedAt;
+  const opd = { to: "/$orgSlug/opd", params: { orgSlug }, search: { from, to } } as const;
 
-    if (visit.status === "checked_in") row.arrived += 1;
-    else row.booked += 1;
-
-    byDepartment.set(name, row);
-  }
-
-  const departments = [...byDepartment.entries()]
-    .filter(([, row]) => row.arrived > 0)
-    .toSorted((a, b) => b[1].arrived - a[1].arrived);
-
-  // Money by area, after refunds; each source is a row so IPD and lab slot in.
-  const sources = (data?.bySource ?? []).filter((row) => row.amount > ZERO);
-
-  const now = Date.now();
-
-  const opd = { to: "/$orgSlug/opd", params: { orgSlug } } as const;
-
-  const figures: { label: string; value: string; note: string; link: LinkOptions }[] = [
+  const figures: { label: string; value: string; note: ReactNode; link: LinkOptions }[] = [
     ...(canReadOpd
       ? [
           {
             label: "Booked, not arrived",
-            value: visits.data ? String(booked.length) : "",
-            note: nextBooked?.dayOrderAt
-              ? `Next expected at ${formatTime(nextBooked.dayOrderAt, timeZone)}`
-              : nextBooked
-                ? "No time set for the next booking"
-                : isToday
-                  ? "Nobody else is booked today"
-                  : `Nobody booked · ${rangeLabel}`,
+            value: visits.data ? String(booked) : "",
+            note: visits.isError ? (
+              <ErrorNote title="Could not load queue" error={visits.error} />
+            ) : !visits.data ? null : nextBookedAt ? (
+              `Next expected at ${formatTime(nextBookedAt, timeZone)}`
+            ) : isToday ? (
+              "Nobody else is booked today"
+            ) : (
+              `Nobody booked · ${rangeLabel}`
+            ),
             link: opd,
           },
           {
             label: "Checked in",
-            value: visits.data ? `${arrived.length}${capped ? "+" : ""}` : "",
-            note: !isToday
-              ? rangeLabel
-              : arrived[0]?.dayOrderAt
-                ? `Longest wait ${formatWait(minutesSince(arrived[0].dayOrderAt, now))}`
-                : "Arrived and not yet seen",
+            value: visits.data ? String(visits.data.arrived) : "",
+            note: visits.isError ? (
+              <ErrorNote title="Could not load queue" error={visits.error} />
+            ) : !visits.data ? null : !isToday ? (
+              rangeLabel
+            ) : arrived[0]?.dayOrderAt ? (
+              `Longest wait ${formatWait(minutesSince(arrived[0].dayOrderAt, now))}`
+            ) : (
+              "Arrived and not yet seen"
+            ),
             link: opd,
           },
         ]
       : []),
-    ...(canReadBilling
+    ...(canReadBilling && isToday
       ? [
           {
-            label: "Unbilled",
+            label: "Unbilled alerts",
             value: summary ? money(summary.toBillTotal) : "",
-            note:
-              summary && summary.toBillCount > 0
-                ? `${summary.toBillCount} ${summary.toBillCount === 1 ? "visit" : "visits"} · bill before they leave`
-                : "Every visit is billed",
+            note: desk.isError ? (
+              <ErrorNote title="Could not load billing alerts" error={desk.error} />
+            ) : !summary ? null : summary.toBillCount > 0 ? (
+              `${summary.toBillCount} ${summary.toBillCount === 1 ? "visit" : "visits"} · bill before they leave`
+            ) : (
+              "No visits past the billing alert threshold"
+            ),
             link: {
               to: "/$orgSlug/billing",
               params: { orgSlug },
@@ -357,7 +357,7 @@ function DashboardRoute() {
             <SidebarTrigger className="lg:hidden" />
             <div className="flex flex-col">
               <h1 className="text-lg font-medium">
-                {greeting(timeZone)}
+                {greeting(timeZone, loadedAt)}
                 {userName && `, ${userName.split(" ")[0]}`}
               </h1>
               <p className="text-muted-foreground">{longDay(today)}</p>
@@ -422,21 +422,23 @@ function DashboardRoute() {
                     <span className="text-muted-foreground">
                       {isToday ? "How today was paid" : "How it was paid"}
                     </span>
-                    <span className="flex h-2 gap-0.5 overflow-hidden rounded-full">
-                      {methods.map((row, index) => (
-                        <span
-                          key={row.method}
-                          className={
-                            index === 0
-                              ? "bg-brand-fill"
-                              : index === 1
-                                ? "bg-foreground/55"
-                                : "bg-foreground/20"
-                          }
-                          style={{ flexGrow: Number(row.amount) }}
-                        />
-                      ))}
-                    </span>
+                    {methods.every((row) => row.amount > ZERO) && (
+                      <span className="flex h-2 gap-0.5 overflow-hidden rounded-full">
+                        {methods.map((row, index) => (
+                          <span
+                            key={row.method}
+                            className={
+                              index === 0
+                                ? "bg-brand-fill"
+                                : index === 1
+                                  ? "bg-foreground/55"
+                                  : "bg-foreground/20"
+                            }
+                            style={{ flexGrow: Number(row.amount) }}
+                          />
+                        ))}
+                      </span>
+                    )}
                     <span className="flex flex-wrap gap-x-4 gap-y-1 tabular-nums">
                       {methods.map((row) => (
                         <span key={row.method}>
@@ -449,11 +451,14 @@ function DashboardRoute() {
                 )}
               </div>
 
+              {trend.isError && (
+                <ErrorNote title="Could not load collection trend" error={trend.error} />
+              )}
               <CollectionBars
                 trend={trend.data ?? []}
                 range={range}
                 today={today}
-                showTotal={isToday}
+                showTotal
                 money={money}
                 action={
                   <div
@@ -493,7 +498,7 @@ function DashboardRoute() {
                   <span className="min-h-8 text-2xl font-medium tracking-tight tabular-nums">
                     {figure.value}
                   </span>
-                  <span className="text-muted-foreground">{figure.note}</span>
+                  <div className="text-muted-foreground">{figure.note}</div>
                 </Link>
               ))}
             </section>
@@ -507,7 +512,9 @@ function DashboardRoute() {
               className="min-h-40"
               action={<span className="text-muted-foreground">After refunds</span>}
             >
-              {sources.length === 0 ? (
+              {collections.isError ? (
+                <ErrorNote title="Could not load collections" error={collections.error} />
+              ) : !data ? null : sources.length === 0 ? (
                 <p className="flex flex-1 items-center justify-center pb-8 text-center text-muted-foreground">
                   {isToday ? "Nothing collected yet today" : "Nothing collected in this period"}
                 </p>
@@ -533,7 +540,9 @@ function DashboardRoute() {
 
           {canReadOpd && (
             <Card title="Queue mix" className="min-h-40">
-              {departments.length === 0 ? (
+              {visits.isError ? (
+                <ErrorNote title="Could not load queue" error={visits.error} />
+              ) : !visits.data ? null : departments.length === 0 ? (
                 <p className="flex flex-1 items-center justify-center pb-8 text-center text-muted-foreground">
                   {isToday
                     ? "No patients have checked in yet today"
@@ -541,9 +550,9 @@ function DashboardRoute() {
                 </p>
               ) : (
                 <Mix
-                  parts={departments.map(([name, row]) => ({
-                    key: name,
-                    label: name,
+                  parts={departments.map((row) => ({
+                    key: row.departmentId,
+                    label: row.departmentName,
                     value: String(row.arrived),
                     weight: row.arrived,
                     note: row.booked > 0 ? `${row.booked} booked` : undefined,
@@ -557,7 +566,9 @@ function DashboardRoute() {
         {canReadOpd && isToday && (
           <Panel
             // The dashboard's section titles share one size, weight and ink.
-            label={<span className="text-sm font-medium text-foreground">Waiting now</span>}
+            label={
+              <span className="text-sm font-medium text-foreground">Waiting now · oldest 20</span>
+            }
             minHeight="min-h-48"
             action={
               <Button variant="ghost" size="xs" nativeButton={false} render={<Link {...opd} />}>
@@ -565,7 +576,9 @@ function DashboardRoute() {
               </Button>
             }
           >
-            {arrived.length === 0 ? (
+            {visits.isError ? (
+              <ErrorNote title="Could not load queue" error={visits.error} />
+            ) : !visits.data ? null : arrived.length === 0 ? (
               <PanelEmpty>Nobody is waiting right now</PanelEmpty>
             ) : (
               <DataList

@@ -15,7 +15,7 @@ const LINKS = [
   { label: "Privacy", href: "/privacy" },
   { label: "Terms", href: "/terms" },
   { label: "Log in", href: "/login" },
-];
+] as const;
 
 /* CSS chooses the icon before hydration; resolvedTheme is only read on click. */
 function ThemeSwitch() {
@@ -24,10 +24,11 @@ function ThemeSwitch() {
   return (
     <button
       type="button"
-      aria-label="Toggle theme"
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
       className="rounded-md p-1.5 text-band-muted transition-[color,transform] duration-150 ease-out-strong active:scale-[0.97] pointer-fine:hover:text-band-foreground"
     >
+      <span className="sr-only hidden dark:block">Switch to light theme</span>
+      <span className="sr-only dark:hidden">Switch to dark theme</span>
       <SunIcon aria-hidden className="hidden size-4 dark:block" />
       <MoonIcon aria-hidden className="size-4 dark:hidden" />
     </button>
@@ -48,16 +49,6 @@ export function LandingFooter() {
             </Link>
             <p className="mt-4 text-sm leading-6 text-band-muted">
               Patient records, OPD, billing and pharmacy for hospitals and clinics.
-            </p>
-            <p className="mt-3 text-sm leading-6 text-band-muted">
-              Part of{" "}
-              <a
-                href="https://eternal.com"
-                className="text-band-foreground underline underline-offset-4"
-              >
-                Eternal
-              </a>
-              , alongside Eternal Campus and Eternal Books.
             </p>
             <div className="mt-6 flex flex-col gap-2.5 text-sm">
               <a
@@ -86,9 +77,12 @@ export function LandingFooter() {
             <ul className="grid grid-cols-2 gap-x-12 gap-y-3.5">
               {LINKS.map((link) => (
                 <li key={link.href}>
-                  <a href={link.href} className="text-sm no-underline pointer-fine:hover:underline">
+                  <Link
+                    to={link.href}
+                    className="text-sm no-underline pointer-fine:hover:underline"
+                  >
                     {link.label}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>

@@ -1,11 +1,16 @@
 import { db } from "@hms/db";
 import { advanceReceipts } from "@hms/db/schema/advance-receipts";
 import { invoices } from "@hms/db/schema/invoices";
+import { opdAppointments } from "@hms/db/schema/opd-appointments";
+import { patients } from "@hms/db/schema/patients";
+import { practitioners } from "@hms/db/schema/practitioners";
+import { departments } from "@hms/db/schema/departments";
 import { payments } from "@hms/db/schema/payments";
 import { refunds } from "@hms/db/schema/refunds";
-import { sql, type SQL } from "drizzle-orm";
+import { and, asc, between, eq, inArray, sql, sum, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
+import { closeExpiredBookings } from "../lib/opd-close";
 import { businessDate } from "../lib/business-date";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { dayRange, resolveDayRange, type PaymentMethod } from "../lib/schemas";
@@ -21,7 +26,7 @@ type Day = { day: string; amount: bigint; cash: bigint; digital: bigint };
 /**
  * Net collection per day for `days` days ending on `end`, oldest first. Gap-filled:
  * a day with no payments plots as zero rather than compressing the axis. Money in
- * is split cash against digital; the amount is net of refunds.
+ * and its cash/digital split are net of refunds.
  */
 async function dailySeries(orgId: string, end: SQL, days: number): Promise<Day[]> {
   const start = sql`(${end}) - ${days - 1}::int`;
@@ -52,9 +57,9 @@ async function dailySeries(orgId: string, end: SQL, days: number): Promise<Day[]
         select to_char(days.day, 'YYYY-MM-DD') as "day",
                coalesce(sum(case when kind = 'in' then amount else -amount end), 0)::bigint
                  as "amount",
-               coalesce(sum(amount) filter (where kind = 'in' and method = 'cash'), 0)::bigint
+               coalesce(sum(case when kind = 'in' then amount else -amount end) filter (where method = 'cash'), 0)::bigint
                  as "cash",
-               coalesce(sum(amount) filter (where kind = 'in' and method <> 'cash'), 0)::bigint
+               coalesce(sum(case when kind = 'in' then amount else -amount end) filter (where method <> 'cash'), 0)::bigint
                  as "digital"
         from days
         left join collections on collections.day = days.day
@@ -90,82 +95,161 @@ function usualDay(earlier: Day[], day: string) {
 }
 
 export const dashboardRouter = {
+  queue: orgProcedure({ opd: ["read"] }, dayInput).handler(async ({ context, input }) => {
+    const { orgId, userId } = context.scope;
+    const { timeZone } = await readOrgSettings(orgId);
+    const now = new Date();
+    const currentDay = businessDate(now, timeZone);
+    const { from, to } = resolveDayRange(input, currentDay);
+
+    if (from < currentDay) {
+      await closeExpiredBookings({ orgId, actorId: userId, currentDay, now });
+    }
+
+    const scope = and(
+      eq(opdAppointments.orgId, orgId),
+      between(opdAppointments.businessDate, from, to),
+    );
+
+    const [counts, waiting] = await Promise.all([
+      db
+        .select({
+          departmentId: departments.id,
+          departmentName: departments.name,
+          arrived: sql<number>`count(*) filter (where ${opdAppointments.status} = 'checked_in')::int`,
+          booked: sql<number>`count(*) filter (where ${opdAppointments.status} = 'booked')::int`,
+          nextBookedAt: sql<
+            string | null
+          >`min(${opdAppointments.dayOrderAt}) filter (where ${opdAppointments.status} = 'booked')`,
+        })
+        .from(opdAppointments)
+        .innerJoin(
+          departments,
+          and(eq(departments.id, opdAppointments.departmentId), eq(departments.orgId, orgId)),
+        )
+        .where(and(scope, inArray(opdAppointments.status, ["booked", "checked_in"])))
+        .groupBy(departments.id, departments.name),
+      db
+        .select({
+          id: opdAppointments.id,
+          callerName: opdAppointments.callerName,
+          tokenNumber: opdAppointments.tokenNumber,
+          dayOrderAt: opdAppointments.dayOrderAt,
+          patientName: patients.name,
+          patientMrn: patients.mrn,
+          practitionerName: practitioners.name,
+          departmentName: departments.name,
+        })
+        .from(opdAppointments)
+        .leftJoin(
+          patients,
+          and(eq(patients.id, opdAppointments.patientId), eq(patients.orgId, orgId)),
+        )
+        .innerJoin(
+          practitioners,
+          and(eq(practitioners.id, opdAppointments.practitionerId), eq(practitioners.orgId, orgId)),
+        )
+        .innerJoin(
+          departments,
+          and(eq(departments.id, opdAppointments.departmentId), eq(departments.orgId, orgId)),
+        )
+        .where(and(scope, eq(opdAppointments.status, "checked_in")))
+        .orderBy(asc(opdAppointments.dayOrderAt), asc(opdAppointments.id))
+        .limit(20),
+    ]);
+
+    const bookedTimes = counts.flatMap((row) =>
+      row.nextBookedAt ? [new Date(row.nextBookedAt).getTime()] : [],
+    );
+
+    return {
+      arrived: counts.reduce((sum, row) => sum + row.arrived, 0),
+      booked: counts.reduce((sum, row) => sum + row.booked, 0),
+      nextBookedAt: bookedTimes.length ? new Date(Math.min(...bookedTimes)) : null,
+      departments: counts.map(({ departmentId, departmentName, arrived, booked }) => ({
+        departmentId,
+        departmentName,
+        arrived,
+        booked,
+      })),
+      waiting,
+      now,
+    };
+  }),
   collections: orgProcedure({ billing: ["read"] }, dayInput).handler(async ({ context, input }) => {
     const { orgId } = context.scope;
     const { timeZone } = await readOrgSettings(orgId);
     const { from, to } = resolveDayRange(input, businessDate(new Date(), timeZone));
 
-    const [byMethod, bySource, earlier] = await Promise.all([
-      db.execute<{ method: PaymentMethod; amount: string }>(sql`
-        with collections as (
-          select ${payments.method} as method, ${payments.amount} as amount
-          from ${payments}
-          where ${payments.orgId} = ${orgId}
-            and ${payments.businessDate} between ${from} and ${to}
-          union all
-          select ${advanceReceipts.method} as method, ${advanceReceipts.amount} as amount
-          from ${advanceReceipts}
-          where ${advanceReceipts.orgId} = ${orgId}
-            and ${advanceReceipts.businessDate} between ${from} and ${to}
-          union all
-          select ${refunds.method} as method, -${refunds.amount} as amount
-          from ${refunds}
-          where ${refunds.orgId} = ${orgId}
-            and ${refunds.businessDate} between ${from} and ${to}
+    // Read the money movements once; both breakdowns use the same signed totals.
+    const movements = db.$with("movements").as(
+      db
+        .select({
+          method: payments.method,
+          source: sql<"opd" | "pharmacy" | "advance">`${invoices.stream}`.as("source"),
+          amount: payments.amount,
+        })
+        .from(payments)
+        .innerJoin(invoices, and(eq(invoices.orgId, orgId), eq(invoices.id, payments.invoiceId)))
+        .where(and(eq(payments.orgId, orgId), between(payments.businessDate, from, to)))
+        .unionAll(
+          db
+            .select({
+              method: advanceReceipts.method,
+              source: sql<"opd" | "pharmacy" | "advance">`'advance'`,
+              amount: advanceReceipts.amount,
+            })
+            .from(advanceReceipts)
+            .where(
+              and(
+                eq(advanceReceipts.orgId, orgId),
+                between(advanceReceipts.businessDate, from, to),
+              ),
+            ),
         )
-        select method, sum(amount)::bigint as "amount"
-        from collections
-        group by method
-        order by sum(amount) desc
-      `),
-      // What the money was for: an invoice's stream, or an advance. A refund counts
-      // against the stream of the invoice it reverses, or against advances.
-      db.execute<{ source: "opd" | "pharmacy" | "advance"; amount: string }>(sql`
-        with collections as (
-          select ${invoices.stream} as source, ${payments.amount} as amount
-          from ${payments}
-          inner join ${invoices}
-            on ${invoices.orgId} = ${payments.orgId}
-           and ${invoices.id} = ${payments.invoiceId}
-          where ${payments.orgId} = ${orgId}
-            and ${payments.businessDate} between ${from} and ${to}
-          union all
-          select 'advance', ${advanceReceipts.amount}
-          from ${advanceReceipts}
-          where ${advanceReceipts.orgId} = ${orgId}
-            and ${advanceReceipts.businessDate} between ${from} and ${to}
-          union all
-          select coalesce(${invoices.stream}, 'advance'), -${refunds.amount}
-          from ${refunds}
-          left join ${invoices}
-            on ${invoices.orgId} = ${refunds.orgId}
-           and ${invoices.id} = ${refunds.invoiceId}
-          where ${refunds.orgId} = ${orgId}
-            and ${refunds.businessDate} between ${from} and ${to}
-        )
-        select source, sum(amount)::bigint as "amount"
-        from collections
-        group by source
-        having sum(amount) <> 0
-        order by sum(amount) desc
-      `),
-      // Eight weeks before a single day, for its usual-day comparison.
-      from === to ? dailySeries(orgId, sql`${to}::date - 1`, USUAL_WEEKS * 7) : [],
+        .unionAll(
+          db
+            .select({
+              method: refunds.method,
+              source: sql<"opd" | "pharmacy" | "advance">`coalesce(${invoices.stream}, 'advance')`,
+              amount: sql<bigint>`-${refunds.amount}`,
+            })
+            .from(refunds)
+            .leftJoin(invoices, and(eq(invoices.orgId, orgId), eq(invoices.id, refunds.invoiceId)))
+            .where(and(eq(refunds.orgId, orgId), between(refunds.businessDate, from, to))),
+        ),
+    );
+
+    const [totals, earlier] = await Promise.all([
+      db
+        .with(movements)
+        .select({
+          method: movements.method,
+          source: movements.source,
+          amount: sum(movements.amount).mapWith(BigInt),
+        })
+        .from(movements)
+        .groupBy(movements.method, movements.source),
+      !input.from && !input.to ? dailySeries(orgId, sql`${to}::date - 1`, USUAL_WEEKS * 7) : [],
     ]);
 
-    // The window's own total, so it follows the range rather than the trend's last bar.
-    const collected = byMethod.rows.reduce((sum, row) => sum + BigInt(row.amount), 0n);
+    const methods = new Map<PaymentMethod, bigint>();
+    const sources = new Map<"opd" | "pharmacy" | "advance", bigint>();
+
+    for (const row of totals) {
+      methods.set(row.method, (methods.get(row.method) ?? 0n) + row.amount);
+      sources.set(row.source, (sources.get(row.source) ?? 0n) + row.amount);
+    }
+
+    const descending = (a: { amount: bigint }, b: { amount: bigint }) =>
+      a.amount > b.amount ? -1 : a.amount < b.amount ? 1 : 0;
 
     return {
-      collected,
-      byMethod: byMethod.rows.map((row) => ({
-        ...row,
-        amount: BigInt(row.amount),
-      })),
-      bySource: bySource.rows.map((row) => ({
-        source: row.source,
-        amount: BigInt(row.amount),
-      })),
+      collected: totals.reduce((total, row) => total + row.amount, 0n),
+      byMethod: [...methods].map(([method, amount]) => ({ method, amount })).sort(descending),
+      bySource: [...sources]
+        .flatMap(([source, amount]) => (amount !== 0n ? [{ source, amount }] : []))
+        .sort(descending),
       usual: usualDay(earlier, to),
     };
   }),

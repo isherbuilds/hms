@@ -112,18 +112,12 @@ default: **12 px body text** (see [Open decision](#open-decision-body-size)).
 
 ### Signed-in app drift (source audit)
 
-- Dashboard breaks §2/§3/§4/§8: `p-5`, `gap-5`, `lg:p-6`, `text-sm` body,
-  `text-4xl` headline, `rounded-xl` cards, a 28 px hand-built selector
-  (`apps/web/src/routes/$orgSlug/dashboard.tsx:69,224-255`). Unbilled money uses
-  `text-overdue`, which §5 reserves for invoices older than seven days.
-- Failed reads become confident empty states: `const open = visits.data?.items ?? []`
-  (`dashboard.tsx:200`, verified) feeds "Nobody is waiting".
-- The visits query is a 200-row newest-first slice sorted client-side, so busy
-  days can omit the oldest waiters (`dashboard.tsx:200-203`;
-  `packages/api/src/routers/opd.ts:733-759`).
-- `CollectionBars.short()` rounds to thousands: ₹100 → "₹0k"; negative net days
-  produce a negative height (`apps/web/src/components/collection-bars.tsx:9-15,46`,
-  verified). 14-day labels hide below `sm` (`:38`).
+- PR #12 correction, 2 October 2026: dashboard query failures have explicit errors;
+  counts come from the scoped `dashboard.queue` aggregate and its waiting list is
+  the oldest 20 arrivals. The earlier 200-row client aggregation is removed.
+- Collection bars retain signed net amounts and cash/digital splits net of refunds.
+  The earlier claim about a `CollectionBars.short()` helper was incorrect: that
+  helper did not exist at the reviewed head. Amounts use the money formatter.
 - Elsewhere: Billing stacks an Overview tray above its worklist; Reports repeats
   its title; Settings uses public-only 24 px spacing
   (`billing/index.tsx:187-215`, `reports/daily-collections.tsx:79,98-103`,
@@ -206,11 +200,11 @@ Targets: `xs`/`icon-xs` buttons are 24 px, the WCAG 2.5.8 AA floor
   ([NN/g](https://www.nngroup.com/articles/show-prices-for-common-scenarios/));
   B2B buyers look for local contact and regional expertise
   ([NN/g international B2B](https://www.nngroup.com/articles/international-b2b/)).
-- Truth gaps: hero "ABDM & ABHA ready" vs India "Coming" vs FAQ "Not yet"
-  (`landing/hero.tsx:187`, `landing/india.tsx:9-12`, `content/faqs.ts:32-34`);
-  About says pharmacy does not run while home promotes it
-  (`routes/about.tsx:56-58`); `₹[price]` placeholders and `href="#"` footer
-  items. D050 records the owner's approval of that copy verbatim.
+- The owner explicitly retained the original planned IPD/lab presentation and
+  landing animations on 2 October 2026 for the invite-only product. This is a
+  presentation choice, not a change to implemented scope. About already described
+  pharmacy; prior claims about price placeholders and dead footer links were stale.
+  Public legal copy and deployment guarantees still need owner review.
 - Peers (observed 2026-10-02): Practo Ray ties ABDM to concrete record-sharing
   actions; Cliniko and Eka publish prices; CareStack discloses that its ROI
   study is commissioned; Jane leads with a product screenshot and pricing CTA;

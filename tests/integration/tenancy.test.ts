@@ -363,6 +363,7 @@ test("an unknown slug is FORBIDDEN, not NOT_FOUND — existence never leaks", as
 type OrgClaim = { orgSlug: string };
 
 const GUARDED_CALLS = {
+  "dashboard.queue": (api, claim) => api.dashboard.queue({ ...claim }),
   "dashboard.collections": (api, claim) => api.dashboard.collections({ ...claim }),
   "dashboard.trend": (api, claim) => api.dashboard.trend({ ...claim, days: 7 }),
   "settings.get": (api, claim) => api.settings.get({ ...claim }),

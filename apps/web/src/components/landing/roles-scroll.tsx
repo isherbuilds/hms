@@ -87,7 +87,7 @@ function RolesStack() {
   }, []);
 
   return (
-    <section id="roles" className="border-y border-border bg-card">
+    <section id="roles" className="overflow-clip border-y border-border bg-card">
       <div ref={track} style={{ height: `${100 + (N - 1) * STEP_SVH}svh` }}>
         <div
           className={`${WRAP} sticky top-16 flex h-[calc(100svh-4rem)] flex-col justify-center gap-3 py-6 md:py-10`}

@@ -10,10 +10,7 @@ export const WHATSAPP_URL = `https://wa.me/${env.VITE_WHATSAPP_NUMBER}?text=${en
 
 export const CONTACT_MAILTO = `mailto:${env.VITE_CONTACT_EMAIL}`;
 
-/* One number answers calls and WhatsApp. `VITE_WHATSAPP_NUMBER` is E.164 digits;
-   the last ten are the national number people read and dial in India. */
-const NATIONAL = env.VITE_WHATSAPP_NUMBER.slice(-10);
-
-export const PHONE_DISPLAY = `${NATIONAL.slice(0, 3)} ${NATIONAL.slice(3, 6)} ${NATIONAL.slice(6)}`;
+/* Keep the display faithful to every E.164 number accepted by configuration. */
+export const PHONE_DISPLAY = `+${env.VITE_WHATSAPP_NUMBER}`;
 
 export const PHONE_TEL = `tel:+${env.VITE_WHATSAPP_NUMBER}`;

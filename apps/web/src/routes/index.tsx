@@ -11,6 +11,7 @@ import { LandingNav } from "@/components/landing/nav";
 import { LandingOwner } from "@/components/landing/owner";
 import { LandingPricing } from "@/components/landing/pricing";
 import { RevealRoot } from "@/components/landing/reveal";
+import { LandingTreatment } from "@/components/landing/treatment";
 import { LandingRoles } from "@/components/landing/roles-scroll";
 import { redirectSignedInHome } from "@/lib/home";
 import { pageHead } from "@/lib/seo";
@@ -36,6 +37,7 @@ function HomeRoute() {
         <LandingHero />
         <LandingJourney />
         <LandingRoles />
+        <LandingTreatment />
         <LandingOwner />
         <LandingIndia />
         <LandingGoLive />

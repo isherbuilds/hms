@@ -32,15 +32,18 @@ export function CollectionBars({
   const [hovered, setHovered] = useState<number | null>(null);
   const start = Math.max(trend.length - range, 0);
   const days = trend.slice(start);
-  const index = hovered ?? days.length - 1;
+  const index = hovered !== null && hovered < days.length ? hovered : days.length - 1;
   const shown = days[index];
   // At rest the line totals the range: the card's headline already states the last day.
   const total = days.reduce((sum, day) => sum + day.amount, ZERO);
   const weekBefore = trend[start + index - 7];
   // The bar geometry needs numbers; money stays bigint everywhere else.
-  const max = Math.max(...days.map((day) => Number(day.amount)), 1);
+  const max = Math.max(...days.map((day) => Number(day.amount)), 0);
+  const min = Math.min(...days.map((day) => Number(day.amount)), 0);
+  const span = Math.max(max - min, 1);
+  const baseline = (-min / span) * 100;
 
-  if (!shown) return null;
+  if (!shown) return <div className="flex min-h-48 justify-end">{action}</div>;
 
   const isToday = shown.day === today;
 
@@ -58,9 +61,7 @@ export function CollectionBars({
           <p className="min-w-0 truncate font-medium tabular-nums">
             {hovered === null
               ? `${days.length} days${showTotal ? ` · ${money(total)}` : ""}`
-              : `${isToday ? "Today" : formatDay(shown.day)} · ${
-                  shown.amount > ZERO ? money(shown.amount) : "Nothing collected"
-                }`}
+              : `${isToday ? "Today" : formatDay(shown.day)} · ${money(shown.amount)}`}
           </p>
           <div className="shrink-0">{action}</div>
         </div>
@@ -70,8 +71,7 @@ export function CollectionBars({
             : [
                 change !== null &&
                   `${change >= 0 ? "+" : ""}${change}% on last ${weekday.format(new Date(`${shown.day}T00:00:00Z`))}`,
-                shown.amount > ZERO &&
-                  `Digital ${money(shown.digital)} · Cash ${money(shown.cash)}`,
+                `Digital ${money(shown.digital)} · Cash ${money(shown.cash)}`,
               ]
                 .filter(Boolean)
                 .join(" · ")}
@@ -98,16 +98,23 @@ export function CollectionBars({
               key={day.day}
               type="button"
               data-focus-inset
-              aria-label={`${formatDay(day.day)}: ${day.amount > ZERO ? money(day.amount) : "nothing collected"}`}
+              aria-label={`${formatDay(day.day)}: ${money(day.amount)}`}
               onMouseEnter={() => setHovered(position)}
               onFocus={() => setHovered(position)}
               onBlur={() => setHovered(null)}
-              className="flex h-full items-end"
+              className="relative h-full"
             >
               <span
-                className={`w-full rounded-md ${day.amount > ZERO ? tone : "bg-foreground/8"}`}
+                aria-hidden
+                className="absolute inset-x-0 border-t border-border"
+                style={{ bottom: `${baseline}%` }}
+              />
+              <span
+                className={`absolute inset-x-0 rounded-sm ${day.amount !== ZERO ? tone : "bg-foreground/8"}`}
                 style={{
-                  height: day.amount > ZERO ? `${(Number(day.amount) / max) * 100}%` : 3,
+                  height:
+                    day.amount !== ZERO ? `${(Math.abs(Number(day.amount)) / span) * 100}%` : 3,
+                  bottom: `${day.amount < ZERO ? baseline - (Math.abs(Number(day.amount)) / span) * 100 : baseline}%`,
                 }}
               />
             </button>

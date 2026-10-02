@@ -31,20 +31,20 @@ const INDIA_FEATURES = [
   },
   {
     glyph: "4G",
-    title: "Light on the internet",
-    description: "Loads fast on ordinary broadband or a phone hotspot.",
+    title: "Browser-based",
+    description: "Use the same system from a desktop or phone.",
     coming: false,
   },
   {
     glyph: "IN",
-    title: "Your data stays in India",
-    description: "Indian servers, encrypted, with daily backups.",
+    title: "Private prescription files",
+    description: "Files are private and shared through short-lived links.",
     coming: false,
   },
   {
     glyph: "+91",
-    title: "A person to call",
-    description: "Phone and WhatsApp support from people who know a billing counter.",
+    title: "Talk about your hospital",
+    description: "Contact us by phone or WhatsApp to discuss your needs.",
     coming: false,
   },
 ] as const;
@@ -126,7 +126,7 @@ function Cell({
       style={stagger(index)}
       className={`flex min-w-0 flex-col justify-between gap-3 p-4 md:px-5 ${className}`}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         {/* The installed Devanagari face is only bundled for PDFs, so the
             browser uses its system Devanagari fallback if it is absent. */}
         <span

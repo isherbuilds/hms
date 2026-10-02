@@ -28,7 +28,10 @@ export const Route = createFileRoute("/security")({
 
         <h2>Accounts</h2>
         <ul>
-          <li>Public sign-up is closed. A hospital administrator creates every account.</li>
+          <li>
+            Public sign-up is closed. Staff join through an invitation or an operator-created
+            account.
+          </li>
           <li>Passwords are hashed. We cannot read them.</li>
           <li>Only the hospital's own members can open its data.</li>
         </ul>

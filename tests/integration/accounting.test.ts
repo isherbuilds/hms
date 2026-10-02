@@ -662,7 +662,12 @@ test("daily collections nets payments and refunds by Business Date and method", 
     days: 30,
   });
 
-  expect(trend.find((row) => row.day === collectionDay)?.amount).toBe(118_00n);
+  expect(trend.find((row) => row.day === collectionDay)).toEqual({
+    day: collectionDay,
+    amount: 118_00n,
+    cash: 50_00n,
+    digital: 68_00n,
+  });
   await expectORPCCode(
     fixture.api.report.dailyCollections({
       orgSlug: fixture.organization.slug,

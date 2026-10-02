@@ -2906,3 +2906,52 @@ test("an unknown service leaves no token behind", async () => {
 
   expect(rows).toHaveLength(0);
 });
+
+test("dashboard counts the full queue and selects oldest arrivals across tenant boundaries", async () => {
+  const { owner, organization, api, patient, department } = await createOpdAppointmentSetup(
+    "dashboard-queue",
+    false,
+  );
+
+  const practitioner = await createPractitioner(api, organization.slug, department.id, "Dr. Queue");
+  const settings = await api.settings.get({ orgSlug: organization.slug });
+  const now = new Date();
+  const day = businessDate(now, settings.timeZone);
+
+  const rows = Array.from({ length: 205 }, (_, index) => ({
+    id: Bun.randomUUIDv7(),
+    orgId: organization.id,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    departmentId: department.id,
+    arrivalMode: "walk_in" as const,
+    status: "checked_in" as const,
+    businessDate: day,
+    arrivedAt: new Date(now.getTime() - (205 - index) * 60_000),
+    tokenNumber: index + 1,
+    createdBy: owner.user.id,
+  }));
+
+  await db.insert(opdAppointments).values(rows);
+  await db.insert(opdAppointments).values({
+    id: Bun.randomUUIDv7(),
+    orgId: organization.id,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    departmentId: department.id,
+    arrivalMode: "scheduled",
+    status: "booked",
+    businessDate: day,
+    scheduledFor: now,
+    createdBy: owner.user.id,
+  });
+  const queue = await api.dashboard.queue({ orgSlug: organization.slug });
+  expect(queue.arrived).toBe(205);
+  expect(queue.booked).toBe(1);
+  expect(queue.waiting.map((row) => row.id)).toEqual(rows.slice(0, 20).map((row) => row.id));
+  expect(queue.departments).toEqual([
+    { departmentId: department.id, departmentName: department.name, arrived: 205, booked: 1 },
+  ]);
+  const other = await createOrganization(owner, "dashboard-empty");
+  expect((await api.dashboard.queue({ orgSlug: other.slug })).arrived).toBe(0);
+});

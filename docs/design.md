@@ -155,7 +155,7 @@ border-black` because paper is white with black ink in every theme; the login
   (`components/landing/wash.tsx`) is a decorative gradient pinned to its light
   values in both themes, because a wash that inverts becomes a different object
   and because a bright stage carrying a dark app window is the effect it exists
-  for — it sits behind product screenshots only, never behind type; clinical
+  for — it backs the public feature hero and product screenshots; clinical
   severity uses the named tokens below; and identity monograms use the four fixed
   pastel pairs below to distinguish records.
 - **The Edernal Care wordmark is paired with a green brand accent.** `--brand`
@@ -166,7 +166,8 @@ border-black` because paper is white with black ink in every theme; the login
   on the solid accent. Each is defined in both themes. In light mode the brand is
   lime in two steps: `--brand` is the deep lime that text, icons and links use
   (5:1 on white), and `--brand-fill` is the bright lime for bars, cards and
-  progress fills. The fill is 2.4:1 on white, so it never carries text. In dark mode the brand and its fill share one mint hue. Green never replaces
+  progress fills. The fill is 2.4:1 on white, so it never carries text. In dark
+  mode the brand and its fill share one mint hue. Green never replaces
   state: settled or clear stays `--clinical-clear`. It does not promote actions:
   primary buttons stay ink (`--primary`) and focus stays neutral (`--ring` and
   `--sidebar-ring`).
@@ -183,8 +184,8 @@ border-black` because paper is white with black ink in every theme; the login
   through labelled `Badge` variants; neither is a general accent colour.
 - **Monogram colour carries identity, not status.** A patient ID, organization
   slug, or user email selects one of four muted duotone pairs (teal, indigo,
-  rose, ochre) in `components/monogram.tsx`. Patients show initials;
-  organizations and users show distinct symbols. Each uses `rounded` corners
+  rose, ochre) in `components/monogram.tsx`. Patients and users show initials;
+  organizations show a building symbol. Each uses `rounded` corners
   and stays legible at `size-6` in both themes. Do not use the pair for patient
   facts.
 - **Outside identity and emphasis, colour means state.** `text-destructive` marks
@@ -205,7 +206,7 @@ A bare icon button needs `aria-label`. An icon beside text needs nothing.
 
 **Where there is no picture, there is a `Monogram`** — a pastel identity square
 for an organization, a member, or a patient. One size (`size-6`), with initials
-for patients and symbols for organizations and users. A second hand-rolled
+for patients and users and a building symbol for organizations. A second hand-rolled
 identity box is the bug, not a style choice.
 
 ## 7. Sidebar
