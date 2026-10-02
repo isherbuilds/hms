@@ -553,11 +553,13 @@ function DashboardRoute() {
             // The dashboard's section titles share one size, weight and ink.
             label={
               <span className="text-sm font-medium text-foreground">
-                {visits.data
-                  ? `Checked in · ${rangeLabel} · ${visits.data.arrived} ${visits.data.arrived === 1 ? "patient" : "patients"}`
-                  : `Checked in · ${rangeLabel}`}
-                {latest.length > 0 && visits.data && visits.data.arrived > latest.length && (
-                  <span className="text-muted-foreground"> · latest {latest.length}</span>
+                Checked in · {rangeLabel}
+                {visits.data && (
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · {visits.data.arrived} {visits.data.arrived === 1 ? "patient" : "patients"}
+                    {visits.data.arrived > latest.length && ` · latest ${latest.length}`}
+                  </span>
                 )}
               </span>
             }

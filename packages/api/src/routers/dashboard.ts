@@ -253,9 +253,7 @@ export const dashboardRouter = {
     };
   }),
 
-  // The chart's bars, loaded per range so a longer range costs only when asked for.
-  // A week more than shown, so each bar can compare with the same weekday before it.
-  // The longest range plus a week for each bar's same-weekday comparison, so
+  // The chart's bars: the longest range plus a week for each bar's same-weekday comparison, so
   // switching between ranges is a client slice, never a refetch.
   trend: orgProcedure({ billing: ["read"] }, orgInput.extend({ to: dayRange.to })).handler(
     async ({ context, input }) => {
