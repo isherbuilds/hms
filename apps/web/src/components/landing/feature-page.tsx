@@ -138,7 +138,7 @@ export function FeaturePage({
               <Link
                 key={feature.to}
                 to={feature.to}
-                className="group flex items-center gap-4 rounded-lg border border-border p-4 transition-colors duration-100 ease-out hover:bg-muted"
+                className="group flex items-center gap-4 rounded-lg border border-border p-4 transition-colors duration-100 ease-out pointer-fine:hover:bg-muted"
               >
                 <feature.icon className="size-4 shrink-0 text-muted-foreground" />
                 <span className="flex flex-col gap-2">
@@ -146,7 +146,9 @@ export function FeaturePage({
                     <span className="text-sm font-medium">{feature.label}</span>
                     <span className="text-xs text-muted-foreground">{feature.blurb}</span>
                   </span>
-                  <span className="text-sm underline-offset-4 group-hover:underline">See it →</span>
+                  <span className="text-sm underline-offset-4 pointer-fine:group-hover:underline">
+                    See it →
+                  </span>
                 </span>
               </Link>
             ))}

@@ -35,7 +35,7 @@ export function LandingFinal() {
               rel="noopener noreferrer"
               className={buttonClass({ variant: "light" })}
             >
-              Book a free demo <ArrowRightIcon aria-hidden strokeWidth={1.75} />
+              Book on WhatsApp <ArrowRightIcon aria-hidden strokeWidth={1.75} />
             </a>
             <a href={PHONE_TEL} className={buttonClass({ variant: "outline-light" })}>
               <PhoneIcon aria-hidden strokeWidth={1.75} /> Call {PHONE_DISPLAY}

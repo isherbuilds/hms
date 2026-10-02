@@ -1,6 +1,7 @@
 import { formatDecimal, parseDecimal } from "@hms/api/core/money";
 import { businessDate } from "@hms/api/lib/business-date";
 import { computeInvoiceLines, documentNumber, fiscalYearLabel } from "@hms/api/lib/invoice-math";
+import { postJournalEntries, revenueAccountFor, settlementAccountFor } from "@hms/api/lib/ledger";
 import { db } from "@hms/db";
 import { nextCounter } from "@hms/db/counter";
 import { organization, user } from "@hms/db/schema/auth";
@@ -15,6 +16,8 @@ import { goodsReceiptLines } from "@hms/db/schema/goods-receipt-lines";
 import { goodsReceipts } from "@hms/db/schema/goods-receipts";
 import { invoiceLines } from "@hms/db/schema/invoice-lines";
 import { invoices } from "@hms/db/schema/invoices";
+import { journalEntries } from "@hms/db/schema/journal-entries";
+import { journalLines } from "@hms/db/schema/journal-lines";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { organizationSettings } from "@hms/db/schema/organization-settings";
 import { patients } from "@hms/db/schema/patients";
@@ -30,7 +33,7 @@ import { stockMovements } from "@hms/db/schema/stock-movements";
 import { treatmentPlanItems } from "@hms/db/schema/treatment-plan-items";
 import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { env } from "@hms/env/server";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 
 if (env.NODE_ENV === "production") throw new Error("Refusing to seed a production database.");
 
@@ -924,7 +927,7 @@ function visit(
 
   const fee = consultItems.find((item) => item.id === doctor.consultFeeItemId)!;
   const deptName = deptNameByDoctor.get(doctor.id)!;
-  const pool = procedureItems.filter((item, index) => PROCEDURES[index]!.depts.includes(deptName));
+  const pool = procedureItems.filter((_item, index) => PROCEDURES[index]!.depts.includes(deptName));
   const extras = random() < 0.42 && pool.length > 0 ? [pick(pool)] : [];
 
   const lines = [
@@ -1614,6 +1617,19 @@ await db.transaction(async (tx) => {
     .set({ legalName: HOSPITAL.legalName, address: HOSPITAL.address, taxId: HOSPITAL.taxId })
     .where(eq(organizationSettings.orgId, orgId));
 
+  // Demo journals are found by the demo document they post.
+  const demoJournals = tx
+    .select({ id: journalEntries.id })
+    .from(journalEntries)
+    .where(and(eq(journalEntries.orgId, orgId), like(journalEntries.sourceId, "demo-%")));
+
+  await tx
+    .delete(journalLines)
+    .where(and(eq(journalLines.orgId, orgId), inArray(journalLines.entryId, demoJournals)));
+  await tx
+    .delete(journalEntries)
+    .where(and(eq(journalEntries.orgId, orgId), like(journalEntries.sourceId, "demo-%")));
+
   for (const table of [
     refunds,
     advanceAllocations,
@@ -1750,6 +1766,128 @@ await db.transaction(async (tx) => {
   await insertAll(refunds, refundRows);
   await insertAll(goodsReceiptLines, receiptLineRows);
   await insertAll(stockMovements, movementRows);
+
+  // The same balanced entries the billing documents post in the app, so the trial
+  // balance and balance sheet agree with the seeded invoices and receipts.
+  const entry = (
+    row: { id?: string; createdAt?: Date | null },
+    sourceType: string,
+    narration: string,
+    lines: Parameters<typeof postJournalEntries>[2][number]["lines"],
+  ) => {
+    if (!row.id || !row.createdAt) throw new Error(`Seed ${sourceType} has no id or time`);
+
+    return {
+      sourceType,
+      sourceId: row.id,
+      narration,
+      createdBy: userId,
+      now: row.createdAt,
+      timeZone: settings.timeZone,
+      lines,
+    };
+  };
+
+  const revenueLines = (
+    rows: { revenueCategory: Parameters<typeof revenueAccountFor>[0]; taxableValue: bigint }[],
+    side: "debit" | "credit",
+  ) => {
+    const byAccount = new Map<ReturnType<typeof revenueAccountFor>, bigint>();
+
+    for (const row of rows) {
+      const account = revenueAccountFor(row.revenueCategory);
+      byAccount.set(account, (byAccount.get(account) ?? 0n) + row.taxableValue);
+    }
+
+    return [...byAccount].map(([account, amount]) => ({ account, [side]: amount }));
+  };
+
+  const roundOffLine = (roundOff: bigint, side: "debit" | "credit") => {
+    if (roundOff === 0n) return [];
+    const other = side === "debit" ? "credit" : "debit";
+
+    return [
+      {
+        account: "round_off" as const,
+        [roundOff > 0n ? side : other]: roundOff > 0n ? roundOff : -roundOff,
+      },
+    ];
+  };
+
+  const linesByInvoice = Map.groupBy(invoiceLineRows, (line) => line.invoiceId);
+  const lineById = new Map(invoiceLineRows.map((line) => [line.id, line]));
+  const notesLines = Map.groupBy(creditNoteLineRows, (line) => line.creditNoteId);
+
+  const invoiceNumberById = new Map(
+    invoiceRows.map((invoice) => [invoice.id, invoice.invoiceNumber]),
+  );
+
+  const journals = [
+    // A zero invoice with no round-off posts nothing, as in the app.
+    ...invoiceRows.flatMap((invoice) =>
+      invoice.grandTotal > 0n || (invoice.roundOff ?? 0n) !== 0n
+        ? [
+            entry(invoice, "invoice", `Invoice ${invoice.invoiceNumber}`, [
+              { account: "patient_receivables", debit: invoice.grandTotal },
+              ...revenueLines(linesByInvoice.get(invoice.id!) ?? [], "credit"),
+              ...((invoice.taxTotal ?? 0n) > 0n
+                ? [{ account: "gst_output" as const, credit: invoice.taxTotal }]
+                : []),
+              ...roundOffLine(invoice.roundOff ?? 0n, "credit"),
+            ]),
+          ]
+        : [],
+    ),
+    ...paymentRows.map((payment) =>
+      entry(payment, "payment", `Receipt ${payment.receiptNumber}`, [
+        { account: settlementAccountFor(payment.method), debit: payment.amount },
+        { account: "patient_receivables", credit: payment.amount },
+      ]),
+    ),
+    ...advanceRows.map((receipt) =>
+      entry(receipt, "advance_receipt", `Advance receipt ${receipt.receiptNumber}`, [
+        { account: settlementAccountFor(receipt.method), debit: receipt.amount },
+        { account: "patient_advances", credit: receipt.amount },
+      ]),
+    ),
+    ...allocationRows.map((allocation) =>
+      entry(
+        allocation,
+        "advance_allocation",
+        `Advance allocation · Invoice ${invoiceNumberById.get(allocation.invoiceId)}`,
+        [
+          { account: "patient_advances", debit: allocation.amount },
+          { account: "patient_receivables", credit: allocation.amount },
+        ],
+      ),
+    ),
+    ...creditNoteRows.map((note) => {
+      const lines = (notesLines.get(note.id!) ?? []).map((line) => ({
+        revenueCategory: lineById.get(line.invoiceLineId)!.revenueCategory,
+        taxableValue: line.taxableValue,
+      }));
+
+      return entry(note, "credit_note", `Credit note ${note.creditNoteNumber}`, [
+        ...revenueLines(lines, "debit"),
+        ...(note.taxTotal > 0n ? [{ account: "gst_output" as const, debit: note.taxTotal }] : []),
+        ...roundOffLine(note.roundOff ?? 0n, "debit"),
+        { account: "patient_receivables", credit: note.total },
+      ]);
+    }),
+    ...refundRows.map((refund) =>
+      entry(refund, "refund", `Refund ${refund.refundNumber}`, [
+        {
+          account: refund.advanceReceiptId ? "patient_advances" : "patient_receivables",
+          debit: refund.amount,
+        },
+        { account: settlementAccountFor(refund.method), credit: refund.amount },
+      ]),
+    ),
+  ];
+
+  for (let from = 0; from < journals.length; from += 400) {
+    await postJournalEntries(tx, orgId, journals.slice(from, from + 400));
+  }
 });
 
 const collectedToday = paymentRows

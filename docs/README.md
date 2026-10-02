@@ -88,7 +88,7 @@ checks remain pending: the connected Mac browser-control requests timed out on
 ### Public site owner decisions
 
 **Blocked.** Legal review must approve `/terms`, `/privacy` and `/security` before
-publication; the draft terms are not release approval. The owner confirms who answers the public contact channels and decides on training-crawler access. The site uses direct contact links. Company-address placeholders and unused marketing pages have been removed.
+publication; the draft terms are not release approval. The owner confirms who answers the public contact channels and decides on training-crawler access. The site uses direct contact links; set `VITE_WHATSAPP_NUMBER` in the Coolify web build before the next deploy. Company-address placeholders and unused marketing pages have been removed.
 
 ### [Production hardening](./operations.md#production-hardening)
 

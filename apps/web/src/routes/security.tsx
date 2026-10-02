@@ -2,6 +2,7 @@ import { env } from "@hms/env/web";
 import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { PROSE, PublicPage } from "@/components/landing/public-page";
+import { CONTACT_MAILTO } from "@/lib/contact";
 import { pageHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/security")({
@@ -63,9 +64,8 @@ export const Route = createFileRoute("/security")({
 
         <h2>Report a problem</h2>
         <p>
-          If you find a weakness, write to{" "}
-          <a href={`mailto:${env.VITE_CONTACT_EMAIL}`}>{env.VITE_CONTACT_EMAIL}</a>. Please do not
-          include patient data. For what we collect and why, read the{" "}
+          If you find a weakness, write to <a href={CONTACT_MAILTO}>{env.VITE_CONTACT_EMAIL}</a>.
+          Please do not include patient data. For what we collect and why, read the{" "}
           <Link to="/privacy">privacy notice</Link>.
         </p>
       </div>

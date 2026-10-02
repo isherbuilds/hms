@@ -194,13 +194,17 @@ test("desk money and dashboard collections are scoped, concurrent, and revoke wi
     .set({ createdAt: new Date(Date.now() - 2 * 3_600_000) })
     .where(and(eq(charges.orgId, one.id), eq(charges.id, charge.id)));
 
-  const [moneyOne, moneyTwo] = await Promise.all([
+  const [moneyOne, moneyTwo, toBillOne, toBillTwo] = await Promise.all([
     api.billing.worklist({ orgSlug: one.slug }),
     api.billing.worklist({ orgSlug: two.slug }),
+    api.billing.toBill({ orgSlug: one.slug }),
+    api.billing.toBill({ orgSlug: two.slug }),
   ]);
 
   expect(moneyOne.summary.toBillTotal).toBe(500_00n);
   expect(moneyTwo.summary.toBillTotal).toBe(0n);
+  expect(toBillOne).toEqual({ count: 1, total: 500_00n });
+  expect(toBillTwo).toEqual({ count: 0, total: 0n });
 
   const outsiderApi = clientFor(outsider);
   await expectORPCCode(outsiderApi.dashboard.collections({ orgSlug: one.slug }), "FORBIDDEN");
@@ -529,6 +533,7 @@ const GUARDED_CALLS = {
       attachmentId: Bun.randomUUIDv7(),
     }),
   "billing.worklist": (api, claim) => api.billing.worklist({ ...claim }),
+  "billing.toBill": (api, claim) => api.billing.toBill({ ...claim }),
   "billing.advancesHeld": (api, claim) => api.billing.advancesHeld({ ...claim }),
   "billing.refundDue": (api, claim) => api.billing.refundDue({ ...claim }),
   "billing.openInvoices": (api, claim) => api.billing.openInvoices({ ...claim }),

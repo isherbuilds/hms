@@ -13,10 +13,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as BillingRouteImport } from './routes/billing'
-import { Route as CareersRouteImport } from './routes/careers'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as CreateRouteImport } from './routes/create'
-import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as JoinRouteImport } from './routes/join'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OpdRouteImport } from './routes/opd'
@@ -25,7 +23,6 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SecurityRouteImport } from './routes/security'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
-import { Route as StatusRouteImport } from './routes/status'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as OrgSlugIndexRouteImport } from './routes/$orgSlug/index'
 import { Route as OrgSlugDashboardRouteImport } from './routes/$orgSlug/dashboard'
@@ -95,11 +92,6 @@ const BillingRoute = BillingRouteImport.update({
   path: '/billing',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CareersRoute = CareersRouteImport.update({
-  id: '/careers',
-  path: '/careers',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ContactRoute = ContactRouteImport.update({
   id: '/contact',
   path: '/contact',
@@ -108,11 +100,6 @@ const ContactRoute = ContactRouteImport.update({
 const CreateRoute = CreateRouteImport.update({
   id: '/create',
   path: '/create',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CustomersRoute = CustomersRouteImport.update({
-  id: '/customers',
-  path: '/customers',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JoinRoute = JoinRouteImport.update({
@@ -153,11 +140,6 @@ const SecurityRoute = SecurityRouteImport.update({
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const StatusRoute = StatusRouteImport.update({
-  id: '/status',
-  path: '/status',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TermsRoute = TermsRouteImport.update({
@@ -426,10 +408,8 @@ export interface FileRoutesByFullPath {
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
   '/about': typeof AboutRoute
   '/billing': typeof BillingRoute
-  '/careers': typeof CareersRoute
   '/contact': typeof ContactRoute
   '/create': typeof CreateRoute
-  '/customers': typeof CustomersRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/opd': typeof OpdRoute
@@ -438,7 +418,6 @@ export interface FileRoutesByFullPath {
   '/robots.txt': typeof RobotsDottxtRoute
   '/security': typeof SecurityRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
-  '/status': typeof StatusRoute
   '/terms': typeof TermsRoute
   '/$orgSlug/pharmacy': typeof OrgSlugPharmacyRouteRouteWithChildren
   '/$orgSlug/settings': typeof OrgSlugSettingsRouteRouteWithChildren
@@ -492,10 +471,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/billing': typeof BillingRoute
-  '/careers': typeof CareersRoute
   '/contact': typeof ContactRoute
   '/create': typeof CreateRoute
-  '/customers': typeof CustomersRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/opd': typeof OpdRoute
@@ -504,7 +481,6 @@ export interface FileRoutesByTo {
   '/robots.txt': typeof RobotsDottxtRoute
   '/security': typeof SecurityRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
-  '/status': typeof StatusRoute
   '/terms': typeof TermsRoute
   '/$orgSlug/dashboard': typeof OrgSlugDashboardRoute
   '/$orgSlug/files': typeof OrgSlugFilesRoute
@@ -556,10 +532,8 @@ export interface FileRoutesById {
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
   '/about': typeof AboutRoute
   '/billing': typeof BillingRoute
-  '/careers': typeof CareersRoute
   '/contact': typeof ContactRoute
   '/create': typeof CreateRoute
-  '/customers': typeof CustomersRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/opd': typeof OpdRoute
@@ -568,7 +542,6 @@ export interface FileRoutesById {
   '/robots.txt': typeof RobotsDottxtRoute
   '/security': typeof SecurityRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
-  '/status': typeof StatusRoute
   '/terms': typeof TermsRoute
   '/$orgSlug/pharmacy': typeof OrgSlugPharmacyRouteRouteWithChildren
   '/$orgSlug/settings': typeof OrgSlugSettingsRouteRouteWithChildren
@@ -625,10 +598,8 @@ export interface FileRouteTypes {
     | '/$orgSlug'
     | '/about'
     | '/billing'
-    | '/careers'
     | '/contact'
     | '/create'
-    | '/customers'
     | '/join'
     | '/login'
     | '/opd'
@@ -637,7 +608,6 @@ export interface FileRouteTypes {
     | '/robots.txt'
     | '/security'
     | '/sitemap.xml'
-    | '/status'
     | '/terms'
     | '/$orgSlug/pharmacy'
     | '/$orgSlug/settings'
@@ -691,10 +661,8 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/billing'
-    | '/careers'
     | '/contact'
     | '/create'
-    | '/customers'
     | '/join'
     | '/login'
     | '/opd'
@@ -703,7 +671,6 @@ export interface FileRouteTypes {
     | '/robots.txt'
     | '/security'
     | '/sitemap.xml'
-    | '/status'
     | '/terms'
     | '/$orgSlug/dashboard'
     | '/$orgSlug/files'
@@ -754,10 +721,8 @@ export interface FileRouteTypes {
     | '/$orgSlug'
     | '/about'
     | '/billing'
-    | '/careers'
     | '/contact'
     | '/create'
-    | '/customers'
     | '/join'
     | '/login'
     | '/opd'
@@ -766,7 +731,6 @@ export interface FileRouteTypes {
     | '/robots.txt'
     | '/security'
     | '/sitemap.xml'
-    | '/status'
     | '/terms'
     | '/$orgSlug/pharmacy'
     | '/$orgSlug/settings'
@@ -822,10 +786,8 @@ export interface RootRouteChildren {
   OrgSlugRouteRoute: typeof OrgSlugRouteRouteWithChildren
   AboutRoute: typeof AboutRoute
   BillingRoute: typeof BillingRoute
-  CareersRoute: typeof CareersRoute
   ContactRoute: typeof ContactRoute
   CreateRoute: typeof CreateRoute
-  CustomersRoute: typeof CustomersRoute
   JoinRoute: typeof JoinRoute
   LoginRoute: typeof LoginRoute
   OpdRoute: typeof OpdRoute
@@ -834,7 +796,6 @@ export interface RootRouteChildren {
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SecurityRoute: typeof SecurityRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
-  StatusRoute: typeof StatusRoute
   TermsRoute: typeof TermsRoute
   ChangelogSlugRoute: typeof ChangelogSlugRoute
   ChangelogIndexRoute: typeof ChangelogIndexRoute
@@ -872,13 +833,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BillingRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/careers': {
-      id: '/careers'
-      path: '/careers'
-      fullPath: '/careers'
-      preLoaderRoute: typeof CareersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/contact': {
       id: '/contact'
       path: '/contact'
@@ -891,13 +845,6 @@ declare module '@tanstack/react-router' {
       path: '/create'
       fullPath: '/create'
       preLoaderRoute: typeof CreateRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/customers': {
-      id: '/customers'
-      path: '/customers'
-      fullPath: '/customers'
-      preLoaderRoute: typeof CustomersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/join': {
@@ -954,13 +901,6 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/status': {
-      id: '/status'
-      path: '/status'
-      fullPath: '/status'
-      preLoaderRoute: typeof StatusRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/terms': {
@@ -1451,10 +1391,8 @@ const rootRouteChildren: RootRouteChildren = {
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
   AboutRoute: AboutRoute,
   BillingRoute: BillingRoute,
-  CareersRoute: CareersRoute,
   ContactRoute: ContactRoute,
   CreateRoute: CreateRoute,
-  CustomersRoute: CustomersRoute,
   JoinRoute: JoinRoute,
   LoginRoute: LoginRoute,
   OpdRoute: OpdRoute,
@@ -1463,7 +1401,6 @@ const rootRouteChildren: RootRouteChildren = {
   RobotsDottxtRoute: RobotsDottxtRoute,
   SecurityRoute: SecurityRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
-  StatusRoute: StatusRoute,
   TermsRoute: TermsRoute,
   ChangelogSlugRoute: ChangelogSlugRoute,
   ChangelogIndexRoute: ChangelogIndexRoute,

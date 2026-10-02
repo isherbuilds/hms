@@ -1,9 +1,10 @@
 import { ArrowRight, Check, MessageCircle } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { WHATSAPP_URL } from "@/lib/contact";
 
-import { Accent, buttonClass, LEDE, stagger, WRAP } from "./primitives";
+import { Accent, buttonClass, LEDE, WRAP } from "./primitives";
 import { ProductWindow } from "./product-window";
 
 // First word renders on the server and without motion; the rest cycle in.
@@ -27,7 +28,7 @@ function PainWord() {
         {PAIN_WORDS.map((word, i) => (
           <span
             key={word}
-            className={`col-start-1 row-start-1 transition-[opacity,translate] duration-300 ease-out ${i === index ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
+            className={`col-start-1 row-start-1 transition-[opacity,translate] duration-200 ease-out ${i === index ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
           >
             {word}
           </span>
@@ -52,29 +53,20 @@ export function LandingHero() {
       />
       <div className={WRAP}>
         <div className="relative flex flex-col gap-5 md:gap-6">
-          <h1
-            className="animate-landing-rise text-[42px] leading-[46px] font-semibold [word-spacing:0.02em] tracking-[0.01em] md:text-[60px] md:leading-[68px] lg:text-[84px] lg:leading-[92px]"
-            style={stagger(0)}
-          >
+          <h1 className="text-[42px] leading-[46px] font-semibold [word-spacing:0.02em] tracking-[0.01em] md:text-[60px] md:leading-[68px] lg:text-[84px] lg:leading-[92px]">
             <span className="block">Run your hospital,</span>
             <span className="block">
               not your <PainWord />
             </span>
           </h1>
           <div className="flex flex-col items-start gap-6">
-            <p
-              className={`${LEDE} max-w-[460px] animate-landing-rise text-muted-foreground`}
-              style={stagger(1)}
-            >
+            <p className={`${LEDE} max-w-[460px] text-muted-foreground`}>
               OPD, billing, pharmacy and lab in one simple system for Indian hospitals.
             </p>
-            <div
-              className="flex w-full animate-landing-rise flex-col gap-3 md:w-auto md:flex-row md:flex-wrap"
-              style={stagger(2)}
-            >
-              <a href="/#demo" className={buttonClass({ variant: "primary" })}>
+            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:flex-wrap">
+              <Link to="/contact" className={buttonClass({ variant: "primary" })}>
                 Book a free demo <ArrowRight aria-hidden />
-              </a>
+              </Link>
               <a
                 href={WHATSAPP_URL}
                 target="_blank"
@@ -84,10 +76,7 @@ export function LandingHero() {
                 <MessageCircle aria-hidden /> Talk on WhatsApp
               </a>
             </div>
-            <div
-              className="flex animate-landing-rise flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-muted-foreground"
-              style={stagger(3)}
-            >
+            <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-muted-foreground">
               {["ABDM & ABHA ready", "GST invoices", "Data hosted in India"].map((claim) => (
                 <span key={claim} className="inline-flex items-center gap-2">
                   <Check aria-hidden className="size-4 text-brand" />
@@ -99,11 +88,8 @@ export function LandingHero() {
         </div>
 
         <div
-          className="relative mt-9 animate-landing-rise md:mt-11"
-          style={{
-            ...stagger(4),
-            maskImage: "linear-gradient(to bottom, black 62%, transparent)",
-          }}
+          className="relative mt-9 md:mt-11"
+          style={{ maskImage: "linear-gradient(to bottom, black 62%, transparent)" }}
         >
           <ProductWindow
             name="dashboard"

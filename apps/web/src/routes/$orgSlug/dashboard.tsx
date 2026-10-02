@@ -1,6 +1,6 @@
 import { practitionerDisplayName } from "@hms/api/lib/labels";
 import { authorize } from "@hms/auth/access";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, type LinkOptions } from "@tanstack/react-router";
 import { Button } from "@hms/ui/components/button";
 import { SidebarTrigger } from "@hms/ui/components/sidebar";
@@ -30,9 +30,7 @@ const RANGES = [7, 14, 30] as const;
 const collectionsQuery = (orgSlug: string, range: Range) =>
   orpc.dashboard.collections.queryOptions({ input: { orgSlug, ...range } });
 
-// The billing desk owns the unbilled figure; the dashboard reads its summary.
-const deskMoneyQuery = (orgSlug: string) =>
-  orpc.billing.worklist.queryOptions({ input: { orgSlug, limit: 1 } });
+const toBillQuery = (orgSlug: string) => orpc.billing.toBill.queryOptions({ input: { orgSlug } });
 
 // The chart's bars for one range ending on the period's last day; 7 days loads
 // with the page and longer ranges only when picked.
@@ -61,7 +59,7 @@ export const Route = createFileRoute("/$orgSlug/dashboard")({
       );
 
       if (!deps.from && !deps.to) {
-        prefetches.push(queryClient.query(deskMoneyQuery(orgSlug)).catch(() => {}));
+        prefetches.push(queryClient.query(toBillQuery(orgSlug)).catch(() => {}));
       }
     }
 
@@ -224,8 +222,6 @@ function DashboardRoute() {
   const trend = useQuery({
     ...trendQuery(orgSlug, to, range),
     ...OPERATIONAL_REFETCH,
-    // The previous range stays on screen while a longer one loads.
-    placeholderData: keepPreviousData,
     enabled: canReadBilling,
   });
 
@@ -236,7 +232,7 @@ function DashboardRoute() {
   });
 
   const desk = useQuery({
-    ...deskMoneyQuery(orgSlug),
+    ...toBillQuery(orgSlug),
     ...OPERATIONAL_REFETCH,
     enabled: canReadBilling && isToday,
   });
@@ -279,13 +275,13 @@ function DashboardRoute() {
   const arrived = visits.data?.waiting ?? [];
   const booked = visits.data?.booked ?? 0;
   const nextBookedAt = visits.data?.nextBookedAt;
-  const summary = desk.data?.summary;
+  const toBill = desk.data;
 
   const departments = (visits.data?.departments ?? [])
     .filter((row) => row.arrived > 0)
     .toSorted((a, b) => b.arrived - a.arrived);
 
-  const sources = (data?.bySource ?? []).filter((row) => row.amount !== ZERO);
+  const sources = data?.bySource ?? [];
   const now = visits.data?.now.getTime() ?? loadedAt;
   const opd = { to: "/$orgSlug/opd", params: { orgSlug }, search: { from, to } } as const;
 
@@ -326,11 +322,11 @@ function DashboardRoute() {
       ? [
           {
             label: "Unbilled alerts",
-            value: summary ? money(summary.toBillTotal) : "",
+            value: toBill ? money(toBill.total) : "",
             note: desk.isError ? (
               <ErrorNote title="Could not load billing alerts" error={desk.error} />
-            ) : !summary ? null : summary.toBillCount > 0 ? (
-              `${summary.toBillCount} ${summary.toBillCount === 1 ? "visit" : "visits"} · bill before they leave`
+            ) : !toBill ? null : toBill.count > 0 ? (
+              `${toBill.count} ${toBill.count === 1 ? "visit" : "visits"} · bill before they leave`
             ) : (
               "No visits past the billing alert threshold"
             ),
@@ -615,7 +611,7 @@ function DashboardRoute() {
                   },
                   {
                     head: "Department",
-                    cell: (visit) => visit.departmentName ?? "No department",
+                    cell: (visit) => visit.departmentName,
                   },
                   {
                     head: "Practitioner",

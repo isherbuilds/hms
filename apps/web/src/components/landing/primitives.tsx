@@ -75,7 +75,7 @@ export function SectionHead({ title }: { title: ReactNode }) {
   );
 }
 
-/* Ward 3's bed map, shown in the hero dashboard and at the nurse station. */
+/* Ward 3's bed map at the nurse station. */
 const BED_TONE = {
   occupied: "bg-foreground text-background",
   free: "bg-brand-surface text-brand ring-1 ring-brand-border ring-inset",
@@ -126,7 +126,6 @@ const PILL_TONE = {
   ok: "bg-brand-surface text-brand",
   warn: "bg-clinical-note-surface text-clinical-note",
   danger: "bg-clinical-alert-surface text-clinical-alert",
-  onBand: "bg-brand-surface text-brand-bright",
 } as const;
 
 const PILL_SIZE = {

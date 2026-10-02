@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Accent, EYEBROW, SECTION_HEADING, WRAP } from "./primitives";
-import { LandingRolesTabs, ROLES, Ticks } from "./roles";
+import { ROLES, Ticks } from "./roles";
 
 /* Scrolling pins the stage and steps through the roles; the visitor never
    presses anything. Scroll maps to a float `p` (0…N-1), and the stack paints from `p` straight onto the DOM, so scrolling
-   never re-renders React. */
+   never re-renders React. Reduced motion gets the same cards as a plain
+   stack: no pinning, no listener. */
 
 const N = ROLES.length;
 
@@ -34,7 +35,7 @@ function goTo(track: HTMLElement, index: number) {
    viewport over each other like a deck of cards; the ones under it shrink and
    dim so the pile stays visible. The chapter bar fills as you scroll and jumps
    on click. */
-function RolesStack() {
+export function LandingRoles() {
   const track = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const cards = useRef<(HTMLDivElement | null)[]>([]);
@@ -43,6 +44,8 @@ function RolesStack() {
   const [active, setActive] = useState(0);
 
   useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
     const element = track.current!;
     let frame = 0;
 
@@ -88,14 +91,18 @@ function RolesStack() {
 
   return (
     <section id="roles" className="overflow-clip border-y border-border bg-card">
-      <div ref={track} style={{ height: `${100 + (N - 1) * STEP_SVH}svh` }}>
+      <div
+        ref={track}
+        style={{ height: `${100 + (N - 1) * STEP_SVH}svh` }}
+        className="motion-reduce:h-auto!"
+      >
         <div
-          className={`${WRAP} sticky top-16 flex h-[calc(100svh-4rem)] flex-col justify-center gap-3 py-6 md:py-10`}
+          className={`${WRAP} sticky top-16 flex h-[calc(100svh-4rem)] flex-col justify-center gap-3 py-6 md:py-10 motion-reduce:static motion-reduce:h-auto motion-reduce:py-20`}
         >
           <h2 className={`${SECTION_HEADING} mb-3 md:mb-6`}>
             Simple enough <Accent>without a manual.</Accent>
           </h2>
-          <nav aria-label="Roles" className="grid grid-cols-5 gap-2 md:gap-3">
+          <nav aria-label="Roles" className="grid grid-cols-5 gap-2 md:gap-3 motion-reduce:hidden">
             {ROLES.map((role, index) => (
               <button
                 key={role.id}
@@ -121,7 +128,10 @@ function RolesStack() {
               </button>
             ))}
           </nav>
-          <div ref={stage} className="relative mt-11 max-h-[600px] min-h-0 flex-1">
+          <div
+            ref={stage}
+            className="relative mt-11 max-h-[600px] min-h-0 flex-1 motion-reduce:flex motion-reduce:max-h-none motion-reduce:flex-col motion-reduce:gap-6"
+          >
             {ROLES.map((role, index) => (
               <div
                 key={role.id}
@@ -129,7 +139,7 @@ function RolesStack() {
                   cards.current[index] = element;
                 }}
                 style={{ zIndex: index }}
-                className="absolute inset-0 origin-top overflow-hidden rounded-[28px] border border-border bg-background will-change-transform"
+                className="absolute inset-0 origin-top overflow-hidden rounded-[28px] border border-border bg-background will-change-transform motion-reduce:relative motion-reduce:will-change-auto"
               >
                 <p
                   className={`${EYEBROW} absolute inset-x-0 top-0 px-5 pt-2 text-muted-foreground tabular-nums md:px-9`}
@@ -162,22 +172,4 @@ function RolesStack() {
       </div>
     </section>
   );
-}
-
-/* Reduced motion gets the tabbed version; the server renders the stack, and the
-   swap happens on the client before any scroll. */
-export function LandingRoles() {
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const sync = () => setReduced(query.matches);
-
-    sync();
-    query.addEventListener("change", sync);
-
-    return () => query.removeEventListener("change", sync);
-  }, []);
-
-  return reduced ? <LandingRolesTabs /> : <RolesStack />;
 }

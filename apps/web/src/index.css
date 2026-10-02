@@ -48,50 +48,26 @@
 @media (scripting: enabled) and (prefers-reduced-motion: no-preference) {
   [data-reveal] {
     transition:
-      opacity 560ms var(--ease-out-strong),
-      transform 560ms var(--ease-out-strong);
-    transition-delay: calc(var(--i, 0) * 60ms);
+      opacity 200ms var(--ease-out-strong),
+      transform 200ms var(--ease-out-strong);
+    transition-delay: calc(var(--i, 0) * 40ms);
   }
 
   [data-reveal]:not([data-inview]) {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(8px);
   }
 
   /* Bars grow from their start edge once their group is in view. */
   [data-reveal-bar] {
     transform-origin: left center;
-    transition: transform 900ms var(--ease-out-strong);
-    transition-delay: calc(120ms + var(--i, 0) * 70ms);
+    transition: transform 200ms var(--ease-out-strong);
+    transition-delay: calc(var(--i, 0) * 40ms);
   }
 
   [data-reveal]:not([data-inview]) [data-reveal-bar] {
     transform: scaleX(0.001);
   }
-
-  [data-reveal-col] {
-    transform-origin: center bottom;
-    transition: transform 700ms var(--ease-out-strong);
-    transition-delay: calc(160ms + var(--i, 0) * 45ms);
-  }
-
-  [data-reveal]:not([data-inview]) [data-reveal-col] {
-    transform: scaleY(0.001);
-  }
-}
-
-/* Above-the-fold entrance: runs on first paint, no observer, so the hero never
-   waits on hydration. `--rise` shortens the travel for a small swap. */
-@keyframes landing-rise {
-  from {
-    opacity: 0;
-    transform: translateY(var(--rise, 12px));
-  }
-}
-
-@utility animate-landing-rise {
-  animation: landing-rise 640ms var(--ease-out-strong) both;
-  animation-delay: calc(var(--i, 0) * 70ms);
 }
 
 /* The "Live" pill's dot: a slow breathing ring, the one looping motion on the

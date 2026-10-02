@@ -60,9 +60,6 @@
   --brand-surface: oklch(0.966 0.03 126);
   --brand-border: oklch(0.87 0.08 128);
   --brand-fill: oklch(0.716 0.175 131);
-  /* Collection chart: digital takes the brand fill; cash and refunds take these.
-     As a set they fail red-green separation, so cash is always hatched, refunds
-     sit below the zero line, and every value is labelled. */
   --radius: 0.625rem;
   --sidebar: oklch(0.978 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
