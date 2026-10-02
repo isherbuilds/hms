@@ -94,7 +94,7 @@ export function LandingFooter() {
             </ul>
           </nav>
         </div>
-        <div className="mt-10 flex flex-wrap items-center justify-between gap-4 border-t border-band-line pt-6 text-sm text-band-muted">
+        <div className="mt-10 flex flex-wrap items-center justify-between gap-4 text-sm text-band-muted">
           <span>© 2026 Edernal Care</span>
           <div className="flex items-center gap-4">
             <span>Made in India</span>
