@@ -10,6 +10,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { DateFilter } from "@/components/list-filter";
 import { ErrorNote, ListToolbar, PageBody, PageHeader } from "@/components/page";
 import { ReportActions } from "@/components/report-actions";
@@ -26,7 +27,7 @@ import { requireOrgPermission } from "@/lib/route-permission";
 const MAX_DAYS = 92;
 
 export const Route = createFileRoute("/$orgSlug/reports/daily-collections")({
-  head: () => ({ meta: [{ title: "Daily collections · Edernal Care" }] }),
+  head: () => appHead("Daily collections"),
   validateSearch: z.object({
     from: z.iso.date().optional().catch(undefined),
     to: z.iso.date().optional().catch(undefined),

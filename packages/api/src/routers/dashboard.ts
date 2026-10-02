@@ -7,8 +7,7 @@ import { practitioners } from "@hms/db/schema/practitioners";
 import { departments } from "@hms/db/schema/departments";
 import { payments } from "@hms/db/schema/payments";
 import { refunds } from "@hms/db/schema/refunds";
-import { and, asc, between, eq, inArray, sql, sum, type SQL } from "drizzle-orm";
-import { z } from "zod";
+import { and, between, desc, eq, inArray, sql, sum, type SQL } from "drizzle-orm";
 
 import { closeExpiredBookings } from "../lib/opd-close";
 import { businessDate } from "../lib/business-date";
@@ -20,6 +19,8 @@ import { readOrgSettings } from "../lib/settings-cache";
 const dayInput = orgInput.extend(dayRange);
 
 const USUAL_WEEKS = 8;
+
+const TREND_DAYS = 30;
 
 type Day = { day: string; amount: bigint; cash: bigint; digital: bigint };
 
@@ -111,7 +112,7 @@ export const dashboardRouter = {
       between(opdAppointments.businessDate, from, to),
     );
 
-    const [counts, waiting] = await Promise.all([
+    const [counts, latest] = await Promise.all([
       db
         .select({
           departmentId: departments.id,
@@ -134,7 +135,6 @@ export const dashboardRouter = {
           id: opdAppointments.id,
           callerName: opdAppointments.callerName,
           tokenNumber: opdAppointments.tokenNumber,
-          dayOrderAt: opdAppointments.dayOrderAt,
           patientName: patients.name,
           patientMrn: patients.mrn,
           practitionerName: practitioners.name,
@@ -154,8 +154,8 @@ export const dashboardRouter = {
           and(eq(departments.id, opdAppointments.departmentId), eq(departments.orgId, orgId)),
         )
         .where(and(scope, eq(opdAppointments.status, "checked_in")))
-        .orderBy(asc(opdAppointments.dayOrderAt), asc(opdAppointments.id))
-        .limit(20),
+        .orderBy(desc(opdAppointments.dayOrderAt), desc(opdAppointments.id))
+        .limit(10),
     ]);
 
     const bookedTimes = counts.flatMap((row) =>
@@ -172,8 +172,7 @@ export const dashboardRouter = {
         arrived,
         booked,
       })),
-      waiting,
-      now,
+      latest,
     };
   }),
   collections: orgProcedure({ billing: ["read"] }, dayInput).handler(async ({ context, input }) => {
@@ -256,17 +255,15 @@ export const dashboardRouter = {
 
   // The chart's bars, loaded per range so a longer range costs only when asked for.
   // A week more than shown, so each bar can compare with the same weekday before it.
-  trend: orgProcedure(
-    { billing: ["read"] },
-    orgInput.extend({
-      to: dayRange.to,
-      days: z.union([z.literal(7), z.literal(14), z.literal(30)]),
-    }),
-  ).handler(async ({ context, input }) => {
-    const { orgId } = context.scope;
-    const { timeZone } = await readOrgSettings(orgId);
-    const to = input.to ?? businessDate(new Date(), timeZone);
+  // The longest range plus a week for each bar's same-weekday comparison, so
+  // switching between ranges is a client slice, never a refetch.
+  trend: orgProcedure({ billing: ["read"] }, orgInput.extend({ to: dayRange.to })).handler(
+    async ({ context, input }) => {
+      const { orgId } = context.scope;
+      const { timeZone } = await readOrgSettings(orgId);
+      const to = input.to ?? businessDate(new Date(), timeZone);
 
-    return dailySeries(orgId, sql`${to}::date`, input.days + 7);
-  }),
+      return dailySeries(orgId, sql`${to}::date`, TREND_DAYS + 7);
+    },
+  ),
 };

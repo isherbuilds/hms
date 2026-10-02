@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { appHead } from "@/config/site";
 import { BillingDocumentRoute } from "@/components/billing-document-view";
 
 export const Route = createFileRoute(
   "/$orgSlug/billing/invoices/$invoiceId_/credit-note/$creditNoteId",
 )({
-  head: () => ({ meta: [{ title: "Credit note · Edernal Care" }] }),
+  head: () => appHead("Credit note"),
   component: CreditNoteDocumentRoute,
 });
 

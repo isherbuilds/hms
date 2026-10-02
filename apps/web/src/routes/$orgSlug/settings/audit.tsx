@@ -11,6 +11,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { ScrollTextIcon } from "lucide-react";
 
+import { appHead } from "@/config/site";
 import { ListState, LoadMore, PageBody, PageHeader, Panel } from "@/components/page";
 import { orpc } from "@/lib/orpc";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
@@ -46,7 +47,7 @@ function describeMeta(meta: Record<string, unknown> | null | undefined): string 
 }
 
 export const Route = createFileRoute("/$orgSlug/settings/audit")({
-  head: () => ({ meta: [{ title: "Audit log · Edernal Care" }] }),
+  head: () => appHead("Audit log"),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     await requireOrgPermission(queryClient, orgSlug, { audit: ["read"] }, "/$orgSlug/settings");
     await queryClient.infiniteQuery(auditQuery(orgSlug)).catch(() => {});

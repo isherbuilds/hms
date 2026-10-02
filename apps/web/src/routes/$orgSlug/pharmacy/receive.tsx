@@ -10,6 +10,7 @@ import { useState } from "react";
 import { type Control, useFormContext, useFormState, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
+import { appHead } from "@/config/site";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { TextField } from "@/components/form-fields";
 import { ProductSheet } from "@/components/product-sheet";
@@ -32,7 +33,7 @@ import { billSummary, stockQuantities } from "@/lib/receipt-lines";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 export const Route = createFileRoute("/$orgSlug/pharmacy/receive")({
-  head: () => ({ meta: [{ title: "Receive goods · Edernal Care" }] }),
+  head: () => appHead("Receive goods"),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     await requireOrgPermission(
       queryClient,

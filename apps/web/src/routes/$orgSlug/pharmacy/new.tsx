@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { appHead } from "@/config/site";
 import { PageBody, PageHeader } from "@/components/page";
 import { PharmacySaleDesk } from "@/components/pharmacy-sale-desk";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 export const Route = createFileRoute("/$orgSlug/pharmacy/new")({
-  head: () => ({ meta: [{ title: "New sale · Edernal Care" }] }),
+  head: () => appHead("New sale"),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     // The desk exists to record a sale, so reading the shelf is not enough to open it.
     await requireOrgPermission(queryClient, orgSlug, { pharmacy: ["sell"] }, "/$orgSlug/pharmacy");

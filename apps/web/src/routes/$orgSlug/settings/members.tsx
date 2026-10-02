@@ -35,6 +35,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { useConfirm } from "@/components/confirm-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
 import {
@@ -55,7 +56,7 @@ import { SettingsTabs } from "./route";
 const MEMBER_PAGE_LIMIT = 100;
 
 export const Route = createFileRoute("/$orgSlug/settings/members")({
-  head: () => ({ meta: [{ title: "Members · Edernal Care" }] }),
+  head: () => appHead("Members"),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     await queryClient
       .query(orpc.member.list.queryOptions({ input: { orgSlug, limit: MEMBER_PAGE_LIMIT } }))

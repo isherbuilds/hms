@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { appHead } from "@/config/site";
 import { BillingNav } from "@/components/billing-nav";
 import {
   DataList,
@@ -19,7 +20,7 @@ import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 export const Route = createFileRoute("/$orgSlug/billing/refunds")({
-  head: () => ({ meta: [{ title: "Refunds due · Edernal Care" }] }),
+  head: () => appHead("Refunds due"),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     await requireOrgPermission(queryClient, orgSlug, { billing: ["read"] }, "/$orgSlug/dashboard");
     await queryClient

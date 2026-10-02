@@ -7,6 +7,7 @@ import { CircleDotIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { opdQueueColumns, useOpdCheckIn } from "@/components/opd-appointment";
 import { CheckInOpdAppointmentDialog } from "@/components/opd-appointment-dialogs";
 import { followUpsQuery, OpdFollowUps } from "@/components/opd-follow-ups";
@@ -73,7 +74,7 @@ const dayQuery = (
   });
 
 export const Route = createFileRoute("/$orgSlug/opd/")({
-  head: () => ({ meta: [{ title: "Outpatient · Edernal Care" }] }),
+  head: () => appHead("Outpatient"),
   validateSearch: opdDaySearchSchema,
   loaderDeps: ({ search: { from, to, q, status } }) => ({ from, to, q, status }),
   loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {

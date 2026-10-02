@@ -6,6 +6,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PencilIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { appHead } from "@/config/site";
 import { PageBody, Panel } from "@/components/page";
 import type { EditablePatient } from "@/components/patient-form";
 import { PatientSheet } from "@/components/patient-sheet";
@@ -16,7 +17,7 @@ import { PAYER_TYPE_LABELS } from "@/lib/payer";
 import { patientAgeLabel } from "@/lib/patient-age";
 
 export const Route = createFileRoute("/$orgSlug/patients/$patientId/")({
-  head: () => ({ meta: [{ title: "Patient record · Edernal Care" }] }),
+  head: () => appHead("Patient record"),
   component: PatientRecordRoute,
 });
 

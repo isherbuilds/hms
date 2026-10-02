@@ -1,5 +1,6 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { appHead } from "@/config/site";
 import { PageBody } from "@/components/page";
 import { PatientBilling } from "@/components/patient-record/billing";
 import { useMembership } from "@/lib/membership";
@@ -7,7 +8,7 @@ import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 export const Route = createFileRoute("/$orgSlug/patients/$patientId/billing")({
-  head: () => ({ meta: [{ title: "Patient billing · Edernal Care" }] }),
+  head: () => appHead("Patient billing"),
   loader: async ({ context: { queryClient }, params: { orgSlug, patientId } }) => {
     await requireOrgPermission(queryClient, orgSlug, { billing: ["read"] }, "/$orgSlug/dashboard");
     await queryClient

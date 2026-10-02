@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { useFormContext, useFormState } from "react-hook-form";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { numberText } from "@/lib/form-schema";
 
 import { ControlledField, TextField } from "@/components/form-fields";
@@ -28,7 +29,7 @@ import { requireOrgPermission } from "@/lib/route-permission";
 import { SettingsTabs } from "./route";
 
 export const Route = createFileRoute("/$orgSlug/settings/organization")({
-  head: () => ({ meta: [{ title: "Organization · Edernal Care" }] }),
+  head: () => appHead("Organization"),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     // The page is a save form, so the tab strip gates it on `update` too.
     await requireOrgPermission(

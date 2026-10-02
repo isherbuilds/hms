@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-router";
 import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query";
 
+import { siteConfig } from "./config/site";
 import { routeTree } from "./routeTree.gen";
 import { routeErrorMessage } from "./lib/orpc-error";
 import { createQueryClient } from "./lib/query-client";
@@ -66,7 +67,9 @@ function NotFound() {
       <div className="flex flex-col gap-1 border-l-2 border-border pl-3">
         <p className="font-mono text-xs tracking-widest text-muted-foreground">404 · ROUTE</p>
         <h1 className="text-sm font-medium">Page not found</h1>
-        <p className="text-muted-foreground">The address does not match an Edernal Care page.</p>
+        <p className="text-muted-foreground">
+          The address does not match a {siteConfig.name} page.
+        </p>
       </div>
 
       <Link className={buttonVariants({ variant: "outline", className: "w-fit" })} to="/">

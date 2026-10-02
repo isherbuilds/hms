@@ -2,6 +2,7 @@ import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 
+import { appHead } from "@/config/site";
 import { BillingNav } from "@/components/billing-nav";
 import { AdvanceReceiptLink } from "@/components/advance-form";
 import {
@@ -35,7 +36,7 @@ const advancesQuery = (orgSlug: string, query: string) =>
   });
 
 export const Route = createFileRoute("/$orgSlug/billing/advances")({
-  head: () => ({ meta: [{ title: "Advances held · Edernal Care" }] }),
+  head: () => appHead("Advances held"),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     await requireOrgPermission(queryClient, orgSlug, { billing: ["read"] }, "/$orgSlug/dashboard");
     await queryClient.infiniteQuery(advancesQuery(orgSlug, "")).catch(() => {});

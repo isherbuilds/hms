@@ -29,7 +29,7 @@ test("the landing page head carries the complete Open Graph contract with absolu
   expect(byKey["og:title"]).toBe(byKey.title);
   expect(byKey["og:description"]).toBe(byKey.description);
   expect(byKey["og:url"]).toBe("https://hms.example/");
-  expect(byKey["og:image"]).toBe("https://hms.example/og/home.webp");
+  expect(byKey["og:image"]).toBe("https://hms.example/og/home.png");
   expect(byKey["og:image:width"]).toBe("1200");
   expect(byKey["og:image:height"]).toBe("630");
   expect(byKey["og:image:alt"]).toBe(byKey.title);

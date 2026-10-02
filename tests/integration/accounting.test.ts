@@ -254,13 +254,10 @@ test("dashboard collection trend labels the organization's Business Dates", asyn
 
   const fixture = await createAccountingFixture("dashboard-business-date", timeZone);
 
-  const trend = await fixture.api.dashboard.trend({
-    orgSlug: fixture.organization.slug,
-    days: 7,
-  });
+  const trend = await fixture.api.dashboard.trend({ orgSlug: fixture.organization.slug });
 
-  // A week more than shown, for each bar's same-weekday comparison.
-  expect(trend).toHaveLength(14);
+  // The longest range plus a week, for each bar's same-weekday comparison.
+  expect(trend).toHaveLength(37);
   expect(trend.at(-1)?.day).toBe(businessDate(new Date(), timeZone));
 });
 
@@ -657,10 +654,7 @@ test("daily collections nets payments and refunds by Business Date and method", 
 
   expect(dashboard.collected).toBe(0n);
 
-  const trend = await fixture.api.dashboard.trend({
-    orgSlug: fixture.organization.slug,
-    days: 30,
-  });
+  const trend = await fixture.api.dashboard.trend({ orgSlug: fixture.organization.slug });
 
   expect(trend.find((row) => row.day === collectionDay)).toEqual({
     day: collectionDay,

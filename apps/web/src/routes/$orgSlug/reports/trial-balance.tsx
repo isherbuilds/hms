@@ -10,6 +10,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { DateFilter } from "@/components/list-filter";
 import { ErrorNote, ListToolbar, PageBody, PageHeader } from "@/components/page";
 import { ReportActions } from "@/components/report-actions";
@@ -23,7 +24,7 @@ import { orgMonthToDate as defaultRange, useOrgDateTime } from "@/lib/org-dateti
 import { requireOrgPermission } from "@/lib/route-permission";
 
 export const Route = createFileRoute("/$orgSlug/reports/trial-balance")({
-  head: () => ({ meta: [{ title: "Trial balance · Edernal Care" }] }),
+  head: () => appHead("Trial balance"),
   validateSearch: z.object({
     from: z.iso.date().optional().catch(undefined),
     to: z.iso.date().optional().catch(undefined),

@@ -15,6 +15,7 @@ import {
   Panel,
   SearchInput,
 } from "@/components/page";
+import { appHead } from "@/config/site";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { formatFileSize, openOrgFile, uploadOrgFile } from "@/lib/org-files";
@@ -36,7 +37,7 @@ const filesQuery = (orgSlug: string, query: string) =>
   });
 
 export const Route = createFileRoute("/$orgSlug/files")({
-  head: () => ({ meta: [{ title: "Files · Edernal Care" }] }),
+  head: () => appHead("Files"),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     await queryClient.infiniteQuery(filesQuery(orgSlug, "")).catch(() => {});
   },

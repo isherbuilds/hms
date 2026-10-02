@@ -52,8 +52,7 @@ implementation; the [work registry](../README.md#work-lifecycle) owns that statu
   site, colour and performance lenses checked 2026-10-02 against peer design
   systems, WCAG/SAFER/NICE and the current code. Keeps the core system;
   proposes a 2/4/6/10/14 px radius scale, contrast and font-subset fixes, and
-  names P0 safety gaps (allergy unknown shown as none, dashboard errors shown
-  as empty). The 12 px body size awaits a staff density test.
+  names the open P0 safety gap (allergy unknown shown as none). The 12 px body size awaits a staff density test.
 
 ## Adopted findings
 

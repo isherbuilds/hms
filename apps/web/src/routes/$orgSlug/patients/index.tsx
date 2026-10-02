@@ -22,6 +22,7 @@ import {
   Panel,
   SearchInput,
 } from "@/components/page";
+import { appHead } from "@/config/site";
 import { Monogram } from "@/components/monogram";
 import { PatientSheet } from "@/components/patient-sheet";
 import { useCan } from "@/lib/membership";
@@ -131,7 +132,7 @@ function PatientResults({ orgSlug, filters }: { orgSlug: string; filters: Patien
 }
 
 export const Route = createFileRoute("/$orgSlug/patients/")({
-  head: () => ({ meta: [{ title: "Patients · Edernal Care" }] }),
+  head: () => appHead("Patients"),
   // Registration is a panel over this list, so its open state lives in the URL: the
   // link is shareable and Back closes it.
   validateSearch: z.object({

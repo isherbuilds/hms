@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { appHead } from "@/config/site";
 import { PageBody } from "@/components/page";
 import { PatientTreatment } from "@/components/patient-record/treatment";
 import { useMembership } from "@/lib/membership";
@@ -6,7 +7,7 @@ import { requireOrgPermission } from "@/lib/route-permission";
 import { orpc } from "@/lib/orpc";
 
 export const Route = createFileRoute("/$orgSlug/patients/$patientId/treatment")({
-  head: () => ({ meta: [{ title: "Patient treatment · Edernal Care" }] }),
+  head: () => appHead("Patient treatment"),
   loader: async ({ context: { queryClient }, params: { orgSlug, patientId } }) => {
     await requireOrgPermission(
       queryClient,

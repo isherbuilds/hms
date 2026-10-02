@@ -8,6 +8,7 @@ import { ArrowUpRightIcon, FileTextIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { CollectionBars } from "@/components/collection-bars";
 import { DateFilter } from "@/components/list-filter";
 import { Monogram } from "@/components/monogram";
@@ -32,17 +33,16 @@ const collectionsQuery = (orgSlug: string, range: Range) =>
 
 const toBillQuery = (orgSlug: string) => orpc.billing.toBill.queryOptions({ input: { orgSlug } });
 
-// The chart's bars for one range ending on the period's last day; 7 days loads
-// with the page and longer ranges only when picked.
-const trendQuery = (orgSlug: string, to: string | undefined, days: (typeof RANGES)[number]) =>
-  orpc.dashboard.trend.queryOptions({ input: { orgSlug, to, days } });
+// The chart's bars ending on the period's last day; one read covers every range.
+const trendQuery = (orgSlug: string, to: string | undefined) =>
+  orpc.dashboard.trend.queryOptions({ input: { orgSlug, to } });
 
-// Exact counts for the range, with a bounded oldest-first waiting list.
+// Exact counts for the range, with the latest check-ins.
 const visitsQuery = (orgSlug: string, range: Range) =>
   orpc.dashboard.queue.queryOptions({ input: { orgSlug, ...range } });
 
 export const Route = createFileRoute("/$orgSlug/dashboard")({
-  head: () => ({ meta: [{ title: "Dashboard · Edernal Care" }] }),
+  head: () => appHead("Dashboard"),
   validateSearch: z.object({
     from: z.iso.date().optional().catch(undefined),
     to: z.iso.date().optional().catch(undefined),
@@ -55,7 +55,7 @@ export const Route = createFileRoute("/$orgSlug/dashboard")({
     if (authorize(roles, { billing: ["read"] })) {
       prefetches.push(
         queryClient.query(collectionsQuery(orgSlug, deps)).catch(() => {}),
-        queryClient.query(trendQuery(orgSlug, deps.to, 7)).catch(() => {}),
+        queryClient.query(trendQuery(orgSlug, deps.to)).catch(() => {}),
       );
 
       if (!deps.from && !deps.to) {
@@ -171,12 +171,6 @@ function Mix({ parts, link }: { parts: Part[]; link?: (part: Part) => LinkOption
 
 const SOURCE_LABELS = { opd: "OPD", pharmacy: "Pharmacy", advance: "Advances" } as const;
 
-const minutesSince = (since: Date, now: number) =>
-  Math.max(0, Math.floor((now - since.getTime()) / 60_000));
-
-const formatWait = (minutes: number) =>
-  minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
-
 const weekdayName = (day: string) =>
   new Intl.DateTimeFormat("en-IN", { weekday: "long", timeZone: "UTC" }).format(
     new Date(`${day}T00:00:00Z`),
@@ -220,7 +214,7 @@ function DashboardRoute() {
   const [range, setRange] = useState<(typeof RANGES)[number]>(7);
 
   const trend = useQuery({
-    ...trendQuery(orgSlug, to, range),
+    ...trendQuery(orgSlug, to),
     ...OPERATIONAL_REFETCH,
     enabled: canReadBilling,
   });
@@ -272,7 +266,7 @@ function DashboardRoute() {
   })();
 
   const methods = (data?.byMethod ?? []).filter((row) => row.amount !== ZERO);
-  const arrived = visits.data?.waiting ?? [];
+  const latest = visits.data?.latest ?? [];
   const booked = visits.data?.booked ?? 0;
   const nextBookedAt = visits.data?.nextBookedAt;
   const toBill = desk.data;
@@ -282,7 +276,6 @@ function DashboardRoute() {
     .toSorted((a, b) => b.arrived - a.arrived);
 
   const sources = data?.bySource ?? [];
-  const now = visits.data?.now.getTime() ?? loadedAt;
   const opd = { to: "/$orgSlug/opd", params: { orgSlug }, search: { from, to } } as const;
 
   const figures: { label: string; value: string; note: ReactNode; link: LinkOptions }[] = [
@@ -307,12 +300,8 @@ function DashboardRoute() {
             value: visits.data ? String(visits.data.arrived) : "",
             note: visits.isError ? (
               <ErrorNote title="Could not load queue" error={visits.error} />
-            ) : !visits.data ? null : !isToday ? (
+            ) : !visits.data ? null : (
               rangeLabel
-            ) : arrived[0]?.dayOrderAt ? (
-              `Longest wait ${formatWait(minutesSince(arrived[0].dayOrderAt, now))}`
-            ) : (
-              "Arrived and not yet seen"
             ),
             link: opd,
           },
@@ -559,11 +548,18 @@ function DashboardRoute() {
           )}
         </div>
 
-        {canReadOpd && isToday && (
+        {canReadOpd && (
           <Panel
             // The dashboard's section titles share one size, weight and ink.
             label={
-              <span className="text-sm font-medium text-foreground">Waiting now · oldest 20</span>
+              <span className="text-sm font-medium text-foreground">
+                {visits.data
+                  ? `Checked in · ${rangeLabel} · ${visits.data.arrived} ${visits.data.arrived === 1 ? "patient" : "patients"}`
+                  : `Checked in · ${rangeLabel}`}
+                {latest.length > 0 && visits.data && visits.data.arrived > latest.length && (
+                  <span className="text-muted-foreground"> · latest {latest.length}</span>
+                )}
+              </span>
             }
             minHeight="min-h-48"
             action={
@@ -574,11 +570,13 @@ function DashboardRoute() {
           >
             {visits.isError ? (
               <ErrorNote title="Could not load queue" error={visits.error} />
-            ) : !visits.data ? null : arrived.length === 0 ? (
-              <PanelEmpty>Nobody is waiting right now</PanelEmpty>
+            ) : !visits.data ? null : latest.length === 0 ? (
+              <PanelEmpty>
+                {isToday ? "Nobody has checked in yet today" : `Nobody checked in · ${rangeLabel}`}
+              </PanelEmpty>
             ) : (
               <DataList
-                rows={arrived}
+                rows={latest}
                 rowKey={(visit) => visit.id}
                 link={(visit) => ({
                   to: "/$orgSlug/opd/$appointmentId",
@@ -616,24 +614,6 @@ function DashboardRoute() {
                   {
                     head: "Practitioner",
                     cell: (visit) => practitionerDisplayName(visit.practitionerName),
-                  },
-                  {
-                    head: "Waiting",
-                    className: "w-24 text-right",
-                    mobile: "title",
-                    cell: (visit) => {
-                      if (!visit.dayOrderAt) return null;
-
-                      const minutes = minutesSince(visit.dayOrderAt, now);
-
-                      return (
-                        <span
-                          className={`tabular-nums ${minutes >= 30 ? "text-overdue" : "text-muted-foreground"}`}
-                        >
-                          {formatWait(minutes)}
-                        </span>
-                      );
-                    },
                   },
                 ]}
               />

@@ -8,6 +8,7 @@ import { ClientOnly, Link, Outlet, createFileRoute, useChildMatches } from "@tan
 import { ArrowUpRightIcon, PrinterIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { appHead } from "@/config/site";
 import { useConfirm } from "@/components/confirm-dialog";
 import {
   CancelOpdAppointmentDialog,
@@ -82,17 +83,14 @@ export const Route = createFileRoute("/$orgSlug/opd/$appointmentId")({
       name: data.patient ? data.patient.name : data.appointment.callerName,
     };
   },
-  head: ({ loaderData }) => ({
-    meta: [
-      {
-        title: loaderData
-          ? loaderData.tokenNumber != null
-            ? `Token ${loaderData.tokenNumber} · ${loaderData.name ?? "Outpatient appointment"} · Edernal Care`
-            : `Booked · ${loaderData.name ?? "Outpatient appointment"} · Edernal Care`
-          : "Outpatient appointment · Edernal Care",
-      },
-    ],
-  }),
+  head: ({ loaderData }) =>
+    appHead(
+      loaderData
+        ? loaderData.tokenNumber != null
+          ? `Token ${loaderData.tokenNumber} · ${loaderData.name ?? "Outpatient appointment"}`
+          : `Booked · ${loaderData.name ?? "Outpatient appointment"}`
+        : "Outpatient appointment",
+    ),
   component: OpdRecordLayout,
 });
 

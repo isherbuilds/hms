@@ -26,6 +26,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { ControlledField, TextField } from "@/components/form-fields";
 import { DataList, ListState, PageBody, PageHeader, Panel } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
@@ -55,7 +56,7 @@ type PayerFormValues = z.infer<typeof formSchema>;
 const EMPTY_VALUES: PayerFormValues = { name: "", type: "insurer", active: true };
 
 export const Route = createFileRoute("/$orgSlug/settings/payers")({
-  head: () => ({ meta: [{ title: "Payers · Edernal Care" }] }),
+  head: () => appHead("Payers"),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     // Reading payers is org-wide (the registration picker needs it); this page only
     // edits them, so the tab strip gates it on `update` too.

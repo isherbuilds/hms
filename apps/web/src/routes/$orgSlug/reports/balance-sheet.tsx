@@ -11,6 +11,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { ErrorNote, PageBody, PageHeader } from "@/components/page";
 import { ReportActions } from "@/components/report-actions";
 import { useMembership } from "@/lib/membership";
@@ -23,7 +24,7 @@ import { orgToday as today } from "@/lib/org-datetime";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 export const Route = createFileRoute("/$orgSlug/reports/balance-sheet")({
-  head: () => ({ meta: [{ title: "Balance sheet · Edernal Care" }] }),
+  head: () => appHead("Balance sheet"),
   // `.catch` keeps a hand-edited or truncated URL on the page: an unparseable date
   // falls back instead of showing an error screen. Same in the sibling reports.
   validateSearch: z.object({ asOf: z.iso.date().optional().catch(undefined) }),

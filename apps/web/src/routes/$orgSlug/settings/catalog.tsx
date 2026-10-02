@@ -46,6 +46,7 @@ import {
   Panel,
   SearchInput,
 } from "@/components/page";
+import { appHead } from "@/config/site";
 import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
 
@@ -70,7 +71,7 @@ const catalogListQuery = (
   });
 
 export const Route = createFileRoute("/$orgSlug/settings/catalog")({
-  head: () => ({ meta: [{ title: "Services · Edernal Care" }] }),
+  head: () => appHead("Services"),
   validateSearch: z.object({
     q: z.string().trim().min(1).max(100).optional().catch(undefined),
     category: z.enum(SERVICE_CATEGORIES).optional().catch(undefined),

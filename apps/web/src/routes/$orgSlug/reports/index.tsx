@@ -2,12 +2,13 @@ import { authorize } from "@hms/auth/access";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronRightIcon } from "lucide-react";
 
+import { appHead } from "@/config/site";
 import { PageBody, PageHeader, Panel } from "@/components/page";
 import { useMembership } from "@/lib/membership";
 import { REPORT_LINKS } from "@/lib/navigation";
 
 export const Route = createFileRoute("/$orgSlug/reports/")({
-  head: () => ({ meta: [{ title: "Reports · Edernal Care" }] }),
+  head: () => appHead("Reports"),
   component: ReportsIndexRoute,
 });
 

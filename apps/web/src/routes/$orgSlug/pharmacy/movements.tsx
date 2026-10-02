@@ -2,6 +2,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { FilterChips } from "@/components/list-filter";
 import {
   DataList,
@@ -33,7 +34,7 @@ const movementsQuery = (orgSlug: string, batchId?: string) =>
   });
 
 export const Route = createFileRoute("/$orgSlug/pharmacy/movements")({
-  head: () => ({ meta: [{ title: "Stock movements · Edernal Care" }] }),
+  head: () => appHead("Stock movements"),
   validateSearch: z.object({ batchId: z.string().min(1).optional().catch(undefined) }),
   loaderDeps: ({ search }) => ({ batchId: search.batchId }),
   loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {

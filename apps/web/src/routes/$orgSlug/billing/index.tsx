@@ -10,6 +10,7 @@ import { CircleDotIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { BillingNav } from "@/components/billing-nav";
 import { BillingWorklistSheet } from "@/components/billing-worklist-sheet";
 import {
@@ -68,7 +69,7 @@ const openInvoicesQuery = (orgSlug: string, query: string, overdueOnly: boolean)
   });
 
 export const Route = createFileRoute("/$orgSlug/billing/")({
-  head: () => ({ meta: [{ title: "Billing · Edernal Care" }] }),
+  head: () => appHead("Billing"),
   validateSearch: z.object({
     q: z.string().trim().min(1).max(100).optional().catch(undefined),
     view: z.enum(VIEWS).optional().catch(undefined),

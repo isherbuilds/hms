@@ -16,6 +16,7 @@ import { useRef, useState } from "react";
 import { useFormContext, Watch } from "react-hook-form";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
 import { OptionCombobox } from "@/components/option-combobox";
@@ -86,7 +87,7 @@ const stockQuery = (orgSlug: string, filters: StockFilters) =>
   });
 
 export const Route = createFileRoute("/$orgSlug/pharmacy/stock")({
-  head: () => ({ meta: [{ title: "Pharmacy stock · Edernal Care" }] }),
+  head: () => appHead("Pharmacy stock"),
   validateSearch: z.object({
     q: z.string().trim().min(1).max(100).optional().catch(undefined),
     expiring: z

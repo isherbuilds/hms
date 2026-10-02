@@ -16,6 +16,7 @@ import {
   ReceiptDocument,
   RefundDocument,
 } from "@/components/pdf/billing-documents";
+import { siteConfig } from "@/config/site";
 import type { BillingDocumentRequest } from "@/lib/billing-document";
 
 const PAGE_MARGIN = { bottom: 46, left: 44, right: 44, top: 40 };
@@ -164,7 +165,7 @@ async function renderDocument(
     fontFamilies: ["sans-serif", "Inter", "Noto Sans Devanagari"],
     fonts,
     lang: "en-IN",
-    metadata: { creator: "Edernal Care", title: caption },
+    metadata: { creator: siteConfig.name, title: caption },
   };
 
   const bytes = thermal

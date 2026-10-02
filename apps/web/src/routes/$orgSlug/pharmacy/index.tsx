@@ -3,6 +3,7 @@ import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { DateFilter } from "@/components/list-filter";
 import {
   DataList,
@@ -37,7 +38,7 @@ const salesQuery = (orgSlug: string, range: { from?: string; to?: string }) =>
   });
 
 export const Route = createFileRoute("/$orgSlug/pharmacy/")({
-  head: () => ({ meta: [{ title: "Pharmacy sales · Edernal Care" }] }),
+  head: () => appHead("Pharmacy sales"),
   validateSearch: z.object({
     from: z.iso.date().optional().catch(undefined),
     to: z.iso.date().optional().catch(undefined),

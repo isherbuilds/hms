@@ -2948,7 +2948,12 @@ test("dashboard counts the full queue and selects oldest arrivals across tenant 
   const queue = await api.dashboard.queue({ orgSlug: organization.slug });
   expect(queue.arrived).toBe(205);
   expect(queue.booked).toBe(1);
-  expect(queue.waiting.map((row) => row.id)).toEqual(rows.slice(0, 20).map((row) => row.id));
+  expect(queue.latest.map((row) => row.id)).toEqual(
+    rows
+      .slice(-10)
+      .toReversed()
+      .map((row) => row.id),
+  );
   expect(queue.departments).toEqual([
     { departmentId: department.id, departmentName: department.name, arrived: 205, booked: 1 },
   ]);

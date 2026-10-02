@@ -2,6 +2,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { OpdIntakeForm } from "@/components/opd-intake-form";
 import { PageBody, PageHeader } from "@/components/page";
 import { orpc } from "@/lib/orpc";
@@ -23,7 +24,7 @@ const INTAKE_PERMISSION = {
 } as const;
 
 export const Route = createFileRoute("/$orgSlug/opd/new")({
-  head: () => ({ meta: [{ title: "Appointment · Edernal Care" }] }),
+  head: () => appHead("Appointment"),
   validateSearch: intakeSearch,
   loaderDeps: ({ search: { patientId, treatmentPlanId } }) => ({ patientId, treatmentPlanId }),
   loader: async ({

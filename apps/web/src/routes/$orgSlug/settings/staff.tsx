@@ -4,6 +4,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { type Department, DepartmentDialog } from "@/components/department-dialog";
 import { type Practitioner, PractitionerDialog } from "@/components/practitioner-dialog";
 import {
@@ -36,7 +37,7 @@ const feeItemsQuery = (orgSlug: string) =>
   });
 
 export const Route = createFileRoute("/$orgSlug/settings/staff")({
-  head: () => ({ meta: [{ title: "Staff · Edernal Care" }] }),
+  head: () => appHead("Staff"),
   validateSearch: z.object({
     view: z.enum(["practitioners", "departments"]).default("practitioners").catch("practitioners"),
   }),

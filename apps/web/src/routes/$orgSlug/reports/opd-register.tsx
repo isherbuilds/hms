@@ -10,6 +10,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
+import { appHead } from "@/config/site";
 import { OpdAppointmentStatusBadge } from "@/components/opd-appointment";
 import { DateFilter } from "@/components/list-filter";
 import { ErrorNote, ListToolbar, PageBody, PageHeader } from "@/components/page";
@@ -27,7 +28,7 @@ import { arrivalModeLabel, practitionerDisplayName } from "@hms/api/lib/labels";
 const MAX_DAYS = 31;
 
 export const Route = createFileRoute("/$orgSlug/reports/opd-register")({
-  head: () => ({ meta: [{ title: "OPD register · Edernal Care" }] }),
+  head: () => appHead("OPD register"),
   validateSearch: z.object({
     from: z.iso.date().optional().catch(undefined),
     to: z.iso.date().optional().catch(undefined),

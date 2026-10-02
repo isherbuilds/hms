@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { appHead } from "@/config/site";
 import { BillingDocumentRoute } from "@/components/billing-document-view";
 
 export const Route = createFileRoute("/$orgSlug/billing/invoices/$invoiceId_/receipt/$paymentId")({
-  head: () => ({ meta: [{ title: "Receipt · Edernal Care" }] }),
+  head: () => appHead("Receipt"),
   component: ReceiptDocumentRoute,
 });
 

@@ -369,7 +369,7 @@ type OrgClaim = { orgSlug: string };
 const GUARDED_CALLS = {
   "dashboard.queue": (api, claim) => api.dashboard.queue({ ...claim }),
   "dashboard.collections": (api, claim) => api.dashboard.collections({ ...claim }),
-  "dashboard.trend": (api, claim) => api.dashboard.trend({ ...claim, days: 7 }),
+  "dashboard.trend": (api, claim) => api.dashboard.trend({ ...claim }),
   "settings.get": (api, claim) => api.settings.get({ ...claim }),
   "settings.update": (api, claim) =>
     api.settings.update({

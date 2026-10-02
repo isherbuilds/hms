@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { appHead } from "@/config/site";
 import { BillingDocumentRoute } from "@/components/billing-document-view";
 
 export const Route = createFileRoute("/$orgSlug/billing/invoices/$invoiceId_/refund/$refundId")({
-  head: () => ({ meta: [{ title: "Refund voucher · Edernal Care" }] }),
+  head: () => appHead("Refund voucher"),
   component: RefundDocumentRoute,
 });
 

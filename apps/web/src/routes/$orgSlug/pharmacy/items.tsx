@@ -4,6 +4,7 @@ import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 
+import { appHead } from "@/config/site";
 import { ProductSheet } from "@/components/product-sheet";
 import {
   DataList,
@@ -35,7 +36,7 @@ const productListQuery = (orgSlug: string, query: string) =>
   });
 
 export const Route = createFileRoute("/$orgSlug/pharmacy/items")({
-  head: () => ({ meta: [{ title: "Products · Edernal Care" }] }),
+  head: () => appHead("Products"),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     await requireOrgPermission(
       queryClient,
