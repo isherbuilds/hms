@@ -21,7 +21,9 @@ import { Route as OpdRouteImport } from './routes/opd'
 import { Route as PatientsRouteImport } from './routes/patients'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
+import { Route as SecurityRouteImport } from './routes/security'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as OrgSlugIndexRouteImport } from './routes/$orgSlug/index'
 import { Route as OrgSlugDashboardRouteImport } from './routes/$orgSlug/dashboard'
 import { Route as OrgSlugFilesRouteImport } from './routes/$orgSlug/files'
@@ -130,9 +132,19 @@ const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
   path: '/robots.txt',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SecurityRoute = SecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrgSlugIndexRoute = OrgSlugIndexRouteImport.update({
@@ -404,7 +416,9 @@ export interface FileRoutesByFullPath {
   '/patients': typeof PatientsRoute
   '/privacy': typeof PrivacyRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/security': typeof SecurityRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/terms': typeof TermsRoute
   '/$orgSlug/pharmacy': typeof OrgSlugPharmacyRouteRouteWithChildren
   '/$orgSlug/settings': typeof OrgSlugSettingsRouteRouteWithChildren
   '/$orgSlug/dashboard': typeof OrgSlugDashboardRoute
@@ -465,7 +479,9 @@ export interface FileRoutesByTo {
   '/patients': typeof PatientsRoute
   '/privacy': typeof PrivacyRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/security': typeof SecurityRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/terms': typeof TermsRoute
   '/$orgSlug/dashboard': typeof OrgSlugDashboardRoute
   '/$orgSlug/files': typeof OrgSlugFilesRoute
   '/$orgSlug/onboarding': typeof OrgSlugOnboardingRoute
@@ -524,7 +540,9 @@ export interface FileRoutesById {
   '/patients': typeof PatientsRoute
   '/privacy': typeof PrivacyRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/security': typeof SecurityRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/terms': typeof TermsRoute
   '/$orgSlug/pharmacy': typeof OrgSlugPharmacyRouteRouteWithChildren
   '/$orgSlug/settings': typeof OrgSlugSettingsRouteRouteWithChildren
   '/$orgSlug/dashboard': typeof OrgSlugDashboardRoute
@@ -588,7 +606,9 @@ export interface FileRouteTypes {
     | '/patients'
     | '/privacy'
     | '/robots.txt'
+    | '/security'
     | '/sitemap.xml'
+    | '/terms'
     | '/$orgSlug/pharmacy'
     | '/$orgSlug/settings'
     | '/$orgSlug/dashboard'
@@ -649,7 +669,9 @@ export interface FileRouteTypes {
     | '/patients'
     | '/privacy'
     | '/robots.txt'
+    | '/security'
     | '/sitemap.xml'
+    | '/terms'
     | '/$orgSlug/dashboard'
     | '/$orgSlug/files'
     | '/$orgSlug/onboarding'
@@ -707,7 +729,9 @@ export interface FileRouteTypes {
     | '/patients'
     | '/privacy'
     | '/robots.txt'
+    | '/security'
     | '/sitemap.xml'
+    | '/terms'
     | '/$orgSlug/pharmacy'
     | '/$orgSlug/settings'
     | '/$orgSlug/dashboard'
@@ -770,7 +794,9 @@ export interface RootRouteChildren {
   PatientsRoute: typeof PatientsRoute
   PrivacyRoute: typeof PrivacyRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
+  SecurityRoute: typeof SecurityRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  TermsRoute: typeof TermsRoute
   ChangelogSlugRoute: typeof ChangelogSlugRoute
   ChangelogIndexRoute: typeof ChangelogIndexRoute
   ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute: typeof ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute
@@ -863,11 +889,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RobotsDottxtRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/security': {
+      id: '/security'
+      path: '/security'
+      fullPath: '/security'
+      preLoaderRoute: typeof SecurityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sitemap.xml': {
       id: '/sitemap.xml'
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$orgSlug/': {
@@ -1359,7 +1399,9 @@ const rootRouteChildren: RootRouteChildren = {
   PatientsRoute: PatientsRoute,
   PrivacyRoute: PrivacyRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
+  SecurityRoute: SecurityRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  TermsRoute: TermsRoute,
   ChangelogSlugRoute: ChangelogSlugRoute,
   ChangelogIndexRoute: ChangelogIndexRoute,
   ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute:

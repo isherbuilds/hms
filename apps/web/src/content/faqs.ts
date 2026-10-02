@@ -1,33 +1,26 @@
 import type { ShotName } from "@/components/landing/product-window";
 
-/* One list of answers, two presentations: `faq.tsx` renders them as native
-   <details>, `seo.ts` serializes them into the homepage's FAQPage JSON-LD, so
-   an answer can never read differently to a crawler than it reads on the page.
-   Lives apart from the component because `seo.ts` runs in `head()` and must
-   not import a module full of JSX.
-
-   Every answer is checked against the code or the docs, and two of them say
-   "no". An FAQ that only sells is not an FAQ — in this category the buyer is
-   explicitly hunting for what you cannot do. */
+/* Feature-page answers stay separate from the homepage's mockup copy.
+   Both lists live apart from JSX so `seo.ts` can read them in `head()`. */
 export const FAQS: { q: string; a: string; features: ShotName[] }[] = [
   {
     q: "Can another hospital see our data?",
-    a: "No. Every record carries exactly one organization, and every request proves your membership before it reads or writes anything, including the audit log and uploaded files. There is no shared-tenant path to switch off.",
+    a: "No. Staff can access only the hospitals they belong to. Patient records and uploaded files stay private.",
     features: ["patients"],
   },
   {
     q: "How do staff get accounts?",
-    a: "You create them. There is no public sign-up: an administrator creates each account and assigns one or more roles from owner, admin, reception, cashier and accountant. Nobody can register themselves into your hospital.",
+    a: "Your hospital administrator invites staff and assigns their roles. There is no public sign-up.",
     features: ["opd"],
   },
   {
     q: "Does it need the internet?",
-    a: "It needs your server, not the public internet. Fonts, styles and scripts are served from the application itself, so a hospital LAN with no outbound connection renders the full interface.",
+    a: "Yes. Your browser must stay connected to the hospital server. There is no offline mode.",
     features: ["opd"],
   },
   {
     q: "What does it cost?",
-    a: "Pricing depends on your hospital's size and which modules you run, so there is no public price list. A walkthrough ends with a written quote; one afternoon of setup and the desk is on it the next day.",
+    a: "Access is by invitation only. Early-bird hospitals agree a price with us directly. Call or WhatsApp us to request an invitation, discuss pricing, or ask a question.",
     features: ["opd", "patients", "billing"],
   },
   {
@@ -49,5 +42,26 @@ export const FAQS: { q: string; a: string; features: ShotName[] }[] = [
     q: "Can we get our data out?",
     a: "Yes. Every report exports to Excel or PDF over any date range, and invoices and receipts render as PDFs. Your records are yours.",
     features: ["patients", "billing"],
+  },
+];
+
+/* HOME_FAQS feeds both the home page and its FAQPage JSON-LD, so crawlers
+   receive exactly the questions and answers rendered on the page. */
+export const HOME_FAQS: { q: string; a: string }[] = [
+  {
+    q: "What can we manage?",
+    a: "Patient records, OPD appointments and queues, billing, payments, pharmacy sales and stock.",
+  },
+  {
+    q: "Can another hospital see our data?",
+    a: "No. Staff can access only the hospitals they belong to. Patient records and uploaded files stay private.",
+  },
+  {
+    q: "Does it work offline?",
+    a: "No. Your browser must stay connected to the hospital server to view and save records.",
+  },
+  {
+    q: "How do we get started?",
+    a: "Contact us for a demo. We will discuss your hospital’s setup, data and training needs with you.",
   },
 ];

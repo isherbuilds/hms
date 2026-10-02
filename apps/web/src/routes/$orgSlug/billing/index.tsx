@@ -68,7 +68,7 @@ const openInvoicesQuery = (orgSlug: string, query: string, overdueOnly: boolean)
   });
 
 export const Route = createFileRoute("/$orgSlug/billing/")({
-  head: () => ({ meta: [{ title: "Billing · HMS" }] }),
+  head: () => ({ meta: [{ title: "Billing · Edernal Care" }] }),
   validateSearch: z.object({
     q: z.string().trim().min(1).max(100).optional().catch(undefined),
     view: z.enum(VIEWS).optional().catch(undefined),

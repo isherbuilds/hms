@@ -131,7 +131,7 @@ function PatientResults({ orgSlug, filters }: { orgSlug: string; filters: Patien
 }
 
 export const Route = createFileRoute("/$orgSlug/patients/")({
-  head: () => ({ meta: [{ title: "Patients · HMS" }] }),
+  head: () => ({ meta: [{ title: "Patients · Edernal Care" }] }),
   // Registration is a panel over this list, so its open state lives in the URL: the
   // link is shareable and Back closes it.
   validateSearch: z.object({

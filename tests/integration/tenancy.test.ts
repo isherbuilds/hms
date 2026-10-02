@@ -131,7 +131,7 @@ test("one client can work in different orgs concurrently", async () => {
   expect(seenInOne.legalName).toBe("from tab one");
 });
 
-test("today's queue and collections are scoped, concurrent, and revoke with membership", async () => {
+test("desk money and dashboard collections are scoped, concurrent, and revoke with membership", async () => {
   const owner = await createTestUser("today-owner");
   const one = await createOrganization(owner, "today-one");
   const two = await createOrganization(owner, "today-two");
@@ -194,31 +194,27 @@ test("today's queue and collections are scoped, concurrent, and revoke with memb
     .set({ createdAt: new Date(Date.now() - 2 * 3_600_000) })
     .where(and(eq(charges.orgId, one.id), eq(charges.id, charge.id)));
 
-  const [todayOne, todayTwo, moneyOne, moneyTwo] = await Promise.all([
-    api.dashboard.today({ orgSlug: one.slug }),
-    api.dashboard.today({ orgSlug: two.slug }),
-    api.dashboard.collections({ orgSlug: one.slug }),
-    api.dashboard.collections({ orgSlug: two.slug }),
+  const [moneyOne, moneyTwo, toBillOne, toBillTwo] = await Promise.all([
+    api.billing.worklist({ orgSlug: one.slug }),
+    api.billing.worklist({ orgSlug: two.slug }),
+    api.billing.toBill({ orgSlug: one.slug }),
+    api.billing.toBill({ orgSlug: two.slug }),
   ]);
 
-  expect(todayOne.checkedIn).toBe(1);
-  expect(todayOne.mix).toEqual([{ department: "Today Dept", count: 1 }]);
-  expect(todayTwo.checkedIn).toBe(0);
-  expect(todayTwo.mix).toEqual([]);
-
-  expect(moneyOne.unbilled).toBe(500_00n);
-  expect(moneyTwo.unbilled).toBe(0n);
+  expect(moneyOne.summary.toBillTotal).toBe(500_00n);
+  expect(moneyTwo.summary.toBillTotal).toBe(0n);
+  expect(toBillOne).toEqual({ count: 1, total: 500_00n });
+  expect(toBillTwo).toEqual({ count: 0, total: 0n });
 
   const outsiderApi = clientFor(outsider);
-  await expectORPCCode(outsiderApi.dashboard.today({ orgSlug: one.slug }), "FORBIDDEN");
   await expectORPCCode(outsiderApi.dashboard.collections({ orgSlug: one.slug }), "FORBIDDEN");
 
   const member = await createTestUser("today-member");
   await joinOrganization(member, one.id);
   const memberApi = clientFor(member);
-  expect((await memberApi.dashboard.today({ orgSlug: one.slug })).checkedIn).toBe(1);
+  expect((await memberApi.dashboard.collections({ orgSlug: one.slug })).collected).toBe(0n);
   await removeFromOrganization(owner, member.user.email, one.id);
-  await expectORPCCode(memberApi.dashboard.today({ orgSlug: one.slug }), "FORBIDDEN");
+  await expectORPCCode(memberApi.dashboard.collections({ orgSlug: one.slug }), "FORBIDDEN");
 });
 
 test("plain members are denied audit:read, the denial is recorded, and admins see only their org", async () => {
@@ -371,8 +367,9 @@ test("an unknown slug is FORBIDDEN, not NOT_FOUND — existence never leaks", as
 type OrgClaim = { orgSlug: string };
 
 const GUARDED_CALLS = {
-  "dashboard.today": (api, claim) => api.dashboard.today({ ...claim }),
+  "dashboard.queue": (api, claim) => api.dashboard.queue({ ...claim }),
   "dashboard.collections": (api, claim) => api.dashboard.collections({ ...claim }),
+  "dashboard.trend": (api, claim) => api.dashboard.trend({ ...claim, days: 7 }),
   "settings.get": (api, claim) => api.settings.get({ ...claim }),
   "settings.update": (api, claim) =>
     api.settings.update({
@@ -536,6 +533,7 @@ const GUARDED_CALLS = {
       attachmentId: Bun.randomUUIDv7(),
     }),
   "billing.worklist": (api, claim) => api.billing.worklist({ ...claim }),
+  "billing.toBill": (api, claim) => api.billing.toBill({ ...claim }),
   "billing.advancesHeld": (api, claim) => api.billing.advancesHeld({ ...claim }),
   "billing.refundDue": (api, claim) => api.billing.refundDue({ ...claim }),
   "billing.openInvoices": (api, claim) => api.billing.openInvoices({ ...claim }),

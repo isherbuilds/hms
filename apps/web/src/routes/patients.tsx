@@ -8,10 +8,8 @@ export const Route = createFileRoute("/patients")({
   component: () => (
     <FeaturePage
       shot="patients"
-      eyebrow="Patient records"
       title="Every patient, one keystroke away"
       lead="Search by name, MRN or phone. Allergies travel with the record."
-      windowTitle="Patients · Mercy General"
       captureAlt="The patient registry: MRN, name, phone, sex, age and registration date for every patient"
       crops={[
         {

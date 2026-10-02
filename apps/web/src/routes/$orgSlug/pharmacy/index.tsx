@@ -37,7 +37,7 @@ const salesQuery = (orgSlug: string, range: { from?: string; to?: string }) =>
   });
 
 export const Route = createFileRoute("/$orgSlug/pharmacy/")({
-  head: () => ({ meta: [{ title: "Pharmacy sales · HMS" }] }),
+  head: () => ({ meta: [{ title: "Pharmacy sales · Edernal Care" }] }),
   validateSearch: z.object({
     from: z.iso.date().optional().catch(undefined),
     to: z.iso.date().optional().catch(undefined),

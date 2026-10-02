@@ -26,7 +26,7 @@ import { requireOrgPermission } from "@/lib/route-permission";
 const MAX_DAYS = 92;
 
 export const Route = createFileRoute("/$orgSlug/reports/daily-collections")({
-  head: () => ({ meta: [{ title: "Daily collections · HMS" }] }),
+  head: () => ({ meta: [{ title: "Daily collections · Edernal Care" }] }),
   validateSearch: z.object({
     from: z.iso.date().optional().catch(undefined),
     to: z.iso.date().optional().catch(undefined),

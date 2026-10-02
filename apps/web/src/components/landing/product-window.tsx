@@ -17,6 +17,11 @@ const VIEW_W = 1440;
    where the hero's is 1440×830, and a crop's vertical offset is a fraction of
    the height it was taken from. */
 const SHOTS = {
+  dashboard: {
+    viewH: 830,
+    className:
+      "bg-[url('/hero/dashboard-830-light.webp')] dark:bg-[url('/hero/dashboard-830-dark.webp')]",
+  },
   opd: {
     viewH: 900,
     className:
@@ -50,23 +55,18 @@ function cropStyle(region: Region, viewH: number): CSSProperties {
   };
 }
 
-/* The titlebar is what makes a cropped table read as software rather than as a
-   picture of a table — the cheapest signal on the page.
-
-   `alt` is empty for a crop that repeats the claim printed beside it, and the
+/* `alt` is empty for a crop that repeats the claim printed beside it, and the
    whole window is then dropped from the accessibility tree instead of announced
-   as an unnamed graphic under a titlebar. */
+   as an unnamed graphic. */
 export function ProductWindow({
   name,
   region,
   alt,
-  title,
   className = "",
 }: {
   name: ShotName;
   region: Region;
   alt: string;
-  title: string;
   className?: string;
 }) {
   const shot = SHOTS[name];
@@ -74,19 +74,8 @@ export function ProductWindow({
   return (
     <div
       aria-hidden={alt ? undefined : true}
-      className={`overflow-hidden rounded-lg border border-border bg-card shadow-2xl ${className}`}
+      className={`overflow-hidden rounded-lg border border-border bg-card ${className}`}
     >
-      <div className="flex h-8 items-center gap-2 border-b border-border px-3">
-        <span aria-hidden className="flex gap-1.5">
-          <span className="size-2 rounded-full bg-muted-foreground/35" />
-          <span className="size-2 rounded-full bg-muted-foreground/35" />
-          <span className="size-2 rounded-full bg-muted-foreground/35" />
-        </span>
-        <span className="flex-1 truncate text-center text-xs whitespace-nowrap text-muted-foreground">
-          {title}
-        </span>
-        <span aria-hidden className="w-10" />
-      </div>
       <div
         {...(alt ? { role: "img", "aria-label": alt } : {})}
         style={cropStyle(region, shot.viewH)}

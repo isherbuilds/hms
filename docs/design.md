@@ -139,7 +139,8 @@ tier is changed once in `globals.css` and never at a call site.
 
 Theme tokens only: `bg-background`, `bg-card`, `bg-muted`, `text-foreground`,
 `text-muted-foreground`, `border-border`, `bg-primary`, `text-destructive`,
-`text-pending`, and `text-overdue`.
+`text-pending`, `text-overdue`, `text-brand`, `bg-brand`, `text-brand-foreground`,
+`bg-brand-surface`, `border-brand-border`, and `bg-brand-fill`.
 
 - **No palette utilities** (`bg-neutral-100`, `text-zinc-500`). They do not invert
   in dark mode, which is how a screen ends up unreadable in one theme.
@@ -150,15 +151,28 @@ Light `--muted-foreground` is `oklch(0.5 0 0)` so secondary text clears 4.5:1 on
 
 - **Five documented exceptions.** Print documents use `bg-white text-black
 border-black` because paper is white with black ink in every theme; the login
-  context panel is a fixed dark surface in both themes; the landing page's wash
+  context panel is a fixed dark surface in both themes; the public feature pages' wash
   (`components/landing/wash.tsx`) is a decorative gradient pinned to its light
   values in both themes, because a wash that inverts becomes a different object
   and because a bright stage carrying a dark app window is the effect it exists
-  for — it sits behind product screenshots only, never behind type; clinical
+  for — it backs the public feature hero and product screenshots; clinical
   severity uses the named tokens below; and identity monograms use the four fixed
   pastel pairs below to distinguish records.
-- **Clinical severity** is the one place hue carries meaning beyond tenancy
-  state: `--clinical-alert` for what is dangerous about a patient (allergies, a
+- **The Edernal Care wordmark is paired with a green brand accent.** `--brand`
+  marks identity and emphasis: the wordmark, the current sidebar place, checked
+  controls, links, emphasised figures and highlighted chart series, public-site
+  headline emphasis, and in-progress treatment-plan bars. `--brand-surface` and
+  `--brand-border` are its quiet companions; `--brand-foreground` supplies text
+  on the solid accent. Each is defined in both themes. In light mode the brand is
+  lime in two steps: `--brand` is the deep lime that text, icons and links use
+  (5:1 on white), and `--brand-fill` is the bright lime for bars, cards and
+  progress fills. The fill is 2.4:1 on white, so it never carries text. In dark
+  mode the brand and its fill share one mint hue. Green never replaces
+  state: settled or clear stays `--clinical-clear`. It does not promote actions:
+  primary buttons stay ink (`--primary`) and focus stays neutral (`--ring` and
+  `--sidebar-ring`).
+- **Clinical severity gives hue a clinical meaning:** `--clinical-alert` for what
+  is dangerous about a patient (allergies, a
   balance still owed), `--clinical-note` for what is chronic (medical history),
   `--clinical-clear` for what is settled or explicitly absent. Each has a
   `-surface` and a `-border` companion and is defined in both themes in
@@ -170,13 +184,13 @@ border-black` because paper is white with black ink in every theme; the login
   through labelled `Badge` variants; neither is a general accent colour.
 - **Monogram colour carries identity, not status.** A patient ID, organization
   slug, or user email selects one of four muted duotone pairs (teal, indigo,
-  rose, ochre) in `components/monogram.tsx`. Patients show initials;
-  organizations and users show distinct symbols. Each uses `rounded` corners
+  rose, ochre) in `components/monogram.tsx`. Patients and users show initials;
+  organizations show a building symbol. Each uses `rounded` corners
   and stays legible at `size-6` in both themes. Do not use the pair for patient
   facts.
-- **Elsewhere, colour means state.** `text-destructive` for a failure the user must
-  act on. Status is carried by a `Badge`, never by colour alone — the word is
-  always present.
+- **Outside identity and emphasis, colour means state.** `text-destructive` marks
+  a failure the user must act on. Status is carried by a `Badge`, never by colour
+  alone — the word is always present.
 
 ## 6. Icons
 
@@ -192,7 +206,7 @@ A bare icon button needs `aria-label`. An icon beside text needs nothing.
 
 **Where there is no picture, there is a `Monogram`** — a pastel identity square
 for an organization, a member, or a patient. One size (`size-6`), with initials
-for patients and symbols for organizations and users. A second hand-rolled
+for patients and users and a building symbol for organizations. A second hand-rolled
 identity box is the bug, not a style choice.
 
 ## 7. Sidebar
@@ -200,11 +214,11 @@ identity box is the bug, not a style choice.
 The rail sits flat on the canvas (`--sidebar` equals `--background`) and the
 content panel is the card that rises off it. The rail is not a card.
 
-- **Hover is `bg-sidebar-accent/60`, the active row is the full accent plus
-  `font-medium`.** They must not be the same value, or the current page is
-  indistinguishable from whatever the pointer is passing over.
-- **Nav icons are `text-muted-foreground` until the row is active.** This is the
-  one place secondary colour is applied to an icon rather than to text.
+- **Hover is `bg-sidebar-accent/60`, the active row is `bg-sidebar-accent` plus
+  `font-medium`.** Both fills stay neutral. They must not be the same value, or
+  the current page is indistinguishable from whatever the pointer is passing over.
+- **Nav icons are `text-muted-foreground` until active, then `text-brand`.** The
+  icon marks the current place without turning the whole row green.
 - At widths below `lg` (including tablets), the rail is an off-canvas Sheet.
   `PageHeader` owns its trigger; pages and fixed footers never compensate for a
   collapsed desktop rail themselves.
@@ -423,7 +437,12 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
   one.
 - **Never a dual axis.** Two measures of different scale are two charts.
 - **Colour is `currentColor`/tokens**, so the chart inverts with the theme instead
-  of being flipped by hand.
+  of being flipped by hand. The highlighted value or series uses `--brand` for
+  emphasis, not as a claim about state; zero slots remain neutral.
+- **The dashboard's collection bars colour only the period's last day**
+  (`--brand-fill`); every other day is grey and there is no legend. The readout
+  above the bars totals the range at rest and names the hovered or focused day
+  otherwise.
 - **Gap-fill time series in SQL.** A day with no rows plots as a zero, or the axis
   silently compresses and lies.
 - **A bar chart is interactive by default**: per-bar hover, a readout that does not
@@ -450,7 +469,7 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
 - [ ] When a card tray is used, canvas, shell and card are three visibly distinct surfaces.
 - [ ] Card trays group related rows only; flat sections use hairlines and typography, and no card sits inside a raised surface.
 - [ ] No route-level arbitrary values; only the documented component and print exceptions.
-- [ ] Every colour is a token; checked in light **and** dark.
+- [ ] Every colour is a token; checked in light **and** dark. Brand marks identity/emphasis, never state; primary actions stay ink and focus stays neutral.
 - [ ] Spacing uses the scale; no margins on children where a gap would do.
 - [ ] `tabular-nums` on every changing number; `font-mono` on identifiers.
 - [ ] Icons are Lucide at `size-3.5`/`size-4`.

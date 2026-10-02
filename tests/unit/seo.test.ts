@@ -22,14 +22,14 @@ test("the landing page head carries the complete Open Graph contract with absolu
     ]),
   );
 
-  expect(byKey.title).toBe("HMS — the desk software your hospital actually runs on");
+  expect(byKey.title).toBe("Edernal Care — hospital management software for Indian hospitals");
   expect(byKey.description).toBeString();
   expect(byKey["og:type"]).toBe("website");
-  expect(byKey["og:site_name"]).toBe("HMS");
+  expect(byKey["og:site_name"]).toBe("Edernal Care");
   expect(byKey["og:title"]).toBe(byKey.title);
   expect(byKey["og:description"]).toBe(byKey.description);
   expect(byKey["og:url"]).toBe("https://hms.example/");
-  expect(byKey["og:image"]).toBe("https://hms.example/og/home.png");
+  expect(byKey["og:image"]).toBe("https://hms.example/og/home.webp");
   expect(byKey["og:image:width"]).toBe("1200");
   expect(byKey["og:image:height"]).toBe("630");
   expect(byKey["og:image:alt"]).toBe(byKey.title);

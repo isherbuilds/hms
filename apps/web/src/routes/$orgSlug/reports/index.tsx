@@ -7,7 +7,7 @@ import { useMembership } from "@/lib/membership";
 import { REPORT_LINKS } from "@/lib/navigation";
 
 export const Route = createFileRoute("/$orgSlug/reports/")({
-  head: () => ({ meta: [{ title: "Reports · HMS" }] }),
+  head: () => ({ meta: [{ title: "Reports · Edernal Care" }] }),
   component: ReportsIndexRoute,
 });
 
@@ -49,7 +49,7 @@ function ReportsIndexRoute() {
           </nav>
         </Panel>
         <p className="max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-          These reports cover transactions recorded in this HMS. Opening balances, non-billing
+          These reports cover transactions recorded in Edernal Care. Opening balances, non-billing
           activity, and final accounts remain in the accountant's books.
         </p>
       </PageBody>

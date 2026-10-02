@@ -16,7 +16,7 @@ import { PAYER_TYPE_LABELS } from "@/lib/payer";
 import { patientAgeLabel } from "@/lib/patient-age";
 
 export const Route = createFileRoute("/$orgSlug/patients/$patientId/")({
-  head: () => ({ meta: [{ title: "Patient record · HMS" }] }),
+  head: () => ({ meta: [{ title: "Patient record · Edernal Care" }] }),
   component: PatientRecordRoute,
 });
 

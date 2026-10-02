@@ -5,7 +5,7 @@ import { BillingDocumentRoute } from "@/components/billing-document-view";
 export const Route = createFileRoute(
   "/$orgSlug/billing/invoices/$invoiceId_/credit-note/$creditNoteId",
 )({
-  head: () => ({ meta: [{ title: "Credit note · HMS" }] }),
+  head: () => ({ meta: [{ title: "Credit note · Edernal Care" }] }),
   component: CreditNoteDocumentRoute,
 });
 

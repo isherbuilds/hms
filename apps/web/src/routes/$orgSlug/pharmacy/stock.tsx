@@ -86,7 +86,7 @@ const stockQuery = (orgSlug: string, filters: StockFilters) =>
   });
 
 export const Route = createFileRoute("/$orgSlug/pharmacy/stock")({
-  head: () => ({ meta: [{ title: "Pharmacy stock · HMS" }] }),
+  head: () => ({ meta: [{ title: "Pharmacy stock · Edernal Care" }] }),
   validateSearch: z.object({
     q: z.string().trim().min(1).max(100).optional().catch(undefined),
     expiring: z

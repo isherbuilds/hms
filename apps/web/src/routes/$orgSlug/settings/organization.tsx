@@ -28,7 +28,7 @@ import { requireOrgPermission } from "@/lib/route-permission";
 import { SettingsTabs } from "./route";
 
 export const Route = createFileRoute("/$orgSlug/settings/organization")({
-  head: () => ({ meta: [{ title: "Organization · HMS" }] }),
+  head: () => ({ meta: [{ title: "Organization · Edernal Care" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     // The page is a save form, so the tab strip gates it on `update` too.
     await requireOrgPermission(

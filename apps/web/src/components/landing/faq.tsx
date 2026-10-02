@@ -6,12 +6,11 @@ import type { ShotName } from "./product-window";
    (docs/research/landing-page-composition.md: Practo carries 11, Tebra 6, none
    of Cursor/Ramp/Slack/Midday carry one).
 
-   The answers live in `content/faqs.ts`, which also feeds the homepage's
-   FAQPage JSON-LD. One list of answers, two presentations: `/` renders all of
-   them, a feature page renders the ones tagged for its module. */
+   The answers live in `content/faqs.ts`; a feature page renders the ones
+   tagged for its module. */
 
-export function LandingFaq({ feature }: { feature?: ShotName }) {
-  const items = feature ? FAQS.filter((item) => item.features.includes(feature)) : FAQS;
+export function LandingFaq({ feature }: { feature: ShotName }) {
+  const items = FAQS.filter((item) => item.features.includes(feature));
 
   return (
     /* `scroll-mt` clears the sticky bar the header's "Questions" link lands under. */

@@ -5,7 +5,7 @@ import { BillingDocumentRoute } from "@/components/billing-document-view";
 
 export const Route = createFileRoute("/$orgSlug/billing/invoices/$invoiceId")({
   validateSearch: z.object({ layout: z.enum(["thermal"]).optional() }),
-  head: () => ({ meta: [{ title: "Invoice · HMS" }] }),
+  head: () => ({ meta: [{ title: "Invoice · Edernal Care" }] }),
   component: InvoiceDocumentRoute,
 });
 

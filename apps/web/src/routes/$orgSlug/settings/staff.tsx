@@ -36,7 +36,7 @@ const feeItemsQuery = (orgSlug: string) =>
   });
 
 export const Route = createFileRoute("/$orgSlug/settings/staff")({
-  head: () => ({ meta: [{ title: "Staff · HMS" }] }),
+  head: () => ({ meta: [{ title: "Staff · Edernal Care" }] }),
   validateSearch: z.object({
     view: z.enum(["practitioners", "departments"]).default("practitioners").catch("practitioners"),
   }),

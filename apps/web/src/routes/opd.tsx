@@ -8,10 +8,8 @@ export const Route = createFileRoute("/opd")({
   component: () => (
     <FeaturePage
       shot="opd"
-      eyebrow="Outpatient queue"
       title="See the whole morning at once"
       lead="Who is waiting, who is in a room, who never turned up."
-      windowTitle="Outpatient · Mercy General"
       captureAlt="The outpatient day list: token, patient, time, practitioner, status and balance for every appointment on the day"
       crops={[
         {

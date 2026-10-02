@@ -58,7 +58,7 @@ for (const route of PUBLIC_ROUTES) {
     ],
   });
 
-  const response = new ImageResponse(card, { renderer, ...OG_IMAGE, format: "png" });
+  const response = new ImageResponse(card, { renderer, ...OG_IMAGE, format: "webp" });
   await Bun.write(
     resolve(outDir, route.ogImage.replace(/^\/og\//, "")),
     await response.arrayBuffer(),

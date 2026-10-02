@@ -29,7 +29,7 @@ test("the server resolves authentication only where needed and at most once", as
     expect(healthResponse.status).toBe(200);
     expect(getSession).toHaveBeenCalledTimes(0);
 
-    const rpcResponse = await app.request("http://localhost/rpc/dashboard/today", {
+    const rpcResponse = await app.request("http://localhost/rpc/dashboard/collections", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ json: { orgSlug: "missing" } }),
@@ -47,7 +47,7 @@ test("procedure endpoints reject an oversized body before resolving authenticati
 
   try {
     for (const path of ["rpc", "api-reference"]) {
-      const response = await app.request(`http://localhost/${path}/dashboard/today`, {
+      const response = await app.request(`http://localhost/${path}/dashboard/collections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ json: { orgSlug: "x".repeat(1_100_000) } }),

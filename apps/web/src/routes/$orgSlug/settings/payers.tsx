@@ -55,7 +55,7 @@ type PayerFormValues = z.infer<typeof formSchema>;
 const EMPTY_VALUES: PayerFormValues = { name: "", type: "insurer", active: true };
 
 export const Route = createFileRoute("/$orgSlug/settings/payers")({
-  head: () => ({ meta: [{ title: "Payers · HMS" }] }),
+  head: () => ({ meta: [{ title: "Payers · Edernal Care" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     // Reading payers is org-wide (the registration picker needs it); this page only
     // edits them, so the tab strip gates it on `update` too.

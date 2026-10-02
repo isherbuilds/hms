@@ -46,7 +46,7 @@ function describeMeta(meta: Record<string, unknown> | null | undefined): string 
 }
 
 export const Route = createFileRoute("/$orgSlug/settings/audit")({
-  head: () => ({ meta: [{ title: "Audit log · HMS" }] }),
+  head: () => ({ meta: [{ title: "Audit log · Edernal Care" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     await requireOrgPermission(queryClient, orgSlug, { audit: ["read"] }, "/$orgSlug/settings");
     await queryClient.infiniteQuery(auditQuery(orgSlug)).catch(() => {});

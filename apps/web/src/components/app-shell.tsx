@@ -155,12 +155,11 @@ function OrgSidebar({ orgSlug }: { orgSlug: string }) {
                 <SidebarMenu>
                   {items.map(({ to, label, icon: Icon }) => (
                     <SidebarMenuItem key={to}>
-                      {/* The router already stamps `data-status="active"` on the
-                          rendered link, so the active style keys off that rather
-                          than a second source of truth. */}
+                      {/* The shared sidebar styles use the router's active marker
+                          rather than introducing a second source of truth. */}
                       <SidebarMenuButton
                         tooltip={label}
-                        className="[&_svg]:text-muted-foreground data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-sidebar-accent-foreground data-[status=active]:[&_svg]:text-foreground"
+                        className="[&_svg]:text-muted-foreground"
                         render={
                           <Link to={to} params={{ orgSlug }} preload="intent" preloadDelay={0} />
                         }
@@ -183,7 +182,7 @@ function OrgSidebar({ orgSlug }: { orgSlug: string }) {
             <SidebarMenuItem>
               <SidebarMenuButton
                 tooltip="Settings"
-                className="data-[status=active]:bg-sidebar-accent data-[status=active]:font-medium data-[status=active]:text-sidebar-accent-foreground data-[status=active]:[&_svg]:text-foreground"
+                className="[&_svg]:text-muted-foreground"
                 render={
                   <Link
                     to="/$orgSlug/settings"

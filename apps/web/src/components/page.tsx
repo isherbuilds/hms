@@ -454,7 +454,7 @@ export function Panel({
   children,
 }: {
   /** Omit on a single-list page: the table's column labels take the label row. */
-  label?: string;
+  label?: ReactNode;
   action?: ReactNode;
   footer?: ReactNode;
   minHeight?: string;

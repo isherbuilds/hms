@@ -56,7 +56,7 @@ function CreateOrganizationRoute() {
   return (
     <OrganizationEntryLayout
       eyebrow="CREATE ORGANIZATION"
-      title="Bring this hospital into HMS."
+      title="Bring this hospital into Edernal Care."
       description="The address names the organization in every tab and shared link. Data and permissions stay isolated behind it."
       aside={
         <p>

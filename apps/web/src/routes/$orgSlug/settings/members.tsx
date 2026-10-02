@@ -55,7 +55,7 @@ import { SettingsTabs } from "./route";
 const MEMBER_PAGE_LIMIT = 100;
 
 export const Route = createFileRoute("/$orgSlug/settings/members")({
-  head: () => ({ meta: [{ title: "Members · HMS" }] }),
+  head: () => ({ meta: [{ title: "Members · Edernal Care" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     await queryClient
       .query(orpc.member.list.queryOptions({ input: { orgSlug, limit: MEMBER_PAGE_LIMIT } }))

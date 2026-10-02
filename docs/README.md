@@ -33,6 +33,18 @@ progress, and **Verification** means implementation is complete but its exit
 evidence is not. Product roadmap items remain evidence-gated—not active work—
 until their trigger is met and they enter this registry.
 
+### [Landing page code reduction](./design.md)
+
+**Verification.** The owner requested restoration of the original landing
+animations, role-stack layout and planned IPD/lab presentation on 2 October 2026.
+Those changes were reversed. The roles section now clips transformed cards at
+its boundary to prevent them painting into the preceding journey on reverse
+scroll; its original animation calculations and layout remain unchanged. A new
+treatment section reuses the application’s plan item row. Desktop/mobile,
+light/dark, reverse-scroll and dashboard failure/loading/empty-state browser
+checks remain pending: the connected Mac browser-control requests timed out on
+2 October 2026. Short-viewport card-content clipping remains unverified.
+
 ### [Bot review UI fixes](./design.md#8-layout-primitives)
 
 **Verification.** Start local services, then check mobile audit actor name and email, OPD service rate and large totals, and medicine suggestion pack values after an operator edit. Docker and the web app were unavailable on 2026-09-24.
@@ -75,7 +87,8 @@ until their trigger is met and they enter this registry.
 
 ### Public site owner decisions
 
-**Blocked.** The owner supplies legal name, CIN, registered office, support and sales email, the WhatsApp Business number and who answers it, and decides on a lead form, training-crawler access, and a booking tool
+**Blocked.** Legal review must approve `/terms`, `/privacy` and `/security` before
+publication; the draft terms are not release approval. The owner confirms who answers the public contact channels and decides on training-crawler access. The site uses direct contact links; set `VITE_WHATSAPP_NUMBER` in the Coolify web build before the next deploy. Company-address placeholders and unused marketing pages have been removed.
 
 ### [Production hardening](./operations.md#production-hardening)
 

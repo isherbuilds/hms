@@ -32,7 +32,7 @@ import { billSummary, stockQuantities } from "@/lib/receipt-lines";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 export const Route = createFileRoute("/$orgSlug/pharmacy/receive")({
-  head: () => ({ meta: [{ title: "Receive goods · HMS" }] }),
+  head: () => ({ meta: [{ title: "Receive goods · Edernal Care" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     await requireOrgPermission(
       queryClient,

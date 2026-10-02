@@ -1,28 +1,25 @@
 import type { ReactNode } from "react";
 
-import { LandingClosing } from "./closing";
+import { LandingFooter } from "./footer";
 import { LandingNav } from "./nav";
+import { RevealRoot } from "./reveal";
 
-/* The shell for a prose page — about, privacy, contact, changelog. Same chrome as
-   every public page, a narrow measure for reading, and the shared closing. */
+/* Prose pages share the public chrome while retaining a narrow reading measure. */
 export function PublicPage({
-  eyebrow,
   title,
   lead,
   children,
 }: {
-  eyebrow?: string;
   title: string;
   lead?: string;
   children: ReactNode;
 }) {
   return (
-    <div className="min-h-svh overflow-x-clip bg-background text-foreground">
+    <RevealRoot className="min-h-svh overflow-x-clip bg-background text-foreground">
       <LandingNav />
       <main id="main" tabIndex={-1} className="flex flex-col">
-        <article className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-5 pt-16 sm:px-6 sm:pt-24">
+        <article className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-5 pt-16 pb-20 sm:px-6 sm:pt-24">
           <header className="flex flex-col gap-4">
-            {eyebrow ? <p className="text-sm text-muted-foreground">{eyebrow}</p> : null}
             <h1 className="text-4xl leading-[1.05] font-medium tracking-tight text-balance sm:text-5xl">
               {title}
             </h1>
@@ -30,9 +27,9 @@ export function PublicPage({
           </header>
           {children}
         </article>
-        <LandingClosing />
       </main>
-    </div>
+      <LandingFooter />
+    </RevealRoot>
   );
 }
 

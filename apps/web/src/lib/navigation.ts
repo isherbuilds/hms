@@ -176,7 +176,7 @@ export const REPORT_LINKS: readonly ReportLink[] = [
   {
     to: "/$orgSlug/reports/balance-sheet",
     label: "Billing ledger balance sheet",
-    description: "Assets, liabilities, and surplus created by HMS billing activity.",
+    description: "Assets, liabilities, and surplus created by Edernal Care billing activity.",
     icon: LandmarkIcon,
     permission: { report: ["readFinancial"] },
   },

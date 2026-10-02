@@ -48,6 +48,12 @@ implementation; the [work registry](../README.md#work-lifecycle) owns that statu
   [landing header anatomy](./landing-header-anatomy.md) — design-led and
   healthcare sites observed 2026-09-04; composition and header norms cited by the
   landing components. Norms only, not conversion evidence.
+- [Design system](./design-system.md) — audience, shape, dashboard, public
+  site, colour and performance lenses checked 2026-10-02 against peer design
+  systems, WCAG/SAFER/NICE and the current code. Keeps the core system;
+  proposes a 2/4/6/10/14 px radius scale, contrast and font-subset fixes, and
+  names P0 safety gaps (allergy unknown shown as none, dashboard errors shown
+  as empty). The 12 px body size awaits a staff density test.
 
 ## Adopted findings
 
@@ -126,6 +132,10 @@ Modelling an insurer as a payment method makes an unpaid bill read as settled (B
 ### Public site
 
 Google Search ignores `llms.txt`; the only AI lever is a per-purpose robots policy. Screenshots as CSS backgrounds are unindexable. DPDP notice duties commence 2027-05-13, SPDI r4 applies now, and Incorporation Rules r26 require an identity block on the home page. WhatsApp-first contact.
+
+### Staff guide framework
+
+Keep Fumadocs on Astro for `apps/fumadocs`; Blume was checked 2026-10-02 and not adopted. Both are MIT, Astro-capable, and cover static Orama search, Takumi OG cards, `llms.txt`, and subpath builds. Blume 2.1.0 ([npm](https://registry.npmjs.org/blume/latest)) replaces the app with a CLI-generated, hidden Astro project; it is three months old (first real release 2026-06-30, roughly 1.1k of its commits by one author, 122k weekly downloads). Fumadocs 16.15.17 has been published since 2024-01 and gets 2.2M weekly downloads ([GitHub](https://api.github.com/repos/fuma-nama/fumadocs), [npm](https://api.npmjs.org/downloads/point/last-week/fumadocs-core)). HMS owns about 293 lines of Fumadocs integration for 7 pages, so Blume would remove little code. It would add a migration done by a coding agent (`meta.json` → `meta.ts`, Callouts → directives), require new checks for the `/docs` Nitro bundle and noindex header, and bring a younger dependency. Fumadocs also offers MCP tools, versioning, locales, and API references ([headless](https://www.fumadocs.dev/docs/headless)); Blume's difference is that these are set in config instead of wired as app code, and it adds an in-page assistant plus `translate`, `audit`, and `eval` commands. None of these is a current need. Revisit if the guide needs several of those features at once and wiring them in Fumadocs would cost more than migrating, or if Fumadocs's Astro support stalls. Comparison claims come from [Blume's own page](https://useblume.dev/compare/fumadocs) and its [migration playbook](https://raw.githubusercontent.com/haydenbleasel/blume/main/skills/blume-migrate/references/fumadocs.md).
 
 ## Evidence anchors
 

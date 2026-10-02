@@ -27,7 +27,7 @@ import { arrivalModeLabel, practitionerDisplayName } from "@hms/api/lib/labels";
 const MAX_DAYS = 31;
 
 export const Route = createFileRoute("/$orgSlug/reports/opd-register")({
-  head: () => ({ meta: [{ title: "OPD register · HMS" }] }),
+  head: () => ({ meta: [{ title: "OPD register · Edernal Care" }] }),
   validateSearch: z.object({
     from: z.iso.date().optional().catch(undefined),
     to: z.iso.date().optional().catch(undefined),

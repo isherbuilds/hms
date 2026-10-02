@@ -57,9 +57,57 @@ function invoiceBalances(orgId: string) {
   };
 }
 
+// One grouped read of the checked-in visits with charges pending past the alert threshold.
+function waitingToBill(orgId: string, threshold: Date) {
+  return db
+    .select({
+      appointmentId: opdAppointments.id,
+      chargeCount: sql<number>`count(*)::integer`.as("charge_count"),
+      pendingValue: sql`sum(${charges.unitPrice} * ${charges.qty})::bigint`
+        .mapWith(BigInt)
+        .as("pending_value"),
+      oldestChargeAt: sql<Date>`min(${charges.createdAt})`.as("oldest_charge_at"),
+    })
+    .from(charges)
+    .innerJoin(
+      opdAppointments,
+      and(eq(opdAppointments.orgId, orgId), eq(opdAppointments.id, charges.opdAppointmentId)),
+    )
+    .where(
+      and(
+        eq(charges.orgId, orgId),
+        eq(charges.status, "pending"),
+        eq(opdAppointments.status, "checked_in"),
+      ),
+    )
+    .groupBy(opdAppointments.id)
+    .having(sql`min(${charges.createdAt}) < ${threshold}`)
+    .as("waiting");
+}
+
+async function toBillTotals(orgId: string, threshold: Date) {
+  const waiting = waitingToBill(orgId, threshold);
+
+  const [row] = await db
+    .select({
+      count: sql<number>`count(*)::integer`,
+      total: sql`coalesce(sum(${waiting.pendingValue}), 0)::bigint`.mapWith(BigInt),
+    })
+    .from(waiting);
+
+  return { count: row?.count ?? 0, total: row?.total ?? 0n };
+}
+
 const daysAgo = (count: number) => new Date(Date.now() - count * 86_400_000);
 
 export const billingWorklistRouter = {
+  // The dashboard's unbilled card: the worklist's desk total without its other scans.
+  toBill: orgProcedure({ billing: ["read"] }, orgInput).handler(async ({ context }) => {
+    const { orgId } = context.scope;
+    const settings = await readOrgSettings(orgId);
+
+    return toBillTotals(orgId, new Date(Date.now() - settings.unbilledAlertHours * 3_600_000));
+  }),
   worklist: orgProcedure(
     { billing: ["read"] },
     orgInput.extend({
@@ -75,37 +123,11 @@ export const billingWorklistRouter = {
     const search = input.query ? likePattern(input.query) : undefined;
     const threshold = new Date(Date.now() - settings.unbilledAlertHours * 3_600_000);
 
-    // One grouped read of the visits waiting to be billed. The row list narrows it by
-    // search; the card is a desk total, so it never does.
-    const waiting = db
-      .select({
-        appointmentId: opdAppointments.id,
-        chargeCount: sql<number>`count(*)::integer`.as("charge_count"),
-        pendingValue: sql`sum(${charges.unitPrice} * ${charges.qty})::bigint`
-          .mapWith(BigInt)
-          .as("pending_value"),
-        oldestChargeAt: sql<Date>`min(${charges.createdAt})`.as("oldest_charge_at"),
-      })
-      .from(charges)
-      .innerJoin(
-        opdAppointments,
-        and(
-          eq(opdAppointments.orgId, scope.orgId),
-          eq(opdAppointments.id, charges.opdAppointmentId),
-        ),
-      )
-      .where(
-        and(
-          eq(charges.orgId, scope.orgId),
-          eq(charges.status, "pending"),
-          eq(opdAppointments.status, "checked_in"),
-        ),
-      )
-      .groupBy(opdAppointments.id)
-      .having(sql`min(${charges.createdAt}) < ${threshold}`)
-      .as("waiting");
+    // The row list narrows the waiting visits by search; the card is a desk total,
+    // so it never does.
+    const waiting = waitingToBill(scope.orgId, threshold);
 
-    const [unbilledMatches, [toBill], [openMoney], [collected]] = await Promise.all([
+    const [unbilledMatches, toBill, [openMoney], [collected]] = await Promise.all([
       db
         .select({
           appointmentId: waiting.appointmentId,
@@ -142,12 +164,7 @@ export const billingWorklistRouter = {
         // Oldest first: the longest wait is the most likely to walk out unbilled.
         .orderBy(asc(waiting.oldestChargeAt), asc(waiting.appointmentId))
         .limit(input.limit + 1),
-      db
-        .select({
-          count: sql<number>`count(*)::integer`,
-          total: sql`coalesce(sum(${waiting.pendingValue}), 0)::bigint`.mapWith(BigInt),
-        })
-        .from(waiting),
+      toBillTotals(scope.orgId, threshold),
       // One scan answers all four figures; four procedures would be four scans per poll.
       db
         .select({
@@ -192,8 +209,8 @@ export const billingWorklistRouter = {
       unbilled,
       hasMore,
       summary: {
-        toBillTotal: toBill?.total ?? 0n,
-        toBillCount: toBill?.count ?? 0,
+        toBillTotal: toBill.total,
+        toBillCount: toBill.count,
         collectedToday: BigInt(collected?.total ?? "0"),
         receiptCount: collected?.receiptCount ?? 0,
         outstanding: openMoney?.outstanding ?? 0n,

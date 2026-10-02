@@ -8,10 +8,8 @@ export const Route = createFileRoute("/billing")({
   component: () => (
     <FeaturePage
       shot="billing"
-      eyebrow="Billing, collections and GST"
       title="Know what you are owed"
       lead="Unbilled care, unpaid invoices and refunds due, on one screen."
-      windowTitle="Billing · Mercy General"
       captureAlt="The billing worklist: today's collected, outstanding and over-30-day totals above the list of open invoices"
       crops={[
         {
