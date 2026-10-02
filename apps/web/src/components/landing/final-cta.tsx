@@ -1,4 +1,4 @@
-import { ArrowRightIcon } from "lucide-react";
+import { ArrowRightIcon, PhoneIcon } from "lucide-react";
 
 import { PHONE_DISPLAY, PHONE_TEL, WHATSAPP_URL } from "@/lib/contact";
 
@@ -28,19 +28,19 @@ export function LandingFinal() {
             Access is by invitation only. Contact us for an invitation, a free demo, or any
             questions.
           </p>
-          <div className="flex flex-wrap justify-center gap-3 max-md:w-full">
+          <div className="mt-2 flex w-full flex-col justify-center gap-3 sm:w-auto sm:flex-row">
             <a
               href={WHATSAPP_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className={buttonClass({ variant: "light", className: "max-md:w-full" })}
+              className={buttonClass({ variant: "light" })}
             >
               Book a free demo <ArrowRightIcon aria-hidden strokeWidth={1.75} />
             </a>
+            <a href={PHONE_TEL} className={buttonClass({ variant: "outline-light" })}>
+              <PhoneIcon aria-hidden strokeWidth={1.75} /> Call {PHONE_DISPLAY}
+            </a>
           </div>
-          <a href={PHONE_TEL} className="text-base text-band-muted underline underline-offset-4">
-            Call {PHONE_DISPLAY}
-          </a>
         </div>
       </div>
     </section>

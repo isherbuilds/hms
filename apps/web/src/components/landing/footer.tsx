@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { MoonIcon, SunIcon } from "lucide-react";
+import { MessageCircleIcon, MoonIcon, PhoneIcon, SunIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Wordmark } from "@/components/brand/wordmark";
@@ -36,7 +36,7 @@ function ThemeSwitch() {
 
 export function LandingFooter() {
   return (
-    <footer className="bg-band py-10 text-band-foreground">
+    <footer className="border-t border-band-line bg-band py-12 text-band-foreground">
       <div className={WRAP}>
         <div className="flex flex-col justify-between gap-8 md:flex-row md:gap-12">
           <div className="max-w-sm">
@@ -59,22 +59,31 @@ export function LandingFooter() {
               </a>
               , alongside Eternal Campus and Eternal Books.
             </p>
-            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-sm">
-              <a href={PHONE_TEL} className="pointer-fine:hover:underline">
+            <div className="mt-6 flex flex-col gap-2.5 text-sm">
+              <a
+                href={PHONE_TEL}
+                className="inline-flex w-fit items-center gap-2.5 font-medium pointer-fine:hover:underline"
+              >
+                <PhoneIcon aria-hidden strokeWidth={1.75} className="size-4 text-band-muted" />
                 {PHONE_DISPLAY}
               </a>
               <a
                 href={WHATSAPP_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="pointer-fine:hover:underline"
+                className="inline-flex w-fit items-center gap-2.5 font-medium pointer-fine:hover:underline"
               >
+                <MessageCircleIcon
+                  aria-hidden
+                  strokeWidth={1.75}
+                  className="size-4 text-band-muted"
+                />
                 WhatsApp us
               </a>
             </div>
           </div>
-          <nav aria-label="Footer" className="md:max-w-xs">
-            <ul className="flex flex-wrap gap-x-6 gap-y-3">
+          <nav aria-label="Footer">
+            <ul className="grid grid-cols-2 gap-x-12 gap-y-3.5">
               {LINKS.map((link) => (
                 <li key={link.href}>
                   <a href={link.href} className="text-sm no-underline pointer-fine:hover:underline">
@@ -85,7 +94,7 @@ export function LandingFooter() {
             </ul>
           </nav>
         </div>
-        <div className="mt-8 flex flex-wrap items-center justify-between gap-4 text-sm text-band-muted">
+        <div className="mt-10 flex flex-wrap items-center justify-between gap-4 border-t border-band-line pt-6 text-sm text-band-muted">
           <span>© 2026 Edernal Care</span>
           <div className="flex items-center gap-4">
             <span>Made in India</span>
