@@ -1549,7 +1549,7 @@ test("a scheduled appointment keeps selected services until check-in", async () 
       (row) => row.appointmentId,
     ),
   ).not.toContain(booked.id);
-  expect((await api.dashboard.collections({ orgSlug: organization.slug })).unbilled).toBe(0n);
+  expect((await api.billing.worklist({ orgSlug: organization.slug })).summary.toBillTotal).toBe(0n);
 
   await api.opd.checkIn({ orgSlug: organization.slug, appointmentId: booked.id });
   expect(
@@ -1557,7 +1557,7 @@ test("a scheduled appointment keeps selected services until check-in", async () 
       (row) => row.appointmentId,
     ),
   ).not.toContain(booked.id);
-  expect((await api.dashboard.collections({ orgSlug: organization.slug })).unbilled).toBe(0n);
+  expect((await api.billing.worklist({ orgSlug: organization.slug })).summary.toBillTotal).toBe(0n);
 });
 
 test("day keyset pagination traverses checked-in arrivals once", async () => {

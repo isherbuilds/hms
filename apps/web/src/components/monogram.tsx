@@ -1,5 +1,5 @@
 import { cn } from "@hms/ui/lib/utils";
-import { Building2Icon, UserRoundIcon } from "lucide-react";
+import { Building2Icon } from "lucide-react";
 
 const IDENTITY_TONES = [
   "bg-[#dcefed] text-[#245b59] dark:bg-[#193a39] dark:text-[#afe1dc]",
@@ -37,8 +37,6 @@ export function Monogram({
     >
       {kind === "organization" ? (
         <Building2Icon className="size-3.5" />
-      ) : kind === "user" ? (
-        <UserRoundIcon className="size-3.5" />
       ) : (
         (words[0]?.[0] ?? "?").concat(words[1]?.[0] ?? "").toUpperCase()
       )}

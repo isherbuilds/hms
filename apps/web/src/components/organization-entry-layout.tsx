@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
+import { Wordmark } from "@/components/brand/wordmark";
+
 export function OrganizationEntryLayout({
   eyebrow,
   title,
@@ -22,7 +24,7 @@ export function OrganizationEntryLayout({
     >
       <aside className="order-2 flex min-h-56 flex-col justify-between gap-6 border-t border-border bg-muted/25 p-6 lg:order-1 lg:min-h-svh lg:border-t-0 lg:border-r">
         <Link to="/" className="w-fit text-xs font-medium tracking-[0.18em] text-foreground">
-          HMS
+          <Wordmark className="h-5 w-auto" />
         </Link>
 
         <div className="flex max-w-md flex-col gap-2">

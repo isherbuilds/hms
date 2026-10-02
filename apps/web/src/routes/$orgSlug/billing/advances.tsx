@@ -35,7 +35,7 @@ const advancesQuery = (orgSlug: string, query: string) =>
   });
 
 export const Route = createFileRoute("/$orgSlug/billing/advances")({
-  head: () => ({ meta: [{ title: "Advances held · HMS" }] }),
+  head: () => ({ meta: [{ title: "Advances held · Edernal Care" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     await requireOrgPermission(queryClient, orgSlug, { billing: ["read"] }, "/$orgSlug/dashboard");
     await queryClient.infiniteQuery(advancesQuery(orgSlug, "")).catch(() => {});

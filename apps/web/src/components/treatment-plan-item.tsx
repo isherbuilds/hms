@@ -61,7 +61,7 @@ export function PlanItemRow({
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-border">
             <div
-              className={cn("h-full rounded-full", item.done ? "bg-clinical-clear" : "bg-primary")}
+              className={cn("h-full rounded-full", item.done ? "bg-clinical-clear" : "bg-brand")}
               style={{ width: `${percent}%` }}
             />
           </div>

@@ -73,7 +73,7 @@ const dayQuery = (
   });
 
 export const Route = createFileRoute("/$orgSlug/opd/")({
-  head: () => ({ meta: [{ title: "Outpatient · HMS" }] }),
+  head: () => ({ meta: [{ title: "Outpatient · Edernal Care" }] }),
   validateSearch: opdDaySearchSchema,
   loaderDeps: ({ search: { from, to, q, status } }) => ({ from, to, q, status }),
   loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {

@@ -164,7 +164,7 @@ async function renderDocument(
     fontFamilies: ["sans-serif", "Inter", "Noto Sans Devanagari"],
     fonts,
     lang: "en-IN",
-    metadata: { creator: "HMS", title: caption },
+    metadata: { creator: "Edernal Care", title: caption },
   };
 
   const bytes = thermal

@@ -1,97 +1,117 @@
-import { Button } from "@hms/ui/components/button";
-import { Link } from "@tanstack/react-router";
+import { ArrowRight, Check, MessageCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { WHATSAPP_URL } from "@/lib/contact";
 
-import { Wash } from "./wash";
+import { Accent, buttonClass, LEDE, stagger, WRAP } from "./primitives";
+import { ProductWindow } from "./product-window";
 
-/* The landing page's opening screen. The bar above it lives in `nav.tsx`. */
+// First word renders on the server and without motion; the rest cycle in.
+const PAIN_WORDS = ["paperwork.", "Excel sheets.", "registers."];
 
-/* The action pair every public hero ends with. Stacked and full-bleed under
-   `sm`. A 36px control is below the 44px touch minimum, so the actions take a
-   taller box on a phone.
+function PainWord() {
+  const [index, setIndex] = useState(0);
 
-   The walkthrough is the primary action: "Open your hospital" lands on `/join`,
-   which is a login wall to anyone without an account — a dead end for the new
-   visitor a hero exists for. */
-export function HeroActions() {
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const timer = setInterval(() => setIndex((i) => (i + 1) % PAIN_WORDS.length), 2600);
+
+    return () => clearInterval(timer);
+  }, []);
+
   return (
-    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-      <Button
-        size="lg"
-        className="h-11 w-full normal-case sm:h-9 sm:w-auto"
-        nativeButton={false}
-        render={<a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" />}
-      >
-        Book a walkthrough
-      </Button>
-      <Button
-        size="lg"
-        variant="outline"
-        className="h-11 w-full normal-case sm:h-9 sm:w-auto sm:border-transparent sm:bg-transparent sm:hover:bg-muted"
-        nativeButton={false}
-        render={<Link to="/join" />}
-      >
-        Open your hospital
-      </Button>
-    </div>
+    <Accent>
+      <span className="sr-only">{PAIN_WORDS[0]}</span>
+      <span aria-hidden className="inline-grid">
+        {PAIN_WORDS.map((word, i) => (
+          <span
+            key={word}
+            className={`col-start-1 row-start-1 transition-[opacity,translate] duration-300 ease-out ${i === index ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
+          >
+            {word}
+          </span>
+        ))}
+      </span>
+    </Accent>
   );
 }
 
 export function LandingHero() {
   return (
-    <section className="relative mx-auto flex w-full max-w-336 flex-col items-center gap-6 px-6 pt-20">
-      {/* The same wash the capability stages carry, so the top of the page reads
-          as one ground rather than as a white hero above a coloured section. It
-          runs past the section's own bounds and fades out at the bottom, which is
-          what stops it ending on a visible edge. */}
+    <section className="relative overflow-hidden pt-12 md:pt-24">
       <div
         aria-hidden
-        className="pointer-events-none absolute -top-24 bottom-0 left-1/2 -z-10 w-screen -translate-x-1/2 overflow-hidden"
-      >
-        <Wash className="opacity-70" />
-        <div className="absolute inset-x-0 bottom-0 h-64 bg-linear-to-b from-transparent to-background" />
-      </div>
-      <h1 className="max-w-3xl text-4xl leading-[1.05] font-medium tracking-tight text-balance sm:text-center sm:text-5xl">
-        The desk software your hospital actually runs on.
-      </h1>
+        className="pointer-events-none absolute inset-0 bg-size-[32px_32px] text-foreground"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 1px 1px, color-mix(in oklch, currentColor 10%, transparent) 1px, transparent 1.5px)",
+          maskImage:
+            "linear-gradient(to bottom, var(--foreground) 0%, var(--foreground) 40%, transparent 85%)",
+        }}
+      />
+      <div className={WRAP}>
+        <div className="relative flex flex-col gap-5 md:gap-6">
+          <h1
+            className="animate-landing-rise text-[42px] leading-[46px] font-semibold [word-spacing:0.02em] tracking-[0.01em] md:text-[60px] md:leading-[68px] lg:text-[84px] lg:leading-[92px]"
+            style={stagger(0)}
+          >
+            <span className="block">Run your hospital,</span>
+            <span className="block">
+              not your <PainWord />
+            </span>
+          </h1>
+          <div className="flex flex-col items-start gap-6">
+            <p
+              className={`${LEDE} max-w-[460px] animate-landing-rise text-muted-foreground`}
+              style={stagger(1)}
+            >
+              OPD, billing, pharmacy and lab in one simple system for Indian hospitals.
+            </p>
+            <div
+              className="flex w-full animate-landing-rise flex-col gap-3 md:w-auto md:flex-row md:flex-wrap"
+              style={stagger(2)}
+            >
+              <a href="/#demo" className={buttonClass({ variant: "primary" })}>
+                Book a free demo <ArrowRight aria-hidden />
+              </a>
+              <a
+                href={WHATSAPP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={buttonClass({ variant: "secondary" })}
+              >
+                <MessageCircle aria-hidden /> Talk on WhatsApp
+              </a>
+            </div>
+            <div
+              className="flex animate-landing-rise flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-muted-foreground"
+              style={stagger(3)}
+            >
+              {["ABDM & ABHA ready", "GST invoices", "Data hosted in India"].map((claim) => (
+                <span key={claim} className="inline-flex items-center gap-2">
+                  <Check aria-hidden className="size-4 text-brand" />
+                  {claim}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
 
-      {/* The definition sentence: the one line a search or answer engine can
-          lift verbatim, and the line that tells a first-time visitor whether
-          this page is for them. */}
-      <p className="max-w-lg text-lg text-muted-foreground text-pretty sm:text-center">
-        Hospital management software for small and mid-sized Indian hospitals — outpatient queues,
-        records and billing in one system.
-      </p>
-
-      <HeroActions />
-
-      {/* One capture at every width: the desktop screen, whole. Below `md` it is
-          small, and that is the honest trade — HMS is desk software, so a phone
-          visitor is evaluating something they will run on a counter machine. The
-          alternatives were both worse: cropping puts an arbitrary edge through
-          half a table row, and swapping in a phone capture tells a phone visitor
-          this is a phone app.
-
-          The frame is an even band on all four sides and the window carries a
-          full border, so the screen reads as one complete object rather than as
-          something running off the bottom of the page.
-
-          The wash never goes behind type: it is pinned to its light values in
-          both themes, and pale type on a pale wash fails in dark.
-
-          `100% auto` rather than `cover`: the capture's ratio and the frame's are
-          the same, so sizing to width makes a mismatch show as a sliver of gap
-          instead of a silent zoom. The filename carries the capture height —
-          830px, where the dashboard's last panel ends — so a recapture at a new
-          ratio can never be served from cache against the old frame. */}
-      <div className="relative w-full overflow-hidden rounded-xl p-4 sm:p-6 lg:p-8">
-        <Wash />
         <div
-          role="img"
-          aria-label="The HMS dashboard: today's counts, collections over 14 days, and the waiting queue"
-          className="relative aspect-144/83 w-full rounded-lg border border-border bg-size-[100%_auto] bg-clip-padding bg-top bg-no-repeat shadow-2xl bg-[url('/hero/dashboard-830-light.webp')] dark:bg-[url('/hero/dashboard-830-dark.webp')]"
-        />
+          className="relative mt-9 animate-landing-rise md:mt-11"
+          style={{
+            ...stagger(4),
+            maskImage: "linear-gradient(to bottom, black 62%, transparent)",
+          }}
+        >
+          <ProductWindow
+            name="dashboard"
+            region={{ x: 0, y: 0, w: 1440, h: 830 }}
+            alt="The Edernal Care dashboard: collections today, who has checked in and who is still waiting."
+            className="rounded-b-none rounded-t-2xl border-b-0 shadow-sm"
+          />
+        </div>
       </div>
     </section>
   );

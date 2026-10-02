@@ -87,9 +87,9 @@ export const Route = createFileRoute("/$orgSlug/opd/$appointmentId")({
       {
         title: loaderData
           ? loaderData.tokenNumber != null
-            ? `Token ${loaderData.tokenNumber} · ${loaderData.name ?? "Outpatient appointment"} · HMS`
-            : `Booked · ${loaderData.name ?? "Outpatient appointment"} · HMS`
-          : "Outpatient appointment · HMS",
+            ? `Token ${loaderData.tokenNumber} · ${loaderData.name ?? "Outpatient appointment"} · Edernal Care`
+            : `Booked · ${loaderData.name ?? "Outpatient appointment"} · Edernal Care`
+          : "Outpatient appointment · Edernal Care",
       },
     ],
   }),

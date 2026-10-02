@@ -1,14 +1,7 @@
 import type { ShotName } from "@/components/landing/product-window";
 
-/* One list of answers, two presentations: `faq.tsx` renders them as native
-   <details>, `seo.ts` serializes them into the homepage's FAQPage JSON-LD, so
-   an answer can never read differently to a crawler than it reads on the page.
-   Lives apart from the component because `seo.ts` runs in `head()` and must
-   not import a module full of JSX.
-
-   Every answer is checked against the code or the docs, and two of them say
-   "no". An FAQ that only sells is not an FAQ — in this category the buyer is
-   explicitly hunting for what you cannot do. */
+/* Feature-page answers stay separate from the homepage's mockup copy.
+   Both lists live apart from JSX so `seo.ts` can read them in `head()`. */
 export const FAQS: { q: string; a: string; features: ShotName[] }[] = [
   {
     q: "Can another hospital see our data?",
@@ -27,7 +20,7 @@ export const FAQS: { q: string; a: string; features: ShotName[] }[] = [
   },
   {
     q: "What does it cost?",
-    a: "Pricing depends on your hospital's size and which modules you run, so there is no public price list. A walkthrough ends with a written quote; one afternoon of setup and the desk is on it the next day.",
+    a: "Pricing is coming soon, so there is no public price list yet. Early-bird hospitals agree a price with us directly: call or message us, and a walkthrough ends with a written quote; one afternoon of setup and the desk is on it the next day.",
     features: ["opd", "patients", "billing"],
   },
   {
@@ -49,5 +42,30 @@ export const FAQS: { q: string; a: string; features: ShotName[] }[] = [
     q: "Can we get our data out?",
     a: "Yes. Every report exports to Excel or PDF over any date range, and invoices and receipts render as PDFs. Your records are yours.",
     features: ["patients", "billing"],
+  },
+];
+
+/* HOME_FAQS feeds both the home page and its FAQPage JSON-LD, so crawlers
+   receive exactly the questions and answers rendered on the page. */
+export const HOME_FAQS: { q: string; a: string }[] = [
+  {
+    q: "Is our patient data safe?",
+    a: "Encrypted and hosted in India. Every person has their own login and role. Every change to a record or bill is logged.",
+  },
+  {
+    q: "What happens if the internet goes down?",
+    a: "[Describe exactly what keeps working offline and how it syncs back when the connection returns.]",
+  },
+  {
+    q: "Can you move our old data?",
+    a: "Yes. Patients, doctors, rates, stock and pending bills import from Excel or your current software.",
+  },
+  {
+    q: "Do we need to buy new computers?",
+    a: "No. It runs in the browser on what you have, and prints on your existing printers.",
+  },
+  {
+    q: "How long does training take?",
+    a: "Each desk is trained on its own screens, at your hospital. Most staff work alone after one shift. We stay for the first busy day.",
   },
 ];

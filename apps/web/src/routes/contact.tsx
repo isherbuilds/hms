@@ -1,19 +1,18 @@
 import { env } from "@hms/env/web";
 import { Button } from "@hms/ui/components/button";
 import { createFileRoute } from "@tanstack/react-router";
-import { MailIcon, MessageCircleIcon } from "lucide-react";
+import { MailIcon, MessageCircleIcon, PhoneIcon } from "lucide-react";
 
 import { PROSE, PublicPage } from "@/components/landing/public-page";
-import { CONTACT_MAILTO, WHATSAPP_URL } from "@/lib/contact";
+import { CONTACT_MAILTO, PHONE_DISPLAY, PHONE_TEL, WHATSAPP_URL } from "@/lib/contact";
 import { pageHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/contact")({
   head: () => pageHead({ path: "/contact" }),
   component: () => (
     <PublicPage
-      eyebrow="Contact"
       title="Talk to the people who built it."
-      lead="No sales team, no form that goes nowhere. WhatsApp reaches us fastest; email works too."
+      lead="No sales team, no form that goes nowhere. Call or WhatsApp us on the same number; email works too."
     >
       <div className="flex flex-col gap-3 sm:flex-row">
         <Button
@@ -24,6 +23,16 @@ export const Route = createFileRoute("/contact")({
         >
           <MessageCircleIcon />
           WhatsApp us
+        </Button>
+        <Button
+          size="lg"
+          variant="outline"
+          className="h-11 normal-case sm:h-9"
+          nativeButton={false}
+          render={<a href={PHONE_TEL} />}
+        >
+          <PhoneIcon />
+          {PHONE_DISPLAY}
         </Button>
         <Button
           size="lg"

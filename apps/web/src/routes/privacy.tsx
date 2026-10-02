@@ -13,16 +13,15 @@ export const Route = createFileRoute("/privacy")({
   head: () => pageHead({ path: "/privacy" }),
   component: () => (
     <PublicPage
-      eyebrow="Privacy · effective 5 September 2026"
       title="What we collect, and what we do with it."
-      lead="Short version: this website collects almost nothing; the software holds your hospital's data on your hospital's behalf, and never shares it across hospitals."
+      lead="Effective 5 September 2026. Short version: this website collects almost nothing; the software holds your hospital's data on your hospital's behalf, and never shares it across hospitals."
     >
       <div className={PROSE}>
         <h2>Who this covers</h2>
         <p>
-          <strong>Visitors</strong> to this website. <strong>Staff</strong> who sign in to HMS with
-          an account their hospital created. <strong>Patients</strong> whose records a hospital
-          keeps in HMS. Each is handled differently below.
+          <strong>Visitors</strong> to this website. <strong>Staff</strong> who sign in to Edernal
+          Care with an account their hospital created. <strong>Patients</strong> whose records a
+          hospital keeps in Edernal Care. Each is handled differently below.
         </p>
 
         <h2>This website</h2>
@@ -34,8 +33,8 @@ export const Route = createFileRoute("/privacy")({
         </p>
         <p>
           If you contact us on WhatsApp or by email, we receive what you send and the number or
-          address you send it from. We use it to reply and to follow up about HMS, and for nothing
-          else. Please do not send patient information through either channel.
+          address you send it from. We use it to reply and to follow up about Edernal Care, and for
+          nothing else. Please do not send patient information through either channel.
         </p>
 
         <h2>Staff accounts</h2>
@@ -50,9 +49,9 @@ export const Route = createFileRoute("/privacy")({
         <h2>Patient records</h2>
         <p>
           The hospital decides what to record and why; in the language of the DPDP Act it is the{" "}
-          <strong>Data Fiduciary</strong>, and HMS processes data on its instructions as a{" "}
-          <strong>Data Processor</strong>. HMS stores, for each hospital, what its staff enter:
-          demographics and MRN, phone, allergies, appointments, prescription scans, charges,
+          <strong>Data Fiduciary</strong>, and Edernal Care processes data on its instructions as a{" "}
+          <strong>Data Processor</strong>. Edernal Care stores, for each hospital, what its staff
+          enter: demographics and MRN, phone, allergies, appointments, prescription scans, charges,
           invoices, payments and receipts.
         </p>
         <ul>
@@ -67,8 +66,8 @@ export const Route = createFileRoute("/privacy")({
             authorised member opens one.
           </li>
           <li>
-            <strong>No AI on patient data.</strong> Nothing in HMS sends patient records to an AI
-            service or trains a model on them.
+            <strong>No AI on patient data.</strong> Nothing in Edernal Care sends patient records to
+            an AI service or trains a model on them.
           </li>
           <li>
             <strong>No sale, no sharing.</strong> We do not sell, rent or share patient or staff
@@ -98,9 +97,9 @@ export const Route = createFileRoute("/privacy")({
         <h2>Questions and complaints</h2>
         <p>
           Write to <a href={`mailto:${env.VITE_CONTACT_EMAIL}`}>{env.VITE_CONTACT_EMAIL}</a> with
-          privacy questions or grievances. When the company operating HMS is incorporated, its legal
-          name, registered office and the name of the person responsible for this notice will appear
-          here and on the <Link to="/about">about page</Link>.
+          privacy questions or grievances. When the company operating Edernal Care is incorporated,
+          its legal name, registered office and the name of the person responsible for this notice
+          will appear here and on the <Link to="/about">about page</Link>.
         </p>
 
         <h2>Changes</h2>

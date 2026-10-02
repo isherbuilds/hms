@@ -23,7 +23,7 @@ import { orgMonthToDate as defaultRange, useOrgDateTime } from "@/lib/org-dateti
 import { requireOrgPermission } from "@/lib/route-permission";
 
 export const Route = createFileRoute("/$orgSlug/reports/gst")({
-  head: () => ({ meta: [{ title: "GST register · HMS" }] }),
+  head: () => ({ meta: [{ title: "GST register · Edernal Care" }] }),
   validateSearch: z.object({
     from: z.iso.date().optional().catch(undefined),
     to: z.iso.date().optional().catch(undefined),

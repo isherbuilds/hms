@@ -7,7 +7,7 @@ import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 export const Route = createFileRoute("/$orgSlug/patients/$patientId/billing")({
-  head: () => ({ meta: [{ title: "Patient billing · HMS" }] }),
+  head: () => ({ meta: [{ title: "Patient billing · Edernal Care" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug, patientId } }) => {
     await requireOrgPermission(queryClient, orgSlug, { billing: ["read"] }, "/$orgSlug/dashboard");
     await queryClient

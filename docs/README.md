@@ -33,6 +33,10 @@ progress, and **Verification** means implementation is complete but its exit
 evidence is not. Product roadmap items remain evidence-gated—not active work—
 until their trigger is met and they enter this registry.
 
+### [Landing page code reduction](./design.md)
+
+**Verification.** The 2026-09-30 pass cut the home page sections and moved their type, radius and spacing onto the standard scale. A browser pass covered desktop light and mobile dark: journey pin, roles stack with settle and chapter clicks, bed tiles, reveals and the FAQ. Still to check: the reduced-motion tabs, desktop dark and mobile light. Known before this pass: on a phone the front-desk and billing role cards are taller than the stack and clip.
+
 ### [Bot review UI fixes](./design.md#8-layout-primitives)
 
 **Verification.** Start local services, then check mobile audit actor name and email, OPD service rate and large totals, and medicine suggestion pack values after an operator edit. Docker and the web app were unavailable on 2026-09-24.

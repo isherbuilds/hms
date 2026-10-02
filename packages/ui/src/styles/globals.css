@@ -48,11 +48,24 @@
   --clinical-clear: oklch(0.47 0.11 155);
   --clinical-clear-surface: oklch(0.958 0.03 155);
   --clinical-clear-border: oklch(0.87 0.06 155);
+  /* The brand accent: Edernal Care's green. It marks identity and emphasis
+     (the wordmark, the current place, a checked control, a highlighted
+     figure), never state — settled/cleared state stays `--clinical-clear`.
+     Primary actions stay ink (`--primary`); focus stays neutral (`--ring`).
+     Light mode is lime: `--brand` is the deep step that text and icons use
+     (5:1 on white); `--brand-fill` is the bright lime for bars, cards and
+     progress fills, too light (2.4:1) to carry text. */
+  --brand: oklch(0.532 0.141 132);
+  --brand-foreground: oklch(0.985 0 0);
+  --brand-surface: oklch(0.966 0.03 126);
+  --brand-border: oklch(0.87 0.08 128);
+  --brand-fill: oklch(0.716 0.175 131);
+  /* Collection chart: digital takes the brand fill; cash and refunds take these.
+     As a set they fail red-green separation, so cash is always hatched, refunds
+     sit below the zero line, and every value is labelled. */
   --radius: 0.625rem;
   --sidebar: oklch(0.978 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.928 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
@@ -89,10 +102,13 @@
   --clinical-clear: oklch(0.8 0.11 155);
   --clinical-clear-surface: oklch(0.27 0.045 155);
   --clinical-clear-border: oklch(0.39 0.07 155);
+  --brand: oklch(0.782 0.144 161);
+  --brand-foreground: oklch(0.205 0 0);
+  --brand-surface: oklch(0.257 0.037 165);
+  --brand-border: oklch(0.38 0.06 164);
+  --brand-fill: oklch(0.782 0.144 161);
   --sidebar: oklch(0.145 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.922 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
@@ -106,11 +122,15 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
   --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-surface: var(--brand-surface);
+  --color-brand-border: var(--brand-border);
+  --color-brand-fill: var(--brand-fill);
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
   --color-clinical-alert: var(--clinical-alert);
   --color-clinical-alert-surface: var(--clinical-alert-surface);
   --color-clinical-alert-border: var(--clinical-alert-border);
@@ -144,8 +164,6 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
 }
 
 @layer base {
@@ -176,7 +194,7 @@
   }
 
   body {
-    @apply font-sans bg-background text-foreground;
+    @apply bg-background text-foreground;
   }
   html {
     @apply font-sans;
@@ -277,6 +295,12 @@
 
 [data-focus-floor="off"]:focus-visible {
   outline: none;
+}
+
+/* Text selection carries the brand accent without changing text contrast. */
+::selection {
+  background: var(--brand-surface);
+  color: var(--foreground);
 }
 
 /*

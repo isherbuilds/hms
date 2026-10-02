@@ -7,18 +7,17 @@ export const Route = createFileRoute("/about")({
   head: () => pageHead({ path: "/about" }),
   component: () => (
     <PublicPage
-      eyebrow="About"
       title="Built with one hospital before it is sold to the next."
-      lead="HMS is desk software for small and mid-sized Indian hospitals: the outpatient queue, the patient record and the money, in one system."
+      lead="Edernal Care is desk software for small and mid-sized Indian hospitals: the outpatient queue, the patient record and the money, in one system."
     >
       <div className={PROSE}>
         <h2>How it started</h2>
         <p>
-          HMS began in August 2026 alongside one hospital's front desk, which was running on an
-          older hospital-management system it had outgrown. Rather than replace it all at once, we
-          built the smallest thing that could stand in for a morning shift — one list for the day,
-          one record per patient, one immutable bill — and put it in front of the people who would
-          use it.
+          Edernal Care began in August 2026 alongside one hospital's front desk, which was running
+          on an older hospital-management system it had outgrown. Rather than replace it all at
+          once, we built the smallest thing that could stand in for a morning shift — one list for
+          the day, one record per patient, one immutable bill — and put it in front of the people
+          who would use it.
         </p>
         <p>
           Everything since has shipped the same way — a vertical slice, run at a real desk,
@@ -47,10 +46,10 @@ export const Route = createFileRoute("/about")({
         </p>
         <h3>Doctors keep writing on paper.</h3>
         <p>
-          HMS stores the signed prescription as a private scan against the visit. It does not
-          present an unreviewed digital or AI reconstruction as the clinical record. When a hospital
-          asks for digital authorship, it will ship with consent, provenance and a clinician's
-          review in the loop — not before.
+          Edernal Care stores the signed prescription as a private scan against the visit. It does
+          not present an unreviewed digital or AI reconstruction as the clinical record. When a
+          hospital asks for digital authorship, it will ship with consent, provenance and a
+          clinician's review in the loop — not before.
         </p>
         <h3>Nothing is claimed before it is held.</h3>
         <p>

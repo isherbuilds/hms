@@ -254,12 +254,14 @@ test("dashboard collection trend labels the organization's Business Dates", asyn
 
   const fixture = await createAccountingFixture("dashboard-business-date", timeZone);
 
-  const collections = await fixture.api.dashboard.collections({
+  const trend = await fixture.api.dashboard.trend({
     orgSlug: fixture.organization.slug,
+    days: 7,
   });
 
-  expect(collections.trend).toHaveLength(14);
-  expect(collections.trend.at(-1)?.day).toBe(businessDate(new Date(), timeZone));
+  // A week more than shown, for each bar's same-weekday comparison.
+  expect(trend).toHaveLength(14);
+  expect(trend.at(-1)?.day).toBe(businessDate(new Date(), timeZone));
 });
 
 async function journalFor(fixture: AccountingFixture, sourceType: string, sourceId: string) {
@@ -483,6 +485,7 @@ test("payments, credits, and refunds post exactly and reconcile in the OPD regis
     { method: "cash", amount: 100_00n },
     { method: "bank", amount: 18_00n },
   ]);
+  expect(collections.bySource).toEqual([{ source: "opd", amount: 118_00n }]);
 
   const [invoiceLine] = issued.lines;
 
@@ -653,7 +656,13 @@ test("daily collections nets payments and refunds by Business Date and method", 
   });
 
   expect(dashboard.collected).toBe(0n);
-  expect(dashboard.trend.find((row) => row.day === collectionDay)?.amount).toBe(118_00n);
+
+  const trend = await fixture.api.dashboard.trend({
+    orgSlug: fixture.organization.slug,
+    days: 30,
+  });
+
+  expect(trend.find((row) => row.day === collectionDay)?.amount).toBe(118_00n);
   await expectORPCCode(
     fixture.api.report.dailyCollections({
       orgSlug: fixture.organization.slug,

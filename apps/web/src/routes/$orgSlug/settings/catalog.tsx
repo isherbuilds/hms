@@ -70,7 +70,7 @@ const catalogListQuery = (
   });
 
 export const Route = createFileRoute("/$orgSlug/settings/catalog")({
-  head: () => ({ meta: [{ title: "Services · HMS" }] }),
+  head: () => ({ meta: [{ title: "Services · Edernal Care" }] }),
   validateSearch: z.object({
     q: z.string().trim().min(1).max(100).optional().catch(undefined),
     category: z.enum(SERVICE_CATEGORIES).optional().catch(undefined),

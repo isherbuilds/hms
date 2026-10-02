@@ -693,3 +693,17 @@ subtotal and largest-remainder allocation; OPD prices retain `priceUnits = 1`.
 A pharmacy Charge has a tenant-scoped composite foreign key to its batch through
 `stockBatchId`, with `sourceId = null`; a database CHECK enforces the pharmacy
 source, parent and batch pairing. The pilot database has no data to backfill.
+
+### D050 — Edernal Care brand and green accent
+
+**Accepted 2026-09-30 on the owner's instruction; living rules: [Design](./design.md#5-colour).**
+The product is renamed from HMS to Edernal Care. Its green `--brand` accent is
+`oklch(0.469 0.095 165)` in light and `oklch(0.782 0.144 161)` in dark. Paired with
+the Edernal Care wordmark, it marks identity and emphasis only, never state:
+settled or clear remains `--clinical-clear`. Primary actions stay ink
+(`--primary`); keyboard focus stays neutral (`--ring` and `--sidebar-ring`).
+
+The public site is redesigned from the Edernal Care mockup with its copy
+verbatim, including feature claims and placeholders such as `₹[price]`,
+`[N] days`, `+91 [00000 00000]`, and `[Registered company name and address]`.
+The owner approved this copy, including the placeholders.

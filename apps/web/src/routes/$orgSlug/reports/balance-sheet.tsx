@@ -23,7 +23,7 @@ import { orgToday as today } from "@/lib/org-datetime";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 export const Route = createFileRoute("/$orgSlug/reports/balance-sheet")({
-  head: () => ({ meta: [{ title: "Balance sheet · HMS" }] }),
+  head: () => ({ meta: [{ title: "Balance sheet · Edernal Care" }] }),
   // `.catch` keeps a hand-edited or truncated URL on the page: an unparseable date
   // falls back instead of showing an error screen. Same in the sibling reports.
   validateSearch: z.object({ asOf: z.iso.date().optional().catch(undefined) }),
@@ -91,8 +91,8 @@ function BalanceSheetRoute() {
             <header className="border-b pb-2">
               <h1 className="text-sm font-medium">Billing ledger balance sheet</h1>
               <p className="text-muted-foreground">
-                As of {report.data.asOf} · HMS-posted billing activity only; opening balances and
-                final accounts remain in the accountant's books.
+                As of {report.data.asOf} · Edernal Care–posted billing activity only; opening
+                balances and final accounts remain in the accountant's books.
               </p>
             </header>
 

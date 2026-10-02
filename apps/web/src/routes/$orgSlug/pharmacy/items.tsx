@@ -35,7 +35,7 @@ const productListQuery = (orgSlug: string, query: string) =>
   });
 
 export const Route = createFileRoute("/$orgSlug/pharmacy/items")({
-  head: () => ({ meta: [{ title: "Products · HMS" }] }),
+  head: () => ({ meta: [{ title: "Products · Edernal Care" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     await requireOrgPermission(
       queryClient,

@@ -25,11 +25,7 @@ function ChangelogEntryRoute() {
   if (!entry) throw notFound();
 
   return (
-    <PublicPage
-      eyebrow={`${formatDate(entry.date)} · Changelog`}
-      title={entry.title}
-      lead={entry.summary}
-    >
+    <PublicPage title={entry.title} lead={`${formatDate(entry.date)} · ${entry.summary}`}>
       <div className={PROSE}>
         <entry.Content />
       </div>

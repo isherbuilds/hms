@@ -1,12 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { LandingCapabilities } from "@/components/landing/capabilities";
-import { LandingClosing } from "@/components/landing/closing";
-import { LandingFaq } from "@/components/landing/faq";
+import { LandingFinal } from "@/components/landing/final-cta";
+import { LandingFooter } from "@/components/landing/footer";
+import { LandingGoLive } from "@/components/landing/go-live";
 import { LandingHero } from "@/components/landing/hero";
+import { HomeFaq } from "@/components/landing/home-faq";
+import { LandingIndia } from "@/components/landing/india";
+import { LandingJourney } from "@/components/landing/journey";
 import { LandingNav } from "@/components/landing/nav";
-import { LandingOnTheFloor } from "@/components/landing/on-the-floor";
-import { LandingTestimonials } from "@/components/landing/testimonials";
+import { LandingOwner } from "@/components/landing/owner";
+import { LandingPricing } from "@/components/landing/pricing";
+import { RevealRoot } from "@/components/landing/reveal";
+import { LandingRoles } from "@/components/landing/roles-scroll";
 import { redirectSignedInHome } from "@/lib/home";
 import { pageHead } from "@/lib/seo";
 
@@ -19,22 +24,26 @@ export const Route = createFileRoute("/")({
 });
 
 function HomeRoute() {
-  // The hero and the capability stages deliberately render screenshots wider than
-  // their frames and rely on the frame to clip them. `overflow-x-clip` on the page
-  // makes that structural: it cannot produce a horizontal scrollbar even if a
-  // frame's own clipping is defeated, and unlike `overflow-x-hidden` it does not
-  // create a scroll container, so nothing inside loses `position: sticky`.
+  // The product previews deliberately render wider than their frames and rely
+  // on each frame to clip them. `overflow-x-clip` makes that structural: previews
+  // cannot produce a horizontal scrollbar even if a frame's clipping is defeated,
+  // and unlike `overflow-x-hidden` it does not create a scroll container, so the
+  // sticky navigation keeps its viewport anchor.
   return (
-    <div className="min-h-svh overflow-x-clip bg-background text-foreground">
+    <RevealRoot className="min-h-svh overflow-x-clip bg-background text-foreground">
       <LandingNav />
-      <main id="main" tabIndex={-1} className="flex flex-col">
+      <main id="main" tabIndex={-1}>
         <LandingHero />
-        <LandingCapabilities />
-        <LandingOnTheFloor />
-        <LandingTestimonials />
-        <LandingFaq />
-        <LandingClosing />
+        <LandingJourney />
+        <LandingRoles />
+        <LandingOwner />
+        <LandingIndia />
+        <LandingGoLive />
+        <LandingPricing />
+        <HomeFaq />
+        <LandingFinal />
       </main>
-    </div>
+      <LandingFooter />
+    </RevealRoot>
   );
 }

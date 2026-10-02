@@ -66,7 +66,7 @@ function NotFound() {
       <div className="flex flex-col gap-1 border-l-2 border-border pl-3">
         <p className="font-mono text-xs tracking-widest text-muted-foreground">404 · ROUTE</p>
         <h1 className="text-sm font-medium">Page not found</h1>
-        <p className="text-muted-foreground">The address does not match an HMS page.</p>
+        <p className="text-muted-foreground">The address does not match an Edernal Care page.</p>
       </div>
 
       <Link className={buttonVariants({ variant: "outline", className: "w-fit" })} to="/">

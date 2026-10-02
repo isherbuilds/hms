@@ -1,6 +1,6 @@
 # Product
 
-HMS is an online, multi-tenant hospital operations system for small and
+Edernal Care (repository and package name HMS, D050) is an online, multi-tenant hospital operations system for small and
 mid-sized Indian hospitals. One Better Auth Organization is one hospital. The
 implemented product covers OPD reception, billing, and pharmacy sales and
 stock. Pilot and release checks remain in the [work registry](./README.md#work-lifecycle).

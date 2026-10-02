@@ -36,7 +36,7 @@ const filesQuery = (orgSlug: string, query: string) =>
   });
 
 export const Route = createFileRoute("/$orgSlug/files")({
-  head: () => ({ meta: [{ title: "Files · HMS" }] }),
+  head: () => ({ meta: [{ title: "Files · Edernal Care" }] }),
   loader: async ({ context: { queryClient }, params: { orgSlug } }) => {
     await queryClient.infiniteQuery(filesQuery(orgSlug, "")).catch(() => {});
   },

@@ -1,7 +1,7 @@
 import { env } from "@hms/env/web";
 
 import { OG_IMAGE, PUBLIC_ROUTES, siteConfig } from "@/config/site";
-import { FAQS } from "@/content/faqs";
+import { HOME_FAQS } from "@/content/faqs";
 
 type JsonLd = Record<string, unknown>;
 
@@ -49,9 +49,8 @@ function head(
 }
 
 /* The site-wide entity graph, carried by the homepage: Organization so answer
-   engines can resolve what "HMS" is (the name alone collides with the
-   category's own acronym), WebSite naming the site. No `sameAs` until a social
-   profile actually exists. */
+   engines can resolve Edernal Care as the product, not the category's HMS
+   acronym; WebSite names the site. No `sameAs` until a social profile exists. */
 function siteGraph(): JsonLd[] {
   const origin = env.VITE_WEB_URL;
 
@@ -75,9 +74,9 @@ function siteGraph(): JsonLd[] {
 }
 
 /* The homepage's machine-readable claims: what the software is, who it is for,
-   and the FAQ — serialized from the same `FAQS` list the page renders, so an
-   answer engine can never quote an answer the page does not carry. No price is
-   stated because none is public; `offers` stays out until one is. */
+   and the FAQ — serialized from the same `HOME_FAQS` list the page renders, so an
+   answer engine can never quote an answer the page does not carry. The pricing
+   placeholders are not prices; `offers` stays out until a real price is public. */
 function homeGraph(): JsonLd[] {
   const origin = env.VITE_WEB_URL;
 
@@ -102,7 +101,7 @@ function homeGraph(): JsonLd[] {
     {
       "@context": "https://schema.org",
       "@type": "FAQPage",
-      mainEntity: FAQS.map((item) => ({
+      mainEntity: HOME_FAQS.map((item) => ({
         "@type": "Question",
         name: item.q,
         acceptedAnswer: { "@type": "Answer", text: item.a },

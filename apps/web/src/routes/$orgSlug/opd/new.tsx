@@ -23,7 +23,7 @@ const INTAKE_PERMISSION = {
 } as const;
 
 export const Route = createFileRoute("/$orgSlug/opd/new")({
-  head: () => ({ meta: [{ title: "Appointment · HMS" }] }),
+  head: () => ({ meta: [{ title: "Appointment · Edernal Care" }] }),
   validateSearch: intakeSearch,
   loaderDeps: ({ search: { patientId, treatmentPlanId } }) => ({ patientId, treatmentPlanId }),
   loader: async ({

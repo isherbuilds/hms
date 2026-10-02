@@ -33,7 +33,7 @@ const movementsQuery = (orgSlug: string, batchId?: string) =>
   });
 
 export const Route = createFileRoute("/$orgSlug/pharmacy/movements")({
-  head: () => ({ meta: [{ title: "Stock movements · HMS" }] }),
+  head: () => ({ meta: [{ title: "Stock movements · Edernal Care" }] }),
   validateSearch: z.object({ batchId: z.string().min(1).optional().catch(undefined) }),
   loaderDeps: ({ search }) => ({ batchId: search.batchId }),
   loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {

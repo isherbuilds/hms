@@ -1,8 +1,105 @@
 /* Self-hosted so the declared `--font-sans` is the font that actually renders:
    no CDN request, no flash of fallback, and it works on a hospital LAN with no
    outbound internet. Mono is loaded for the columns that need figure alignment
-   (MRN, invoice number, actor id). */
-@import "@fontsource-variable/inter";
+   (MRN, invoice number, actor id). Inter carries its optical-size axis: body
+   text renders as ordinary Inter, and display headings (the public site's
+   84px hero) get Inter Display's tighter drawing automatically. */
+@import "@fontsource-variable/inter/opsz.css";
 @import "@fontsource-variable/jetbrains-mono";
 @import "@hms/ui/globals.css";
 @source "../node_modules/streamdown/dist/*.js";
+
+/* The public site's dark bands (owner section, closing ask, footer). Near-black
+   ink in the light theme; in the dark theme a raised panel that still reads as
+   a band against the page. Public pages only — the app never uses these. */
+:root {
+  --band: oklch(0.149 0.002 107);
+  --band-foreground: oklch(0.984 0.004 107);
+  --band-muted: oklch(0.717 0.011 101);
+  --band-line: oklch(0.284 0.005 107);
+  --band-raised: oklch(0.23 0.004 107);
+  --brand-bright: oklch(0.782 0.144 161);
+}
+
+.dark {
+  --band: oklch(0.19 0.002 107);
+  --band-line: oklch(0.3 0.005 107);
+  --band-raised: oklch(0.25 0.004 107);
+}
+
+@theme inline {
+  --color-band: var(--band);
+  --color-band-foreground: var(--band-foreground);
+  --color-band-muted: var(--band-muted);
+  --color-band-line: var(--band-line);
+  --color-band-raised: var(--band-raised);
+  --color-brand-bright: var(--brand-bright);
+}
+
+/* A desktop viewport tall enough to pin a section while it plays. */
+@custom-variant pin (@media (min-width: 1024px) and (min-height: 700px));
+
+/* Scroll reveal for the public site. `RevealRoot` marks every `[data-reveal]`
+   with `data-inview` once it first enters the viewport; `--i` on an element
+   staggers it within its group. Gated on `scripting: enabled` so a page without
+   JavaScript never hides anything, and on motion preference so reduced motion
+   gets the content in place. Transitions, not keyframes: a reveal that fires
+   mid-scroll retargets instead of restarting. */
+@media (scripting: enabled) and (prefers-reduced-motion: no-preference) {
+  [data-reveal] {
+    transition:
+      opacity 560ms var(--ease-out-strong),
+      transform 560ms var(--ease-out-strong);
+    transition-delay: calc(var(--i, 0) * 60ms);
+  }
+
+  [data-reveal]:not([data-inview]) {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  /* Bars grow from their start edge once their group is in view. */
+  [data-reveal-bar] {
+    transform-origin: left center;
+    transition: transform 900ms var(--ease-out-strong);
+    transition-delay: calc(120ms + var(--i, 0) * 70ms);
+  }
+
+  [data-reveal]:not([data-inview]) [data-reveal-bar] {
+    transform: scaleX(0.001);
+  }
+
+  [data-reveal-col] {
+    transform-origin: center bottom;
+    transition: transform 700ms var(--ease-out-strong);
+    transition-delay: calc(160ms + var(--i, 0) * 45ms);
+  }
+
+  [data-reveal]:not([data-inview]) [data-reveal-col] {
+    transform: scaleY(0.001);
+  }
+}
+
+/* Above-the-fold entrance: runs on first paint, no observer, so the hero never
+   waits on hydration. `--rise` shortens the travel for a small swap. */
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--rise, 12px));
+  }
+}
+
+@utility animate-landing-rise {
+  animation: landing-rise 640ms var(--ease-out-strong) both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+/* The "Live" pill's dot: a slow breathing ring, the one looping motion on the
+   page, because it claims something is running right now. Scale and opacity
+   only, so the loop stays on the compositor. */
+@keyframes landing-live {
+  50% {
+    opacity: 0.06;
+    transform: scale(1.6);
+  }
+}

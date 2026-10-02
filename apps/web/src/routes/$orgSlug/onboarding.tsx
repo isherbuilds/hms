@@ -8,7 +8,7 @@ import { useMembership } from "@/lib/membership";
 import { SETUP_STEPS } from "@/lib/navigation";
 
 export const Route = createFileRoute("/$orgSlug/onboarding")({
-  head: () => ({ meta: [{ title: "Set up organization · HMS" }] }),
+  head: () => ({ meta: [{ title: "Set up organization · Edernal Care" }] }),
   component: OrganizationOnboardingRoute,
 });
 
