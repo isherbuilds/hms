@@ -1,13 +1,11 @@
-import { ArrowRight } from "lucide-react";
-
-import { Accent, buttonClass, Pill, SectionHead, stagger, WRAP } from "./primitives";
+import { Accent, Pill, SectionHead, stagger, WRAP } from "./primitives";
 
 const GO_LIVE_STEPS = [
   {
     number: "01",
     label: "Setup",
     tone: "neutral",
-    title: "We visit and set up",
+    title: "Set up your hospital",
     description: "Your hospital, configured the way it runs.",
     items: ["Departments", "Services", "Staff logins"],
   },
@@ -15,16 +13,16 @@ const GO_LIVE_STEPS = [
     number: "02",
     label: "Migration",
     tone: "neutral",
-    title: "We move your data",
-    description: "Nothing retyped at the desk.",
+    title: "Plan your data move",
+    description: "Review the records you need to bring across.",
     items: ["Patients", "Records"],
   },
   {
     number: "03",
     label: "Go live",
     tone: "ok",
-    title: "We train every desk",
-    description: "Every desk, on its own shift.",
+    title: "Prepare your team",
+    description: "Walk through each desk’s daily work.",
     items: ["Reception", "Billing", "Pharmacy"],
   },
 ] as const;
@@ -36,7 +34,7 @@ export function LandingGoLive() {
         <SectionHead
           title={
             <>
-              Live in days. <Accent>Not six months.</Accent>
+              Get your team <Accent>started.</Accent>
             </>
           }
         />
@@ -69,14 +67,6 @@ export function LandingGoLive() {
               </div>
             </div>
           ))}
-        </div>
-        <div className="mt-5 flex flex-col items-start justify-between gap-6 rounded-2xl bg-muted p-6 md:flex-row md:items-center md:px-8 md:py-7">
-          <p className="max-w-[680px] text-xl font-semibold tracking-[0.01em] md:text-2xl">
-            Want to hear from a hospital like yours? We’ll connect you with an owner.
-          </p>
-          <a href="/#demo" className={buttonClass({ variant: "primary", className: "shrink-0" })}>
-            Talk to a customer <ArrowRight aria-hidden strokeWidth={1.75} />
-          </a>
         </div>
       </div>
     </section>

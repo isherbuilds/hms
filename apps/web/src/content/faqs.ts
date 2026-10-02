@@ -5,22 +5,22 @@ import type { ShotName } from "@/components/landing/product-window";
 export const FAQS: { q: string; a: string; features: ShotName[] }[] = [
   {
     q: "Can another hospital see our data?",
-    a: "No. Every record carries exactly one organization, and every request proves your membership before it reads or writes anything, including the audit log and uploaded files. There is no shared-tenant path to switch off.",
+    a: "No. Staff can access only the hospitals they belong to. Patient records and uploaded files stay private.",
     features: ["patients"],
   },
   {
     q: "How do staff get accounts?",
-    a: "You create them. There is no public sign-up: an administrator creates each account and assigns one or more roles from owner, admin, reception, cashier and accountant. Nobody can register themselves into your hospital.",
+    a: "Your hospital administrator invites staff and assigns their roles. There is no public sign-up.",
     features: ["opd"],
   },
   {
     q: "Does it need the internet?",
-    a: "It needs your server, not the public internet. Fonts, styles and scripts are served from the application itself, so a hospital LAN with no outbound connection renders the full interface.",
+    a: "Yes. Your browser must stay connected to the hospital server. There is no offline mode.",
     features: ["opd"],
   },
   {
     q: "What does it cost?",
-    a: "Pricing is coming soon, so there is no public price list yet. Early-bird hospitals agree a price with us directly: call or message us, and a walkthrough ends with a written quote; one afternoon of setup and the desk is on it the next day.",
+    a: "Access is by invitation only. Early-bird hospitals agree a price with us directly. Call or WhatsApp us to request an invitation, discuss pricing, or ask a question.",
     features: ["opd", "patients", "billing"],
   },
   {
@@ -49,23 +49,19 @@ export const FAQS: { q: string; a: string; features: ShotName[] }[] = [
    receive exactly the questions and answers rendered on the page. */
 export const HOME_FAQS: { q: string; a: string }[] = [
   {
-    q: "Is our patient data safe?",
-    a: "Encrypted and hosted in India. Every person has their own login and role. Every change to a record or bill is logged.",
+    q: "What can we manage?",
+    a: "Patient records, OPD appointments and queues, billing, payments, pharmacy sales and stock.",
   },
   {
-    q: "What happens if the internet goes down?",
-    a: "[Describe exactly what keeps working offline and how it syncs back when the connection returns.]",
+    q: "Can another hospital see our data?",
+    a: "No. Staff can access only the hospitals they belong to. Patient records and uploaded files stay private.",
   },
   {
-    q: "Can you move our old data?",
-    a: "Yes. Patients, doctors, rates, stock and pending bills import from Excel or your current software.",
+    q: "Does it work offline?",
+    a: "No. Your browser must stay connected to the hospital server to view and save records.",
   },
   {
-    q: "Do we need to buy new computers?",
-    a: "No. It runs in the browser on what you have, and prints on your existing printers.",
-  },
-  {
-    q: "How long does training take?",
-    a: "Each desk is trained on its own screens, at your hospital. Most staff work alone after one shift. We stay for the first busy day.",
+    q: "How do we get started?",
+    a: "Contact us for a demo. We will discuss your hospital’s setup, data and training needs with you.",
   },
 ];

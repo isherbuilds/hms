@@ -1,5 +1,5 @@
 import { env } from "@hms/env/web";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 
 import { PROSE, PublicPage } from "@/components/landing/public-page";
 import { pageHead } from "@/lib/seo";
@@ -97,9 +97,7 @@ export const Route = createFileRoute("/privacy")({
         <h2>Questions and complaints</h2>
         <p>
           Write to <a href={`mailto:${env.VITE_CONTACT_EMAIL}`}>{env.VITE_CONTACT_EMAIL}</a> with
-          privacy questions or grievances. When the company operating Edernal Care is incorporated,
-          its legal name, registered office and the name of the person responsible for this notice
-          will appear here and on the <Link to="/about">about page</Link>.
+          privacy questions or grievances.
         </p>
 
         <h2>Changes</h2>

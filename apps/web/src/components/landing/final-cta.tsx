@@ -1,7 +1,6 @@
-import { Link } from "@tanstack/react-router";
-import { ArrowRightIcon, MessageCircleIcon } from "lucide-react";
+import { ArrowRightIcon } from "lucide-react";
 
-import { WHATSAPP_URL } from "@/lib/contact";
+import { PHONE_DISPLAY, PHONE_TEL, WHATSAPP_URL } from "@/lib/contact";
 
 import { Accent, buttonClass, LEDE, stagger, WRAP } from "./primitives";
 
@@ -22,11 +21,12 @@ export function LandingFinal() {
           data-reveal
           className="max-w-[820px] text-[40px] leading-[46px] font-semibold tracking-[0.01em] [word-spacing:0.02em] text-balance md:text-[64px] md:leading-[68px]"
         >
-          See it running with <Accent onBand>your hospital’s</Accent> data.
+          See how it fits <Accent onBand>your hospital.</Accent>
         </h2>
         <div data-reveal style={stagger(1)} className="flex flex-col items-center gap-4.5">
           <p className={`${LEDE} max-w-[560px] text-band-muted`}>
-            A 30-minute demo, on a call or at your hospital, with your own departments and rates.
+            Access is by invitation only. Contact us for an invitation, a free demo, or any
+            questions.
           </p>
           <div className="flex flex-wrap justify-center gap-3 max-md:w-full">
             <a
@@ -37,22 +37,10 @@ export function LandingFinal() {
             >
               Book a free demo <ArrowRightIcon aria-hidden strokeWidth={1.75} />
             </a>
-            <a
-              href={WHATSAPP_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={buttonClass({ variant: "outline-light", className: "max-md:w-full" })}
-            >
-              <MessageCircleIcon aria-hidden strokeWidth={1.75} /> WhatsApp us
-            </a>
           </div>
-          <Link
-            to="/contact"
-            className="text-3xl font-semibold tracking-tight tabular-nums no-underline"
-          >
-            +91 [00000 00000]
-          </Link>
-          <small className="text-sm text-band-muted">Monday to Saturday, 9 am – 8 pm</small>
+          <a href={PHONE_TEL} className="text-base text-band-muted underline underline-offset-4">
+            Call {PHONE_DISPLAY}
+          </a>
         </div>
       </div>
     </section>

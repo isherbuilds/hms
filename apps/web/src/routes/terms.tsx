@@ -56,8 +56,7 @@ export const Route = createFileRoute("/terms")({
         <h2>Availability and changes</h2>
         <p>
           We work to keep the service running, but we do not promise it will never be interrupted.
-          We tell hospitals about planned downtime in advance, and about incidents on the{" "}
-          <Link to="/status">status page</Link>. We may change the software; the{" "}
+          Contact us if you have a service problem. We may change the software; the{" "}
           <Link to="/changelog">changelog</Link> records what moved. When these terms change, the
           date above changes with them.
         </p>
@@ -70,9 +69,7 @@ export const Route = createFileRoute("/terms")({
 
         <h2>Questions</h2>
         <p>
-          Write to <a href={`mailto:${env.VITE_CONTACT_EMAIL}`}>{env.VITE_CONTACT_EMAIL}</a>. When
-          the company operating Edernal Care is incorporated, its legal name and registered office
-          will appear here and on the <Link to="/about">about page</Link>.
+          Write to <a href={`mailto:${env.VITE_CONTACT_EMAIL}`}>{env.VITE_CONTACT_EMAIL}</a>.
         </p>
       </div>
     </PublicPage>

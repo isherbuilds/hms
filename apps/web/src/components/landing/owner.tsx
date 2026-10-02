@@ -1,6 +1,6 @@
 import { History, Lock, TriangleAlert, Zap } from "lucide-react";
 
-import { Accent, EYEBROW, LEDE, Pill, SECTION_HEADING, stagger, WRAP } from "./primitives";
+import { Accent, LEDE, SECTION_HEADING, stagger, WRAP } from "./primitives";
 
 const FACTS = [
   {
@@ -25,67 +25,30 @@ const FACTS = [
   },
 ] as const;
 
-const SPARK_HEIGHTS = [30, 42, 38, 55, 48, 62, 58, 74, 66, 88] as const;
-
-const MINI_STATS = [
-  { label: "To bill", value: "₹5,550" },
-  { label: "Open money", value: "₹42,696" },
-  { label: "Over 30 days", value: "₹18,500" },
-  { label: "Refunds due", value: "₹1,900" },
-] as const;
-
 function OwnerPhone() {
   return (
     <div
       data-reveal
       style={stagger(1)}
-      aria-label="Owner app preview"
       className="w-[300px] max-w-full justify-self-center rounded-[48px] bg-band-raised p-3 shadow-[0_40px_80px_-20px_color-mix(in_oklch,var(--band)_60%,transparent)] ring-1 ring-band-line md:w-[340px]"
     >
-      <div className="flex min-h-0 flex-col gap-3 overflow-hidden rounded-[38px] bg-background px-4.5 pt-4.5 pb-5.5 text-foreground md:min-h-[640px]">
-        <div aria-hidden className="mx-auto mb-1.5 h-6.5 w-24 rounded-xl bg-band" />
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <b className="text-lg leading-6 font-semibold">Navjeevan Hospital</b>
-            <small className="block text-xs text-muted-foreground">Today · updated just now</small>
-          </div>
-          <Pill tone="ok" live>
-            Live
-          </Pill>
-        </div>
-        <div className="flex flex-col gap-1 rounded-2xl bg-band p-4.5 text-band-foreground">
-          <small className={`${EYEBROW} text-band-muted`}>Collections today</small>
-          <strong className="text-4xl font-semibold tracking-tight tabular-nums">₹28,427</strong>
-          <span className="text-sm text-band-muted">41 receipts · OPD and pharmacy</span>
-          <div aria-hidden className="mt-2.5 flex h-13.5 items-end gap-[5px]">
-            {SPARK_HEIGHTS.map((height, index) => (
-              <i
-                key={index}
-                data-reveal-col
-                style={stagger(index, { height: `${height}%` })}
-                className={`flex-1 rounded-xs ${index === SPARK_HEIGHTS.length - 1 ? "bg-brand-bright" : "bg-band-line"}`}
-              />
-            ))}
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-2.5">
-          {MINI_STATS.map((stat) => (
-            <div
-              key={stat.label}
-              className="min-w-0 rounded-xl border border-border bg-card px-2 py-3 md:px-3.5"
-            >
-              <small className="block text-xs text-muted-foreground">{stat.label}</small>
-              <b className="text-lg font-semibold tabular-nums md:text-xl">{stat.value}</b>
-            </div>
-          ))}
-        </div>
-        <div className="flex items-start gap-2.5 rounded-xl bg-clinical-note-surface px-3.5 py-3 text-sm text-clinical-note">
-          <TriangleAlert aria-hidden className="mt-px size-4.5 shrink-0" strokeWidth={1.75} />
-          <span>
-            <b className="block font-semibold text-foreground">4 visits not billed</b>
-            ₹5,550 · bill them before they leave
-          </span>
-        </div>
+      <div className="overflow-hidden rounded-[38px] bg-background">
+        <img
+          src="/landing/dashboard-phone-light.webp"
+          alt="Edernal Care on mobile: today's collections, payment methods, weekly trend and arrivals."
+          width={780}
+          height={1688}
+          loading="lazy"
+          className="block h-auto w-full dark:hidden"
+        />
+        <img
+          src="/landing/dashboard-phone-dark.webp"
+          alt="Edernal Care on mobile: today's collections, payment methods, weekly trend and arrivals."
+          width={780}
+          height={1688}
+          loading="lazy"
+          className="hidden h-auto w-full dark:block"
+        />
       </div>
     </div>
   );

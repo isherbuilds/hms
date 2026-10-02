@@ -79,7 +79,7 @@ until their trigger is met and they enter this registry.
 
 ### Public site owner decisions
 
-**Blocked.** The owner supplies legal name, CIN, registered office, support and sales email, the WhatsApp Business number and who answers it, and decides on a lead form, training-crawler access, and a booking tool
+**Blocked.** The owner confirms who answers the public contact channels and decides on training-crawler access. The site uses direct contact links. Company-address placeholders and unused marketing pages have been removed.
 
 ### [Production hardening](./operations.md#production-hardening)
 

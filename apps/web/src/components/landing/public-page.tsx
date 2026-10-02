@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 
-import { LandingFinal } from "./final-cta";
 import { LandingFooter } from "./footer";
 import { LandingNav } from "./nav";
 import { RevealRoot } from "./reveal";
@@ -28,7 +27,6 @@ export function PublicPage({
           </header>
           {children}
         </article>
-        <LandingFinal />
       </main>
       <LandingFooter />
     </RevealRoot>

@@ -703,7 +703,12 @@ the Edernal Care wordmark, it marks identity and emphasis only, never state:
 settled or clear remains `--clinical-clear`. Primary actions stay ink
 (`--primary`); keyboard focus stays neutral (`--ring` and `--sidebar-ring`).
 
-The public site is redesigned from the Edernal Care mockup with its copy
-verbatim, including feature claims and placeholders such as `₹[price]`,
-`[N] days`, `+91 [00000 00000]`, and `[Registered company name and address]`.
-The owner approved this copy, including the placeholders.
+The public site keeps the Edernal Care mockup’s visual direction with concise
+product copy. The footer links to Eternal.com, names Eternal Campus and Eternal
+Books, and has no company-address placeholder or divider. Secondary public pages
+omit the repeated demo banner. Empty careers, customer and status pages redirect
+to About or Contact and are not listed in the sitemap. Access is invite-only;
+pricing presents Clinics, Hospitals and Large hospitals cards, each invite-only with
+contact-based pricing. The cards use the shared WhatsApp link, with the phone
+number below them. Public contact links use `lib/contact.ts`. The pocket section shows
+real mobile dashboard captures in light and dark themes.

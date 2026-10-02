@@ -8,7 +8,7 @@
 export const siteConfig = {
   name: "Edernal Care",
   description:
-    "OPD, IPD, billing, pharmacy and lab on one simple system, built for Indian hospitals and clinics.",
+    "Patient records, OPD, billing and pharmacy in one system for Indian hospitals and clinics.",
   /* The root route's <title>: what an unlisted or non-public route ships with,
      since every public page overrides it via `pageHead`. */
   fallbackTitle: "Edernal Care — hospital management software for Indian hospitals",
@@ -61,7 +61,7 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
     path: "/about",
     title: "About",
     description:
-      "Why Edernal Care exists: hospital management software for small and mid-sized Indian hospitals, built with one hospital before it is sold to the next.",
+      "Edernal Care brings patient records, OPD, billing and pharmacy together for hospitals and clinics.",
     ogImage: "/og/about.webp",
   },
   {
@@ -88,23 +88,5 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
     title: "Terms",
     description: "The terms of use for Edernal Care, in plain language.",
     ogImage: "/og/terms.webp",
-  },
-  {
-    path: "/customers",
-    title: "Customers",
-    description: "Where Edernal Care is used today, and how to become the next hospital.",
-    ogImage: "/og/customers.webp",
-  },
-  {
-    path: "/careers",
-    title: "Careers",
-    description: "Working on Edernal Care: how the team works and how to get in touch.",
-    ogImage: "/og/careers.webp",
-  },
-  {
-    path: "/status",
-    title: "Status",
-    description: "How Edernal Care tells hospitals about outages and planned downtime.",
-    ogImage: "/og/status.webp",
   },
 ];

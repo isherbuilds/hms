@@ -53,7 +53,7 @@ export function LandingNav() {
           >
             Log in
           </Link>
-          <a href="/#demo" className={buttonClass({ size: "sm" })}>
+          <a href="/contact" className={buttonClass({ size: "sm" })}>
             Book a free demo
           </a>
         </div>
