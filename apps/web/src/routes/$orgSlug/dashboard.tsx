@@ -31,7 +31,8 @@ const RANGES = [7, 14, 30] as const;
 const collectionsQuery = (orgSlug: string, range: Range) =>
   orpc.dashboard.collections.queryOptions({ input: { orgSlug, ...range } });
 
-const toBillQuery = (orgSlug: string) => orpc.billing.toBill.queryOptions({ input: { orgSlug } });
+const toBillQuery = (orgSlug: string, range: Range) =>
+  orpc.billing.toBill.queryOptions({ input: { orgSlug, ...range } });
 
 // The chart's bars ending on the period's last day; one read covers every range.
 const trendQuery = (orgSlug: string, to: string | undefined) =>
@@ -56,11 +57,8 @@ export const Route = createFileRoute("/$orgSlug/dashboard")({
       prefetches.push(
         queryClient.query(collectionsQuery(orgSlug, deps)).catch(() => {}),
         queryClient.query(trendQuery(orgSlug, deps.to)).catch(() => {}),
+        queryClient.query(toBillQuery(orgSlug, deps)).catch(() => {}),
       );
-
-      if (!deps.from && !deps.to) {
-        prefetches.push(queryClient.query(toBillQuery(orgSlug)).catch(() => {}));
-      }
     }
 
     if (authorize(roles, { opd: ["read"] })) {
@@ -226,9 +224,9 @@ function DashboardRoute() {
   });
 
   const desk = useQuery({
-    ...toBillQuery(orgSlug),
+    ...toBillQuery(orgSlug, { from, to }),
     ...OPERATIONAL_REFETCH,
-    enabled: canReadBilling && isToday,
+    enabled: canReadBilling,
   });
 
   const visits = useQuery({
@@ -307,7 +305,7 @@ function DashboardRoute() {
           },
         ]
       : []),
-    ...(canReadBilling && isToday
+    ...(canReadBilling
       ? [
           {
             label: "Unbilled alerts",
@@ -315,9 +313,11 @@ function DashboardRoute() {
             note: desk.isError ? (
               <ErrorNote title="Could not load billing alerts" error={desk.error} />
             ) : !toBill ? null : toBill.count > 0 ? (
-              `${toBill.count} ${toBill.count === 1 ? "visit" : "visits"} · bill before they leave`
-            ) : (
+              `${toBill.count} ${toBill.count === 1 ? "visit" : "visits"} · ${isToday ? "bill before they leave" : rangeLabel}`
+            ) : isToday ? (
               "No visits past the billing alert threshold"
+            ) : (
+              `Every visit billed · ${rangeLabel}`
             ),
             link: {
               to: "/$orgSlug/billing",

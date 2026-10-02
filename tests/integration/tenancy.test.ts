@@ -205,6 +205,13 @@ test("desk money and dashboard collections are scoped, concurrent, and revoke wi
   expect(moneyTwo.summary.toBillTotal).toBe(0n);
   expect(toBillOne).toEqual({ count: 1, total: 500_00n });
   expect(toBillTwo).toEqual({ count: 0, total: 0n });
+  // A range keeps only that period's visits; the charge's visit is today.
+  expect(
+    await api.billing.toBill({ orgSlug: one.slug, from: "2020-01-01", to: "2020-01-07" }),
+  ).toEqual({
+    count: 0,
+    total: 0n,
+  });
 
   const outsiderApi = clientFor(outsider);
   await expectORPCCode(outsiderApi.dashboard.collections({ orgSlug: one.slug }), "FORBIDDEN");

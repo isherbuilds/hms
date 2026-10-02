@@ -10,13 +10,13 @@ import { payments } from "@hms/db/schema/payments";
 import { practitioners } from "@hms/db/schema/practitioners";
 import { refunds } from "@hms/db/schema/refunds";
 import { treatmentPlans } from "@hms/db/schema/treatment-plans";
-import { and, asc, eq, gt, ilike, lt, or, sql, type SQLWrapper } from "drizzle-orm";
+import { and, asc, between, eq, gt, ilike, lt, or, sql, type SQLWrapper } from "drizzle-orm";
 import { z } from "zod";
 
 import { advanceRemaining } from "../lib/advance-credit";
 import { businessDate } from "../lib/business-date";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
-import { likePattern, pageLimit, searchQuery } from "../lib/schemas";
+import { dayRange, likePattern, pageLimit, resolveDayRange, searchQuery } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
 
 // `worklist` polls pending charges for checked-in visits, all open invoice totals,
@@ -57,8 +57,9 @@ function invoiceBalances(orgId: string) {
   };
 }
 
-// One grouped read of the checked-in visits with charges pending past the alert threshold.
-function waitingToBill(orgId: string, threshold: Date) {
+// One grouped read of the checked-in visits with charges pending past the alert threshold,
+// optionally only visits on the given business days.
+function waitingToBill(orgId: string, threshold: Date, days?: { from: string; to: string }) {
   return db
     .select({
       appointmentId: opdAppointments.id,
@@ -78,6 +79,7 @@ function waitingToBill(orgId: string, threshold: Date) {
         eq(charges.orgId, orgId),
         eq(charges.status, "pending"),
         eq(opdAppointments.status, "checked_in"),
+        days ? between(opdAppointments.businessDate, days.from, days.to) : undefined,
       ),
     )
     .groupBy(opdAppointments.id)
@@ -85,8 +87,8 @@ function waitingToBill(orgId: string, threshold: Date) {
     .as("waiting");
 }
 
-async function toBillTotals(orgId: string, threshold: Date) {
-  const waiting = waitingToBill(orgId, threshold);
+async function toBillTotals(orgId: string, threshold: Date, days?: { from: string; to: string }) {
+  const waiting = waitingToBill(orgId, threshold, days);
 
   const [row] = await db
     .select({
@@ -102,12 +104,21 @@ const daysAgo = (count: number) => new Date(Date.now() - count * 86_400_000);
 
 export const billingWorklistRouter = {
   // The dashboard's unbilled card: the worklist's desk total without its other scans.
-  toBill: orgProcedure({ billing: ["read"] }, orgInput).handler(async ({ context }) => {
-    const { orgId } = context.scope;
-    const settings = await readOrgSettings(orgId);
+  // With no range it is the whole desk now; a picked range keeps that period's visits.
+  toBill: orgProcedure({ billing: ["read"] }, orgInput.extend(dayRange)).handler(
+    async ({ context, input }) => {
+      const { orgId } = context.scope;
+      const settings = await readOrgSettings(orgId);
+      const threshold = new Date(Date.now() - settings.unbilledAlertHours * 3_600_000);
 
-    return toBillTotals(orgId, new Date(Date.now() - settings.unbilledAlertHours * 3_600_000));
-  }),
+      const days =
+        input.from || input.to
+          ? resolveDayRange(input, businessDate(new Date(), settings.timeZone))
+          : undefined;
+
+      return toBillTotals(orgId, threshold, days);
+    },
+  ),
   worklist: orgProcedure(
     { billing: ["read"] },
     orgInput.extend({
