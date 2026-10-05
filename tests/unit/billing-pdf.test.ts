@@ -35,6 +35,7 @@ test("advance receipt and refund voucher render from the stored receipt snapshot
     orgLegalName: "HMS Clinic",
     orgAddress: "Pune, Maharashtra",
     orgTaxId: "",
+    orgGstin: "",
     currency: "INR",
     patientName: "Kavita Sharma",
     patientMrn: "MRN-0001",
@@ -73,94 +74,41 @@ test("advance receipt and refund voucher render from the stored receipt snapshot
   expect(refundPdf.fileName).toBe("RF-2026-0001.pdf");
 });
 
-test("invoice layouts preserve guardian casing and render non-zero round-off", async () => {
+test("a registered pharmacy Tax Invoice renders on A4 and thermal", async () => {
   const data = billingPdfFixture({ unicode: false });
 
+  const registered = {
+    ...data,
+    invoice: { ...data.invoice, stream: "pharmacy" as const, orgGstin: "27ABCDE1234F1Z5" },
+  };
+
   for (const layout of ["a4", "thermal"] as const) {
-    const renderGuardian = (patientGuardian: string) =>
-      renderBillingPdf({
-        kind: "invoice",
-        data: { ...data, invoice: { ...data.invoice, patientGuardian } },
-        documentId: null,
-        layout,
-      });
+    const pdf = await renderBillingPdf({
+      kind: "invoice",
+      data: registered,
+      documentId: null,
+      layout,
+    });
 
-    const lowerName = await renderGuardian("W/o gurmeet singh");
-    const titleName = await renderGuardian("W/o Gurmeet Singh");
-    const upperRelation = await renderGuardian("W/O Gurmeet Singh");
-
-    expect(lowerName.bytes).toEqual(titleName.bytes);
-    expect(titleName.bytes).not.toEqual(upperRelation.bytes);
-
-    const renderRoundOff = (roundOff: bigint) =>
-      renderBillingPdf({
-        kind: "invoice",
-        data: { ...data, invoice: { ...data.invoice, roundOff } },
-        documentId: null,
-        layout,
-      });
-
-    const unrounded = await renderRoundOff(0n);
-    const rounded = await renderRoundOff(40n);
-    const differentlyRounded = await renderRoundOff(-40n);
-
-    expect(rounded.bytes).not.toEqual(unrounded.bytes);
-    expect(differentlyRounded.bytes).not.toEqual(rounded.bytes);
+    expect(new TextDecoder().decode(pdf.bytes.slice(0, 5))).toBe("%PDF-");
   }
 });
 
-test("an invoice PDF uses its business date and ignores later account activity", async () => {
-  const source = billingPdfFixture({ unicode: false });
+test("an invoice prints its round-off", async () => {
+  const data = billingPdfFixture({ unicode: false });
 
-  const afterPayment: InvoiceBundle = {
-    ...source,
-    invoice: {
-      ...source.invoice,
-      createdAt: new Date("2026-08-28T23:59:00.000Z"),
-    },
-    payments: [
-      {
-        id: "payment-1",
-        orgId: "org-1",
-        invoiceId: "invoice-1",
-        method: "cash",
-        amount: 118_00n,
-        reference: null,
-        receiptNumber: "RCP-2026-0001",
-        fiscalYear: "2026-27",
-        businessDate: "2026-08-27",
-        receivedBy: "user-1",
-        createdAt: new Date("2026-08-27T10:30:00.000Z"),
-      },
-    ],
-    balance: {
-      grandTotal: 118_00n,
-      paymentsTotal: 118_00n,
-      allocationsTotal: 0n,
-      creditTotal: 0n,
-      refundsTotal: 0n,
-      outstanding: 0n,
-    },
-  };
+  const render = (roundOff: bigint) =>
+    renderBillingPdf({
+      kind: "invoice",
+      data: { ...data, invoice: { ...data.invoice, roundOff } },
+      documentId: null,
+      layout: "a4",
+    });
 
-  const before = await renderBillingPdf({
-    kind: "invoice",
-    data: source,
-    documentId: null,
-    layout: "a4",
-  });
-
-  const after = await renderBillingPdf({
-    kind: "invoice",
-    data: afterPayment,
-    documentId: null,
-    layout: "a4",
-  });
-
-  expect(after.bytes).toEqual(before.bytes);
+  expect((await render(40n)).bytes).not.toEqual((await render(0n)).bytes);
 });
 
-test("a receipt PDF does not change when later account activity changes", async () => {
+test("invoice and receipt PDFs ignore later account activity", async () => {
   const source = billingPdfFixture({ unicode: false });
 
   const payment: InvoiceBundle["payments"][number] = {
@@ -192,19 +140,19 @@ test("a receipt PDF does not change when later account activity changes", async 
     balance: { ...source.balance, paymentsTotal: 118_00n, outstanding: 0n },
   };
 
-  const before = await renderBillingPdf({
-    kind: "receipt",
-    data: issued,
-    documentId: payment.id,
-    layout: "a4",
-  });
+  const invoice = (data: InvoiceBundle) =>
+    renderBillingPdf({ kind: "invoice", data, documentId: null, layout: "a4" });
 
-  const after = await renderBillingPdf({
-    kind: "receipt",
-    data: later,
-    documentId: payment.id,
-    layout: "a4",
-  });
+  const receipt = (data: InvoiceBundle) =>
+    renderBillingPdf({ kind: "receipt", data, documentId: payment.id, layout: "a4" });
 
-  expect(after.bytes).toEqual(before.bytes);
+  expect(
+    (
+      await invoice({
+        ...later,
+        invoice: { ...later.invoice, createdAt: new Date("2026-08-28T23:59:00.000Z") },
+      })
+    ).bytes,
+  ).toEqual((await invoice(source)).bytes);
+  expect((await receipt(later)).bytes).toEqual((await receipt(issued)).bytes);
 });

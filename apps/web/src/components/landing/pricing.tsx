@@ -1,6 +1,6 @@
-import { ArrowRight, PhoneIcon } from "lucide-react";
+import { ArrowRight, MailIcon } from "lucide-react";
 
-import { PHONE_DISPLAY, PHONE_TEL, WHATSAPP_URL } from "@/lib/contact";
+import { CONTACT_EMAIL, CONTACT_MAILTO } from "@/lib/contact";
 
 import { Accent, buttonClass, Pill, SECTION_HEADING, stagger, WRAP } from "./primitives";
 
@@ -52,10 +52,8 @@ export function LandingPricing() {
                 {tier.description}
               </p>
               <a
-                href={WHATSAPP_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`${tier.action} about ${tier.name} on WhatsApp`}
+                href={CONTACT_MAILTO}
+                aria-label={`${tier.action} about ${tier.name} by email`}
                 className={buttonClass({
                   variant: "secondary",
                   className: "mt-auto w-full",
@@ -67,12 +65,12 @@ export function LandingPricing() {
           ))}
         </div>
         <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-2 text-sm text-muted-foreground">
-          Have a question? Call us on
+          Have a question? Email us at
           <a
-            href={PHONE_TEL}
+            href={CONTACT_MAILTO}
             className="inline-flex items-center gap-2 rounded-sm font-medium text-foreground underline underline-offset-4"
           >
-            <PhoneIcon aria-hidden className="size-4" /> {PHONE_DISPLAY}
+            <MailIcon aria-hidden className="size-4" /> {CONTACT_EMAIL}
           </a>
         </p>
       </div>

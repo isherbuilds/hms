@@ -2,7 +2,7 @@ import { ArrowRight, Check, MessageCircle } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
-import { WHATSAPP_URL } from "@/lib/contact";
+import { PHONE } from "@/lib/contact";
 
 import { Accent, buttonClass, LEDE, WRAP } from "./primitives";
 import { ProductWindow } from "./product-window";
@@ -67,14 +67,16 @@ export function LandingHero() {
               <Link to="/contact" className={buttonClass({ variant: "primary" })}>
                 Book a free demo <ArrowRight aria-hidden />
               </Link>
-              <a
-                href={WHATSAPP_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={buttonClass({ variant: "secondary" })}
-              >
-                <MessageCircle aria-hidden /> Talk on WhatsApp
-              </a>
+              {PHONE ? (
+                <a
+                  href={PHONE.whatsapp}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={buttonClass({ variant: "secondary" })}
+                >
+                  <MessageCircle aria-hidden /> Talk on WhatsApp
+                </a>
+              ) : null}
             </div>
             <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-muted-foreground">
               {["ABDM & ABHA ready", "GST invoices", "Data hosted in India"].map((claim) => (

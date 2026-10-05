@@ -1,6 +1,7 @@
-import { ArrowRightIcon, PhoneIcon } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { ArrowRightIcon } from "lucide-react";
 
-import { PHONE_DISPLAY, PHONE_TEL, WHATSAPP_URL } from "@/lib/contact";
+import { CONTACT_EMAIL, CONTACT_MAILTO } from "@/lib/contact";
 
 import { Accent, buttonClass, LEDE, stagger, WRAP } from "./primitives";
 
@@ -29,16 +30,11 @@ export function LandingFinal() {
             questions.
           </p>
           <div className="mt-2 flex w-full flex-col justify-center gap-3 sm:w-auto sm:flex-row">
-            <a
-              href={WHATSAPP_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={buttonClass({ variant: "light" })}
-            >
-              Book on WhatsApp <ArrowRightIcon aria-hidden strokeWidth={1.75} />
-            </a>
-            <a href={PHONE_TEL} className={buttonClass({ variant: "outline-light" })}>
-              <PhoneIcon aria-hidden strokeWidth={1.75} /> Call {PHONE_DISPLAY}
+            <Link to="/contact" className={buttonClass({ variant: "light" })}>
+              Book a demo <ArrowRightIcon aria-hidden strokeWidth={1.75} />
+            </Link>
+            <a href={CONTACT_MAILTO} className={buttonClass({ variant: "outline-light" })}>
+              {CONTACT_EMAIL}
             </a>
           </div>
         </div>

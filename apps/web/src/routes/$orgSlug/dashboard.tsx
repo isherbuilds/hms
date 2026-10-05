@@ -332,10 +332,6 @@ function DashboardRoute() {
   return (
     <>
       <PageBody width="max-w-[1280px]">
-        {collections.isLoadingError && (
-          <ErrorNote title="Could not load collections" error={collections.error} />
-        )}
-
         {/* No page header: the greeting names the page, the range sits beside it. */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -387,6 +383,9 @@ function DashboardRoute() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]">
           {canReadBilling && (
             <Card tinted title={isToday ? "Collected today" : `Collected · ${rangeLabel}`}>
+              {collections.isLoadingError && (
+                <ErrorNote title="Could not load collections" error={collections.error} />
+              )}
               <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
                 <div className="flex flex-col gap-1">
                   <span className="min-h-9 text-3xl font-medium tracking-tight tabular-nums">

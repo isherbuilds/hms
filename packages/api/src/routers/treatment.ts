@@ -3,6 +3,8 @@ import type { DbTransaction } from "@hms/db/counter";
 import { advanceReceipts } from "@hms/db/schema/advance-receipts";
 import { catalogItems } from "@hms/db/schema/catalog-items";
 import { charges } from "@hms/db/schema/charges";
+import { creditNoteLines } from "@hms/db/schema/credit-note-lines";
+import { invoiceLines } from "@hms/db/schema/invoice-lines";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { patients } from "@hms/db/schema/patients";
 import { practitioners } from "@hms/db/schema/practitioners";
@@ -22,6 +24,25 @@ import { dateOnly, likePattern, money, note, pageLimit, reason, searchQuery } fr
 import { readOrgSettings } from "../lib/settings-cache";
 import { planLabel } from "../lib/treatment-label";
 
+/** Course prices exclude GST; credits restore only their taxable value to unbilled work. */
+function postedPlanAmount(orgId: string) {
+  // Drizzle unqualifies select-list Columns on a single-table query. Keep explicit
+  // table + identifier pairs so that rewrite cannot break the correlated credit join.
+  return sql`coalesce(sum(
+    ${charges}.${sql.identifier(charges.unitPrice.name)} * ${charges}.${sql.identifier(charges.qty.name)} - coalesce((
+      select sum(${creditNoteLines}.${sql.identifier(creditNoteLines.taxableValue.name)})
+      from ${creditNoteLines}
+      join ${invoiceLines}
+        on ${invoiceLines}.${sql.identifier(invoiceLines.orgId.name)} = ${orgId}
+        and ${invoiceLines}.${sql.identifier(invoiceLines.id.name)} = ${creditNoteLines}.${sql.identifier(creditNoteLines.invoiceLineId.name)}
+      where ${creditNoteLines}.${sql.identifier(creditNoteLines.orgId.name)} = ${orgId}
+        and ${invoiceLines}.${sql.identifier(invoiceLines.chargeId.name)} = ${charges}.${sql.identifier(charges.id.name)}
+    ), 0)
+  ) filter (where ${charges}.${sql.identifier(charges.status.name)} <> 'voided'), 0)::bigint`.mapWith(
+    BigInt,
+  );
+}
+
 const planItemInput = z.object({
   catalogItemId: z.string(),
   sittingsPlanned: z.number().int().min(1).max(99),
@@ -35,11 +56,6 @@ const planIdInput = orgInput.extend({ planId: z.string() });
 const delivered = sql`${charges.status} <> 'voided'`;
 
 const postedSittings = sql<number>`coalesce(sum(${charges.qty}) filter (where ${delivered}), 0)::int`;
-
-const postedAmount =
-  sql`coalesce(sum(${charges.unitPrice} * ${charges.qty}) filter (where ${delivered}), 0)::bigint`.mapWith(
-    BigInt,
-  );
 
 function planItemCharges(orgId: string) {
   return and(
@@ -429,7 +445,7 @@ export const treatmentRouter = {
       const [posted] = await tx
         .select({
           sittings: postedSittings,
-          amount: postedAmount,
+          amount: postedPlanAmount(scope.orgId),
           onVisit: sql<boolean>`coalesce(bool_or(${charges.opdAppointmentId} = ${row.appointment.id} and ${delivered}), false)`,
         })
         .from(charges)
@@ -544,7 +560,7 @@ export const treatmentRouter = {
             quotedPrice: treatmentPlanItems.quotedPrice,
             sittingsPlanned: treatmentPlanItems.sittingsPlanned,
             postedSittings,
-            postedAmount,
+            postedAmount: postedPlanAmount(orgId),
           })
           .from(treatmentPlanItems)
           .leftJoin(charges, planItemCharges(orgId))
@@ -681,7 +697,7 @@ export const treatmentRouter = {
             quotedPrice: treatmentPlanItems.quotedPrice,
           },
           postedSittings,
-          postedAmount,
+          postedAmount: postedPlanAmount(orgId),
         })
         .from(treatmentPlanItems)
         .leftJoin(charges, planItemCharges(orgId))

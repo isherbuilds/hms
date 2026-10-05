@@ -1,11 +1,13 @@
 import { DECIMAL_PATTERN, divideHalfUp, parseDecimal } from "@hms/api/core/money";
 import {
-  BILL_ROUND_OFF_LIMIT,
+  adjustmentsTotal,
+  billMatches,
   EXACT_SCALE,
+  exactToPaise,
   MAX_STOCK_QTY,
   PERCENT_PATTERN,
+  type ReceiptAdjustment,
   type ReceiptCost,
-  exactToPaise,
   receiptLineCost,
 } from "@hms/api/core/receipt-math";
 
@@ -23,6 +25,21 @@ export type ReceiptRowText = {
   gst: string;
   price: string;
 };
+
+/** A bill adjustment as typed; the kind gives the sign. */
+export type ReceiptAdjustmentText = {
+  kind: ReceiptAdjustment["kind"];
+  reason: string;
+  amount: string;
+  gstAmount: string;
+};
+
+/** The adjustment in paise once both amounts are typed; otherwise null. */
+export function adjustmentValue(row: ReceiptAdjustmentText): ReceiptAdjustment | null {
+  return DECIMAL_PATTERN.test(row.amount) && DECIMAL_PATTERN.test(row.gstAmount)
+    ? { kind: row.kind, amount: parseDecimal(row.amount), gstAmount: parseDecimal(row.gstAmount) }
+    : null;
+}
 
 /** Stock units one counted unit holds: the pack, or 1 when counting loose. */
 export function packSizeOf(row: Pick<ReceiptRowText, "unitsPerPack" | "loose">) {
@@ -99,14 +116,20 @@ export type BillSummary = {
   gst: bigint;
   /** Rounded once after summing every exact line net. */
   net: bigint;
-  /** Every line priced, so `net` is the whole bill. */
+  /** Charges less discounts typed apart from the lines. */
+  adjustments: bigint;
+  /** Every line and adjustment priced, so the sums cover the whole bill. */
   complete: boolean;
-  /** Bill total minus the lines; null until both are known. */
+  /** Bill total minus the lines and adjustments; null until both are known. */
   roundOff: bigint | null;
   matches: boolean;
 };
 
-export function billSummary(rows: readonly ReceiptRowText[], billTotal: string): BillSummary {
+export function billSummary(
+  rows: readonly ReceiptRowText[],
+  billTotal: string,
+  adjustmentRows: readonly ReceiptAdjustmentText[],
+): BillSummary {
   let taxable = 0n;
   let gst = 0n;
   let exactNet = 0n;
@@ -125,18 +148,30 @@ export function billSummary(rows: readonly ReceiptRowText[], billTotal: string):
     exactNet += cost.net;
   }
 
+  const adjustments: ReceiptAdjustment[] = [];
+
+  for (const row of adjustmentRows) {
+    const adjustment = adjustmentValue(row);
+
+    if (adjustment) adjustments.push(adjustment);
+    else complete = false;
+  }
+
   const net = exactToPaise(exactNet);
+  const adjustmentTotal = adjustmentsTotal(adjustments);
 
   const roundOff =
-    complete && DECIMAL_PATTERN.test(billTotal) ? parseDecimal(billTotal) - net : null;
+    complete && DECIMAL_PATTERN.test(billTotal)
+      ? parseDecimal(billTotal) - net - adjustmentTotal
+      : null;
 
   return {
     taxable,
     gst,
     net,
+    adjustments: adjustmentTotal,
     complete,
     roundOff,
-    matches:
-      roundOff !== null && roundOff <= BILL_ROUND_OFF_LIMIT && roundOff >= -BILL_ROUND_OFF_LIMIT,
+    matches: roundOff !== null && billMatches(roundOff),
   };
 }

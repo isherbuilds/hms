@@ -1,12 +1,17 @@
 import { DECIMAL_PATTERN } from "@hms/api/core/money";
-import { PERCENT_PATTERN } from "@hms/api/core/receipt-math";
+import { PERCENT_PATTERN, RECEIPT_ADJUSTMENT_KINDS } from "@hms/api/core/receipt-math";
 import { expiryMonth } from "@hms/api/lib/schemas";
 import type { UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 
 import type { PickedProduct } from "@/components/product-picker";
 import { numberText } from "@/lib/form-schema";
-import { billSummary, type ReceiptRowText, stockQuantities } from "@/lib/receipt-lines";
+import {
+  billSummary,
+  type ReceiptAdjustmentText,
+  type ReceiptRowText,
+  stockQuantities,
+} from "@/lib/receipt-lines";
 
 /** Whole months from this month to the printed one; negative once the month has passed. */
 export function monthsUntil(expiry: string, today: string) {
@@ -17,6 +22,15 @@ export function monthsUntil(expiry: string, today: string) {
 }
 
 const wholeText = /^\d+$/;
+
+const amountText = z.string().trim().regex(DECIMAL_PATTERN, "An amount like 100.00");
+
+const receiptAdjustmentSchema = z.object({
+  kind: z.enum(RECEIPT_ADJUSTMENT_KINDS),
+  reason: z.string().trim().min(1, "Enter a reason").max(500),
+  amount: amountText.regex(/[1-9]/, "More than zero"),
+  gstAmount: amountText,
+});
 
 // Pricing is plain text here: an opening count carries none, so the receipt-level refine
 // asks for it only on a supplier delivery.
@@ -75,6 +89,7 @@ export const receiptSchema = (today: string) =>
       billTotal: z.string().trim(),
       note: z.string().trim().max(500),
       lines: z.array(receiptLineSchema(today)).min(1, "Add at least one batch"),
+      adjustments: z.array(receiptAdjustmentSchema),
     })
     .superRefine((value, context) => {
       const issue = (path: (string | number)[], message: string) =>
@@ -110,7 +125,7 @@ export const receiptSchema = (today: string) =>
         return;
       }
 
-      const summary = billSummary(value.lines.map(rowText), value.billTotal);
+      const summary = billSummary(value.lines.map(rowText), value.billTotal, value.adjustments);
 
       if (summary.complete && !summary.matches) {
         issue(["billTotal"], "The lines do not add up to this total");
@@ -154,6 +169,10 @@ export function blankLine(): ReceiptLineInput {
     gst: "",
     hsn: "",
   };
+}
+
+export function blankAdjustment(): ReceiptAdjustmentText {
+  return { kind: "landed_charge", reason: "", amount: "", gstAmount: "0" };
 }
 
 /**

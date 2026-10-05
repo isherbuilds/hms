@@ -136,11 +136,41 @@ line requires its reconciliation reference and produces its own Receipt. After
 an Invoice is issued, a discount is represented by a Credit Note; recording a
 Payment never rewrites the immutable Invoice.
 
-Never label a Payment Receipt as the itemized bill. Qualifying exempt health
-care, taxable supplies, and advances have different document requirements. The
-pilot's chartered accountant must approve classifications and printed fields.
-Until that approval lands, the printed itemized document uses the neutral label
-**Invoice** and makes no Tax Invoice or Bill of Supply claim.
+Never label a Payment Receipt as the itemized bill. [D052](./decisions.md#d052--gst-registration-determines-document-particulars-and-bounded-numbering)
+fixes the document rules for the current local-supply scope:
+
+- With an organization GSTIN, qualifying exempt OPD health care prints **Bill of
+  Supply**, counter pharmacy prints **Tax Invoice**, and an advance for exempt
+  future care prints **Receipt Voucher** with exempt/nil tax particulars.
+  Healthcare exemption is limited to qualifying services, not every hospital
+  supply or cosmetic procedure. Taxable services must not use the exempt OPD
+  flow. See [CGST Act s31(3)(c)–(d)](https://cbic-gst.gov.in/pdf/CGST-Act-2017-amended-01012022.pdf),
+  [Rules 46, 49, 50 and 53](https://cbic-gst.gov.in/pdf/03042020-CGST-Rules-2017-Part-A-Rules.pdf),
+  and [Notification 12/2017 entry 74 and definition 2(zg)](https://cbic-gst.gov.in/hindi/pdf/central-tax-rate/Notification12-CGST.pdf).
+- Without a GSTIN, print neutral **Invoice** and **Advance Receipt** with no
+  GST document or tax-collection claim. An exclusively exempt supplier need not
+  register under [CGST Act s23](https://cbic-gst.gov.in/pdf/CGST-Act-2017-amended-01012022.pdf);
+  omitting a GSTIN is not permission to ignore a registration obligation.
+- Organization `gstin` is distinct from generic `taxId`. A registered organization
+  requires `legalName` and `address`; its GSTIN must start with a known state
+  code. Local in-person care and counter sales use that state as place of supply
+  and the existing CGST/SGST split; interstate supplies are outside this scope.
+  Pharmacy prints configured `drugLicence20` and `drugLicence21` particulars.
+- Issuance stores `orgGstin` on Invoices and Advance Receipts, and
+  `orgDrugLicence20`/`orgDrugLicence21` on Invoices; the printed place of
+  supply comes from the GSTIN's first two digits. Later settings changes
+  never reclassify retained papers.
+- Registered OPD Bills of Supply and exempt-care Receipt Vouchers require a
+  nonblank patient address; issuance refuses missing particulars rather than
+  printing an incomplete document. Registered OPD also refuses nonzero computed
+  GST: staff set the service to 0% GST, then void and re-add the charge. Patient-linked pharmacy invoices and Credit Notes
+  retain the patient's known address in their print snapshot.
+
+These rules replace the classification question, not the production gate:
+the pilot operator records the actual registration and licence documents,
+service/product tax mapping, statutory particulars and real A4/80 mm output
+before live use. No CA or licensing-adviser consultation is a design-approval
+gate. [Pilot readiness](./operations.md#pilot-readiness) owns that evidence.
 
 The Billing Ledger is a code-owned double-entry projection of HMS source
 documents. It is not a general accounting product: no manual journals, bank

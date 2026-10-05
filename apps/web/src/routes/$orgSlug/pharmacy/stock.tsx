@@ -270,6 +270,7 @@ function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFil
                     {row.expiryDate ? formatDay(row.expiryDate) : "—"}
                   </span>
                 ),
+                mobile: "hidden",
               },
               {
                 head: "MRP",
@@ -280,8 +281,9 @@ function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFil
                   </span>
                 ),
                 className: "text-right",
+                mobile: "hidden",
               },
-              { head: "Unit", cell: (row) => row.stockUnit },
+              { head: "Unit", cell: (row) => row.stockUnit, mobile: "hidden" },
               {
                 head: "Shelf",
                 cell: (row) => (
@@ -290,6 +292,7 @@ function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFil
                   </span>
                 ),
                 className: "text-right",
+                mobile: "hidden",
               },
               {
                 head: "Quarantine",
@@ -299,6 +302,27 @@ function StockBatches({ orgSlug, filters }: { orgSlug: string; filters: StockFil
                   </span>
                 ),
                 className: "text-right",
+                mobile: "hidden",
+              },
+              {
+                head: "",
+                className: "hidden",
+                cell: (row) => (
+                  <span className="grid gap-1 whitespace-normal">
+                    <span>
+                      {row.expiryDate ? formatDay(row.expiryDate) : "No expiry"}
+                      {" · "}
+                      {formatMoney(row.mrp, currency)}
+                      {row.mrpUnits > 1 ? ` / ${row.mrpUnits}` : ""}
+                    </span>
+                    <span className="tabular-nums">
+                      Shelf: {formatStockQty({ qty: row.shelfQty, ...row })}
+                    </span>
+                    <span className="tabular-nums">
+                      Quarantine: {formatStockQty({ qty: row.quarantineQty, ...row })}
+                    </span>
+                  </span>
+                ),
               },
             ]}
             rows={rows}

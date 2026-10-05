@@ -96,3 +96,27 @@ The interface stays at the existing oRPC procedures and Charge snapshot. No new 
 ## Open Questions
 
 None block this spec. Pilot loose-unit share and clinical field use still need measurement; they do not authorize field deletion or a new unit default.
+
+## Local browser evidence — 2026-10-04
+
+Products, Receive goods, counter sale and return were exercised as owner in
+`mercy-general`, desktop 1365×768/mobile 390×844, light/dark. New Product refused
+an omitted counted unit and GST 100; explicit tablet × 10/GST 12 and piece/no
+expiry/GST 18 saved. Printed pack distinguished the tablet in receiving and
+counter selection. Five received strips became 50 units; sale/return/release
+matched scoped SQL. The PDF preserved printed MRP per 10 and inclusive GST.
+[The packs evidence](./pharmacy-packs-and-loose-units.md#local-browser-evidence--2026-10-04)
+owns the exact stock/money observations and remaining BP-sale/timing gaps.
+
+Inline New product returned a created `ZZ-Verify-Pharm Dolo timing tab` to its
+receipt line with pack 15 and printed suggestion text. Signed-in browser search
+for Paracetamol called Medbuzz directly (OPTIONS 204, POST 200); ArrowDown/Enter
+picked Dolo 650 Tablet 15 and populated Micro Labs Ltd, tablet, 650 MG and
+printed pack 15 units, leaving Counted in unselected for an explicit choice.
+Truemeds fallback was not invoked because Medbuzz succeeded.
+
+Fixed the shared checked-box dark fill and Stock's mobile truncation of
+quarantine; final stock screenshots and computed checked-box styles reverified
+the fixes. Services and OPD quote desktop/mobile light/dark remain unverified:
+repeated shared dev SSR failures and browser restarts interrupted this pass.
+No production emptiness, migration clearance or fresh physical count is claimed.

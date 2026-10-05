@@ -10,7 +10,7 @@ export const EXACT_SCALE = 10n ** 8n;
 export const PERCENT_PATTERN = /^\d{1,2}(\.\d{1,2})?$/;
 
 /** Supplier-bill reconciliation permits a round-off difference of less than one rupee. */
-export const BILL_ROUND_OFF_LIMIT = 99n;
+const BILL_ROUND_OFF_LIMIT = 99n;
 
 export type ReceiptCostInput = {
   /** Billed stock units; free units are extra. */
@@ -43,4 +43,29 @@ export function receiptLineCost(line: ReceiptCostInput): ReceiptCost {
 /** Round an exact document sum once, half-up, to integer paise. */
 export function exactToPaise(exact: bigint): bigint {
   return divideHalfUp(exact, EXACT_SCALE);
+}
+
+export const RECEIPT_ADJUSTMENT_KINDS = ["landed_charge", "invoice_discount"] as const;
+
+/** A charge or discount printed apart from the stock lines, with its own GST, in paise. */
+export type ReceiptAdjustment = {
+  kind: (typeof RECEIPT_ADJUSTMENT_KINDS)[number];
+  amount: bigint;
+  gstAmount: bigint;
+};
+
+/** Charges add to the bill and discounts take away, each with its GST. */
+export function adjustmentsTotal(adjustments: readonly ReceiptAdjustment[]): bigint {
+  let total = 0n;
+
+  for (const { kind, amount, gstAmount } of adjustments) {
+    total += kind === "landed_charge" ? amount + gstAmount : -(amount + gstAmount);
+  }
+
+  return total;
+}
+
+/** A supplier bill may differ from its lines and adjustments by less than one rupee. */
+export function billMatches(roundOff: bigint): boolean {
+  return roundOff <= BILL_ROUND_OFF_LIMIT && roundOff >= -BILL_ROUND_OFF_LIMIT;
 }

@@ -25,16 +25,19 @@ import { createOrganization, createTestUser } from "../support/auth";
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
 
-// The audit row commits with the row delete, not after object cleanup.
 beforeAll(async () => {
   await resetTestDatabase();
 });
 
-test("a delete still audits and succeeds when object cleanup fails", async () => {
+test("a delete audits out-of-scope keys as a digest and still succeeds when object cleanup fails", async () => {
   const owner = await createTestUser("resilient-owner");
   const org = await createOrganization(owner, "resilient");
   const api = clientFor(owner);
   const key = `${org.id}/${Bun.randomUUIDv7()}/notes.txt`;
+
+  // A presigned URL passed as the key must never be persisted verbatim.
+  const hostile = `${Bun.randomUUIDv7()}/x.txt`;
+  await expectORPCCode(api.file.delete({ orgSlug: org.slug, key: hostile }), "FORBIDDEN");
 
   await db.insert(file).values({
     id: key,
@@ -51,36 +54,18 @@ test("a delete still audits and succeeds when object cleanup fails", async () =>
   const [remaining] = await db.select().from(file).where(eq(file.id, key));
   expect(remaining).toBeUndefined();
 
+  // The audit row commits with the row delete, not after object cleanup.
   await drainAuditWrites();
 
-  const [record] = await db
+  const records = await db
     .select({ target: auditLog.target, denied: auditLog.denied, action: auditLog.action })
     .from(auditLog)
     .where(eq(auditLog.orgId, org.id));
 
-  expect(record?.action).toBe("file.delete");
-  expect(record?.denied).toBe(false);
-  expect(record?.target).toBe(`file:${key}`);
-});
-
-test("an out-of-scope key is denied and recorded as a digest, not the raw key", async () => {
-  const owner = await createTestUser("digest-owner");
-  const org = await createOrganization(owner, "digest");
-  const api = clientFor(owner);
-
-  // A presigned URL passed as the key must never be persisted verbatim.
-  const hostile = `${Bun.randomUUIDv7()}/x.txt`;
-  await expectORPCCode(api.file.delete({ orgSlug: org.slug, key: hostile }), "FORBIDDEN");
-
-  await drainAuditWrites();
-
-  const [record] = await db
-    .select({ target: auditLog.target, denied: auditLog.denied, action: auditLog.action })
-    .from(auditLog)
-    .where(eq(auditLog.orgId, org.id));
-
-  expect(record?.action).toBe("file.delete");
-  expect(record?.denied).toBe(true);
-  expect(record?.target).toMatch(/^file:[0-9a-f]{16}$/);
-  expect(record?.target).not.toContain(hostile);
+  const denied = records.find((record) => record.denied);
+  expect(denied?.action).toBe("file.delete");
+  expect(denied?.target).toMatch(/^file:[0-9a-f]{16}$/);
+  expect(records.filter((record) => !record.denied)).toEqual([
+    { action: "file.delete", denied: false, target: `file:${key}` },
+  ]);
 });

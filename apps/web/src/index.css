@@ -39,6 +39,15 @@
 /* A desktop viewport tall enough to pin a section while it plays. */
 @custom-variant pin (@media (min-width: 1024px) and (min-height: 700px));
 
+/* The full role visuals need room for the heading and the tallest bill.
+   Constrained viewports keep every row in a natural-height, unpinned stack.
+   `STACKED` in roles-scroll.tsx repeats this query for the scroll painter. */
+@custom-variant role-stack {
+  @media (max-width: 1023px), (max-height: 899px), (prefers-reduced-motion: reduce) {
+    @slot;
+  }
+}
+
 /* Scroll reveal for the public site. `RevealRoot` marks every `[data-reveal]`
    with `data-inview` once it first enters the viewport; `--i` on an element
    staggers it within its group. Gated on `scripting: enabled` so a page without

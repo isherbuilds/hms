@@ -1,8 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
-import { WHATSAPP_URL } from "@/lib/contact";
-
 import { LandingFinal } from "./final-cta";
 import { LandingFooter } from "./footer";
 import { LandingFaq } from "./faq";
@@ -28,9 +26,9 @@ const CAPTURE: Region = { x: 0, y: 0, w: 1440, h: 840 };
 function HeroActions() {
   return (
     <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-      <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className={buttonClass()}>
+      <Link to="/contact" className={buttonClass()}>
         Book a walkthrough
-      </a>
+      </Link>
       <Link to="/join" className={buttonClass({ variant: "ghost" })}>
         Open your hospital
       </Link>

@@ -13,12 +13,31 @@ for the hospital. These choices affect future visits, bills, and printed papers.
 
 ### 1. Check Organization
 
-Open **Organization**. Check the hospital's legal name, address, tax number,
-time zone, financial year, and document numbers. Check the currency before any
-money is recorded. HMS does not let you change the currency later.
+Open **Organization**. Check the hospital's legal name, address, time zone,
+financial year and document numbers. Check the currency before any money is
+recorded. HMS does not let you change the currency later.
+
+Enter **GSTIN** only for the organization's actual GST registration.
+**PAN / tax id** is a separate field; it does not prove GST registration. A
+registered hospital needs its legal name and address, and its financial year
+must start in April. HMS takes the state from the first two digits of the
+GSTIN. That state is the place of supply for the local in-person care and
+counter sales supported here. Enter the pharmacy's actual
+**Drug licence (Form 20)** and **Drug licence (Form 21)** numbers when
+applicable; do not invent them.
+
+Financial document prefixes use at most three letters, digits, `/` or `-`. That
+leaves room for 99,999 numbers in each series every financial year. If numbering
+reaches its limit, stop and ask the administrator: HMS refuses overflow instead
+of issuing an invalid number.
 
 Choose **Save settings** only after an authorized person has checked the values.
-A later settings change does not rewrite an invoice that was already issued.
+New registered OPD bills print **Bill of Supply**, pharmacy bills **Tax Invoice**,
+and exempt-care advances **Receipt Voucher**. Without GSTIN, papers use
+**Invoice** and **Advance Receipt** without GST claims. Issued papers keep their
+saved registration, state and applicable licence details; a later change does
+not change their title or particulars. Before live use, the accountant and
+licensing adviser must check actual registration, tax setup and A4/80 mm prints.
 
 ![Organization settings with hospital details and document number settings.](/docs/images/guides/settings-organization.webp)
 
@@ -137,6 +156,12 @@ The list is not a history of every click or every ordinary change. Check the
 patient, invoice, or setting itself to understand the full record.
 
 ![Audit list showing recorded events.](/docs/images/guides/settings-audit.webp)
+
+## Backups and a copy of your records
+
+The Edernal team runs backups and restores. For a full copy of the hospital's
+records, or to end the service, the owner emails
+[support@edernal.com](mailto:support@edernal.com).
 
 ## Prepare a handover
 

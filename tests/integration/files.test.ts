@@ -22,7 +22,7 @@ async function putBytes(url: string, body: string, contentType: string): Promise
   });
 }
 
-test("a file is uploaded, finalized, read only via a signature, and deleted", async () => {
+test("a file is uploaded, finalized, read only via a signature, hidden from other orgs, and deleted only by an admin", async () => {
   const owner = await createTestUser("owner");
   const org = await createOrganization(owner, "files-alpha");
   const api = clientFor(owner);
@@ -74,27 +74,8 @@ test("a file is uploaded, finalized, read only via a signature, and deleted", as
   const unsigned = await fetch(`${signed.origin}${signed.pathname}`);
   expect(unsigned.status).toBeGreaterThanOrEqual(400);
 
-  await api.file.delete({ orgSlug: org.slug, key: upload.key });
-  expect((await api.file.list({ orgSlug: org.slug })).items).toHaveLength(0);
-  await expectORPCCode(api.file.getReadUrl({ orgSlug: org.slug, key: upload.key }), "NOT_FOUND");
-});
-
-test("another org's file key is FORBIDDEN, not merely missing", async () => {
-  const alice = await createTestUser("alice");
-  const alpha = await createOrganization(alice, "files-alpha-2");
-  const aliceApi = clientFor(alice);
-
-  const upload = await aliceApi.file.createUpload({
-    orgSlug: alpha.slug,
-    name: "chart.txt",
-    size: 5,
-  });
-
-  await putBytes(upload.uploadUrl, "chart", "text/plain");
-  await aliceApi.file.finalizeUpload({ orgSlug: alpha.slug, key: upload.key });
-
   const bob = await createTestUser("bob");
-  const beta = await createOrganization(bob, "files-beta-2");
+  const beta = await createOrganization(bob, "files-beta");
   const bobApi = clientFor(bob);
 
   expect((await bobApi.file.list({ orgSlug: beta.slug })).items).toHaveLength(0);
@@ -108,36 +89,19 @@ test("another org's file key is FORBIDDEN, not merely missing", async () => {
     "FORBIDDEN",
   );
 
-  expect((await aliceApi.file.list({ orgSlug: alpha.slug })).items.map((f) => f.id)).toContain(
-    upload.key,
-  );
-});
-
-test("a plain member cannot delete a file, an admin in the same org can", async () => {
-  const owner = await createTestUser("owner");
-  const org = await createOrganization(owner, "files-roles");
-  const ownerApi = clientFor(owner);
-
-  const upload = await ownerApi.file.createUpload({
-    orgSlug: org.slug,
-    name: "policy.txt",
-    size: 6,
-  });
-
-  await putBytes(upload.uploadUrl, "policy", "text/plain");
-  await ownerApi.file.finalizeUpload({ orgSlug: org.slug, key: upload.key });
-
   const person = await createTestUser("member");
   await joinOrganization(person, org.id);
   await expectORPCCode(
     clientFor(person).file.delete({ orgSlug: org.slug, key: upload.key }),
     "FORBIDDEN",
   );
+  expect((await api.file.list({ orgSlug: org.slug })).items.map((f) => f.id)).toContain(upload.key);
 
   const admin = await createTestUser("admin");
   await joinOrganization(admin, org.id, "admin");
   await clientFor(admin).file.delete({ orgSlug: org.slug, key: upload.key });
-  expect((await ownerApi.file.list({ orgSlug: org.slug })).items).toHaveLength(0);
+  expect((await api.file.list({ orgSlug: org.slug })).items).toHaveLength(0);
+  await expectORPCCode(api.file.getReadUrl({ orgSlug: org.slug, key: upload.key }), "NOT_FOUND");
 });
 
 test("upload cleanup preserves dry runs and ready files while deleting stale uploads and orphans", async () => {

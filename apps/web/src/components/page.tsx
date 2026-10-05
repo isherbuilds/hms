@@ -520,7 +520,12 @@ export function ListState({
   empty: ReactNode;
   children: ReactNode;
 }) {
-  if (query.isPending) return null;
+  if (query.isPending)
+    return (
+      <span role="status" className="sr-only">
+        Loading list…
+      </span>
+    );
 
   if (query.isLoadingError) {
     return (

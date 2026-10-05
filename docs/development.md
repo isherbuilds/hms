@@ -135,7 +135,9 @@ membership through invitation or an operator-managed membership.
 | `bun run db:seed -- --reset` | Reset and seed development data                                    |
 | `bun run db:studio`          | Open Drizzle Studio                                                |
 
-`dev:status` is read-only and uses three-second timeouts. It checks the Compose
+`dev:status` is read-only and uses three-second timeouts. It runs Bun with
+`--use-system-ca` because Bun's bundled roots do not include the Portless CA
+trusted in the system keychain. It checks the Compose
 service health and published ports, the configured web and API origins, the
 primary checkout's fixed `https://docs.hms.localhost/docs` URL, a database query, and
 an exact match between local Drizzle migrations and the database migration
@@ -294,27 +296,58 @@ what the cashier typed.
 
 Remote type-ahead keeps raw text in the smallest child and debounces before the
 query key; the server matches and bounds the results. Local filtering is for a
-complete, bounded, already-loaded list. Evidence and the remaining unbuilt
-items: [frontend patterns](./research/frontend-patterns.md).
+complete, bounded, already-loaded list.
+
+Transport batching must preserve each call's independent cancellation; oRPC
+1.15.4 batching does not, so the browser link sends calls separately. Adopt search
+selectors only after measuring a mounted reader of an unchanged field, not for
+tidiness. The OPD status toggle does not exercise other routes' subscriptions.
+Measurements and rejected candidates: [frontend patterns](./research/frontend-patterns.md).
 
 UI implementation follows [Design](./design.md): `text-xs` body, compact
 controls, token colors/radii, stable focus visibility, and rationed motion.
 
 ## Tests
 
-Pure no-I/O logic belongs in `tests/unit`. Anything touching a router, auth, or
-the database belongs in `tests/integration` and uses real PostgreSQL through
-`clientFor`.
+Choose the lightest flavor that can falsify the behavior:
 
-- Prefer one end-to-end workflow test with meaningful assertions over many
-  micro-tests.
-- Keep top-level `test(...)`; avoid nested `describe` and shared mutable setup.
-- Use factories that return ready-to-use users/Organizations; tests mint unique
-  identities because the database is shared within a file.
-- Assert oRPC codes, invariants, and state—not message copy or properties already
-  guaranteed by types.
+| Flavor              | Use when                                                                  | Avoid when                                             |
+| ------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `tests/unit`        | Pure no-I/O logic: money math, dates, parsing, presentation helpers.      | The assertion needs a router, auth, or the database.   |
+| `tests/integration` | Routers, auth, tenancy, and SQL, through `clientFor` on real PostgreSQL.  | The code under test is pure; move that part to `unit`. |
+| `tests/isolated`    | A `mock.module` would leak into other files; runs in its own Bun process. | A plain integration test can reach the same failure.   |
+
+Write each test like a manual tester's script: one setup, then every action and
+assertion the journey needs.
+
+- Prefer fewer, longer workflow tests. Several related assertions in one test
+  are a feature; do not split a flow to reach one assertion per test.
+- Keep files flat: top-level `test(...)`, no nested `describe`, no
+  `beforeEach`/`afterEach`, no shared mutable state between tests. If the next
+  assertion needs the same response or rows, it belongs in the same test. The
+  one hook is the per-file `beforeAll(resetTestDatabase)`.
+- Import factories from `tests/support` explicitly in each test. Factories
+  return ready-to-use users and Organizations; tests mint unique identities
+  because the database is shared within a file.
+- Assert oRPC codes, invariants, stored state, and money totals—not message copy,
+  instructional strings, or properties the types already guarantee.
+- No tautologies. An assertion with no independent oracle fails only when the
+  code and the test change together: a predicate checked against its own
+  constant, an exported constant pinned to itself, or `expected` built with the
+  same helper production uses. Use hardcoded values or an observable caller
+  instead.
+- Keep absence assertions only where a live path could show the thing: before
+  vs after, own org vs foreign org, permitted role vs denied role. A lone "q is
+  gone" after deleting q is not a test.
+- Assert intermediate states inside the workflow that causes them, not in
+  separate tests.
 - Use `eventually`/`drainAuditWrites()` for fire-and-forget audit behavior; do
   not sleep.
+- Tests run offline against local PostgreSQL and storage; never call a public
+  service.
+- Use `using`/`Symbol.dispose` only when there is real cleanup.
+- Keep the bar high. Skip regression tests for bugs unlikely to return unless
+  the flow is critical (money, tenancy, auth).
 
 Every org-scoped domain extends `GUARDED_CALLS` in
 `tests/integration/tenancy.test.ts`, whose sweeps prove missing claim, foreign

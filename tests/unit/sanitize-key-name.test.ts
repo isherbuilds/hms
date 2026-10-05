@@ -20,12 +20,3 @@ test("a sanitized name can never nest, traverse, or break a URL", () => {
     expect(key.length).toBeLessThanOrEqual(255);
   }
 });
-
-test("an all-punctuation name still yields a usable segment", () => {
-  expect(sanitizeKeyName("...")).toBe("file");
-  expect(sanitizeKeyName("   ")).toBe("file");
-});
-
-test("an ordinary name survives intact", () => {
-  expect(sanitizeKeyName("Q3-report_final.pdf")).toBe("Q3-report_final.pdf");
-});

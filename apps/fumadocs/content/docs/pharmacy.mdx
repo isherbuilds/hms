@@ -31,6 +31,11 @@ For example, a demo shelf has **Paracetamol 500 mg**, batch **PCM-EXP**, at
 **₹80 per 10 tablets**. If that is the right item, choose that batch and check
 the quantity. HMS shows the amount and tax in the Payment box.
 
+The printed MRP includes GST. For a registered hospital, HMS extracts taxable
+value and CGST/SGST from each discounted line; it does not add GST above MRP.
+The printed bill also groups taxable value and CGST/SGST by rate. Without GSTIN,
+the bill makes no GST claim.
+
 ![Example sale with a walk-in buyer and one Paracetamol batch in the basket. It is not saved.](/docs/images/guides/pharmacy-sale-item.webp)
 
 Open **Add Details** if you need to record the person the medicine is for, the
@@ -64,14 +69,20 @@ hospital's first counted stock.
 
 For a supplier delivery:
 
-1. Type the supplier name, bill number, and bill total.
+1. Type the supplier name, bill number, and **Bill total**: the grand total
+   printed on the bill.
 2. Check the date the goods arrived.
 3. Choose the product and enter its batch number and expiry date.
 4. Check whether the line is priced per pack or per counted unit. Enter the
    billed and free quantities in that unit, then the rate, discount, tax, and
    printed MRP. For a product without expiry, no expiry date is needed.
 5. Add another batch if the bill has another batch or product.
-6. Check the bill total and stock amounts before you choose **Receive Goods**.
+6. If the bill shows freight, packing or a discount outside the medicine lines,
+   choose **Add freight or discount**. See
+   [Add freight or a discount](#add-freight-or-a-discount).
+7. Check that the totals show **Matches bill** before you choose
+   **Receive Goods**. The lines, plus charges, minus discounts, must match the
+   bill total within ₹0.99.
 
 Use one line for each product and batch. Do not guess the batch, expiry, tax, or
 price. An Administrator or Owner can choose **New Product** and enter the
@@ -80,9 +91,29 @@ the product before receiving it.
 
 ![New Product form with unit, pack, expiry, and prescription choices.](/docs/images/guides/pharmacy-new-product.webp)
 
+### Add freight or a discount
+
+Choose **Add freight or discount** once for each extra line on the bill. Then
+fill in the row:
+
+- **Kind:** **Charge (freight, packing)** adds to the bill. **Discount** takes
+  away from it.
+- **Reason:** what the bill calls it, for example freight.
+- **Amount** and **GST:** type both as positive numbers. Leave GST at 0 when
+  the bill shows none. The kind decides whether the row adds or subtracts.
+
+For example, medicine lines of ₹4,172 plus freight ₹270 and freight GST ₹48.60
+come to ₹4,490.60. A bill total of ₹4,491 matches, with ₹0.40 round-off.
+
+Do not enter a discount twice when it is already in the medicine lines. If the
+difference reaches ₹1, check the bill and your entries; do not invent a charge,
+a discount or a stock product to force a match. These rows do not change the
+MRP or the sale price.
+
 ### Enter the first stock count
 
-Use **Opening** when first bringing a batch into HMS. It is not a supplier bill.
+Use **Opening** when first bringing a batch into HMS. It is not a supplier
+bill, so it has no bill total and no freight or discount rows.
 
 1. Count each product and batch on the shelf.
 2. Open **Receive Goods**, choose **Opening**, and set **Counted on**.
@@ -259,3 +290,9 @@ If you only meant to look at the sale, close the panel without choosing
 Open the sale number in **Sales**, check the buyer and total, then choose
 **Print**. Use the invoice for the items sold. A payment receipt is a separate
 paper that proves money was received.
+
+A registered organization prints **Tax Invoice** with its saved GSTIN, state
+and configured Form 20/21 drug licence numbers. Without GSTIN, it prints neutral
+**Invoice** without GST claims. Later settings changes do not reclassify an old
+sale paper. Ask the administrator to check [Organization
+setup](/docs/administration-and-handover#1-check-organization) before the first live sale.

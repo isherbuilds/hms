@@ -12,7 +12,9 @@ import {
   AdvanceReceiptDocument,
   type AdvanceBundle,
   type InvoiceBundle,
+  advanceReceiptTitle,
   InvoiceDocument,
+  invoiceDocumentTitle,
   ReceiptDocument,
   RefundDocument,
 } from "@/components/pdf/billing-documents";
@@ -100,7 +102,7 @@ function findDocument(data: InvoiceBundle, request: BillingDocumentRequest) {
           <InvoiceDocument invoice={data.invoice} lines={data.lines} layout={request.layout} />
         ),
         number: data.invoice.invoiceNumber,
-        title: "Invoice",
+        title: invoiceDocumentTitle(data.invoice),
       };
     case "receipt": {
       const payment = data.payments.find((row) => row.id === request.documentId);
@@ -207,7 +209,7 @@ export async function renderAdvancePdf(data: AdvanceBundle, refundId: string | n
       : {
           element: <AdvanceReceiptDocument data={data} />,
           number: receipt.receiptNumber,
-          title: "Advance Receipt",
+          title: advanceReceiptTitle(receipt),
         },
     receipt.orgLegalName,
     false,

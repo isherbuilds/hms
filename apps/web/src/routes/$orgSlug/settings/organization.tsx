@@ -1,4 +1,4 @@
-import type { SettingsFields } from "@hms/api/routers/settings";
+import { type SettingsFields, settingsFields, settingsRules } from "@hms/api/lib/settings-schema";
 import {
   Form,
   FormControl,
@@ -15,7 +15,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useFormContext, useFormState } from "react-hook-form";
-import { z } from "zod";
+import type { z } from "zod";
 
 import { appHead } from "@/config/site";
 import { numberText } from "@/lib/form-schema";
@@ -45,57 +45,13 @@ export const Route = createFileRoute("/$orgSlug/settings/organization")({
 
 const supportedTimeZones = Intl.supportedValuesOf("timeZone");
 
-// Probe rather than list membership: engines disagree on canonical ids
-// (JavaScriptCore lists Asia/Calcutta, V8 Asia/Kolkata). Mirrors the router.
-function isSupportedTimeZone(value: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: value });
-
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const formSchema = z
-  .object({
-    legalName: z.string().trim().max(200, "Keep the legal name under 200 characters"),
-    address: z.string().trim().max(500, "Keep the address under 500 characters"),
-    taxId: z.string().trim().max(50, "Keep the tax id under 50 characters"),
-    currency: z
-      .string()
-      .trim()
-      .toUpperCase()
-      .regex(/^[A-Z]{3}$/, "Use a three-letter code like INR"),
-    timeZone: z.string().refine(isSupportedTimeZone, {
-      message: "Use a valid IANA time zone like Asia/Kolkata",
-    }),
-    mrnPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
-    invoicePrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
-    receiptPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
-    advanceReceiptPrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
-    creditNotePrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
-    pharmacyInvoicePrefix: z.string().trim().max(10, "Prefixes are at most 10 characters"),
-    fiscalYearStartMonth: numberText(
-      z.number().int().min(1, "Pick a month").max(12, "Pick a month"),
-    ),
-    followUpValidityDays: numberText(
-      z.number().int().min(1, "Between 1 and 365 days").max(365, "Between 1 and 365 days"),
-    ),
-    unbilledAlertHours: numberText(
-      z.number().int().min(1, "Between 1 and 168 hours").max(168, "Between 1 and 168 hours"),
-    ),
+const formSchema = settingsFields
+  .extend({
+    fiscalYearStartMonth: numberText(settingsFields.shape.fiscalYearStartMonth),
+    followUpValidityDays: numberText(settingsFields.shape.followUpValidityDays),
+    unbilledAlertHours: numberText(settingsFields.shape.unbilledAlertHours),
   })
-  // Mirrors the server refusal: both invoice streams share one number namespace.
-  .superRefine((value, context) => {
-    if (value.invoicePrefix === value.pharmacyInvoicePrefix) {
-      context.addIssue({
-        code: "custom",
-        path: ["pharmacyInvoicePrefix"],
-        message: "Use a different prefix from the OPD invoice prefix",
-      });
-    }
-  });
+  .superRefine(settingsRules);
 
 function toFormValues(settings: SettingsFields) {
   return {
@@ -197,7 +153,7 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
               />
               <TextField name="address" label="Address" multiline rows={3} />
               <div className="grid gap-3 sm:grid-cols-2">
-                <TextField name="taxId" label="Tax id (GSTIN/PAN)" />
+                <TextField name="taxId" label="PAN / tax id" />
                 {/* Hand-written: `TextField`'s `className` places the row, so it cannot also
                   carry the control's own class. */}
                 <RegisteredFormField
@@ -240,6 +196,31 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
           </section>
 
           <section
+            aria-labelledby="gst-registration"
+            className="grid gap-4 border-t border-border pt-6 md:grid-cols-3"
+          >
+            <div className="flex flex-col gap-1">
+              <h2 id="gst-registration" className="min-h-6 text-xs text-muted-foreground">
+                GST registration
+              </h2>
+              <p className="max-w-xs leading-relaxed text-muted-foreground">
+                Leave GSTIN blank if unregistered. Registered organizations need a legal name and
+                address, and use an April fiscal year.
+              </p>
+            </div>
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2 md:col-span-2">
+              <TextField
+                name="gstin"
+                label="GSTIN"
+                autoCapitalize="characters"
+                className="sm:col-span-2"
+              />
+              <TextField name="drugLicence20" label="Drug licence (Form 20)" />
+              <TextField name="drugLicence21" label="Drug licence (Form 21)" />
+            </div>
+          </section>
+
+          <section
             aria-labelledby="document-numbering"
             className="grid gap-4 border-t border-border pt-6 md:grid-cols-3"
           >
@@ -248,8 +229,8 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                 Document numbering
               </h2>
               <p className="max-w-xs leading-relaxed text-muted-foreground">
-                Prefixes identify each document type. Use different prefixes for OPD and pharmacy
-                invoices.
+                Financial prefixes use at most three letters, digits, / or -. Keep OPD and pharmacy
+                prefixes different. New financial document numbers never exceed 16 characters.
               </p>
             </div>
             <div className="flex min-w-0 flex-col gap-3 md:col-span-2">

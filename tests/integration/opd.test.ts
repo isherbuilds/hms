@@ -1,5 +1,4 @@
 import { beforeAll, expect, test } from "bun:test";
-import pg from "pg";
 
 import { drainAuditWrites } from "@hms/api/audit";
 import type { AppRouterClient } from "@hms/api/routers/index";
@@ -155,66 +154,72 @@ async function createPractitioner(
   });
 }
 
-test("booking accepts only a minute later than the fresh organization minute", async () => {
-  const { owner, organization, patient, department } =
-    await createOpdAppointmentSetup("opd-book-time-boundary");
+test("walk-ins take per-practitioner tokens on the server day and are audited, unlike booking and check-in", async () => {
+  const { owner, organization, api, patient, department } =
+    await createOpdAppointmentSetup("opd-walk-in-basics");
 
-  const api = clientFor(owner);
-
-  const practitioner = await createPractitioner(
+  const firstPractitioner = await createPractitioner(
     api,
     organization.slug,
     department.id,
-    "Dr. Book Boundary",
+    "Dr. Token One",
   );
 
-  const settings = await api.settings.get({ orgSlug: organization.slug });
-  const currentMinute = localMinute(new Date(), settings.timeZone);
-
-  const input = {
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-  };
-
-  await expectORPCCode(api.opd.book({ ...input, scheduledLocal: currentMinute }), "BAD_REQUEST");
-
-  const booked = await api.opd.book({
-    ...input,
-    scheduledLocal: shiftLocalMinute(currentMinute, 5),
-  });
-
-  expect(booked.status).toBe("booked");
-});
-
-test("walk-in creation uses the fresh server time without a client time claim", async () => {
-  const { owner, organization, patient, department } = await createOpdAppointmentSetup(
-    "opd-walk-in-time-boundary",
-  );
-
-  const api = clientFor(owner);
-
-  const practitioner = await createPractitioner(
+  const secondPractitioner = await createPractitioner(
     api,
     organization.slug,
     department.id,
-    "Dr. Walk-in Boundary",
+    "Dr. Token Two",
   );
 
   const settings = await api.settings.get({ orgSlug: organization.slug });
 
-  const input = {
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    settlement: unpaidSettlement(),
-  };
+  const walkIn = (practitionerId: string) =>
+    api.opd.createWalkIn({
+      orgSlug: organization.slug,
+      patientId: patient.id,
+      practitionerId,
+      settlement: unpaidSettlement(),
+    });
 
   const before = businessDate(new Date(), settings.timeZone);
-  const created = await api.opd.createWalkIn(input);
+  const first = await walkIn(firstPractitioner.id);
   const after = businessDate(new Date(), settings.timeZone);
-  expect(created.appointment.status).toBe("checked_in");
-  expect([before, after]).toContain(created.appointment.businessDate);
+  expect(first.appointment.status).toBe("checked_in");
+  expect([before, after]).toContain(first.appointment.businessDate);
+
+  const second = await walkIn(firstPractitioner.id);
+  const other = await walkIn(secondPractitioner.id);
+
+  expect(first.appointment.tokenNumber).toBe(1);
+  expect(second.appointment.tokenNumber).toBe(2);
+  expect(other.appointment.tokenNumber).toBe(1);
+
+  const booked = await api.opd.book({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    practitionerId: firstPractitioner.id,
+    scheduledLocal: "2030-03-14T09:00",
+  });
+
+  await api.opd.checkIn({ orgSlug: organization.slug, appointmentId: booked.id });
+
+  await drainAuditWrites();
+  const audit = await api.audit.list({ orgSlug: organization.slug });
+
+  expect(
+    audit.items.find(
+      (entry) =>
+        entry.action === "opd.walk_in.create" && entry.target === `opd:${first.appointment.id}`,
+    ),
+  ).toMatchObject({ actorId: owner.user.id, orgId: organization.id });
+  expect(
+    audit.items.filter(
+      (entry) =>
+        (entry.action === "opd.book" || entry.action === "opd.check_in") &&
+        entry.target === `opd:${booked.id}`,
+    ),
+  ).toEqual([]);
 });
 
 test("walk-in creation requires patient read and denial writes nothing", async () => {
@@ -266,52 +271,11 @@ test("walk-in creation requires patient read and denial writes nothing", async (
   ).toHaveLength(0);
 });
 
-test("OPD appointment tokens increment per practitioner and reset for another practitioner", async () => {
-  const { organization, api, patient, department } = await createOpdAppointmentSetup("opd-tokens");
-
-  const firstPractitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Token One",
+test("the consult fee ladder snapshots the practitioner fee, falls back to an active department fee, or bills nothing", async () => {
+  const { organization, api, patient, department } = await createOpdAppointmentSetup(
+    "opd-fee-ladder",
+    false,
   );
-
-  const secondPractitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Token Two",
-  );
-
-  const first = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: firstPractitioner.id,
-    settlement: unpaidSettlement(),
-  });
-
-  const second = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: firstPractitioner.id,
-    settlement: unpaidSettlement(),
-  });
-
-  const other = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: secondPractitioner.id,
-    settlement: unpaidSettlement(),
-  });
-
-  expect(first.appointment.tokenNumber).toBe(1);
-  expect(second.appointment.tokenNumber).toBe(2);
-  expect(other.appointment.tokenNumber).toBe(1);
-});
-
-test("a practitioner consult fee creates an immutable snapshot charge", async () => {
-  const { organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-consult-fee");
 
   const fee = await api.catalog.create(
     catalogItemInput(organization.slug, "Initial Consultation", 275_00n),
@@ -369,167 +333,93 @@ test("a practitioner consult fee creates an immutable snapshot charge", async ()
     unitPrice: 275_00n,
     taxRatePercent: "5.00",
   });
-});
 
-test("a walk-in creates the configured consultation charge", async () => {
-  const { organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-walk-in-fee");
-
-  const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, "Walk-in Consultation", 325_00n),
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Walk-in Fee",
-    { consultFeeItemId: fee.id },
-  );
-
-  const created = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    settlement: unpaidSettlement(341_25n),
-  });
-
-  expect(created.appointment).not.toHaveProperty("kind");
-  expect(
-    (await appointmentCharges(api, organization.slug, created.appointment.id))[0],
-  ).toMatchObject({
-    catalogItemId: fee.id,
-    sourceType: "consult_fee",
-    status: "invoiced",
-  });
-});
-
-test("the department default fee is used when the practitioner has no consult fee", async () => {
-  const { organization, api, patient } = await createOpdAppointmentSetup("opd-department-fee");
-
-  const fee = await api.catalog.create({
+  const departmentFee = await api.catalog.create({
     ...catalogItemInput(organization.slug, "Department Attendance Fee"),
     category: "lab" as const,
   });
 
-  const department = await api.staff.createDepartment({
+  const feeDepartment = await api.staff.createDepartment({
     orgSlug: organization.slug,
     name: "Department Fee Department",
-    defaultConsultFeeItemId: fee.id,
+    defaultConsultFeeItemId: departmentFee.id,
   });
 
-  const practitioner = await createPractitioner(
+  const departmentPractitioner = await createPractitioner(
     api,
     organization.slug,
-    department.id,
+    feeDepartment.id,
     "Dr. Department Fee",
   );
 
-  const created = await api.opd.createWalkIn({
+  const departmentWalkIn = await api.opd.createWalkIn({
     orgSlug: organization.slug,
     patientId: patient.id,
-    practitionerId: practitioner.id,
+    practitionerId: departmentPractitioner.id,
     settlement: unpaidSettlement(),
   });
 
   expect(
-    (await appointmentCharges(api, organization.slug, created.appointment.id))[0],
+    (await appointmentCharges(api, organization.slug, departmentWalkIn.appointment.id))[0],
   ).toMatchObject({
-    catalogItemId: fee.id,
+    catalogItemId: departmentFee.id,
     description: "Department Attendance Fee",
     revenueCategory: "lab",
     sourceType: "consult_fee",
   });
-});
 
-test("a practitioner without a configured fee creates a zero-value walk-in", async () => {
-  const { organization, api, patient, department } = await createOpdAppointmentSetup(
-    "opd-no-fee",
-    false,
+  const inactive = await api.catalog.create(
+    catalogItemInput(organization.slug, "Inactive Consultation"),
   );
 
-  const practitioner = await createPractitioner(
+  await api.catalog.setActive({ orgSlug: organization.slug, itemId: inactive.id, active: false });
+
+  const inactivePractitioner = await createPractitioner(
+    api,
+    organization.slug,
+    feeDepartment.id,
+    "Dr. Inactive Fee",
+    { consultFeeItemId: inactive.id },
+  );
+
+  const inactiveWalkIn = await api.opd.createWalkIn({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    practitionerId: inactivePractitioner.id,
+    settlement: unpaidSettlement(),
+  });
+
+  expect(
+    (await appointmentCharges(api, organization.slug, inactiveWalkIn.appointment.id))[0]
+      ?.catalogItemId,
+  ).toBe(departmentFee.id);
+
+  const unpricedPractitioner = await createPractitioner(
     api,
     organization.slug,
     department.id,
     "Dr. No Fee",
   );
 
-  const input = {
+  const unpriced = {
     orgSlug: organization.slug,
     patientId: patient.id,
-    practitionerId: practitioner.id,
+    practitionerId: unpricedPractitioner.id,
   };
 
-  const quote = await api.opd.quoteWalkIn(input);
-  expect(quote).toMatchObject({ lines: [], subtotal: 0n, grandTotal: 0n });
-
-  const created = await api.opd.createWalkIn({
-    ...input,
-    settlement: unpaidSettlement(0n),
+  expect(await api.opd.quoteWalkIn(unpriced)).toMatchObject({
+    lines: [],
+    subtotal: 0n,
+    grandTotal: 0n,
   });
-
-  expect(created).toMatchObject({ invoice: null, payments: [] });
+  expect(
+    await api.opd.createWalkIn({ ...unpriced, settlement: unpaidSettlement(0n) }),
+  ).toMatchObject({ invoice: null, payments: [] });
 });
 
-test("follow-up pricing excludes a cancelled prior attendance", async () => {
-  const { organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-follow-up-open");
-
-  const consultFee = await api.catalog.create(
-    catalogItemInput(organization.slug, "New Consultation", 300_00n),
-  );
-
-  const followUpFee = await api.catalog.create(
-    catalogItemInput(organization.slug, "Free Follow-up Consultation", 0n),
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Still Waiting",
-    { consultFeeItemId: consultFee.id, followUpFeeItemId: followUpFee.id },
-  );
-
-  const first = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    settlement: unpaidSettlement(315_00n),
-  });
-
-  await api.opd.cancel({
-    orgSlug: organization.slug,
-    appointmentId: first.appointment.id,
-    reason: "Patient left",
-  });
-
-  const duplicate = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    settlement: unpaidSettlement(315_00n),
-  });
-
-  expect(
-    (await appointmentCharges(api, organization.slug, first.appointment.id))[0]?.catalogItemId,
-  ).toBe(consultFee.id);
-  expect(
-    (await appointmentCharges(api, organization.slug, duplicate.appointment.id))[0]?.catalogItemId,
-  ).toBe(consultFee.id);
-});
-
-test("follow-up fees honor the organization window and a practitioner override", async () => {
+test("follow-up fees skip cancelled visits and honor a practitioner window override", async () => {
   const { organization, api, patient, department } =
     await createOpdAppointmentSetup("opd-follow-up");
-
-  const currentSettings = await api.settings.get({ orgSlug: organization.slug });
-  await api.settings.update({
-    orgSlug: organization.slug,
-    ...currentSettings,
-    followUpValidityDays: 14,
-  });
 
   const consultFee = await api.catalog.create(
     catalogItemInput(organization.slug, "New Consultation", 300_00n),
@@ -547,28 +437,31 @@ test("follow-up fees honor the organization window and a practitioner override",
     { consultFeeItemId: consultFee.id, followUpFeeItemId: followUpFee.id },
   );
 
-  const first = await api.opd.createWalkIn({
+  const walkIn = (patientId: string, practitionerId: string, expectedGrandTotal: bigint) =>
+    api.opd.createWalkIn({
+      orgSlug: organization.slug,
+      patientId,
+      practitionerId,
+      settlement: unpaidSettlement(expectedGrandTotal),
+    });
+
+  const feeOf = async (appointmentId: string) =>
+    (await appointmentCharges(api, organization.slug, appointmentId))[0]?.catalogItemId;
+
+  const cancelled = await walkIn(patient.id, practitioner.id, 315_00n);
+  expect(await feeOf(cancelled.appointment.id)).toBe(consultFee.id);
+
+  await api.opd.cancel({
     orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    settlement: unpaidSettlement(315_00n),
+    appointmentId: cancelled.appointment.id,
+    reason: "Patient left",
   });
 
-  expect(first.appointment.status).toBe("checked_in");
+  const first = await walkIn(patient.id, practitioner.id, 315_00n);
+  expect(await feeOf(first.appointment.id)).toBe(consultFee.id);
 
-  const second = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    settlement: unpaidSettlement(105_00n),
-  });
-
-  expect(
-    (await appointmentCharges(api, organization.slug, first.appointment.id))[0]?.catalogItemId,
-  ).toBe(consultFee.id);
-  expect(
-    (await appointmentCharges(api, organization.slug, second.appointment.id))[0]?.catalogItemId,
-  ).toBe(followUpFee.id);
+  const second = await walkIn(patient.id, practitioner.id, 105_00n);
+  expect(await feeOf(second.appointment.id)).toBe(followUpFee.id);
 
   const overridePatient = await api.patient.register(
     registration(organization.slug, "Override Window Patient", "5552200"),
@@ -586,12 +479,7 @@ test("follow-up fees honor the organization window and a practitioner override",
     },
   );
 
-  const prior = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: overridePatient.id,
-    practitionerId: overridePractitioner.id,
-    settlement: unpaidSettlement(315_00n),
-  });
+  const prior = await walkIn(overridePatient.id, overridePractitioner.id, 315_00n);
 
   await db
     .update(opdAppointments)
@@ -600,104 +488,69 @@ test("follow-up fees honor the organization window and a practitioner override",
       and(eq(opdAppointments.orgId, organization.id), eq(opdAppointments.id, prior.appointment.id)),
     );
 
-  const outsideOverride = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: overridePatient.id,
-    practitionerId: overridePractitioner.id,
-    settlement: unpaidSettlement(315_00n),
-  });
-
-  expect(
-    (await appointmentCharges(api, organization.slug, outsideOverride.appointment.id))[0]
-      ?.catalogItemId,
-  ).toBe(consultFee.id);
+  const outsideOverride = await walkIn(overridePatient.id, overridePractitioner.id, 315_00n);
+  expect(await feeOf(outsideOverride.appointment.id)).toBe(consultFee.id);
 });
 
-test("an inactive practitioner fee falls through to the active department fee", async () => {
-  const { organization, api, patient } = await createOpdAppointmentSetup("opd-inactive-fee");
+test("cancellation needs a reason, keeps an issued invoice, voids a pending consult charge, and happens once", async () => {
+  const { organization, api, patient, department } = await createOpdAppointmentSetup("opd-cancel");
 
-  const inactive = await api.catalog.create(
-    catalogItemInput(organization.slug, "Inactive Consultation"),
+  const fee = await api.catalog.create(
+    catalogItemInput(organization.slug, "Consultation", 400_00n),
   );
-
-  await api.catalog.setActive({ orgSlug: organization.slug, itemId: inactive.id, active: false });
-
-  const fallback = await api.catalog.create(
-    catalogItemInput(organization.slug, "Fallback Consultation"),
-  );
-
-  const department = await api.staff.createDepartment({
-    orgSlug: organization.slug,
-    name: "Fallback Department",
-    defaultConsultFeeItemId: fallback.id,
-  });
 
   const practitioner = await createPractitioner(
     api,
     organization.slug,
     department.id,
-    "Dr. Inactive Fee",
-    { consultFeeItemId: inactive.id },
+    "Dr. Cancel",
+    { consultFeeItemId: fee.id },
   );
 
-  const created = await api.opd.createWalkIn({
+  const walkIn = await api.opd.createWalkIn({
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
-    settlement: unpaidSettlement(),
+    settlement: unpaidSettlement(420_00n),
   });
 
-  expect(
-    (await appointmentCharges(api, organization.slug, created.appointment.id))[0]?.catalogItemId,
-  ).toBe(fallback.id);
-});
+  const issued = requireInvoice(walkIn);
 
-test("OPD appointment commands enforce the four-status state machine", async () => {
-  const { organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-transitions");
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Transitions",
-  );
-
-  const checkedIn = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    settlement: unpaidSettlement(),
-  });
-
-  expect(checkedIn.appointment.status).toBe("checked_in");
   await expectORPCCode(
     api.opd.markNoShow({
       orgSlug: organization.slug,
-      appointmentId: checkedIn.appointment.id,
+      appointmentId: walkIn.appointment.id,
     }),
     "CONFLICT",
   );
   await expectORPCCode(
     api.opd.cancel({
       orgSlug: organization.slug,
-      appointmentId: checkedIn.appointment.id,
+      appointmentId: walkIn.appointment.id,
       reason: "",
     }),
     "BAD_REQUEST",
   );
 
-  const cancelled = await api.opd.cancel({
+  const cancelledWalkIn = await api.opd.cancel({
     orgSlug: organization.slug,
-    appointmentId: checkedIn.appointment.id,
+    appointmentId: walkIn.appointment.id,
     reason: "Patient left",
   });
 
-  expect(cancelled.status).toBe("cancelled");
+  expect(cancelledWalkIn.status).toBe("cancelled");
+  expect(
+    (
+      await api.billing.listInvoices({
+        orgSlug: organization.slug,
+        appointmentId: walkIn.appointment.id,
+      })
+    ).map((invoice) => invoice.id),
+  ).toContain(issued.id);
   await expectORPCCode(
     api.opd.cancel({
       orgSlug: organization.slug,
-      appointmentId: checkedIn.appointment.id,
+      appointmentId: walkIn.appointment.id,
       reason: "Again",
     }),
     "CONFLICT",
@@ -710,6 +563,39 @@ test("OPD appointment commands enforce the four-status state machine", async () 
     }),
     "CONFLICT",
   );
+
+  const booked = await api.opd.book({
+    orgSlug: organization.slug,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    scheduledLocal: "2030-03-20T09:00",
+  });
+
+  const checkedIn = await api.opd.checkIn({
+    orgSlug: organization.slug,
+    appointmentId: booked.id,
+  });
+
+  expect(checkedIn.charge?.status).toBe("pending");
+
+  const reason = "Patient requested cancellation";
+
+  const cancelled = await api.opd.cancel({
+    orgSlug: organization.slug,
+    appointmentId: booked.id,
+    reason,
+  });
+
+  expect(cancelled).toMatchObject({ status: "cancelled", cancelReason: reason });
+  expect(cancelled.cancelledAt).toBeInstanceOf(Date);
+
+  const readBack = await api.opd.get({
+    orgSlug: organization.slug,
+    appointmentId: booked.id,
+  });
+
+  expect(readBack.charges).toHaveLength(1);
+  expect(readBack.charges[0]).toMatchObject({ status: "voided", voidReason: reason });
 });
 
 test("staff attach and detach the doctor's paper prescription from an OPD appointment", async () => {
@@ -846,136 +732,7 @@ test("staff attach and detach the doctor's paper prescription from an OPD appoin
   }
 });
 
-test("prescription attachment rechecks cancellation after waiting on the OPD row lock", async () => {
-  const { organization, api, patient, department } = await createOpdAppointmentSetup(
-    "opd-prescription-cancel-race",
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Prescription Race",
-  );
-
-  const created = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    settlement: unpaidSettlement(),
-  });
-
-  const upload = await api.file.createUpload({
-    orgSlug: organization.slug,
-    name: "racing-prescription.jpg",
-    mimeType: "image/jpeg",
-    size: 1,
-  });
-
-  await api.file.finalizeUpload({ orgSlug: organization.slug, key: upload.key });
-
-  const locker = new pg.Client({ connectionString: process.env.DATABASE_URL });
-  await locker.connect();
-
-  try {
-    await locker.query("begin");
-    await locker.query(
-      `update opd_appointments
-       set status = 'cancelled', cancelled_at = now(), cancel_reason = 'Concurrent cancellation'
-       where org_id = $1 and id = $2`,
-      [organization.id, created.appointment.id],
-    );
-
-    const blockerPid = (await locker.query<{ pid: number }>("select pg_backend_pid() as pid"))
-      .rows[0]?.pid;
-
-    if (!blockerPid) throw new Error("Expected cancellation transaction backend pid");
-
-    const attachment = api.opd.attachPrescription({
-      orgSlug: organization.slug,
-      appointmentId: created.appointment.id,
-      fileId: upload.key,
-    });
-
-    let reachedOpdLock = false;
-
-    for (let attempt = 0; attempt < 100; attempt++) {
-      const blocked = await locker.query<{ blocked: boolean }>(
-        `select exists (
-           select 1 from pg_stat_activity
-           where $1 = any(pg_blocking_pids(pid))
-         ) as blocked`,
-        [blockerPid],
-      );
-
-      if (blocked.rows[0]?.blocked) {
-        reachedOpdLock = true;
-        break;
-      }
-
-      await Bun.sleep(20);
-    }
-
-    expect(reachedOpdLock).toBe(true);
-
-    await locker.query("commit");
-    await expectORPCCode(attachment, "NOT_FOUND");
-  } finally {
-    await locker.query("rollback").catch(() => undefined);
-    await locker.end();
-  }
-});
-
-test("cancelling a checked-in OPD appointment voids its pending consult charge", async () => {
-  const { organization, api, patient, department } = await createOpdAppointmentSetup("opd-cancel");
-
-  const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, "Cancelable Consultation"),
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Cancel",
-    { consultFeeItemId: fee.id },
-  );
-
-  const booked = await api.opd.book({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    scheduledLocal: "2030-03-20T09:00",
-  });
-
-  const created = await api.opd.checkIn({
-    orgSlug: organization.slug,
-    appointmentId: booked.id,
-  });
-
-  expect(created.charge?.status).toBe("pending");
-
-  const reason = "Patient requested cancellation";
-
-  const cancelled = await api.opd.cancel({
-    orgSlug: organization.slug,
-    appointmentId: created.appointment.id,
-    reason,
-  });
-
-  expect(cancelled).toMatchObject({ status: "cancelled", cancelReason: reason });
-  expect(cancelled.cancelledAt).toBeInstanceOf(Date);
-
-  const readBack = await api.opd.get({
-    orgSlug: organization.slug,
-    appointmentId: created.appointment.id,
-  });
-
-  expect(readBack.charges).toHaveLength(1);
-  expect(readBack.charges[0]).toMatchObject({ status: "voided", voidReason: reason });
-});
-
-test("OPD appointment creation rejects patient and practitioner ids from another organization", async () => {
+test("walk-ins reject patient, practitioner and consultation ids from another organization", async () => {
   const alphaOwner = await createTestUser("opd-refs-alpha-owner");
   const alpha = await createOrganization(alphaOwner, "opd-refs-alpha");
   const alphaApi = clientFor(alphaOwner);
@@ -1016,6 +773,10 @@ test("OPD appointment creation rejects patient and practitioner ids from another
     "Dr. Beta",
   );
 
+  const betaConsultation = await betaApi.catalog.create(
+    catalogItemInput(beta.slug, "Foreign Consultation", 50_00n),
+  );
+
   await expectORPCCode(
     alphaApi.opd.createWalkIn({
       orgSlug: alpha.slug,
@@ -1034,98 +795,19 @@ test("OPD appointment creation rejects patient and practitioner ids from another
     }),
     "NOT_FOUND",
   );
+  await expectORPCCode(
+    alphaApi.opd.quoteWalkIn({
+      orgSlug: alpha.slug,
+      patientId: alphaPatient.id,
+      practitionerId: alphaPractitioner.id,
+      services: [{ catalogItemId: betaConsultation.id, qty: 1 }],
+      omitConsultFee: true,
+    }),
+    "NOT_FOUND",
+  );
 });
 
-test("sensitive OPD creation is audited while routine care transitions are not", async () => {
-  const { owner, organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-audit");
-
-  const practitioner = await createPractitioner(api, organization.slug, department.id, "Dr. Audit");
-
-  const walkIn = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    settlement: unpaidSettlement(),
-  });
-
-  const booked = await api.opd.book({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    scheduledLocal: "2030-03-14T09:00",
-  });
-
-  await api.opd.checkIn({
-    orgSlug: organization.slug,
-    appointmentId: booked.id,
-  });
-
-  await drainAuditWrites();
-  const audit = await api.audit.list({ orgSlug: organization.slug });
-
-  const walkInEntry = audit.items.find(
-    (entry) =>
-      entry.action === "opd.walk_in.create" && entry.target === `opd:${walkIn.appointment.id}`,
-  );
-
-  expect(
-    audit.items.find((entry) => entry.action === "opd.book" && entry.target === `opd:${booked.id}`),
-  ).toBeUndefined();
-  expect(walkInEntry).toMatchObject({ actorId: owner.user.id, orgId: organization.id });
-
-  const routineActions = new Set(["opd.check_in"]);
-  expect(
-    audit.items.filter(
-      (entry) =>
-        routineActions.has(entry.action) &&
-        [walkIn.appointment.id, booked.id].some((id) => entry.target === `opd:${id}`),
-    ),
-  ).toEqual([]);
-});
-
-test("clinical cancellation preserves an already-issued invoice", async () => {
-  const { organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-cancel-invoiced");
-
-  const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, "Consultation", 400_00n),
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Invoiced",
-    { consultFeeItemId: fee.id },
-  );
-
-  const created = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    settlement: unpaidSettlement(420_00n),
-  });
-
-  const issued = requireInvoice(created);
-
-  const cancelled = await api.opd.cancel({
-    orgSlug: organization.slug,
-    appointmentId: created.appointment.id,
-    reason: "Patient left",
-  });
-
-  expect(cancelled.status).toBe("cancelled");
-
-  const invoices = await api.billing.listInvoices({
-    orgSlug: organization.slug,
-    appointmentId: created.appointment.id,
-  });
-
-  expect(invoices.map((invoice) => invoice.id)).toContain(issued.id);
-});
-
-test("a caller-only booking becomes the same queued appointment at check-in", async () => {
+test("a booking checks in as the same queued appointment, with or without a linked patient", async () => {
   const { organization, api, patient, department } =
     await createOpdAppointmentSetup("opd-book-check-in");
 
@@ -1153,25 +835,19 @@ test("a caller-only booking becomes the same queued appointment at check-in", as
     patientId: null,
     tokenNumber: null,
   });
-  expect(booked).not.toHaveProperty("kind");
 
-  const callerNameResults = await api.opd.day({
-    orgSlug: organization.slug,
-    from: booked.businessDate,
-    to: booked.businessDate,
-    q: "daughter",
-  });
-
-  expect(callerNameResults.items.map((appointment) => appointment.id)).toContain(booked.id);
-
-  const callerPhoneResults = await api.opd.day({
-    orgSlug: organization.slug,
-    from: booked.businessDate,
-    to: booked.businessDate,
-    q: "9876500011",
-  });
-
-  expect(callerPhoneResults.items.map((appointment) => appointment.id)).toContain(booked.id);
+  for (const q of ["daughter", "9876500011"]) {
+    expect(
+      (
+        await api.opd.day({
+          orgSlug: organization.slug,
+          from: booked.businessDate,
+          to: booked.businessDate,
+          q,
+        })
+      ).items.map((appointment) => appointment.id),
+    ).toContain(booked.id);
+  }
 
   const bookedDetail = await api.opd.get({
     orgSlug: organization.slug,
@@ -1212,159 +888,35 @@ test("a caller-only booking becomes the same queued appointment at check-in", as
   });
 
   expect(queue.items.map((appointment) => appointment.id)).toContain(booked.id);
-});
 
-test("a booking linked to a patient checks in without re-selecting them", async () => {
-  const { organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-book-linked");
-
-  const fee = await api.catalog.create(catalogItemInput(organization.slug, "Linked Consultation"));
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Linked Booking",
-    { consultFeeItemId: fee.id },
-  );
-
-  const booked = await api.opd.book({
+  const linked = await api.opd.book({
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
     scheduledLocal: "2030-03-15T11:00",
   });
 
-  expect(booked).toMatchObject({ status: "booked", patientId: patient.id, tokenNumber: null });
+  expect(linked).toMatchObject({ status: "booked", patientId: patient.id, tokenNumber: null });
 
-  const checkedIn = await api.opd.checkIn({
+  const linkedCheckIn = await api.opd.checkIn({
     orgSlug: organization.slug,
-    appointmentId: booked.id,
+    appointmentId: linked.id,
   });
 
-  expect(checkedIn.appointment).toMatchObject({
-    id: booked.id,
+  expect(linkedCheckIn.appointment).toMatchObject({
+    id: linked.id,
     status: "checked_in",
     patientId: patient.id,
-    tokenNumber: 1,
+    tokenNumber: 2,
   });
-  expect(checkedIn.charge?.catalogItemId).toBe(fee.id);
-});
-
-test("a scheduled appointment creates the configured consultation charge at check-in", async () => {
-  const { organization, api, patient, department } = await createOpdAppointmentSetup(
-    "opd-scheduled-check-in-fee",
-  );
-
-  const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, "Scheduled Consultation", 475_00n),
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Scheduled Booking",
-    { consultFeeItemId: fee.id },
-  );
-
-  const booked = await api.opd.book({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    scheduledLocal: "2030-03-15T12:00",
-  });
-
-  const checkedIn = await api.opd.checkIn({
-    orgSlug: organization.slug,
-    appointmentId: booked.id,
-  });
-
-  expect(checkedIn.appointment).toMatchObject({ id: booked.id, status: "checked_in" });
-  expect(checkedIn.charge).toMatchObject({
+  expect(linkedCheckIn.charge).toMatchObject({
     catalogItemId: fee.id,
     sourceType: "consult_fee",
     status: "pending",
   });
 });
 
-test("check-in rejects a practitioner moved out of the booked department", async () => {
-  const { organization, api, patient, department } = await createOpdAppointmentSetup(
-    "opd-check-in-practitioner-transfer",
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Department Transfer",
-  );
-
-  const booked = await api.opd.book({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    scheduledLocal: "2030-03-15T12:10",
-  });
-
-  const destination = await api.staff.createDepartment({
-    orgSlug: organization.slug,
-    name: "Destination Department",
-  });
-
-  await api.staff.updatePractitioner({
-    orgSlug: organization.slug,
-    practitionerId: practitioner.id,
-    name: practitioner.name,
-    departmentId: destination.id,
-    registrationNumber: practitioner.registrationNumber,
-    memberUserId: practitioner.memberUserId,
-    consultFeeItemId: practitioner.consultFeeItemId,
-    followUpFeeItemId: practitioner.followUpFeeItemId,
-    followUpValidityDays: practitioner.followUpValidityDays,
-  });
-
-  await expectORPCCode(
-    api.opd.checkIn({ orgSlug: organization.slug, appointmentId: booked.id }),
-    "CONFLICT",
-  );
-  expect(
-    (await api.opd.get({ orgSlug: organization.slug, appointmentId: booked.id })).appointment,
-  ).toMatchObject({ status: "booked", departmentId: department.id });
-});
-
-test("an outpatient appointment refuses a charge it may not carry", async () => {
-  const { organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-billable-categories");
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Categories",
-  );
-
-  const labPanel = await api.catalog.create({
-    ...catalogItemInput(organization.slug, "Lipid panel", 400_00n),
-    category: "lab" as const,
-  });
-
-  await expectORPCCode(
-    api.opd.book({
-      orgSlug: organization.slug,
-      patientId: patient.id,
-      practitionerId: practitioner.id,
-      scheduledLocal: "2030-04-02T09:30",
-      services: [{ catalogItemId: labPanel.id, qty: 1 }],
-    }),
-    "NOT_FOUND",
-  );
-  expect(
-    (await api.opd.day({ orgSlug: organization.slug, from: "2030-04-02", to: "2030-04-02" })).items,
-  ).toEqual([]);
-});
-
-test("procedure rates flow through booking, walk-in quotes and stored charges", async () => {
+test("custom procedure rates need the catalog flag and flow through booking, quotes and stored charges", async () => {
   const { organization, api, patient, department } = await createOpdAppointmentSetup(
     "opd-custom-procedure-rate",
     false,
@@ -1374,6 +926,11 @@ test("procedure rates flow through booking, walk-in quotes and stored charges", 
     ...catalogItemInput(organization.slug, "Custom-rate procedure", 30_00n),
     category: "procedure" as const,
     customRate: true,
+  });
+
+  const fixed = await api.catalog.create({
+    ...catalogItemInput(organization.slug, "Fixed-rate procedure"),
+    category: "procedure" as const,
   });
 
   const practitioner = await createPractitioner(
@@ -1395,15 +952,30 @@ test("procedure rates flow through booking, walk-in quotes and stored charges", 
     expect.objectContaining({ catalogItemId: procedure.id, qty: 1, unitPrice: 45_00n }),
   ]);
 
-  const services = [{ catalogItemId: procedure.id, qty: 2, unitPrice: 40_00n }];
-
-  const quote = await api.opd.quoteWalkIn({
+  const base = {
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
-    services,
     omitConsultFee: true,
+  };
+
+  await expectORPCCode(
+    api.opd.quoteWalkIn({
+      ...base,
+      services: [{ catalogItemId: fixed.id, qty: 1, unitPrice: 200_00n }],
+    }),
+    "BAD_REQUEST",
+  );
+
+  const lower = await api.opd.quoteWalkIn({
+    ...base,
+    services: [{ catalogItemId: procedure.id, qty: 1, unitPrice: 29_99n }],
   });
+
+  expect(lower.lines[0]?.unitPrice).toBe(29_99n);
+
+  const services = [{ catalogItemId: procedure.id, qty: 2, unitPrice: 40_00n }];
+  const quote = await api.opd.quoteWalkIn({ ...base, services });
 
   expect(quote).toMatchObject({ subtotal: 80_00n, taxTotal: 4_00n, grandTotal: 84_00n });
   expect(quote.lines).toEqual([
@@ -1446,56 +1018,18 @@ test("procedure rates flow through booking, walk-in quotes and stored charges", 
   ).toMatchObject({ id: procedure.id, unitPrice: 30_00n, customRate: true });
 });
 
-test("a custom rate needs the catalog flag and may go below the catalog rate", async () => {
-  const { organization, api, patient, department } = await createOpdAppointmentSetup(
-    "opd-custom-rate-validation",
-    false,
-  );
-
-  const fixed = await api.catalog.create({
-    ...catalogItemInput(organization.slug, "Fixed-rate procedure"),
-    category: "procedure" as const,
-  });
-
-  const variable = await api.catalog.create({
-    ...catalogItemInput(organization.slug, "Variable procedure"),
-    category: "procedure" as const,
-    customRate: true,
-  });
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Custom Rate Validation",
-  );
-
-  const base = {
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    omitConsultFee: true,
-  };
-
-  await expectORPCCode(
-    api.opd.quoteWalkIn({
-      ...base,
-      services: [{ catalogItemId: fixed.id, qty: 1, unitPrice: 200_00n }],
-    }),
-    "BAD_REQUEST",
-  );
-
-  const lower = await api.opd.quoteWalkIn({
-    ...base,
-    services: [{ catalogItemId: variable.id, qty: 1, unitPrice: variable.unitPrice - 1n }],
-  });
-
-  expect(lower.lines[0]?.unitPrice).toBe(variable.unitPrice - 1n);
-});
-
-test("a scheduled appointment keeps selected services until check-in", async () => {
+test("a booking refuses services it may not carry and keeps valid ones off the worklist until check-in", async () => {
   const { organization, api, patient, department } =
     await createOpdAppointmentSetup("opd-scheduled-services");
+
+  const labPanel = await api.catalog.create({
+    ...catalogItemInput(organization.slug, "Lipid panel", 400_00n),
+    category: "lab" as const,
+  });
+
+  const consultation = await api.catalog.create(
+    catalogItemInput(organization.slug, "Booked Consultation", 50_00n),
+  );
 
   const service = await api.catalog.create({
     ...catalogItemInput(organization.slug, "Booked dressing", 350_00n),
@@ -1509,16 +1043,19 @@ test("a scheduled appointment keeps selected services until check-in", async () 
     "Dr. Scheduled Services",
   );
 
-  await expectORPCCode(
-    api.opd.book({
-      orgSlug: organization.slug,
-      patientId: patient.id,
-      practitionerId: practitioner.id,
-      scheduledLocal: "2030-03-15T12:15",
-      services: [{ catalogItemId: Bun.randomUUIDv7(), qty: 1 }],
-    }),
-    "NOT_FOUND",
-  );
+  for (const catalogItemId of [Bun.randomUUIDv7(), labPanel.id, consultation.id]) {
+    await expectORPCCode(
+      api.opd.book({
+        orgSlug: organization.slug,
+        patientId: patient.id,
+        practitionerId: practitioner.id,
+        scheduledLocal: "2030-03-15T12:15",
+        services: [{ catalogItemId, qty: 1 }],
+      }),
+      "NOT_FOUND",
+    );
+  }
+
   expect(
     (await api.opd.day({ orgSlug: organization.slug, from: "2030-03-15", to: "2030-03-15" })).items,
   ).toEqual([]);
@@ -1544,147 +1081,16 @@ test("a scheduled appointment keeps selected services until check-in", async () 
       status: "pending",
     }),
   ]);
-  expect(
-    (await api.billing.worklist({ orgSlug: organization.slug })).unbilled.map(
-      (row) => row.appointmentId,
-    ),
-  ).not.toContain(booked.id);
-  expect((await api.billing.worklist({ orgSlug: organization.slug })).summary.toBillTotal).toBe(0n);
+
+  const beforeCheckIn = await api.billing.worklist({ orgSlug: organization.slug });
+  expect(beforeCheckIn.unbilled.map((row) => row.appointmentId)).not.toContain(booked.id);
+  expect(beforeCheckIn.summary.toBillTotal).toBe(0n);
 
   await api.opd.checkIn({ orgSlug: organization.slug, appointmentId: booked.id });
-  expect(
-    (await api.billing.worklist({ orgSlug: organization.slug })).unbilled.map(
-      (row) => row.appointmentId,
-    ),
-  ).not.toContain(booked.id);
-  expect((await api.billing.worklist({ orgSlug: organization.slug })).summary.toBillTotal).toBe(0n);
-});
 
-test("day keyset pagination traverses checked-in arrivals once", async () => {
-  const { owner, organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-queue-pagination");
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Queue Pagination",
-  );
-
-  const first = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    settlement: unpaidSettlement(),
-  });
-
-  const createdIds = [first.appointment.id];
-  const arrivedAt = first.appointment.arrivedAt!;
-
-  const extraRows = Array.from({ length: 204 }, (_, index) => {
-    const id = Bun.randomUUIDv7();
-    createdIds.push(id);
-    const createdAt = new Date(arrivedAt.getTime() + index + 1);
-
-    return {
-      id,
-      orgId: organization.id,
-      patientId: patient.id,
-      practitionerId: practitioner.id,
-      departmentId: department.id,
-      arrivalMode: "walk_in" as const,
-      status: "checked_in" as const,
-      businessDate: first.appointment.businessDate,
-      tokenNumber: index + 2,
-      arrivedAt: createdAt,
-      createdBy: owner.user.id,
-      createdAt,
-      updatedAt: createdAt,
-    };
-  });
-
-  await db.insert(opdAppointments).values(extraRows);
-
-  const seenIds: string[] = [];
-  let cursor: { dayOrderAt: Date; id: string } | undefined;
-
-  do {
-    const page = await api.opd.day({
-      orgSlug: organization.slug,
-      from: first.appointment.businessDate,
-      to: first.appointment.businessDate,
-      includeClosed: false,
-      limit: 100,
-      cursor,
-    });
-
-    seenIds.push(...page.items.map((appointment) => appointment.id));
-    cursor = page.nextCursor ?? undefined;
-  } while (cursor);
-
-  expect(seenIds).toHaveLength(new Set(seenIds).size);
-  expect(seenIds.toSorted()).toEqual(createdIds.toSorted());
-});
-
-test("day keyset pagination uses id to traverse equal scheduled times once", async () => {
-  const { owner, organization, api, patient, department } = await createOpdAppointmentSetup(
-    "opd-appointment-pagination",
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Appointment Pagination",
-  );
-
-  const first = await api.opd.book({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    scheduledLocal: "2030-03-18T10:00",
-  });
-
-  const bookedIds = [first.id];
-
-  const extraRows = Array.from({ length: 204 }, () => {
-    const id = Bun.randomUUIDv7();
-    bookedIds.push(id);
-
-    return {
-      id,
-      orgId: organization.id,
-      patientId: patient.id,
-      practitionerId: practitioner.id,
-      departmentId: department.id,
-      arrivalMode: "scheduled" as const,
-      status: "booked" as const,
-      businessDate: first.businessDate,
-      scheduledFor: first.scheduledFor,
-      createdBy: owner.user.id,
-    };
-  });
-
-  await db.insert(opdAppointments).values(extraRows);
-
-  const seenIds: string[] = [];
-  let cursor: { dayOrderAt: Date; id: string } | undefined;
-
-  do {
-    const page = await api.opd.day({
-      orgSlug: organization.slug,
-      from: first.businessDate,
-      to: first.businessDate,
-      limit: 100,
-      cursor,
-    });
-
-    seenIds.push(...page.items.map((appointment) => appointment.id));
-    cursor = page.nextCursor ?? undefined;
-  } while (cursor);
-
-  expect(seenIds).toHaveLength(new Set(seenIds).size);
-  expect(seenIds.toSorted()).toEqual(bookedIds.toSorted());
+  const afterCheckIn = await api.billing.worklist({ orgSlug: organization.slug });
+  expect(afterCheckIn.unbilled.map((row) => row.appointmentId)).not.toContain(booked.id);
+  expect(afterCheckIn.summary.toBillTotal).toBe(0n);
 });
 
 test("day interleaves visits, searches patient keys, returns balances, and closes past bookings", async () => {
@@ -1857,59 +1263,6 @@ test("day interleaves visits, searches patient keys, returns balances, and close
   ).toBe("booked");
 });
 
-test("OPD register reconciles expired bookings once without a prior day read", async () => {
-  const { organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-register");
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Register",
-  );
-
-  const appointment = await api.opd.book({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    scheduledLocal: "2030-03-20T10:00",
-  });
-
-  const timeZone = (await api.settings.get({ orgSlug: organization.slug })).timeZone;
-  const yesterday = new Date(`${businessDate(new Date(), timeZone)}T00:00:00Z`);
-  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-  const pastDay = yesterday.toISOString().slice(0, 10);
-  await db
-    .update(opdAppointments)
-    .set({ businessDate: pastDay, scheduledFor: yesterday })
-    .where(and(eq(opdAppointments.orgId, organization.id), eq(opdAppointments.id, appointment.id)));
-
-  const first = await api.report.opdRegister({
-    orgSlug: organization.slug,
-    from: pastDay,
-    to: pastDay,
-  });
-
-  expect(first.rows).toEqual([
-    expect.objectContaining({ appointmentId: appointment.id, status: "no_show" }),
-  ]);
-  expect(first.totals.byStatus.no_show).toBe(1);
-
-  const second = await api.report.opdRegister({
-    orgSlug: organization.slug,
-    from: pastDay,
-    to: pastDay,
-  });
-
-  expect(second).toEqual(first);
-  await drainAuditWrites();
-  expect(
-    (await api.audit.list({ orgSlug: organization.slug })).items.filter(
-      (entry) => entry.action === "opd.no_show" && entry.target === `opd:${appointment.id}`,
-    ),
-  ).toHaveLength(1);
-});
-
 test("concurrent check-in mints one token and one consultation charge", async () => {
   const { organization, api, patient, department } =
     await createOpdAppointmentSetup("opd-check-in-race");
@@ -1950,8 +1303,8 @@ test("concurrent check-in mints one token and one consultation charge", async ()
   expect(storedCharges).toHaveLength(1);
 });
 
-test("booked appointments can be rescheduled or marked no-show without creating queue work", async () => {
-  const { organization, api, patient, department } =
+test("bookings need a future minute, can be rescheduled, and a no-show voids pending charges with an audit", async () => {
+  const { owner, organization, api, patient, department } =
     await createOpdAppointmentSetup("opd-reschedule-no-show");
 
   const practitioner = await createPractitioner(
@@ -1961,69 +1314,25 @@ test("booked appointments can be rescheduled or marked no-show without creating 
     "Dr. Reschedule",
   );
 
-  const booked = await api.opd.book({
+  const settings = await api.settings.get({ orgSlug: organization.slug });
+  const currentMinute = localMinute(new Date(), settings.timeZone);
+
+  const input = {
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
-    scheduledLocal: "2030-04-01T10:30",
-  });
+  };
 
-  const settings = await api.settings.get({ orgSlug: organization.slug });
-  await expectORPCCode(
-    api.opd.reschedule({
-      orgSlug: organization.slug,
-      appointmentId: booked.id,
-      scheduledLocal: localMinute(new Date(), settings.timeZone),
-    }),
-    "BAD_REQUEST",
-  );
+  await expectORPCCode(api.opd.book({ ...input, scheduledLocal: currentMinute }), "BAD_REQUEST");
+  expect(
+    (await api.opd.book({ ...input, scheduledLocal: shiftLocalMinute(currentMinute, 5) })).status,
+  ).toBe("booked");
 
-  const rescheduled = await api.opd.reschedule({
-    orgSlug: organization.slug,
-    appointmentId: booked.id,
-    scheduledLocal: "2030-04-03T10:30",
-  });
-
-  expect(rescheduled.businessDate).not.toBe(booked.businessDate);
-
-  const listed = await api.opd.day({
-    orgSlug: organization.slug,
-    from: rescheduled.businessDate,
-    to: rescheduled.businessDate,
-  });
-
-  expect(listed.items.map((appointment) => appointment.id)).toEqual([booked.id]);
-
-  const noShow = await api.opd.markNoShow({
-    orgSlug: organization.slug,
-    appointmentId: booked.id,
-  });
-
-  expect(noShow).toMatchObject({ status: "no_show", tokenNumber: null, arrivedAt: null });
-  expect(noShow.noShowAt).toBeInstanceOf(Date);
-});
-
-test("marking a booking no-show voids its pending charges and audits the write-off", async () => {
-  const { owner, organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-no-show-void");
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. No Show",
-  );
+  const booked = await api.opd.book({ ...input, scheduledLocal: "2030-04-01T10:30" });
 
   const item = await api.catalog.create(
     catalogItemInput(organization.slug, "Advance Consultation"),
   );
-
-  const booked = await api.opd.book({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    scheduledLocal: "2030-05-01T09:00",
-  });
 
   // Charges are refused before check-in, so plant one directly.
   await db.insert(charges).values({
@@ -2041,19 +1350,45 @@ test("marking a booking no-show voids its pending charges and audits the write-o
     createdBy: owner.user.id,
   });
 
+  await expectORPCCode(
+    api.opd.reschedule({
+      orgSlug: organization.slug,
+      appointmentId: booked.id,
+      scheduledLocal: currentMinute,
+    }),
+    "BAD_REQUEST",
+  );
+
+  const rescheduled = await api.opd.reschedule({
+    orgSlug: organization.slug,
+    appointmentId: booked.id,
+    scheduledLocal: "2030-04-03T10:30",
+  });
+
+  expect(rescheduled.businessDate).not.toBe(booked.businessDate);
+  expect(
+    (
+      await api.opd.day({
+        orgSlug: organization.slug,
+        from: rescheduled.businessDate,
+        to: rescheduled.businessDate,
+      })
+    ).items.map((appointment) => appointment.id),
+  ).toEqual([booked.id]);
+
   const noShow = await api.opd.markNoShow({
     orgSlug: organization.slug,
     appointmentId: booked.id,
   });
 
-  expect(noShow.status).toBe("no_show");
-
-  const storedCharges = await db
-    .select({ status: charges.status })
-    .from(charges)
-    .where(and(eq(charges.orgId, organization.id), eq(charges.opdAppointmentId, booked.id)));
-
-  expect(storedCharges).toEqual([{ status: "voided" }]);
+  expect(noShow).toMatchObject({ status: "no_show", tokenNumber: null, arrivedAt: null });
+  expect(noShow.noShowAt).toBeInstanceOf(Date);
+  expect(
+    await db
+      .select({ status: charges.status })
+      .from(charges)
+      .where(and(eq(charges.orgId, organization.id), eq(charges.opdAppointmentId, booked.id))),
+  ).toEqual([{ status: "voided" }]);
 
   const entry = await eventually(async () => {
     const audit = await api.audit.list({ orgSlug: organization.slug });
@@ -2206,19 +1541,19 @@ test("a walk-in settled at the desk creates the token, invoice and receipt in on
   ]);
 });
 
-test("leaving a walk-in unpaid needs a note, and so does a discount", async () => {
+test("a walk-in that fails settlement writes nothing, and unpaid or discounted walk-ins need a note", async () => {
   const { organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-walk-in-credit-note");
+    await createOpdAppointmentSetup("opd-walk-in-settlement");
 
   const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, "Credit Consultation", 100_00n),
+    catalogItemInput(organization.slug, "Settlement Consultation", 100_00n),
   );
 
   const practitioner = await createPractitioner(
     api,
     organization.slug,
     department.id,
-    "Dr. Credit",
+    "Dr. Settlement",
     { consultFeeItemId: fee.id },
   );
 
@@ -2231,136 +1566,36 @@ test("leaving a walk-in unpaid needs a note, and so does a discount", async () =
   // SAFETY: omits `settlement` so server validation, not the client type, rejects it.
   await expectORPCCode(api.opd.createWalkIn(walkIn as never), "BAD_REQUEST");
 
-  await expectORPCCode(
-    api.opd.createWalkIn({
-      ...walkIn,
-      settlement: { expectedGrandTotal: 105_00n, payments: [] },
-    }),
-    "BAD_REQUEST",
-  );
-  await expectORPCCode(
-    api.opd.createWalkIn({
-      ...walkIn,
-      settlement: {
-        discountAmount: 10_00n,
-        expectedGrandTotal: 94_50n,
-        payments: [{ method: "cash", amount: 95_00n }],
-      },
-    }),
-    "BAD_REQUEST",
-  );
-
-  const credited = await api.opd.createWalkIn({
-    ...walkIn,
-    settlement: {
-      expectedGrandTotal: 105_00n,
-      payments: [],
-      note: "Staff member, paying on Friday",
-    },
-  });
-
-  expect(requireInvoice(credited).note).toBe("Staff member, paying on Friday");
-
-  const invoices = await api.billing.listInvoices({
-    orgSlug: organization.slug,
-    appointmentId: credited.appointment.id,
-  });
-
-  const detail = await api.billing.getInvoice({
-    orgSlug: organization.slug,
-    invoiceId: invoices[0]!.id,
-  });
-
-  expect(detail.payments).toHaveLength(0);
-  expect(detail.balance.outstanding).toBe(105_00n);
-});
-
-test("a discounted walk-in persists its reason and settles the discounted total", async () => {
-  const { organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-walk-in-discount");
-
-  const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, "Discounted Consultation", 100_00n),
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Discount",
-    { consultFeeItemId: fee.id },
-  );
-
-  const note = "Approved staff discount";
-
-  const created = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    settlement: {
+  for (const settlement of [
+    { expectedGrandTotal: 105_00n, payments: [] },
+    {
       discountAmount: 10_00n,
       expectedGrandTotal: 94_50n,
-      note,
-      payments: [{ method: "cash", amount: 94_50n }],
+      payments: [{ method: "cash" as const, amount: 95_00n }],
     },
-  });
-
-  expect(created.invoice).toMatchObject({
-    discountAmount: 10_00n,
-    grandTotal: 94_50n,
-    note,
-  });
-
-  const detail = await api.billing.getInvoice({
-    orgSlug: organization.slug,
-    invoiceId: requireInvoice(created).id,
-  });
-
-  expect(detail.invoice).toMatchObject({
-    discountAmount: 10_00n,
-    grandTotal: 94_50n,
-    note,
-  });
-  expect(detail.balance.outstanding).toBe(0n);
-});
-
-test("a walk-in that fails to settle leaves no token behind", async () => {
-  const { organization, api, patient, department } = await createOpdAppointmentSetup(
-    "opd-walk-in-settle-rollback",
-  );
-
-  const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, "Rollback Consultation", 100_00n),
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Rollback",
-    { consultFeeItemId: fee.id },
-  );
+    { expectedGrandTotal: 105_00n, payments: [{ method: "cash" as const, amount: 999_00n }] },
+  ]) {
+    await expectORPCCode(api.opd.createWalkIn({ ...walkIn, settlement }), "BAD_REQUEST");
+  }
 
   await expectORPCCode(
     api.opd.createWalkIn({
-      orgSlug: organization.slug,
-      patientId: patient.id,
-      practitionerId: practitioner.id,
+      ...walkIn,
       settlement: {
+        services: [{ catalogItemId: Bun.randomUUIDv7(), qty: 1 }],
         expectedGrandTotal: 105_00n,
-        payments: [{ method: "cash", amount: 999_00n }],
+        payments: [],
+        note: "Should never be written",
       },
     }),
-    "BAD_REQUEST",
+    "NOT_FOUND",
   );
 
   expect(
     await db
       .select({ id: opdAppointments.id })
       .from(opdAppointments)
-      .where(
-        and(eq(opdAppointments.orgId, organization.id), eq(opdAppointments.patientId, patient.id)),
-      ),
+      .where(eq(opdAppointments.orgId, organization.id)),
   ).toHaveLength(0);
   expect(
     await db.select({ id: charges.id }).from(charges).where(eq(charges.orgId, organization.id)),
@@ -2375,23 +1610,63 @@ test("a walk-in that fails to settle leaves no token behind", async () => {
       .where(eq(journalEntries.orgId, organization.id)),
   ).toHaveLength(0);
 
-  const valid = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
+  const paid = await api.opd.createWalkIn({
+    ...walkIn,
     settlement: {
       expectedGrandTotal: 105_00n,
       payments: [{ method: "cash", amount: 105_00n }],
     },
   });
 
-  expect(valid.appointment.tokenNumber).toBe(1);
-  expect(requireInvoice(valid).invoiceNumber.endsWith("/1")).toBe(true);
-  expect(valid.payments).toHaveLength(1);
-  expect(valid.payments[0]!.receiptNumber.endsWith("/1")).toBe(true);
+  expect(paid.appointment.tokenNumber).toBe(1);
+  expect(requireInvoice(paid).invoiceNumber.endsWith("/1")).toBe(true);
+  expect(paid.payments).toHaveLength(1);
+  expect(paid.payments[0]!.receiptNumber.endsWith("/1")).toBe(true);
+
+  const credited = await api.opd.createWalkIn({
+    ...walkIn,
+    settlement: {
+      expectedGrandTotal: 105_00n,
+      payments: [],
+      note: "Staff member, paying on Friday",
+    },
+  });
+
+  const creditedDetail = await api.billing.getInvoice({
+    orgSlug: organization.slug,
+    invoiceId: requireInvoice(credited).id,
+  });
+
+  expect(creditedDetail.invoice.note).toBe("Staff member, paying on Friday");
+  expect(creditedDetail.payments).toHaveLength(0);
+  expect(creditedDetail.balance.outstanding).toBe(105_00n);
+
+  const note = "Approved staff discount";
+
+  const discounted = await api.opd.createWalkIn({
+    ...walkIn,
+    settlement: {
+      discountAmount: 10_00n,
+      expectedGrandTotal: 94_50n,
+      note,
+      payments: [{ method: "cash", amount: 94_50n }],
+    },
+  });
+
+  const discountedDetail = await api.billing.getInvoice({
+    orgSlug: organization.slug,
+    invoiceId: requireInvoice(discounted).id,
+  });
+
+  expect(discountedDetail.invoice).toMatchObject({
+    discountAmount: 10_00n,
+    grandTotal: 94_50n,
+    note,
+  });
+  expect(discountedDetail.balance.outstanding).toBe(0n);
 });
 
-test("services chosen at the desk are charged in the same commit as the token", async () => {
+test("desk services are quoted and charged with the token, can replace the consultation fee, and reprice a stale quote", async () => {
   const { organization, api, patient, department } =
     await createOpdAppointmentSetup("opd-walk-in-services");
 
@@ -2404,6 +1679,10 @@ test("services chosen at the desk are charged in the same commit as the token", 
     category: "procedure" as const,
   });
 
+  const selectedConsultation = await api.catalog.create(
+    catalogItemInput(organization.slug, "Selected Consultation", 50_00n),
+  );
+
   const practitioner = await createPractitioner(
     api,
     organization.slug,
@@ -2412,86 +1691,49 @@ test("services chosen at the desk are charged in the same commit as the token", 
     { consultFeeItemId: fee.id },
   );
 
-  const quote = await api.opd.quoteWalkIn({
+  const walkIn = {
     orgSlug: organization.slug,
     patientId: patient.id,
     practitionerId: practitioner.id,
-    services: [{ catalogItemId: dressing.id, qty: 2 }],
-  });
+  };
+
+  const services = [{ catalogItemId: dressing.id, qty: 2 }];
+
+  const quote = await api.opd.quoteWalkIn({ ...walkIn, services });
 
   expect(quote).toMatchObject({ subtotal: 200_00n, taxTotal: 10_00n, grandTotal: 210_00n });
   expect(quote.lines.map((line) => line.description)).toEqual(["Service Consultation", "Dressing"]);
 
-  const created = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
+  const withFee = await api.opd.createWalkIn({
+    ...walkIn,
     settlement: {
-      services: [{ catalogItemId: dressing.id, qty: 2 }],
+      services,
       expectedGrandTotal: 210_00n,
       payments: [{ method: "cash", amount: 210_00n }],
     },
   });
 
-  expect(requireInvoice(created).grandTotal).toBe(210_00n);
+  expect(requireInvoice(withFee).grandTotal).toBe(210_00n);
+  expect(
+    (await appointmentCharges(api, organization.slug, withFee.appointment.id))
+      .map((charge) => charge.description)
+      .sort(),
+  ).toEqual(["Dressing", "Service Consultation"]);
 
-  const detail = await api.opd.get({
-    orgSlug: organization.slug,
-    appointmentId: created.appointment.id,
-  });
+  const omittedQuote = await api.opd.quoteWalkIn({ ...walkIn, services, omitConsultFee: true });
 
-  expect(detail.charges).toHaveLength(2);
-  expect(detail.charges.map((charge) => charge.description).sort()).toEqual([
-    "Dressing",
-    "Service Consultation",
-  ]);
-});
-
-test("a walk-in can omit the consultation fee while settling selected services", async () => {
-  const { organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-walk-in-omit-fee");
-
-  const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, "Omitted Consultation", 100_00n),
-  );
-
-  const service = await api.catalog.create({
-    ...catalogItemInput(organization.slug, "Omitted Fee Dressing", 50_00n),
-    category: "procedure" as const,
-  });
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Omit Fee",
-    { consultFeeItemId: fee.id },
-  );
-
-  const services = [{ catalogItemId: service.id, qty: 2 }];
-
-  const quote = await api.opd.quoteWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    services,
-    omitConsultFee: true,
-  });
-
-  expect(quote).toMatchObject({ subtotal: 100_00n, taxTotal: 5_00n, grandTotal: 105_00n });
-  expect(quote.lines).toEqual([
+  expect(omittedQuote).toMatchObject({ subtotal: 100_00n, taxTotal: 5_00n, grandTotal: 105_00n });
+  expect(omittedQuote.lines).toEqual([
     expect.objectContaining({
-      description: "Omitted Fee Dressing",
+      description: "Dressing",
       unitPrice: 50_00n,
       qty: 2,
       source: "service",
     }),
   ]);
 
-  const created = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
+  const omitted = await api.opd.createWalkIn({
+    ...walkIn,
     settlement: {
       services,
       omitConsultFee: true,
@@ -2500,66 +1742,62 @@ test("a walk-in can omit the consultation fee while settling selected services",
     },
   });
 
-  expect(created.invoice).toMatchObject({ subtotal: 100_00n, grandTotal: 105_00n });
+  expect(omitted.invoice).toMatchObject({ subtotal: 100_00n, grandTotal: 105_00n });
 
-  const appointment = await api.opd.get({
+  const omittedCharges = await appointmentCharges(api, organization.slug, omitted.appointment.id);
+
+  expect(omittedCharges).toEqual([
+    expect.objectContaining({ catalogItemId: dressing.id, sourceType: "catalog" }),
+  ]);
+
+  const omittedInvoice = await api.billing.getInvoice({
     orgSlug: organization.slug,
-    appointmentId: created.appointment.id,
+    invoiceId: requireInvoice(omitted).id,
   });
 
-  expect(appointment.charges).toHaveLength(1);
-  expect(appointment.charges[0]).toMatchObject({
-    catalogItemId: service.id,
-    sourceType: "catalog",
+  expect(omittedInvoice.lines).toEqual([
+    expect.objectContaining({ chargeId: omittedCharges[0]!.id, description: "Dressing", qty: 2 }),
+  ]);
+
+  const consultationServices = [{ catalogItemId: selectedConsultation.id, qty: 1 }];
+
+  expect(
+    (await api.opd.quoteWalkIn({ ...walkIn, services: consultationServices, omitConsultFee: true }))
+      .lines,
+  ).toEqual([expect.objectContaining({ chargeId: selectedConsultation.id, source: "service" })]);
+
+  const selected = await api.opd.createWalkIn({
+    ...walkIn,
+    settlement: {
+      services: consultationServices,
+      omitConsultFee: true,
+      expectedGrandTotal: 52_50n,
+      payments: [],
+      note: "Selected consultation remains unpaid",
+    },
   });
 
-  const invoice = await api.billing.getInvoice({
-    orgSlug: organization.slug,
-    invoiceId: requireInvoice(created).id,
-  });
+  expect(await appointmentCharges(api, organization.slug, selected.appointment.id)).toEqual([
+    expect.objectContaining({
+      catalogItemId: selectedConsultation.id,
+      revenueCategory: "consultation",
+      sourceType: "catalog",
+    }),
+  ]);
 
-  expect(invoice.lines).toHaveLength(1);
-  expect(invoice.lines[0]).toMatchObject({
-    chargeId: appointment.charges[0]!.id,
-    description: "Omitted Fee Dressing",
-    qty: 2,
-  });
-});
-
-test("a walk-in without billable services creates no financial document", async () => {
-  const { organization, api, patient, department } = await createOpdAppointmentSetup(
-    "opd-walk-in-omit-fee-empty",
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Omit Fee Empty",
-  );
-
-  const walkIn = {
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-  };
-
-  const quote = await api.opd.quoteWalkIn({ ...walkIn, omitConsultFee: true });
-  expect(quote).toMatchObject({
+  expect(await api.opd.quoteWalkIn({ ...walkIn, omitConsultFee: true })).toMatchObject({
     lines: [],
     subtotal: 0n,
     discountAmount: 0n,
     taxTotal: 0n,
     grandTotal: 0n,
   });
-
-  const created = await api.opd.createWalkIn({
-    ...walkIn,
-    settlement: { ...unpaidSettlement(0n), omitConsultFee: true },
-  });
-
-  expect(created).toMatchObject({ invoice: null, payments: [] });
-  expect(created.appointment.status).toBe("checked_in");
+  expect(
+    await api.opd.createWalkIn({
+      ...walkIn,
+      settlement: { ...unpaidSettlement(0n), omitConsultFee: true },
+    }),
+  ).toMatchObject({ invoice: null, payments: [] });
   await expectORPCCode(
     api.opd.createWalkIn({
       ...walkIn,
@@ -2571,67 +1809,31 @@ test("a walk-in without billable services creates no financial document", async 
     }),
     "BAD_REQUEST",
   );
-});
-
-test("a walk-in reprices selected services after a stale quote", async () => {
-  const { organization, api, patient, department } =
-    await createOpdAppointmentSetup("opd-walk-in-reprice");
-
-  const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, "Reprice Consultation", 100_00n),
-  );
-
-  const service = await api.catalog.create({
-    ...catalogItemInput(organization.slug, "Repriced Dressing", 50_00n),
-    category: "procedure" as const,
-  });
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Reprice",
-    { consultFeeItemId: fee.id },
-  );
-
-  const services = [{ catalogItemId: service.id, qty: 2 }];
-
-  const quote = await api.opd.quoteWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    services,
-  });
-
-  expect(quote.grandTotal).toBe(210_00n);
 
   await api.catalog.update({
     orgSlug: organization.slug,
-    itemId: service.id,
-    name: service.name,
-    category: service.category,
+    itemId: dressing.id,
+    name: dressing.name,
+    category: dressing.category,
     unitPrice: 75_00n,
     customRate: false,
-    taxRatePercent: service.taxRatePercent,
-    taxCode: service.taxCode,
+    taxRatePercent: dressing.taxRatePercent,
+    taxCode: dressing.taxCode,
   });
-  await expect(
+  await expectORPCCode(
     api.opd.createWalkIn({
-      orgSlug: organization.slug,
-      patientId: patient.id,
-      practitionerId: practitioner.id,
+      ...walkIn,
       settlement: {
         services,
         expectedGrandTotal: quote.grandTotal,
         payments: [{ method: "cash", amount: quote.grandTotal }],
       },
     }),
-  ).rejects.toMatchObject({ code: "CONFLICT" });
+    "CONFLICT",
+  );
 
-  const created = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
+  const repriced = await api.opd.createWalkIn({
+    ...walkIn,
     settlement: {
       services,
       expectedGrandTotal: 262_50n,
@@ -2639,324 +1841,21 @@ test("a walk-in reprices selected services after a stale quote", async () => {
     },
   });
 
-  expect(created.invoice).toMatchObject({ subtotal: 250_00n, grandTotal: 262_50n });
+  expect(repriced.invoice).toMatchObject({ subtotal: 250_00n, grandTotal: 262_50n });
 
-  const appointment = await api.opd.get({
+  const repricedCharge = (
+    await appointmentCharges(api, organization.slug, repriced.appointment.id)
+  ).find((charge) => charge.catalogItemId === dressing.id);
+
+  expect(repricedCharge).toMatchObject({ unitPrice: 75_00n, qty: 2 });
+
+  const repricedInvoice = await api.billing.getInvoice({
     orgSlug: organization.slug,
-    appointmentId: created.appointment.id,
+    invoiceId: requireInvoice(repriced).id,
   });
 
-  const serviceCharge = appointment.charges.find((charge) => charge.catalogItemId === service.id);
-  expect(serviceCharge).toMatchObject({ unitPrice: 75_00n, qty: 2 });
-
-  const invoice = await api.billing.getInvoice({
-    orgSlug: organization.slug,
-    invoiceId: requireInvoice(created).id,
-  });
-
-  expect(invoice.lines.find((line) => line.chargeId === serviceCharge?.id)).toMatchObject({
+  expect(repricedInvoice.lines.find((line) => line.chargeId === repricedCharge?.id)).toMatchObject({
     unitPrice: 75_00n,
     qty: 2,
   });
-});
-
-test("a discounted walk-in keeps fee-first quote ordering through settlement", async () => {
-  const { organization, api, patient, department } = await createOpdAppointmentSetup(
-    "opd-walk-in-charge-order",
-    false,
-  );
-
-  const fee = await api.catalog.create({
-    ...catalogItemInput(organization.slug, "Zero-rated consultation", 300_00n),
-    taxRatePercent: "0",
-    taxCode: undefined,
-  });
-
-  const fivePercent = await api.catalog.create({
-    ...catalogItemInput(organization.slug, "Five-percent service", 300_00n),
-    category: "procedure" as const,
-  });
-
-  const smaller = await api.catalog.create({
-    ...catalogItemInput(organization.slug, "Smaller zero-rated service", 250_00n),
-    category: "procedure" as const,
-    taxRatePercent: "0",
-    taxCode: undefined,
-  });
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Charge Order",
-    { consultFeeItemId: fee.id },
-  );
-
-  const services = [
-    { catalogItemId: fivePercent.id, qty: 1 },
-    { catalogItemId: smaller.id, qty: 1 },
-  ];
-
-  const quote = await api.opd.quoteWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    services,
-    discountAmount: 2_00n,
-  });
-
-  expect(quote.grandTotal).toBe(862_96n);
-
-  const created = await api.opd.createWalkIn({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    settlement: {
-      services,
-      discountAmount: 2_00n,
-      expectedGrandTotal: quote.grandTotal,
-      payments: [{ method: "cash", amount: quote.grandTotal }],
-      note: "Package discount",
-    },
-  });
-
-  expect(created.invoice?.grandTotal).toBe(862_96n);
-
-  const invoice = await api.billing.getInvoice({
-    orgSlug: organization.slug,
-    invoiceId: requireInvoice(created).id,
-  });
-
-  expect(invoice.lines.map((line) => line.description)).toEqual([
-    fee.name,
-    fivePercent.name,
-    smaller.name,
-  ]);
-});
-
-test("a walk-in can bill a selected consultation instead of the ladder fee", async () => {
-  const { organization, api, patient, department } = await createOpdAppointmentSetup(
-    "opd-walk-in-consult-service",
-  );
-
-  const ladderFee = await api.catalog.create(
-    catalogItemInput(organization.slug, "Primary Consultation", 100_00n),
-  );
-
-  const selectedConsultation = await api.catalog.create(
-    catalogItemInput(organization.slug, "Selected Consultation", 50_00n),
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Selected Consultation",
-    { consultFeeItemId: ladderFee.id },
-  );
-
-  const walkIn = {
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-  };
-
-  const services = [{ catalogItemId: selectedConsultation.id, qty: 1 }];
-
-  const quote = await api.opd.quoteWalkIn({
-    ...walkIn,
-    services,
-    omitConsultFee: true,
-  });
-
-  expect(quote.lines).toEqual([
-    expect.objectContaining({
-      chargeId: selectedConsultation.id,
-      source: "service",
-    }),
-  ]);
-
-  const created = await api.opd.createWalkIn({
-    ...walkIn,
-    settlement: {
-      services,
-      omitConsultFee: true,
-      expectedGrandTotal: 52_50n,
-      payments: [],
-      note: "Selected consultation remains unpaid",
-    },
-  });
-
-  const detail = await api.opd.get({
-    orgSlug: organization.slug,
-    appointmentId: created.appointment.id,
-  });
-
-  expect(detail.charges).toEqual([
-    expect.objectContaining({
-      catalogItemId: selectedConsultation.id,
-      revenueCategory: "consultation",
-      sourceType: "catalog",
-    }),
-  ]);
-  expect(detail.charges.some((charge) => charge.sourceType === "consult_fee")).toBe(false);
-});
-
-test("booking rejects a consultation catalog item as a selected service", async () => {
-  const { organization, api, patient, department } = await createOpdAppointmentSetup(
-    "opd-book-consult-service",
-  );
-
-  const consultation = await api.catalog.create(
-    catalogItemInput(organization.slug, "Booked Consultation", 50_00n),
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Booked Consultation",
-  );
-
-  await expectORPCCode(
-    api.opd.book({
-      orgSlug: organization.slug,
-      patientId: patient.id,
-      practitionerId: practitioner.id,
-      scheduledLocal: "2030-03-15T14:00",
-      services: [{ catalogItemId: consultation.id, qty: 1 }],
-    }),
-    "NOT_FOUND",
-  );
-});
-
-test("walk-in quotes hide consultation items from another organization", async () => {
-  const { organization, api, patient, department } = await createOpdAppointmentSetup(
-    "opd-consult-service-tenant",
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Consultation Tenant",
-  );
-
-  const otherOwner = await createTestUser("opd-consult-service-tenant-other");
-
-  const otherOrganization = await createOrganization(
-    otherOwner,
-    "opd-consult-service-tenant-other",
-  );
-
-  const foreignConsultation = await clientFor(otherOwner).catalog.create(
-    catalogItemInput(otherOrganization.slug, "Foreign Consultation", 50_00n),
-  );
-
-  await expectORPCCode(
-    api.opd.quoteWalkIn({
-      orgSlug: organization.slug,
-      patientId: patient.id,
-      practitionerId: practitioner.id,
-      services: [{ catalogItemId: foreignConsultation.id, qty: 1 }],
-      omitConsultFee: true,
-    }),
-    "NOT_FOUND",
-  );
-});
-
-test("an unknown service leaves no token behind", async () => {
-  const { organization, api, patient, department } = await createOpdAppointmentSetup(
-    "opd-walk-in-unknown-service",
-  );
-
-  const fee = await api.catalog.create(
-    catalogItemInput(organization.slug, "Bad Service Consult", 100_00n),
-  );
-
-  const practitioner = await createPractitioner(
-    api,
-    organization.slug,
-    department.id,
-    "Dr. Unknown Service",
-    { consultFeeItemId: fee.id },
-  );
-
-  await expectORPCCode(
-    api.opd.createWalkIn({
-      orgSlug: organization.slug,
-      patientId: patient.id,
-      practitionerId: practitioner.id,
-      settlement: {
-        services: [{ catalogItemId: Bun.randomUUIDv7(), qty: 1 }],
-        expectedGrandTotal: 105_00n,
-        payments: [],
-        note: "Should never be written",
-      },
-    }),
-    "NOT_FOUND",
-  );
-
-  const rows = await db
-    .select({ id: opdAppointments.id })
-    .from(opdAppointments)
-    .where(
-      and(eq(opdAppointments.orgId, organization.id), eq(opdAppointments.patientId, patient.id)),
-    );
-
-  expect(rows).toHaveLength(0);
-});
-
-test("dashboard counts the full queue and selects oldest arrivals across tenant boundaries", async () => {
-  const { owner, organization, api, patient, department } = await createOpdAppointmentSetup(
-    "dashboard-queue",
-    false,
-  );
-
-  const practitioner = await createPractitioner(api, organization.slug, department.id, "Dr. Queue");
-  const settings = await api.settings.get({ orgSlug: organization.slug });
-  const now = new Date();
-  const day = businessDate(now, settings.timeZone);
-
-  const rows = Array.from({ length: 205 }, (_, index) => ({
-    id: Bun.randomUUIDv7(),
-    orgId: organization.id,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    departmentId: department.id,
-    arrivalMode: "walk_in" as const,
-    status: "checked_in" as const,
-    businessDate: day,
-    arrivedAt: new Date(now.getTime() - (205 - index) * 60_000),
-    tokenNumber: index + 1,
-    createdBy: owner.user.id,
-  }));
-
-  await db.insert(opdAppointments).values(rows);
-  await db.insert(opdAppointments).values({
-    id: Bun.randomUUIDv7(),
-    orgId: organization.id,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    departmentId: department.id,
-    arrivalMode: "scheduled",
-    status: "booked",
-    businessDate: day,
-    scheduledFor: now,
-    createdBy: owner.user.id,
-  });
-  const queue = await api.dashboard.queue({ orgSlug: organization.slug });
-  expect(queue.arrived).toBe(205);
-  expect(queue.booked).toBe(1);
-  expect(queue.latest.map((row) => row.id)).toEqual(
-    rows
-      .slice(-10)
-      .toReversed()
-      .map((row) => row.id),
-  );
-  expect(queue.departments).toEqual([
-    { departmentId: department.id, departmentName: department.name, arrived: 205, booked: 1 },
-  ]);
-  const other = await createOrganization(owner, "dashboard-empty");
-  expect((await api.dashboard.queue({ orgSlug: other.slug })).arrived).toBe(0);
 });

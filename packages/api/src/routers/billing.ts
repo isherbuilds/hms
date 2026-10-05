@@ -14,6 +14,7 @@ import { refunds } from "@hms/db/schema/refunds";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { user } from "@hms/db/schema/auth";
 import { treatmentPlans } from "@hms/db/schema/treatment-plans";
+import { treatmentPlanItems } from "@hms/db/schema/treatment-plan-items";
 import { ORPCError } from "@orpc/server";
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -307,6 +308,12 @@ export const billingRouter = {
       throw new ORPCError("NOT_FOUND", { message: "That patient no longer exists." });
     }
 
+    if (settings.gstin && !patient.address?.trim()) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Add the patient's address before issuing a Receipt Voucher",
+      });
+    }
+
     const guardian = guardianLabel({
       guardianRelation: patient.guardianRelation,
       guardianName: patient.guardianName,
@@ -355,6 +362,7 @@ export const billingRouter = {
           orgLegalName: settings.legalName,
           orgAddress: settings.address,
           orgTaxId: settings.taxId,
+          orgGstin: settings.gstin,
           currency: settings.currency,
           patientName: patient.name,
           patientMrn: patient.mrn,
@@ -581,6 +589,49 @@ export const billingRouter = {
     const creditNoteId = Bun.randomUUIDv7();
 
     const result = await db.transaction(async (tx) => {
+      // Plans precede the Invoice lock (D040); every plan-item writer also locks its plan,
+      // so the plan lock alone keeps these rows stable. Credits leave Charges immutable.
+      const planLines = await tx
+        .select({
+          invoiceLineId: invoiceLines.id,
+          planId: treatmentPlans.id,
+          // A completed plan has every open priced item fully posted, so any credit to
+          // one leaves it short (D051).
+          reopens: sql<boolean>`${treatmentPlans.status} = 'completed' and ${treatmentPlanItems.status} = 'open' and ${treatmentPlanItems.quotedPrice} > 0`,
+        })
+        .from(invoiceLines)
+        .innerJoin(
+          charges,
+          and(
+            eq(charges.orgId, scope.orgId),
+            eq(charges.id, invoiceLines.chargeId),
+            eq(charges.sourceType, "treatment_plan"),
+          ),
+        )
+        .innerJoin(
+          treatmentPlanItems,
+          and(
+            eq(treatmentPlanItems.orgId, scope.orgId),
+            eq(treatmentPlanItems.id, charges.sourceId),
+          ),
+        )
+        .innerJoin(
+          treatmentPlans,
+          and(
+            eq(treatmentPlans.orgId, scope.orgId),
+            eq(treatmentPlans.id, treatmentPlanItems.treatmentPlanId),
+          ),
+        )
+        .where(
+          and(
+            eq(invoiceLines.orgId, scope.orgId),
+            eq(invoiceLines.invoiceId, input.invoiceId),
+            inArray(invoiceLines.id, requestedIds),
+          ),
+        )
+        .orderBy(asc(treatmentPlans.id))
+        .for("update", { of: treatmentPlans });
+
       // Checked before any write: a pharmacy correction has to bring the goods back.
       const invoice = await lockInvoice(tx, scope.orgId, input.invoiceId);
 
@@ -590,7 +641,7 @@ export const billingRouter = {
         });
       }
 
-      return postCreditNoteTx(tx, {
+      const posted = await postCreditNoteTx(tx, {
         scope,
         invoiceId: input.invoiceId,
         reason: input.reason,
@@ -601,6 +652,23 @@ export const billingRouter = {
         fiscalYear,
         creditNoteId,
       });
+
+      const credited = new Set(
+        posted.lines.filter((line) => line.taxableValue > 0n).map((line) => line.invoiceLineId),
+      );
+
+      const reopened = planLines
+        .filter((line) => line.reopens && credited.has(line.invoiceLineId))
+        .map((line) => line.planId);
+
+      if (reopened.length > 0) {
+        await tx
+          .update(treatmentPlans)
+          .set({ status: "open", completedAt: null, updatedAt: now })
+          .where(and(eq(treatmentPlans.orgId, scope.orgId), inArray(treatmentPlans.id, reopened)));
+      }
+
+      return posted;
     });
 
     audit({

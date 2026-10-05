@@ -1,4 +1,5 @@
 import type { ShotName } from "@/components/landing/product-window";
+import { CONTACT_EMAIL } from "@/lib/contact";
 
 /* Feature-page answers stay separate from the homepage's mockup copy.
    Both lists live apart from JSX so `seo.ts` can read them in `head()`. */
@@ -20,7 +21,7 @@ export const FAQS: { q: string; a: string; features: ShotName[] }[] = [
   },
   {
     q: "What does it cost?",
-    a: "Access is by invitation only. Early-bird hospitals agree a price with us directly. Call or WhatsApp us to request an invitation, discuss pricing, or ask a question.",
+    a: `Access is by invitation only. Early-bird hospitals agree a price with us directly. Email ${CONTACT_EMAIL} to request an invitation, discuss pricing, or ask a question.`,
     features: ["opd", "patients", "billing"],
   },
   {

@@ -73,7 +73,8 @@ Both paths use the same optional, server-searched Services picker. The picker
 returns at most six active tenant-scoped catalog matches. Selected rows are local
 editable state. An item marked for intake pricing starts at its catalog rate, and
 the operator may raise or lower that rate. Clearing the field returns to the
-catalog rate.
+catalog rate. A committed rate stays the same when the layout switches between
+desktop and mobile.
 For **Now**, every amount on screen comes from one server
 quote (`opd.quoteWalkIn`) that re-reads each id, category, and tax fact. It uses
 the supplied intake rate only after that validation. The financial
@@ -107,9 +108,13 @@ Posting refuses an item whose full course price is already posted or which is
 already posted to this visit.
 An ordinary Charge for the same service stays separate; the panel warns before
 posting, and the desk voids or credits it if it was the same work (D038).
-An item is done when its full price is posted; a free item needs one posted
-sitting. Voiding delivered work reopens a completed
-plan. Work posted after the visit was settled becomes a second Invoice on that
+An item is done when its full price is posted, net of Credit Note line taxable
+values (pre-GST); a free item needs one posted sitting. A credit restores exactly
+that taxable value to the unbilled balance, available on a later checked-in
+sitting through **Bill this sitting** or **Other amount** (D051). The original
+Charge stays invoiced and the Invoice stays immutable. Voiding or crediting work
+reopens a completed plan if a non-dropped item falls below its full price.
+Work posted after the visit was settled becomes a second Invoice on that
 visit; the Billing tab lists each one beside the plan's quoted and posted amounts.
 
 **Follow-ups** is a Status filter of the day desk. It lists open plans with no
@@ -123,9 +128,21 @@ credit that belongs to the bill (`billing.patientCredit` `usable`: untagged cred
 plus the bill's own plan), so a plan's advance never pays an unrelated consult or
 pharmacy sale by default; the cashier can still type a larger amount up to the
 patient's total. Unused credit is returned only by an advance
-Refund. The pilot's chartered accountant still owes two answers: the GST Receipt
-Voucher particulars for an Advance Receipt, and the earning milestone for a
-one-fee multi-sitting procedure (post at completion, or add a partial-work item).
+Refund. Under [D052](./decisions.md#d052--gst-registration-determines-document-particulars-and-bounded-numbering),
+an exempt-care advance prints **Receipt Voucher** with exempt/nil particulars
+when the organization has a GSTIN, otherwise neutral **Advance Receipt** without
+GST claims; the issue-time registration snapshot is immutable
+([CGST s31(3)(d)](https://cbic-gst.gov.in/pdf/CGST-Act-2017-amended-01012022.pdf),
+[Rule 50](https://cbic-gst.gov.in/pdf/03042020-CGST-Rules-2017-Part-A-Rules.pdf)).
+
+**Earning milestone (D053):** a one-fee multi-sitting procedure earns its fee by
+per-sitting proportionate completion, using D047's whole-course quote and sitting
+shares; an early finish bills the remaining balance. No partial-work catalog item
+or completion-only posting is used. [ICAI AS 9 §7.1(i), §12](https://resource.cdn.icai.org/69237asb55316-as9.pdf)
+recognizes multi-act services by performance of each act; [Ind AS 115 §35(a)](https://www.icai.org/post/implementation-of-ind-as-115-revenue-from-contracts-with-customers-in-context-of-real-estate-sector-20-07-2018)
+recognizes over-time performance where the customer receives and consumes the
+benefit as the service is performed. Billing reports remain document-date
+net billed revenue, not a separate clinical-earnings ledger.
 
 ### Now
 

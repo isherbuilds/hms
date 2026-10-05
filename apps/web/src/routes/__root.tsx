@@ -2,10 +2,17 @@ import { Toaster } from "@hms/ui/components/sonner";
 import { ThemeProvider } from "next-themes";
 import type { QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from "@tanstack/react-router";
+import {
+  HeadContent,
+  Outlet,
+  Scripts,
+  createRootRouteWithContext,
+  useRouterState,
+} from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { createMiddleware } from "@tanstack/react-start";
 import { evlogErrorHandler } from "evlog/nitro/v3";
+import { useEffect, useRef, useState } from "react";
 
 import { PUBLIC_PATHS } from "@/config/public-paths";
 import { siteConfig } from "@/config/site";
@@ -90,6 +97,26 @@ function SkipLink() {
   );
 }
 
+// Screen readers hear a new page's title; search and filter changes on one page stay quiet,
+// and the first load is left to the browser's own announcement.
+function RouteAnnouncement() {
+  const pathname = useRouterState({ select: (state) => state.resolvedLocation?.pathname });
+  const [title, setTitle] = useState("");
+  const announced = useRef(pathname);
+
+  useEffect(() => {
+    if (pathname === announced.current) return;
+    announced.current = pathname;
+    setTitle(document.title);
+  }, [pathname]);
+
+  return (
+    <p role="status" className="sr-only">
+      {title}
+    </p>
+  );
+}
+
 function RootDocument() {
   return (
     // The theme class is written onto <html> by next-themes before React hydrates, so
@@ -118,6 +145,7 @@ function RootDocument() {
           {/* App chrome belongs to the org shell (`AppShell`); public pages own
               their own layout. */}
           <Outlet />
+          <RouteAnnouncement />
           <Toaster richColors />
         </ThemeProvider>
         {import.meta.env.DEV && (

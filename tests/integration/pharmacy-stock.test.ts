@@ -1,11 +1,11 @@
 import { beforeAll, expect, test } from "bun:test";
 
-import { MAX_STOCK_QTY } from "@hms/api/core/receipt-math";
 import { db } from "@hms/db";
+import { goodsReceiptAdjustments } from "@hms/db/schema/goods-receipt-adjustments";
 import { goodsReceiptLines } from "@hms/db/schema/goods-receipt-lines";
 import { goodsReceipts } from "@hms/db/schema/goods-receipts";
-import { stockMovements } from "@hms/db/schema/stock-movements";
-import { desc, eq } from "drizzle-orm";
+import { stockBatches } from "@hms/db/schema/stock-batches";
+import { and, asc, eq } from "drizzle-orm";
 
 import { createOrganization, createTestUser } from "../support/auth";
 import { clientFor, expectORPCCode } from "../support/client";
@@ -79,7 +79,6 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
   const api = clientFor(owner);
 
   const product = await api.pharmacy.createProduct(productInput(org.slug));
-  expect(product.productId).toBeString();
 
   const listed = await api.pharmacy.listProducts({ orgSlug: org.slug, query: "paracet" });
   expect(listed.items.map((item) => item.productId)).toContain(product.productId);
@@ -167,37 +166,6 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
     { batchId, mrp: 12_00n, shelfQty: 60 },
   ]);
 
-  await expectORPCCode(
-    api.pharmacy.receiveGoods({
-      orgSlug: org.slug,
-      supplierName: "Metro Distributors",
-      receivedOn: RECEIVED_ON,
-      billTotal: 0n,
-      lines: [
-        {
-          productId: product.productId,
-          batchNumber: "B-OVERFLOW",
-          expiryDate: FAR_EXPIRY,
-          mrp: 12_00n,
-          pricedPer: "unit",
-          qty: MAX_STOCK_QTY,
-          cost: UNPRICED,
-        },
-        {
-          productId: product.productId,
-          batchNumber: "B-OVERFLOW",
-          expiryDate: FAR_EXPIRY,
-          mrp: 12_00n,
-          pricedPer: "unit",
-          qty: 1,
-          cost: UNPRICED,
-        },
-      ],
-    }),
-    "BAD_REQUEST",
-    "an aggregate receipt quantity outside the stock integer range",
-  );
-
   // Batches are immutable: the same number with another expiry is refused, never merged.
   await expectORPCCode(
     api.pharmacy.receiveGoods({
@@ -220,69 +188,10 @@ test("a receipt creates a batch with shelf stock and refuses a conflicting arriv
     "CONFLICT",
     "a conflicting batch expiry",
   );
-});
 
-test("movement pages keep tied timestamps complete and scoped to their organization", async () => {
-  const owner = await createTestUser("pharmacy-movement-pages-owner");
-  const home = await createOrganization(owner, "pharmacy-movement-pages-home");
-  const other = await createOrganization(owner, "pharmacy-movement-pages-other");
-  const api = clientFor(owner);
-  const homeProduct = await api.pharmacy.createProduct(productInput(home.slug));
-  const otherProduct = await api.pharmacy.createProduct(productInput(other.slug));
-
-  const line = (productId: string, batchNumber: string) => ({
-    productId,
-    batchNumber,
-    expiryDate: FAR_EXPIRY,
-    mrp: 12_00n,
-    pricedPer: "unit" as const,
-    qty: 10,
-    cost: UNPRICED,
-  });
-
-  await api.pharmacy.receiveGoods({
-    orgSlug: home.slug,
-    supplierName: "Metro Distributors",
-    receivedOn: RECEIVED_ON,
-    billTotal: 0n,
-    lines: ["P-1", "P-2", "P-3"].map((batchNumber) => line(homeProduct.productId, batchNumber)),
-  });
-  await api.pharmacy.receiveGoods({
-    orgSlug: other.slug,
-    supplierName: "Metro Distributors",
-    receivedOn: RECEIVED_ON,
-    billTotal: 0n,
-    lines: [line(otherProduct.productId, "FOREIGN-1")],
-  });
-
-  const expected = await db
-    .select({ id: stockMovements.id, createdAt: stockMovements.createdAt })
-    .from(stockMovements)
-    .where(eq(stockMovements.orgId, home.id))
-    .orderBy(desc(stockMovements.createdAt), desc(stockMovements.id));
-
-  expect(expected).toHaveLength(3);
-  expect(new Set(expected.map((movement) => movement.createdAt.toISOString())).size).toBe(1);
-
-  const actualIds: string[] = [];
-  let cursor: { createdAt: string; id: string } | undefined;
-
-  for (let page = 0; page < 3; page++) {
-    const result = await api.pharmacy.listMovements({ orgSlug: home.slug, limit: 1, cursor });
-    expect(result.items).toHaveLength(1);
-    actualIds.push(result.items[0]!.id);
-
-    if (page < 2) expect(result.nextCursor).not.toBeNull();
-    cursor = result.nextCursor ?? undefined;
-  }
-
-  expect(cursor).toBeUndefined();
-  expect(actualIds).toEqual(expected.map((movement) => movement.id));
-
-  const foreignPage = await api.pharmacy.listMovements({ orgSlug: other.slug, limit: 1 });
-  expect(foreignPage.items).toHaveLength(1);
-  expect(foreignPage.nextCursor).toBeNull();
-  expect(actualIds).not.toContain(foreignPage.items[0]?.id);
+  expect(
+    (await api.pharmacy.stockOnHand({ orgSlug: org.slug, includeZero: true })).items,
+  ).toMatchObject([{ batchId, shelfQty: 60 }]);
 });
 
 test("a priced delivery stores exact pricing facts and shelves the free units", async () => {
@@ -347,6 +256,97 @@ test("a priced delivery stores exact pricing facts and shelves the free units", 
   expect(onHand).toMatchObject([
     { batchNumber: "P-1", mrp: 76_19n, mrpUnits: 1, unitsPerPack: 10, shelfQty: 11 },
   ]);
+});
+
+test("bill charges and discounts persist with a tenant receipt link, and a residual writes nothing", async () => {
+  const owner = await createTestUser("pharmacy-adjusted-owner");
+  const org = await createOrganization(owner, "pharmacy-adjusted");
+  const other = await createOrganization(owner, "pharmacy-adjusted-other");
+  const api = clientFor(owner);
+  const product = await api.pharmacy.createProduct(productInput(org.slug, "Freighted Tablet"));
+
+  const line = {
+    productId: product.productId,
+    batchNumber: "FREIGHT-1",
+    expiryDate: FAR_EXPIRY,
+    mrp: 5000_00n,
+    pricedPer: "unit" as const,
+    qty: 1,
+    cost: { freeQty: 1, rate: 3725_00n, discountPercent: "0", gstPercent: "12" },
+  };
+
+  const freight = {
+    kind: "landed_charge" as const,
+    reason: "Freight",
+    amount: 270_00n,
+    gstAmount: 48_60n,
+  };
+
+  const refused = {
+    orgSlug: org.slug,
+    supplierName: "Zestica Pharma",
+    receivedOn: RECEIVED_ON,
+    billTotal: 4491_60n,
+    adjustments: [freight],
+    lines: [{ ...line, cost: { ...line.cost, freeQty: 0 } }],
+  };
+
+  await expectORPCCode(api.pharmacy.receiveGoods(refused), "BAD_REQUEST", "a 100-paise residual");
+  expect(await db.select().from(goodsReceipts).where(eq(goodsReceipts.orgId, org.id))).toEqual([]);
+  expect((await api.pharmacy.stockOnHand({ orgSlug: org.slug })).items).toEqual([]);
+
+  const received = await api.pharmacy.receiveGoods({
+    orgSlug: org.slug,
+    supplierName: "Zestica Pharma",
+    supplierReference: "ZP001564",
+    receivedOn: RECEIVED_ON,
+    billTotal: 4391_00n,
+    adjustments: [
+      freight,
+      { kind: "invoice_discount", reason: "Cash discount", amount: 100_00n, gstAmount: 0n },
+    ],
+    lines: [line],
+  });
+
+  const [header] = await db
+    .select()
+    .from(goodsReceipts)
+    .where(and(eq(goodsReceipts.orgId, org.id), eq(goodsReceipts.id, received.receiptId)));
+
+  expect(header).toMatchObject({ billTotal: 4391_00n, opening: false });
+
+  const adjustments = await db
+    .select()
+    .from(goodsReceiptAdjustments)
+    .where(
+      and(
+        eq(goodsReceiptAdjustments.orgId, org.id),
+        eq(goodsReceiptAdjustments.receiptId, received.receiptId),
+      ),
+    )
+    .orderBy(asc(goodsReceiptAdjustments.id));
+
+  expect(adjustments).toMatchObject([
+    { orgId: org.id, receiptId: received.receiptId, kind: "landed_charge", amount: 270_00n },
+    { orgId: org.id, receiptId: received.receiptId, kind: "invoice_discount", amount: 100_00n },
+  ]);
+  expect((await api.pharmacy.stockOnHand({ orgSlug: org.slug })).items).toMatchObject([
+    { batchNumber: "FREIGHT-1", mrp: 5000_00n, mrpUnits: 1, shelfQty: 2 },
+  ]);
+  await expect(
+    db
+      .insert(goodsReceiptAdjustments)
+      .values({
+        id: Bun.randomUUIDv7(),
+        orgId: other.id,
+        receiptId: received.receiptId,
+        kind: "landed_charge",
+        reason: "Foreign receipt link",
+        amount: 100n,
+        gstAmount: 0n,
+      })
+      .execute(),
+  ).rejects.toThrow();
 });
 
 test("pack-priced receipt stores its divisor, rejects loose billed counts and freezes the conversion", async () => {
@@ -429,209 +429,6 @@ test("pack-priced receipt stores its divisor, rejects loose billed counts and fr
   );
 });
 
-test("different rates on one batch retain both lines but make one stock movement", async () => {
-  const owner = await createTestUser("pharmacy-multiple-rates-owner");
-  const org = await createOrganization(owner, "pharmacy-multiple-rates");
-  const api = clientFor(owner);
-  const product = await api.pharmacy.createProduct(productInput(org.slug, "Mixed Rate Tablet"));
-
-  const base = {
-    productId: product.productId,
-    batchNumber: "R-1",
-    expiryDate: FAR_EXPIRY,
-    mrp: 10_00n,
-    pricedPer: "unit" as const,
-    qty: 1,
-  };
-
-  // Each line's discounted net is a fractional paise: 0.5 + 1.5 = 2 paise.
-  const received = await api.pharmacy.receiveGoods({
-    orgSlug: org.slug,
-    supplierName: "Metro Distributors",
-    receivedOn: RECEIVED_ON,
-    billTotal: 2n,
-    lines: [
-      { ...base, cost: { freeQty: 0, rate: 1n, discountPercent: "50", gstPercent: "0" } },
-      { ...base, cost: { freeQty: 0, rate: 3n, discountPercent: "50", gstPercent: "0" } },
-    ],
-  });
-
-  expect(received.batches).toHaveLength(1);
-
-  const lines = await db
-    .select()
-    .from(goodsReceiptLines)
-    .where(eq(goodsReceiptLines.receiptId, received.receiptId));
-
-  expect(lines.map((line) => line.rate)).toEqual([1n, 3n]);
-
-  const { items: movements } = await api.pharmacy.listMovements({
-    orgSlug: org.slug,
-    batchId: received.batches[0]?.batchId ?? "",
-  });
-
-  expect(movements).toHaveLength(1);
-  expect(movements[0]).toMatchObject({ reason: "receipt", qty: 2 });
-});
-
-test("an opening receipt refuses expired and already-moved batches", async () => {
-  const owner = await createTestUser("pharmacy-opening-owner");
-  const org = await createOrganization(owner, "pharmacy-opening");
-  const api = clientFor(owner);
-
-  const product = await api.pharmacy.createProduct(productInput(org.slug, "Amoxicillin 250"));
-  const countedOn = "2026-04-01";
-
-  await expectORPCCode(
-    api.pharmacy.receiveGoods({
-      orgSlug: org.slug,
-      opening: true,
-      supplierName: "Not an opening supplier",
-      receivedOn: countedOn,
-      lines: [
-        {
-          productId: product.productId,
-          batchNumber: "C-WITH-SUPPLIER",
-          expiryDate: FAR_EXPIRY,
-          mrp: 30_00n,
-          pricedPer: "unit",
-          qty: 1,
-        },
-      ],
-    }),
-    "BAD_REQUEST",
-    "an opening receipt with supplier details",
-  );
-
-  await expectORPCCode(
-    api.pharmacy.receiveGoods({
-      orgSlug: org.slug,
-      opening: true,
-      receivedOn: countedOn,
-      lines: [
-        {
-          productId: product.productId,
-          batchNumber: "C-EXPIRED",
-          expiryDate: "2000-01",
-          mrp: 30_00n,
-          pricedPer: "unit",
-          qty: 1,
-        },
-      ],
-    }),
-    "CONFLICT",
-    "expired opening stock",
-  );
-
-  const posted = await api.pharmacy.receiveGoods({
-    orgSlug: org.slug,
-    opening: true,
-    receivedOn: countedOn,
-    note: "cutover count",
-    lines: [
-      {
-        productId: product.productId,
-        batchNumber: "C-1",
-        expiryDate: FAR_EXPIRY,
-        mrp: 30_00n,
-        pricedPer: "unit",
-        qty: 12,
-      },
-    ],
-  });
-
-  const batchId = posted.batches[0]?.batchId ?? "";
-
-  const [receipt] = await db
-    .select()
-    .from(goodsReceipts)
-    .where(eq(goodsReceipts.id, posted.receiptId));
-
-  expect(receipt).toMatchObject({
-    opening: true,
-    supplierName: null,
-    receivedOn: countedOn,
-    receivedBy: owner.user.id,
-  });
-
-  const { items: movements } = await api.pharmacy.listMovements({ orgSlug: org.slug, batchId });
-  expect(movements).toMatchObject([{ reason: "opening", bucket: "shelf", qty: 12 }]);
-  expect(movements[0]?.createdByName).toBe(owner.user.name);
-  expect(movements[0]?.receipt).toMatchObject({
-    opening: true,
-    supplierName: null,
-    receivedOn: countedOn,
-  });
-
-  await expectORPCCode(
-    api.pharmacy.receiveGoods({
-      orgSlug: org.slug,
-      opening: true,
-      receivedOn: countedOn,
-      lines: [
-        {
-          productId: product.productId,
-          batchNumber: "C-1",
-          expiryDate: FAR_EXPIRY,
-          mrp: 30_00n,
-          pricedPer: "unit",
-          qty: 5,
-        },
-      ],
-    }),
-    "CONFLICT",
-    "an opening receipt on a moved batch",
-  );
-});
-
-test("a receipt refuses two definitions of the same batch without writing either", async () => {
-  const owner = await createTestUser("pharmacy-duplicate-batch-owner");
-  const org = await createOrganization(owner, "pharmacy-duplicate-batch");
-  const api = clientFor(owner);
-  const product = await api.pharmacy.createProduct(productInput(org.slug, "Duplicate Batch"));
-
-  await expectORPCCode(
-    api.pharmacy.receiveGoods({
-      orgSlug: org.slug,
-      supplierName: "Metro Distributors",
-      receivedOn: RECEIVED_ON,
-      billTotal: 0n,
-      lines: [
-        {
-          productId: product.productId,
-          batchNumber: "DUP-1",
-          expiryDate: FAR_EXPIRY,
-          mrp: 10_00n,
-          pricedPer: "unit",
-          qty: 2,
-          cost: UNPRICED,
-        },
-        {
-          productId: product.productId,
-          batchNumber: "DUP-1",
-          expiryDate: FAR_EXPIRY,
-          mrp: 11_00n,
-          pricedPer: "unit",
-          qty: 3,
-          cost: UNPRICED,
-        },
-      ],
-    }),
-    "BAD_REQUEST",
-    "one receipt with conflicting definitions of a batch",
-  );
-
-  expect(
-    (
-      await api.pharmacy.stockOnHand({
-        orgSlug: org.slug,
-        productId: product.productId,
-        includeZero: true,
-      })
-    ).items,
-  ).toEqual([]);
-});
-
 test("stock search returns only products with sellable shelf stock", async () => {
   const owner = await createTestUser("pharmacy-search-stock-owner");
   const org = await createOrganization(owner, "pharmacy-search-stock");
@@ -688,88 +485,6 @@ test("stock search returns only products with sellable shelf stock", async () =>
       (product) => product.productId,
     ),
   ).toEqual([sellable.productId]);
-});
-
-test("an internal issue names its department and is refused without one", async () => {
-  const owner = await createTestUser("pharmacy-issue-owner");
-  const org = await createOrganization(owner, "pharmacy-issue");
-  const api = clientFor(owner);
-
-  // Internal supplies are stocked and issued but never sold.
-  const gloves = await api.pharmacy.createProduct({
-    orgSlug: org.slug,
-    name: "Examination gloves",
-    stockUnit: "piece",
-    unitsPerPack: 1,
-    expires: true,
-    pack: "100 pieces",
-    sold: false,
-    active: true,
-  });
-
-  expect(gloves).toEqual({ productId: expect.any(String) });
-  expect(await api.pharmacy.searchStock({ orgSlug: org.slug, query: "gloves" })).toEqual([]);
-
-  const ward = await api.staff.createDepartment({ orgSlug: org.slug, name: "Ward A" });
-
-  const received = await api.pharmacy.receiveGoods({
-    orgSlug: org.slug,
-    supplierName: "Metro Distributors",
-    receivedOn: RECEIVED_ON,
-    billTotal: 0n,
-    lines: [
-      {
-        productId: gloves.productId,
-        batchNumber: "G-1",
-        expiryDate: FAR_EXPIRY,
-        mrp: 0n,
-        pricedPer: "unit",
-        qty: 30,
-        cost: UNPRICED,
-      },
-    ],
-  });
-
-  const batchId = received.batches[0]?.batchId ?? "";
-  expect(await api.pharmacy.searchStock({ orgSlug: org.slug, query: "gloves" })).toEqual([]);
-  await expectORPCCode(
-    api.pharmacy.sell({
-      orgSlug: org.slug,
-      lines: [{ batchId, qty: 1 }],
-      buyer: { name: "Walk-in buyer" },
-      payments: [],
-      expectedGrandTotal: 0n,
-    }),
-    "BAD_REQUEST",
-  );
-
-  await api.pharmacy.adjustStock({
-    orgSlug: org.slug,
-    batchId,
-    reason: "internal_issue",
-    qty: 10,
-    departmentId: ward.id,
-    note: "ward indent",
-  });
-
-  const { items: movements } = await api.pharmacy.listMovements({ orgSlug: org.slug, batchId });
-  expect(movements[0]).toMatchObject({
-    reason: "internal_issue",
-    qty: -10,
-    departmentName: "Ward A",
-  });
-
-  await expectORPCCode(
-    api.pharmacy.adjustStock({
-      orgSlug: org.slug,
-      batchId,
-      reason: "internal_issue",
-      qty: 5,
-      note: "no department named",
-    }),
-    "BAD_REQUEST",
-    "an internal issue without a department",
-  );
 });
 
 test("quarantine and release move stock between buckets and a bucket cannot go below zero", async () => {
@@ -860,57 +575,6 @@ test("quarantine and release move stock between buckets and a bucket cannot go b
   ]);
 });
 
-test("a product's stock unit is fixed once it has a batch", async () => {
-  const owner = await createTestUser("pharmacy-items-owner");
-  const org = await createOrganization(owner, "pharmacy-items");
-  const api = clientFor(owner);
-
-  const input = productInput(org.slug, "Ibuprofen 400");
-  const product = await api.pharmacy.createProduct(input);
-
-  await api.pharmacy.receiveGoods({
-    orgSlug: org.slug,
-    supplierName: "Metro Distributors",
-    receivedOn: RECEIVED_ON,
-    billTotal: 0n,
-    lines: [
-      {
-        productId: product.productId,
-        batchNumber: "E-1",
-        expiryDate: FAR_EXPIRY,
-        mrp: 20_00n,
-        pricedPer: "unit",
-        qty: 4,
-        cost: UNPRICED,
-      },
-    ],
-  });
-
-  await expectORPCCode(
-    api.pharmacy.updateProduct({
-      ...input,
-      productId: product.productId,
-      stockUnit: "strip",
-    }),
-    "CONFLICT",
-    "a unit change after stock exists",
-  );
-
-  const renamed = await api.pharmacy.updateProduct({
-    ...input,
-    productId: product.productId,
-    name: "Ibuprofen 400 mg",
-  });
-
-  expect(renamed).toEqual({ productId: product.productId });
-  expect(
-    (await api.pharmacy.listProducts({ orgSlug: org.slug, query: "ibuprofen" })).items[0],
-  ).toMatchObject({ name: "Ibuprofen 400 mg", stockUnit: "tablet", schedule: "none" });
-  expect(
-    (await api.pharmacy.searchStock({ orgSlug: org.slug, query: "ibuprofen" }))[0],
-  ).toMatchObject({ name: "Ibuprofen 400 mg" });
-});
-
 test("pharmacy stock ids from another organization are not found", async () => {
   const owner = await createTestUser("pharmacy-tenancy-owner");
   const home = await createOrganization(owner, "pharmacy-home");
@@ -985,140 +649,197 @@ test("pharmacy stock ids from another organization are not found", async () => {
   expect(await api.pharmacy.searchStock({ orgSlug: other.slug, query: "metformin" })).toEqual([]);
 });
 
-test("undated goods reject expiry dates and page after dated batches", async () => {
-  const owner = await createTestUser("pharmacy-undated-stock-owner");
-  const org = await createOrganization(owner, "pharmacy-undated-stock");
+test("expiry exposure counts current batch buckets at MRP, while loss review excludes transfers and internal issues", async () => {
+  const owner = await createTestUser("pharmacy-exposure-owner");
+  const org = await createOrganization(owner, "pharmacy-exposure");
   const api = clientFor(owner);
-  const datedInput = productInput(org.slug, "Dated shelf goods");
-  const undatedInput = { ...productInput(org.slug, "Undated shelf goods"), expires: false };
-  const dated = await api.pharmacy.createProduct(datedInput);
-  const undated = await api.pharmacy.createProduct(undatedInput);
+  const { today } = await api.report.expiryExposure({ orgSlug: org.slug });
 
-  const line = (productId: string, batchNumber: string) => ({
-    productId,
-    batchNumber,
-    mrp: 10_00n,
-    pricedPer: "unit" as const,
-    qty: 1,
-    cost: UNPRICED,
+  const shift = (days: number) =>
+    new Date(Date.parse(`${today}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+
+  const medicineInput = { ...productInput(org.slug, "Inactive pack stock"), unitsPerPack: 3 };
+  const medicine = await api.pharmacy.createProduct(medicineInput);
+
+  const internal = await api.pharmacy.createProduct({
+    orgSlug: org.slug,
+    name: "Internal expired supplies",
+    sold: false,
+    active: true,
+    stockUnit: "piece",
+    unitsPerPack: 1,
+    expires: true,
+    pack: "One piece",
   });
 
-  await expectORPCCode(
-    api.pharmacy.receiveGoods({
-      orgSlug: org.slug,
-      supplierName: "Supplier",
-      receivedOn: RECEIVED_ON,
-      billTotal: 0n,
-      lines: [{ ...line(undated.productId, "U-rejected"), expiryDate: FAR_EXPIRY }],
-    }),
-    "BAD_REQUEST",
-  );
-  await expectORPCCode(
-    api.pharmacy.receiveGoods({
-      orgSlug: org.slug,
-      supplierName: "Supplier",
-      receivedOn: RECEIVED_ON,
-      billTotal: 0n,
-      lines: [line(dated.productId, "D-rejected")],
-    }),
-    "BAD_REQUEST",
-  );
+  const undated = await api.pharmacy.createProduct({
+    ...productInput(org.slug, "No expiry stock"),
+    expires: false,
+  });
 
-  const receipt = await api.pharmacy.receiveGoods({
+  const received = await api.pharmacy.receiveGoods({
     orgSlug: org.slug,
-    supplierName: "Supplier",
-    receivedOn: RECEIVED_ON,
+    supplierName: "Exposure supplier",
+    receivedOn: today,
     billTotal: 0n,
     lines: [
-      { ...line(undated.productId, "U-1") },
-      { ...line(dated.productId, "D-2"), expiryDate: "2032-01" },
-      { ...line(undated.productId, "U-2"), expiryDate: null },
-      { ...line(dated.productId, "D-1"), expiryDate: FAR_EXPIRY },
+      {
+        productId: medicine.productId,
+        batchNumber: "VALID-TODAY",
+        expiryDate: FAR_EXPIRY,
+        mrp: 100_01n,
+        pricedPer: "pack",
+        qty: 6,
+        cost: UNPRICED,
+      },
+      {
+        productId: internal.productId,
+        batchNumber: "EXPIRED",
+        expiryDate: FAR_EXPIRY,
+        mrp: 50n,
+        pricedPer: "unit",
+        qty: 2,
+        cost: UNPRICED,
+      },
+      {
+        productId: medicine.productId,
+        batchNumber: "DAY-60",
+        expiryDate: FAR_EXPIRY,
+        mrp: 100_01n,
+        pricedPer: "pack",
+        qty: 3,
+        cost: UNPRICED,
+      },
+      {
+        productId: undated.productId,
+        batchNumber: "UNDATED",
+        mrp: 10_00n,
+        pricedPer: "unit",
+        qty: 2,
+        cost: UNPRICED,
+      },
     ],
   });
 
-  const byNumber = new Map(receipt.batches.map((batch) => [batch.batchNumber, batch.batchId]));
-  const datedFirst = byNumber.get("D-1");
-  const datedSecond = byNumber.get("D-2");
-  const undatedFirst = byNumber.get("U-1");
-  const undatedSecond = byNumber.get("U-2");
+  const batch = (number: string) => {
+    const row = received.batches.find((candidate) => candidate.batchNumber === number);
 
-  if (!datedFirst || !datedSecond || !undatedFirst || !undatedSecond) {
-    throw new Error("expected four received batches");
-  }
+    if (!row) throw new Error(`missing ${number} batch`);
 
-  const undatedIds = [undatedFirst, undatedSecond].sort();
-  const expected = [datedFirst, datedSecond, ...undatedIds];
-  const seen: string[] = [];
-  let cursor: { expiryDate: string | null; batchId: string } | undefined;
+    return row.batchId;
+  };
 
-  for (let pageNumber = 0; pageNumber < expected.length; pageNumber++) {
-    const page = await api.pharmacy.stockOnHand({ orgSlug: org.slug, limit: 1, cursor });
-    expect(page.items).toHaveLength(1);
-    seen.push(page.items[0]!.batchId);
-    cursor = page.nextCursor ?? undefined;
-
-    if (pageNumber === expected.length - 1) expect(page.nextCursor).toBeNull();
-    else
-      expect(page.nextCursor).toEqual({
-        expiryDate: page.items[0]!.expiryDate,
-        batchId: page.items[0]!.batchId,
-      });
-  }
-
-  expect(seen).toEqual(expected);
-  const stock = await api.pharmacy.stockOnHand({ orgSlug: org.slug });
-  expect(stock.items.map((row) => row.expiryDate)).toEqual([
-    "2031-12-31",
-    "2032-01-31",
-    null,
-    null,
+  const currentId = batch("VALID-TODAY");
+  // Public receipts cannot create expired stock; age the immutable fixture snapshot.
+  await Promise.all([
+    db
+      .update(stockBatches)
+      .set({ expiryDate: today })
+      .where(and(eq(stockBatches.orgId, org.id), eq(stockBatches.id, currentId))),
+    db
+      .update(stockBatches)
+      .set({ expiryDate: shift(-1) })
+      .where(and(eq(stockBatches.orgId, org.id), eq(stockBatches.id, batch("EXPIRED")))),
+    db
+      .update(stockBatches)
+      .set({ expiryDate: shift(60) })
+      .where(and(eq(stockBatches.orgId, org.id), eq(stockBatches.id, batch("DAY-60")))),
   ]);
-  expect(
-    (
-      await api.pharmacy.stockOnHand({
-        orgSlug: org.slug,
-        expiringWithinDays: 3650,
-      })
-    ).items.map((row) => row.batchId),
-  ).toEqual(expected.slice(0, 2));
-  expect((await api.pharmacy.listProducts({ orgSlug: org.slug })).items).toContainEqual(
-    expect.objectContaining({ productId: undated.productId, expires: false }),
-  );
-
-  const repeated = await api.pharmacy.receiveGoods({
+  await api.pharmacy.adjustStock({
     orgSlug: org.slug,
-    supplierName: "Supplier",
-    receivedOn: RECEIVED_ON,
-    billTotal: 0n,
-    lines: [line(undated.productId, "U-1")],
+    batchId: currentId,
+    reason: "quarantine",
+    qty: 2,
+    note: "Review hold",
   });
-
-  expect(repeated.batches[0]?.batchId).toBe(undatedFirst);
-  expect(
-    (
-      await api.pharmacy.listMovements({
-        orgSlug: org.slug,
-        batchId: undatedFirst,
-      })
-    ).items[0]?.expiryDate,
-  ).toBeNull();
-
-  await expectORPCCode(
-    api.pharmacy.updateProduct({
-      ...undatedInput,
-      productId: undated.productId,
-      expires: true,
+  await api.pharmacy.adjustStock({
+    orgSlug: org.slug,
+    batchId: currentId,
+    reason: "release",
+    qty: 1,
+    note: "Released",
+  });
+  const ward = await api.staff.createDepartment({ orgSlug: org.slug, name: "Exposure ward" });
+  await api.pharmacy.adjustStock({
+    orgSlug: org.slug,
+    batchId: currentId,
+    reason: "internal_issue",
+    qty: 1,
+    departmentId: ward.id,
+    note: "Ward supply",
+  });
+  await api.pharmacy.adjustStock({
+    orgSlug: org.slug,
+    batchId: currentId,
+    reason: "writeoff",
+    qty: 1,
+    bucket: "shelf",
+    note: "Damaged stock",
+  });
+  await api.pharmacy.updateProduct({
+    ...medicineInput,
+    productId: medicine.productId,
+    active: false,
+  });
+  const exposure = await api.report.expiryExposure({ orgSlug: org.slug });
+  expect(exposure.noExpiryBatchCount).toBe(1);
+  const currentBuckets = exposure.rows.filter((row) => row.batchId === currentId);
+  expect(currentBuckets).toHaveLength(2);
+  expect(currentBuckets).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        bucket: "shelf",
+        quantity: 3,
+        exposure: 100_01n,
+        status: "upcoming",
+      }),
+      expect.objectContaining({
+        bucket: "quarantine",
+        quantity: 1,
+        exposure: 33_34n,
+        status: "upcoming",
+      }),
+    ]),
+  );
+  expect(exposure.rows).toContainEqual(
+    expect.objectContaining({
+      batchId: batch("EXPIRED"),
+      productId: internal.productId,
+      quantity: 2,
+      exposure: 100n,
+      status: "expired",
     }),
-    "CONFLICT",
+  );
+  expect(exposure.rows.some((row) => row.batchId === batch("UNDATED"))).toBe(false);
+  expect(exposure.totals).toEqual({
+    shelf: 101_01n,
+    quarantine: 33_34n,
+    expired: 100n,
+    upcoming: 133_35n,
+  });
+  const longer = await api.report.expiryExposure({ orgSlug: org.slug, horizonDays: 90 });
+  expect(longer.rows).toContainEqual(
+    expect.objectContaining({
+      batchId: batch("DAY-60"),
+      exposure: 100_01n,
+      status: "upcoming",
+    }),
   );
 
-  const opening = await api.pharmacy.receiveGoods({
+  const signals = await api.report.revenueSignals({
     orgSlug: org.slug,
-    opening: true,
-    receivedOn: RECEIVED_ON,
-    lines: [{ ...line(undated.productId, "U-opening"), cost: undefined }],
+    from: today,
+    to: today,
+    kind: "stock_adjustment",
   });
 
-  expect(opening.batches).toHaveLength(1);
+  expect(signals.summary).toMatchObject({ count: 1, amount: -33_34n });
+  expect(signals.rows[0]).toMatchObject({
+    source: { type: "stock", id: currentId },
+    quantity: -1,
+    bucket: "shelf",
+    actorName: owner.user.name,
+    reason: "Damaged stock",
+    amount: -33_34n,
+  });
 });

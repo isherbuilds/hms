@@ -76,12 +76,12 @@ condition of signing, and the owner runs the hospital. The roadmap gate in
   against the original sale line. Bahmni delegates all of it to Odoo, which
   behaves the same way.
 
-## Stage 0: pilot workflow sign-off
+## Counter operating rules
 
-The owner instructed implementation to start before the walkthrough. The
-answers below are **assumed defaults**; the pharmacy owner confirms or corrects
-them at the counter, and a correction that changes behaviour is a change to
-this spec. Nothing in the code depends on an answer beyond what is written.
+The six answers are accepted rules, not assumed defaults awaiting consultation.
+[D061](../decisions.md#d061--pharmacy-counter-operating-rules-and-truthful-return-scope)
+settles the remaining answers on 2026-10-04. A named pilot pharmacist and actual
+workflow acceptance remain operational evidence, not an unresolved design choice.
 
 1. **Sale unit.** Corrected by the owner on 2026-09-29: loose tablets sell
    more often than whole strips. A Product is counted in its smallest
@@ -89,24 +89,35 @@ this spec. Nothing in the code depends on an answer beyond what is written.
    (1 means no conversion). `pack` is printed text, not a conversion factor.
    [Pharmacy packs and loose units](./pharmacy-packs-and-loose-units.md)
    owns the conversion and printed-price contract.
-2. **Shared stock.** Assumed: the counter stock also supplies wards and free
-   hospital use occasionally. Those issues are recorded through
-   `pharmacy.adjustStock` with reason `internal_issue`; the IPD spec later
-   replaces that with a typed issue.
+2. **Shared stock.** The counter stock supplies departments and free hospital
+   consumption through `pharmacy.adjustStock`, reason `internal_issue`.
+   Patient-specific ward dispensing uses typed Admission issues when IPD ships;
+   unrelated department consumption keeps the existing issue (D056).
+   [ERPNext material issue](https://docs.frappe.io/erpnext/stock-entry) records
+   outgoing consumption separately from sales.
 3. **Returns.** Confirmed by the owner on 2026-09-29: returns are accepted at
    the counter against the invoice, loose tablets included; goods go to
    quarantine and a supervisor releases or writes them off.
-4. **Receiving.** Assumed: the pharmacist receives deliveries with the
-   supplier's invoice; HMS records supplier name, bill number, bill total, and
-   each line as the bill prints it: batch, billed and free quantity, rate,
-   discount, GST and MRP (revised 2026-09-23 on the owner's instruction, after
-   comparing ERPNext, OpenMRS and Indian pharmacy software).
-5. **Prescriptions.** Assumed: Schedule H1 is stocked and sold with prescriber
-   and patient name recorded; Schedule X is not stocked and is refused.
-6. **Legal entity and paper.** Assumed: the pharmacy invoices under the
-   hospital's GST registration with its own printed series, and hospital
-   Advance Receipts may be spent at the counter when the sale names the
-   Patient.
+4. **Receiving.** Deliveries are received against the supplier's invoice,
+   retaining supplier name, bill number/total and printed batch, billed/free
+   quantity, rate, discount, GST and MRP. Preserve the original chronological
+   purchase bill with supplier address/licence and manufacturer particulars
+   required by Rule 65(4)(4); HMS is not a replacement for missing bill evidence.
+   [ERPNext purchase receipt](https://docs.frappe.io/erpnext/purchase-receipt)
+   likewise records supplier quantity, stock-unit conversion, batch and tax.
+5. **Prescriptions.** H/H1 supply requires a valid prescription and registered
+   pharmacist supervision. H1 names/reference captured in HMS supplement, not
+   replace, a contemporaneous separate paper register: prescriber name/address,
+   patient name, drug and quantity, retained three years. Schedule X is not
+   received for retail sale or sold here. Loose supply needs the supervised
+   labelled wrapper under Rule 65(19).
+   Sources: [official Drugs Rules](https://cdsco.gov.in/opencms/opencms/en/Acts-and-rules/Drugs-Rules/)
+   and [Rule 65 searchable text](https://indiankanoon.org/doc/147665881/).
+6. **Legal entity and paper.** The Organization's actual legal entity and GST
+   registration, if registered, issue the pharmacy's separate series under
+   D052. There is no assumed GSTIN or separate pharmacy entity. Available
+   patient-linked Advance Receipt credit may pay a sale naming that Patient;
+   an anonymous buyer cannot spend another patient's balance.
 
 ## User Stories / Scenarios
 
@@ -282,9 +293,13 @@ that tolerates a pharmacy invoice.
 - **Generic credit notes are refused on pharmacy invoices.** `issueCreditNote`
   checks `stream = "opd"` and throws `CONFLICT`. A pharmacy invoice is
   corrected only by a return: every line returns goods (`qty ≥ 1`) and its
-  money is derived from the invoice line. A money-only correction has no
-  defined amount source and waits for the pharmacy owner's Stage 0 answer (open
-  question 2).
+  money is derived from the invoice line. Value-only pharmacy correction is
+  outside this counter's supported workflow (D061); never fabricate returned
+  goods to achieve it. This is product scope, not a statutory prohibition:
+  [CGST §34](https://taxinformation.cbic.gov.in/content/html/tax_repository/gst/acts/2017_CGST_act/active/chapter7/section34_v1.00.html)
+  permits excessive-value/tax correction and
+  [ERPNext](https://docs.frappe.io/erpnext/sales-return) supports a Credit Note
+  without stock movement. HMS explicitly does not provide that separate path.
 
 ### Tax-inclusive arithmetic
 
@@ -407,12 +422,20 @@ ASC)`, then reads the bucket sums in a new statement, and refuses
   CHECKs from 0 through 99.99. `receiptLineCost` in
   `packages/api/src/core/receipt-math.ts` derives gross, discount, taxable,
   GST and net exactly in bigint units of 10⁻⁸ paisa; it never rounds a line
-  or unit. GST is part of cost (owner decision, 2026-09-23); retaining exact
-  receipt facts permits later valuation without a rounded unit cost and
-  reassessment if the accountant confirms input tax credit. Only the sum of
-  line nets rounds to paise, and the printed bill total must be within
-  ±₹0.99 of that rounded sum. Repeated lines for one batch remain separate
-  priced lines, while stock movements aggregate by batch.
+  or unit. Purchase GST stays separately identifiable: eligible recoverable ITC
+  is not inventory cost; nonrecoverable tax is cost under
+  [AS 2 para 7](https://indasaccess.icai.org/Volume-III/AS/asb.html?a=105).
+  [CGST s17](https://cbic-gst.gov.in/pdf/CGST-Act-2017-amended-01012022.pdf)
+  restricts credit for exempt use and requires taxable/exempt-use allocation;
+  hospital registration does not make all healthcare purchases creditable.
+  Retaining exact receipt facts permits later valuation without a rounded unit
+  cost. Only the stock-line net sum rounds to paise. The bill total must equal
+  that sum plus charges less discounts (each with its GST) within ±₹0.99.
+  Repeated lines for one batch remain separate priced lines, while stock
+  movements aggregate by batch.
+  [D060's receiving contract](../research/supplier-bill-reconciliation.md#implemented-receiving-contract)
+  records freight and bill discounts; no mismatch is auto-plugged or disguised
+  as a stock Product.
   Opening stock is the same document with `opening` set: it names no supplier
   and posts `opening` movements, so a batch that already has a movement is
   refused (`CONFLICT`). No receipt takes a new attachment (D045). Opening counts
@@ -420,6 +443,13 @@ ASC)`, then reads the bucket sums in a new statement, and refuses
   through the separate quarantine/write-off process, not the opening count.
   Undated batches are never expired. A later count is a
   `count_correction` adjustment.
+- **`goods_receipt_adjustments`**: immutable `id` (UUIDv7, so rows sort in
+  entry order), `orgId`, `receiptId`, `kind`, `reason`, `amount` and
+  `gstAmount` in paise, both positive (CHECK `amount > 0`, `gstAmount ≥ 0`).
+  The kind sets the sign: `landed_charge` (freight, packing) adds and
+  `invoice_discount` (a bill-level discount not already in the lines)
+  subtracts. A composite FK `(orgId, receiptId)` keeps the tenant link.
+  Openings refuse adjustments.
 - **`pharmacy_sales`**: `id`, `orgId`, `patientId` (nullable, composite FK),
   `opdAppointmentId` (nullable, composite FK), `buyerName`, `buyerPhone`
   (nullable), `forName` (who the medicine is for; the buyer when omitted),
@@ -502,7 +532,7 @@ pair). Audited.
 
 **`pharmacy.receiveGoods`** (`pharmacy:receive`) takes `opening` (default false),
 `supplierName?`, `supplierReference?`, `receivedOn` (`YYYY-MM-DD`), `note?`,
-`billTotal?`, and
+`billTotal?`, `adjustments` (default `[]`, rows as defined above), and
 `lines: [{ productId, batchNumber, expiryDate?, qty, mrp, pricedPer,
 cost?: { freeQty, rate, discountPercent, gstPercent, hsnCode? } }]`
 (min 1, positive qty). `qty` and `freeQty` count stock units. `pricedPer` is
@@ -512,13 +542,17 @@ unit. Billed `qty` must divide by that divisor (`BAD_REQUEST`); an opening
 count has no cost and may contain loose units. Quantities and aggregated
 movements stay within the PostgreSQL integer range; free qty need not be ≤
 billed qty. A non-opening receipt names its supplier, prices each line, and
-reconciles the rounded sum of exact line nets to the bill within ±₹0.99.
+reconciles stock net plus charges less discounts to the printed bill total
+within ±₹0.99; a larger difference returns `BAD_REQUEST`. Opening counts
+refuse adjustments, pricing and bill total.
 An expiring Product requires `expiryDate`; a non-expiring Product refuses it
-(`BAD_REQUEST` in either case). The command creates the header, priced lines
-and missing batches; an existing batch must match expiry (null-safe) and MRP
+(`BAD_REQUEST` in either case). The command creates the header, its
+adjustments, priced lines and missing batches; an existing
+batch must match expiry (null-safe) and MRP
 by cross-multiplication, or it returns `CONFLICT`. One aggregated `receipt`
 or `opening` movement per batch enters the shelf. Opening refuses dated
-expired or already-moved batches (`CONFLICT`). Receipts carry no file. Audited.
+expired or already-moved batches (`CONFLICT`). Receipts carry no file. No
+valuation, COGS, supplier-payable or ITC ledger is posted.
 
 **`pharmacy.createProduct`** / **`updateProduct`** (`pharmacy:manageItems`)
 take `name`, the product fields including `stockUnit`, `unitsPerPack` (integer
@@ -640,10 +674,14 @@ and period controls on the other lists so the console keeps one filter idiom.
   discount %, GST %, MRP, HSN and line total with derived cost per smallest
   counted unit, shown as an error when it reaches the MRP. An opening count
   asks only the MRP in the chosen price unit and refuses dated expired batches.
-  Picking a product fills GST % and HSN from its counter tax. Line totals and
-  the footer's taxable, GST and lines totals are shown to the paisa; the footer
-  states whether the rounded sum of the lines matches the printed bill total
-  within ±₹0.99.
+  Picking a product fills GST % and HSN from its counter tax. Optional
+  **Bill adjustments** under supplier details offers **Add adjustment** with
+  Kind, Reason, Base amount, GST amount and Reference; signed amounts follow
+  the rules above. It is hidden/empty for openings. Line totals display to
+  paise. The summary separates Stock net, Acquisition base, Acquisition GST,
+  Invoice consideration, Settlement offsets, Residual round-off and Payable;
+  validation matches the server, with no automatic “fix total” action.
+  The line cost/MRP comparison does not allocate freight or change sale prices.
   **Back to stock** returns through the unsaved-delivery
   confirmation. Receipts send quantities in smallest counted units and
   `pricedPer` for the printed rate and MRP. **New product** opens a Sheet
@@ -665,10 +703,17 @@ and period controls on the other lists so the console keeps one filter idiom.
 - **Unit, `tests/unit/access.test.ts`**: pharmacist can sell, return, and
   receive but not adjust or manage items and holds no `billing:write`;
   accountant holds no pharmacy write; the matrix gains the `pharmacist` column.
+- **Unit, `tests/unit/receipt-lines.test.ts`**: freight ₹270/GST ₹48.60
+  reconciles the observed bill, a referenced settlement credit affects payable
+  only, and undeclared charges, a 100-paise residual, invalid signs/current
+  TCS and negative exact pre-round consideration are refused.
 - **Integration, `tests/integration/pharmacy-stock.test.ts`**: a receipt retains
   printed MRP per `mrpUnits`, rate per `packSize` and exact line facts, requires
   billed count divisibility for a priced pack but allows loose opening units,
-  aggregates movements and reconciles only the bill total. An existing batch
+  aggregates movements and reconciles the bill including ordered adjustments
+  and header residual. Adjustment persistence, default zero GST, opening
+  rejection and the tenant-composite receipt FK/scoped reads are covered.
+  An existing batch
   compares MRP by cross-multiplication and expiry null-safely; a different
   expiry or MRP is refused. A non-expiring Product accepts only undated
   batches, which never expire and are excluded from expiring-soon; an expiring
@@ -700,8 +745,8 @@ and period controls on the other lists so the console keeps one filter idiom.
 
 ## Task Plan
 
-- [x] Slice 0: Stage 0 sign-off — replaced by the assumed answers above; the
-      owner confirms at the walkthrough.
+- [x] Slice 0: counter operating rules — accepted under D061; actual pilot
+      operator appointment and signed workflow acceptance remain external gates.
 - [x] Slice 1: Finance foundation (landed 2026-09-18)
   - Acceptance: helpers extracted into `lib/billing-documents.ts` and OPD
     settlement, credit note, and refund rewired to them with every existing
@@ -737,9 +782,18 @@ and period controls on the other lists so the console keeps one filter idiom.
 ## Out of Scope
 
 - Purchase orders, supplier accounts and ledger, supplier GSTIN and the
-  CGST/SGST/IGST split, rejected quantity, freight and other landed costs,
-  stock valuation, inventory asset, and cost of goods sold. The purchasing spec
-  builds on `goods_receipt_lines`. Reports never present pharmacy revenue as profit.
+  CGST/SGST/IGST split, rejected quantity, stock valuation, inventory asset,
+  and cost of goods sold remain outside this counter-sale spec. The purchasing
+  spec builds on `goods_receipt_lines` and `goods_receipt_adjustments`;
+  reports never present pharmacy revenue as profit. **Supplier bill
+  reconciliation is implemented (D060)**, not part of this exclusion: reasoned
+  acquisition base/GST/current-invoice discounts remain separate from settlement
+  offsets and residual round-off. No valuation or allocation is implemented.
+  Future cost allocation includes only affected acquisition amounts and
+  nonrecoverable GST, excludes eligible recoverable GST and settlement offsets,
+  and never changes MRP or sale price. Public invoice samples do not establish
+  prevalence among the pilot's suppliers; 10–20 consecutive actual authorised
+  supplier bills remain a real operational validation gate.
 - Fractional units.
 - Prescription-driven dispensing (a digital prescription that becomes lines).
 - Typed IPD and ward issues against an Admission (the interim path is
@@ -756,29 +810,61 @@ and period controls on the other lists so the console keeps one filter idiom.
   prescription reference; the paper register continues until the print ships.
 - Near-expiry colour at the sale line; the batch list shows expiry.
 - Partial payment for a walk-in without a Patient: refused.
-- Purchase GST as input tax credit. Receipt-line facts retain GST separately
-  through `gstPercent`; derived taxable and GST amounts are exact. A hospital
-  that is GST-registered with taxable pharmacy sales may claim input credit
-  rather than including GST in cost. The purchasing spec must decide that
-  valuation treatment from the retained facts, without persisting unit cost.
+- Purchase-tax credit claims, allocation/reversal and inventory valuation
+  implementation. Exact receipt facts retain taxable value and purchase GST
+  separately; the accounting rule is settled, not an optional CA choice:
+  recoverable eligible ITC is excluded from inventory cost and nonrecoverable
+  tax is included. The purchasing spec must implement eligibility and
+  taxable/exempt-use allocation from those facts without persisting rounded
+  unit cost; exempt healthcare purchases have no blanket ITC entitlement.
 - Stock valuation and opening valuation. The opening receipt retains the count
   date, batch quantities, and receipt facts as evidence for a later dated valuation cutover.
-- Chartered accountant and licensing adviser sign-off on the inclusive-MRP
-  presentation, document label, licence particulars on the print, the
-  GST registration used, and whether purchase GST is claimed as input credit
-  or included in cost derived from exact receipt facts. These sit on the
-  go-live checklist in Operations.
+- Actual issuer-registration/licence evidence and physical-printer validation
+  before production, recorded by the pilot operator without a CA/adviser
+  consultation gate, under [D052](../decisions.md#d052--gst-registration-determines-document-particulars-and-bounded-numbering)
+  and [Operations](../operations.md#pilot-readiness). Registered local counter
+  sales use **Tax Invoice**; no GSTIN uses neutral **Invoice** without GST
+  claims. Validate the real registration and configured Form 20/21 licences,
+  inclusive-GST MRP per discounted line, the taxable/CGST/SGST rate-wise footer,
+  product HSN/rates and purchase ITC eligibility/allocation on representative
+  records and actual A4/80 mm output. These are evidence gates, not open design
+  questions or completed approvals.
+  Sources: [Legal Metrology retail-price definition](https://bombayhighcourt.gov.in/bhc/libweb/legislation/rulec/LegalMetrologyPackagedCommoditiesRules%2C2011.pdf),
+  [Consumer Affairs MRP/GST FAQ](https://consumeraffairs.gov.in/public/upload/files/GST_FAQs_0_1733291540.pdf),
+  [CGST Rule 46](https://cbic-gst.gov.in/pdf/03042020-CGST-Rules-2017-Part-A-Rules.pdf),
+  [CGST s17](https://cbic-gst.gov.in/pdf/CGST-Act-2017-amended-01012022.pdf)
+  and [AS 2 para 7](https://indasaccess.icai.org/Volume-III/AS/asb.html?a=105).
 - A Daily Collections breakdown by stream.
 - A maintained balance column. The sum with a `(orgId, batchId, bucket)` index
   is measured on realistic movement history before any projection is added.
 
 ## Open Questions
 
-1. **Pharmacy owner and the six Stage 0 answers.** Implementation proceeds on
-   the assumed answers; a correction is a spec change. Answers 1 and 3 have the
-   owner's word as of 2026-09-29; answers 2, 4, 5 and 6 remain assumed.
-2. **Money-only pharmacy correction.** No amount source is defined for a
-   credit without goods, and a generic credit note is refused on a pharmacy
-   invoice. If the pharmacy owner needs one, this spec must state the amount,
-   its cap against the line's uncredited gross, and the tax split before the
-   return command takes a money line.
+None. D061 settles shared stock, receiving, prescription records, issuer and
+patient credit, and explicitly excludes value-only correction from the counter
+workflow. Real licences, registered staff, statutory paper records, named pilot
+operator, signed workflow acceptance and one month of physical-count/usage
+evidence remain external go-live gates.
+
+## Local counter verification — 2026-10-04
+
+Owner browser checks in `mercy-general` exercised Products, priced receipt,
+pack conversion, batch search/keyboard pick, Collect, cash sale, printed PDF,
+quantity return with immediate refund, quarantine and supervisor release.
+Desktop/mobile light/dark screenshots covered the Product form, receipt, sale,
+return and stock. Exact stock/SQL and PDF amounts are recorded once in
+[packs evidence](./pharmacy-packs-and-loose-units.md#local-browser-evidence--2026-10-04).
+Inline opening stock/New product and the real Medbuzz keyboard suggestion pick
+also passed; [goods evidence](./pharmacy-goods-and-services.md#local-browser-evidence--2026-10-04)
+records the external request and populated fields.
+
+Shared dev-server half-wired concurrent imports repeatedly caused SSR 500s;
+the orchestrator restarted services/browser. Screenshots later used a tab
+allowlisting only HMS hosts to exclude dev-only React Scan. Browser-script
+interruption prevented reliable three-item timing and BP sale evidence.
+H1 prescriber interaction, internal issue, filter chips/Load more, Dashboard/OPD
+date defaults and Services/OPD quote were not exercised in this pass. They
+remain Verification, not assumed passes. Pilot operator, statutory records,
+signed workflows and one month with physical-count reconciliation/zero
+off-system movements remain external gates. D061 settles the former assumed
+Stage 0 choices without manufacturing those observations.

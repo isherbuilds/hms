@@ -183,6 +183,10 @@ export function buildBalanceSheet({
   };
 }
 
+function byteCompare(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 export function buildGstReport({
   from,
   to,
@@ -196,6 +200,7 @@ export function buildGstReport({
     string,
     {
       docType: "invoice" | "credit_note";
+      id: string;
       number: string;
       date: string;
       patientName: string;
@@ -237,6 +242,7 @@ export function buildGstReport({
 
     const document = documentMap.get(documentKey) ?? {
       docType: bucket.docType,
+      id: bucket.documentId,
       number: bucket.number,
       date: bucket.date,
       patientName: bucket.patientName,
@@ -306,12 +312,16 @@ export function buildGstReport({
   }
 
   const documents = [...documentMap.values()]
+    // Byte order, matching the register's `collate "C"` keyset pages.
     .sort(
       (left, right) =>
-        left.date.localeCompare(right.date) || left.number.localeCompare(right.number),
+        byteCompare(left.date, right.date) ||
+        byteCompare(left.number, right.number) ||
+        byteCompare(left.id, right.id),
     )
     .map((document) => ({
       docType: document.docType,
+      id: document.id,
       number: document.number,
       date: document.date,
       patientName: document.patientName,

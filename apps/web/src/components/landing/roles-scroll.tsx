@@ -5,10 +5,13 @@ import { ROLES, Ticks } from "./roles";
 
 /* Scrolling pins the stage and steps through the roles; the visitor never
    presses anything. Scroll maps to a float `p` (0…N-1), and the stack paints from `p` straight onto the DOM, so scrolling
-   never re-renders React. Reduced motion gets the same cards as a plain
-   stack: no pinning, no listener. */
+   never re-renders React. Narrow, short and reduced-motion viewports get the same cards as a
+   plain, unpinned stack. */
 
 const N = ROLES.length;
+
+/* The `role-stack` variant in index.css; the two queries must match. */
+const STACKED = "(max-width: 1023px), (max-height: 899px), (prefers-reduced-motion: reduce)";
 
 const STEP_SVH = 85;
 
@@ -44,13 +47,15 @@ export function LandingRoles() {
   const [active, setActive] = useState(0);
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const stacked = window.matchMedia(STACKED);
 
     const element = track.current!;
     let frame = 0;
 
     const paint = () => {
       frame = 0;
+
+      if (stacked.matches) return;
       const p = clamp(position(element), 0, N - 1);
       const below = window.innerHeight - stage.current!.getBoundingClientRect().top;
 
@@ -94,15 +99,15 @@ export function LandingRoles() {
       <div
         ref={track}
         style={{ height: `${100 + (N - 1) * STEP_SVH}svh` }}
-        className="motion-reduce:h-auto!"
+        className="role-stack:h-auto!"
       >
         <div
-          className={`${WRAP} sticky top-16 flex h-[calc(100svh-4rem)] flex-col justify-center gap-3 py-6 md:py-10 motion-reduce:static motion-reduce:h-auto motion-reduce:py-20`}
+          className={`${WRAP} sticky top-16 flex h-[calc(100svh-4rem)] flex-col justify-center gap-3 py-6 md:py-10 role-stack:static role-stack:h-auto role-stack:py-20`}
         >
           <h2 className={`${SECTION_HEADING} mb-3 md:mb-6`}>
             Simple enough <Accent>without a manual.</Accent>
           </h2>
-          <nav aria-label="Roles" className="grid grid-cols-5 gap-2 md:gap-3 motion-reduce:hidden">
+          <nav aria-label="Roles" className="grid grid-cols-5 gap-2 md:gap-3 role-stack:hidden">
             {ROLES.map((role, index) => (
               <button
                 key={role.id}
@@ -130,7 +135,7 @@ export function LandingRoles() {
           </nav>
           <div
             ref={stage}
-            className="relative mt-11 max-h-[600px] min-h-0 flex-1 motion-reduce:flex motion-reduce:max-h-none motion-reduce:flex-col motion-reduce:gap-6"
+            className="relative mt-11 max-h-[600px] min-h-0 flex-1 role-stack:flex role-stack:max-h-none role-stack:flex-col role-stack:gap-6"
           >
             {ROLES.map((role, index) => (
               <div
@@ -139,14 +144,14 @@ export function LandingRoles() {
                   cards.current[index] = element;
                 }}
                 style={{ zIndex: index }}
-                className="absolute inset-0 origin-top overflow-hidden rounded-[28px] border border-border bg-background will-change-transform motion-reduce:relative motion-reduce:will-change-auto"
+                className="absolute inset-0 origin-top overflow-hidden rounded-[28px] border border-border bg-background will-change-transform role-stack:relative role-stack:transform-none! role-stack:visible! role-stack:will-change-auto"
               >
                 <p
                   className={`${EYEBROW} absolute inset-x-0 top-0 px-5 pt-2 text-muted-foreground tabular-nums md:px-9`}
                 >
                   {String(index + 1).padStart(2, "0")} · {role.label}
                 </p>
-                <div className="grid h-full grid-cols-1 items-center gap-6 p-5 pt-9 md:p-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-14">
+                <div className="grid h-full grid-cols-1 items-center gap-6 p-5 pt-9 md:p-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-14 role-stack:h-auto">
                   <div className="flex flex-col gap-4 md:gap-5.5">
                     <h3 className="text-2xl font-semibold tracking-[0.01em] md:text-3xl">
                       {role.title}
@@ -163,7 +168,7 @@ export function LandingRoles() {
                     veils.current[index] = element;
                   }}
                   aria-hidden
-                  className="pointer-events-none absolute inset-0 bg-card opacity-0"
+                  className="pointer-events-none absolute inset-0 bg-card opacity-0 role-stack:hidden"
                 />
               </div>
             ))}

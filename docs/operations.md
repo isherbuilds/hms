@@ -6,23 +6,23 @@
 Local development uses the single `packages/env/.env`, copied from the example.
 Real process variables win over the file; no `.env` is copied into an image.
 
-| Variable                                                  | Used by              | Requirement                                                             |
-| --------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------- |
-| `DATABASE_URL`                                            | server + web SSR     | PostgreSQL URL; test harness accepts only a `_test` database            |
-| `BETTER_AUTH_SECRET`                                      | server + web SSR     | At least 32 characters; identical on both runtimes                      |
-| `BETTER_AUTH_URL`                                         | server + web SSR     | Public API/auth origin                                                  |
-| `BETTER_AUTH_COOKIE_DOMAIN`                               | split-host web + API | Shared parent domain so web SSR receives the API cookie                 |
-| `CORS_ORIGIN`                                             | server + web SSR     | Exact web origin; also invitation-link base                             |
-| `FOUNDING_EMAIL`                                          | server + web SSR     | Sole Organization-creation account                                      |
-| `NODE_ENV`                                                | both                 | `development`, `production`, or `test`                                  |
-| `VITE_SERVER_URL`                                         | web build            | Public API origin used by browser RPC                                   |
-| `VITE_WEB_URL`                                            | web build            | Public web origin, bare (no path); canonical, sitemap and OG URLs       |
-| `VITE_WHATSAPP_NUMBER` / `VITE_CONTACT_EMAIL`             | web build            | Public contact channels on `/contact` and the footer; digits-only E.164 |
-| `SEAWEEDFS_ENDPOINT`                                      | server + web SSR     | Publicly reachable S3 gateway for direct browser transfer               |
-| `SEAWEEDFS_BUCKET`                                        | server + web SSR     | Private bucket name                                                     |
-| `SEAWEEDFS_ACCESS_KEY_ID` / `SEAWEEDFS_SECRET_ACCESS_KEY` | server + web SSR     | S3 credentials                                                          |
-| `SEAWEEDFS_MAX_UPLOAD_BYTES`                              | server + web SSR     | Optional positive integer; default 100 MiB                              |
-| `SKIP_ENV_VALIDATION`                                     | build only           | Never set on a running application                                      |
+| Variable                                                  | Used by              | Requirement                                                                                |
+| --------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                                            | server + web SSR     | PostgreSQL URL; test harness accepts only a `_test` database                               |
+| `BETTER_AUTH_SECRET`                                      | server + web SSR     | At least 32 characters; identical on both runtimes                                         |
+| `BETTER_AUTH_URL`                                         | server + web SSR     | Public API/auth origin                                                                     |
+| `BETTER_AUTH_COOKIE_DOMAIN`                               | split-host web + API | Shared parent domain so web SSR receives the API cookie                                    |
+| `CORS_ORIGIN`                                             | server + web SSR     | Exact web origin; also invitation-link base                                                |
+| `FOUNDING_EMAIL`                                          | server + web SSR     | Sole Organization-creation account                                                         |
+| `NODE_ENV`                                                | both                 | `development`, `production`, or `test`                                                     |
+| `VITE_SERVER_URL`                                         | web build            | Public API origin used by browser RPC                                                      |
+| `VITE_WEB_URL`                                            | web build            | Public web origin, bare (no path); canonical, sitemap and OG URLs                          |
+| `VITE_WHATSAPP_NUMBER`                                    | web build            | Optional founder-managed E.164 digits without `+`; absent/empty hides phone/WhatsApp links |
+| `SEAWEEDFS_ENDPOINT`                                      | server + web SSR     | Publicly reachable S3 gateway for direct browser transfer                                  |
+| `SEAWEEDFS_BUCKET`                                        | server + web SSR     | Private bucket name                                                                        |
+| `SEAWEEDFS_ACCESS_KEY_ID` / `SEAWEEDFS_SECRET_ACCESS_KEY` | server + web SSR     | S3 credentials                                                                             |
+| `SEAWEEDFS_MAX_UPLOAD_BYTES`                              | server + web SSR     | Optional positive integer; default 100 MiB                                                 |
+| `SKIP_ENV_VALIDATION`                                     | build only           | Never set on a running application                                                         |
 
 Add a variable to the narrowest Zod schema in `packages/env`, the example file,
 and deployment configuration. Optional is valid only when the feature fails with
@@ -74,8 +74,9 @@ no production counterpart.
 There is no production Compose file. The local
 `packages/db/docker-compose.dev.yaml` is development-only. Both app containers
 receive the server environment because web SSR imports auth/database code. The
-web build also receives `VITE_SERVER_URL`, `VITE_WEB_URL`, `VITE_WHATSAPP_NUMBER`
-and `VITE_CONTACT_EMAIL`.
+web build also receives `VITE_SERVER_URL`, `VITE_WEB_URL` and, optionally,
+`VITE_WHATSAPP_NUMBER`. Public email is fixed at `support@edernal.com` (D062);
+remove the obsolete `VITE_CONTACT_EMAIL` Coolify build argument.
 
 Coolify deploys each app on a push to `main` through a GitHub push webhook,
 filtered by per-app watch paths (`apps/<app>/**`, `packages/**`, and root
@@ -98,6 +99,43 @@ money unit, a writer that must advance a new revision) is a coordinated cutover:
 pause financial writes, stop the old web and API instances, apply the migration,
 deploy both applications together, then resume traffic. Do not add a
 compatibility contract for a one-time transition (D031).
+
+## Public site and contact ownership
+
+[D062](./decisions.md#d062--public-search-access-founder-owned-contact-and-engineering-reviewed-legal-drafts)
+closes the public-site operational decisions: `support@edernal.com` is the single
+public inbox for demos, support, privacy grievances and security reports. The
+founder—the actual `FOUNDING_EMAIL` account holder, not every Organization
+owner—answers it, acknowledges messages within **48 hours** and resolves
+grievances within **one month**. This is not a staffed emergency/clinical hotline;
+the ordinary response window never postpones statutory incident reporting.
+The founder must monitor optional phone/WhatsApp channels through that same
+responsibility, without asking people to send Patient data.
+
+In the Coolify **web build**, either omit/leave empty `VITE_WHATSAPP_NUMBER` or
+set the actual operator-controlled number (E.164 digits, no `+`). An absent value
+hides every WhatsApp/phone link while email CTAs remain usable; an invalid supplied
+value is rejected by environment validation. The number is not a release-required
+placeholder, and no demo number is deployable evidence. The production value and
+delivery/monitoring of the real inbox cannot be verified from local development.
+
+`/robots.txt` preserves D030 search/sitemap rules and opts out the named
+training/dataset agents; PerplexityBot remains allowed because its vendor says
+it does not collect for foundation-model training. Robots is a voluntary
+public-content preference, not an access-control or retroactive deletion guarantee.
+
+`/terms`, `/privacy` and `/security` are explicitly **engineering-reviewed drafts,
+not legal advice**. The review fixes notice/rights, consent withdrawal and Consent
+Manager limits, recipient/retention disclosures, grievance timing, future DPDP
+phase labels, consumer-rights priority and CERT-In obligations. **Counsel's
+publication approval remains the legal release gate**; it includes verifying the
+actual operator identity/address and publishing the founder's actual
+grievance-officer name/contact particulars. The repo's development
+`FOUNDING_EMAIL` is not a verified public officer identity. Role-only wording is
+not claimed to satisfy SPDI r5(9) or applicable e-commerce r4 disclosures.
+No incorporation identity, independent audit, actual regulator registration,
+mail delivery, production log-retention or backup configuration is invented by
+this review; the existing production/data-safety gates still require evidence.
 
 ## Production hardening
 
@@ -184,10 +222,24 @@ all of these as complete:
 8. Before incorporation is public, the home page carries the Companies
    (Incorporation) Rules r26 identity block: legal name, CIN, registered office,
    phone, email, and grievance contact. `/about` and `/privacy` state it is owed.
-9. For the pharmacy: the chartered accountant has approved the inclusive-MRP
-   presentation and document label, the GST registration the pharmacy invoices
-   under is confirmed, and the licence particulars appear on the printed
-   pharmacy Invoice.
+9. For the pharmacy: apply [D052](./decisions.md#d052--gst-registration-determines-document-particulars-and-bounded-numbering),
+   not an undecided document label. The pilot operator records evidence of
+   the actual organization GSTIN (or lawful unregistered status), legal name,
+   address, state code and valid configured Form 20/21 drug licences;
+   no CA or licensing-adviser consultation is an approval gate.
+   On real A4 and 80 mm prints, confirm registered **Tax Invoice** versus neutral
+   **Invoice** without GST claims, inclusive-MRP pricing with GST extracted from
+   each discounted line, and the taxable value plus CGST/SGST amounts in the
+   rate-wise footer for registered local sales. GST must not be added above MRP:
+   [Legal Metrology retail-price definition](https://bombayhighcourt.gov.in/bhc/libweb/legislation/rulec/LegalMetrologyPackagedCommoditiesRules%2C2011.pdf),
+   [Consumer Affairs MRP/GST FAQ](https://consumeraffairs.gov.in/public/upload/files/GST_FAQs_0_1733291540.pdf)
+   and [CGST Rule 46](https://cbic-gst.gov.in/pdf/03042020-CGST-Rules-2017-Part-A-Rules.pdf).
+   Validate purchase-tax eligibility and taxable/exempt-use allocation:
+   recoverable eligible ITC is separate from inventory cost; nonrecoverable tax
+   is cost under [AS 2 para 7](https://indasaccess.icai.org/Volume-III/AS/asb.html?a=105)
+   and [CGST s17](https://cbic-gst.gov.in/pdf/CGST-Act-2017-amended-01012022.pdf).
+   Exempt healthcare does not confer blanket ITC eligibility. Stock valuation
+   and purchase-ledger implementation remain outside the current billing ledger.
 
 Record evidence and exceptions with the release, not in a permanent parallel
 checklist. Re-run only the affected gate after a configuration or workflow
@@ -229,14 +281,23 @@ like a temporary password. There is no self-service password reset yet.
 
 ## Backups and restore
 
-Back up PostgreSQL and object storage together on an off-host schedule. A
-database-only restore preserves file rows but loses prescription objects; a
-bucket-only restore loses authorization and metadata.
+Back up PostgreSQL and object storage together, off the host, with platform tools:
 
-Before go-live and after any data-rewriting migration:
+- **PostgreSQL:** a Coolify scheduled backup of the database resource every 15 minutes
+  (`*/15 * * * *`) to a private, versioned S3 bucket in ap-south-1, with a 35-day
+  retention.
+- **Files:** `weed filer.backup` streams SeaweedFS changes to a private, versioned S3
+  bucket in the same region.
+- No backup credential reaches an application environment.
 
-1. Restore both resources into an isolated environment.
+Before go-live, monthly, and after any data-rewriting migration:
+
+1. Restore both into an isolated environment.
 2. Point a scratch deployment at them.
 3. Sign in, open an org and Patient/OPD record, download a private file, and
    run a billing/GST report.
 4. Record the restore date, duration, and failures.
+
+A hospital that asks for a full copy of its records, or ends service, gets them
+from the operator: an export of its Organization's rows and original files from
+a restored copy. There is no in-app export, exit or incident workflow (D057).

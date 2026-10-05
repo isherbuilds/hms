@@ -142,9 +142,26 @@ type ReportLink = NavEntry<
   | "/$orgSlug/reports/balance-sheet"
   | "/$orgSlug/reports/daily-collections"
   | "/$orgSlug/reports/opd-register"
+  | "/$orgSlug/reports/invoice-register"
+  | "/$orgSlug/reports/revenue-control"
 > & { icon: LucideIcon; description: string };
 
 export const REPORT_LINKS: readonly ReportLink[] = [
+  {
+    to: "/$orgSlug/reports/revenue-control",
+    label: "Revenue control",
+    description:
+      "Billed revenue by stream, doctor and category, review signals, and expiry exposure.",
+    icon: ListChecksIcon,
+    permission: { report: ["readFinancial"] },
+  },
+  {
+    to: "/$orgSlug/reports/invoice-register",
+    label: "Invoice register",
+    description: "OPD and pharmacy invoice series, full filtered totals, and balances now.",
+    icon: ReceiptTextIcon,
+    permission: { report: ["readFinancial"] },
+  },
   {
     to: "/$orgSlug/reports/gst",
     label: "GST outward register",

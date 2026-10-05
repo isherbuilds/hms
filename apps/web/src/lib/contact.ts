@@ -1,16 +1,21 @@
 import { env } from "@hms/env/web";
 
-/* Public contact channels, shared by the contact page and every marketing CTA.
-   WhatsApp click-to-chat: digits-only international number, URL-encoded text.
-   The prefilled line names the product so a hospital's first message is not
-   "hi" and we are not guessing who is asking about what. */
-export const WHATSAPP_URL = `https://wa.me/${env.VITE_WHATSAPP_NUMBER}?text=${encodeURIComponent(
-  "Hi, I'd like to see Edernal Care for our hospital.",
-)}`;
+/* D062: one founder-owned public inbox; phone and WhatsApp appear only when configured. */
+export const CONTACT_EMAIL = "support@edernal.com";
 
-export const CONTACT_MAILTO = `mailto:${env.VITE_CONTACT_EMAIL}`;
+export const CONTACT_MAILTO = `mailto:${CONTACT_EMAIL}`;
 
-/* Keep the display faithful to every E.164 number accepted by configuration. */
-export const PHONE_DISPLAY = `+${env.VITE_WHATSAPP_NUMBER}`;
+export const CONTACT_RESPONSE =
+  "The founder handles this inbox, acknowledges messages within 48 hours and resolves grievances within one month.";
 
-export const PHONE_TEL = `tel:+${env.VITE_WHATSAPP_NUMBER}`;
+const phoneNumber = env.VITE_WHATSAPP_NUMBER;
+
+export const PHONE = phoneNumber
+  ? {
+      display: `+${phoneNumber}`,
+      tel: `tel:+${phoneNumber}`,
+      whatsapp: `https://wa.me/${phoneNumber}?text=${encodeURIComponent(
+        "Hi, I'd like to see Edernal Care for our hospital.",
+      )}`,
+    }
+  : null;

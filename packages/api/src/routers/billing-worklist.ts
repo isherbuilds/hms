@@ -1,8 +1,6 @@
 import { db } from "@hms/db";
-import { advanceAllocations } from "@hms/db/schema/advance-allocations";
 import { advanceReceipts } from "@hms/db/schema/advance-receipts";
 import { charges } from "@hms/db/schema/charges";
-import { creditNotes } from "@hms/db/schema/credit-notes";
 import { invoices } from "@hms/db/schema/invoices";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { patients } from "@hms/db/schema/patients";
@@ -10,10 +8,11 @@ import { payments } from "@hms/db/schema/payments";
 import { practitioners } from "@hms/db/schema/practitioners";
 import { refunds } from "@hms/db/schema/refunds";
 import { treatmentPlans } from "@hms/db/schema/treatment-plans";
-import { and, asc, between, eq, gt, ilike, lt, or, sql, type SQLWrapper } from "drizzle-orm";
+import { and, asc, between, eq, gt, ilike, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { advanceRemaining } from "../lib/advance-credit";
+import { invoiceMovements } from "../lib/invoice-balance";
 import { businessDate } from "../lib/business-date";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { dayRange, likePattern, pageLimit, resolveDayRange, searchQuery } from "../lib/schemas";
@@ -26,34 +25,16 @@ const OVERDUE_DAYS = 7;
 
 const STALE_DAYS = 30;
 
-// Each money table is summed once per invoice and hash-joined, instead of correlated
-// sums re-run per invoice for every reference to the balance: 5.7 s became 0.25 s for
-// 95k invoices. One `union all` aggregate looked simpler but hides its row count from
-// the planner, which then rescans it per invoice. Credit applied from an advance settles
-// an invoice as cash does, so it counts as paid, as in `opdRegister`.
+// Credit applied from an advance settles an invoice as cash does, so it counts as paid, as
+// in `opdRegister`.
 function invoiceBalances(orgId: string) {
-  const sumByInvoice = (
-    table: typeof payments | typeof advanceAllocations | typeof creditNotes | typeof refunds,
-    amount: SQLWrapper,
-  ) => sql`(select ${table.invoiceId} as invoice_id, sum(${amount}) as amount
-    from ${table} where ${table.orgId} = ${orgId} group by ${table.invoiceId})`;
+  const { movements, joinOn } = invoiceMovements(orgId);
 
   return {
-    movements: sql`(select ${invoices.id} as invoice_id,
-        (coalesce(paid.amount, 0) + coalesce(allocated.amount, 0))::bigint as paid,
-        (coalesce(paid.amount, 0) + coalesce(allocated.amount, 0) + coalesce(credited.amount, 0)
-          - coalesce(refunded.amount, 0))::bigint as settles
-      from ${invoices}
-      left join ${sumByInvoice(payments, payments.amount)} paid on paid.invoice_id = ${invoices.id}
-      left join ${sumByInvoice(advanceAllocations, advanceAllocations.amount)} allocated
-        on allocated.invoice_id = ${invoices.id}
-      left join ${sumByInvoice(creditNotes, creditNotes.total)} credited
-        on credited.invoice_id = ${invoices.id}
-      left join ${sumByInvoice(refunds, refunds.amount)} refunded on refunded.invoice_id = ${invoices.id}
-      where ${invoices.orgId} = ${orgId}) movements`,
-    joinOn: sql`movements.invoice_id = ${invoices.id}`,
-    paid: sql<bigint>`coalesce(movements.paid, 0)::bigint`,
-    settled: sql<bigint>`(${invoices.grandTotal} - coalesce(movements.settles, 0))::bigint`,
+    movements,
+    joinOn,
+    paid: sql<bigint>`(coalesce(movements.paid, 0) + coalesce(movements.allocated, 0))::bigint`,
+    settled: sql<bigint>`(${invoices.grandTotal} - coalesce(movements.paid + movements.allocated + movements.credited - movements.refunded, 0))::bigint`,
   };
 }
 

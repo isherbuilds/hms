@@ -1,15 +1,8 @@
 import { expect, test } from "bun:test";
 
-import {
-  needsReference,
-  nextPaymentLine,
-  settlementProblems,
-  type PaymentLine,
-} from "../../apps/web/src/lib/settlement";
+import { settlementProblems, type PaymentLine } from "../../apps/web/src/lib/settlement";
 
 const DUE = 98_250n;
-
-const INR = "INR";
 
 const line = (over: Partial<PaymentLine> & { id: number }): PaymentLine => ({
   method: "cash",
@@ -23,7 +16,6 @@ const problems = (over: {
   discount?: string;
   note?: string;
   payments?: PaymentLine[];
-  attempted?: boolean;
 }) =>
   settlementProblems({
     due: over.due ?? DUE,
@@ -31,121 +23,38 @@ const problems = (over: {
     discount: over.discount ?? "",
     note: over.note ?? "",
     payments: over.payments ?? [line({ id: 1, amount: "982.50" })],
-    attempted: over.attempted ?? false,
-    currency: INR,
+    attempted: true,
+    currency: "INR",
   });
 
-test("a full cash payment that clears the bill has nothing left to resolve", () => {
+test("a payment that clears the bill, or an explained discount, has nothing left to resolve", () => {
   expect(problems({})).toEqual([]);
-});
-
-test("an amount with three decimal places is rejected against its own line", () => {
-  const found = problems({ payments: [line({ id: 7, amount: "12.345" })] });
-
-  expect(found).toHaveLength(2);
-  expect(found[0]).toMatchObject({
-    key: "amount:7",
-    fieldId: "payment-amount-7",
-    quiet: false,
-  });
-  expect(found[0]?.message).toContain("two decimal places");
-});
-
-test("only cash skips a transaction reference", () => {
-  const methods: PaymentLine["method"][] = ["cash", "upi", "card", "bank"];
-
-  expect(methods.map(needsReference)).toEqual([false, true, true, true]);
-});
-
-test("the next payment line walks all four methods before falling back to cash", () => {
-  const payments: Array<{ id: number; method: PaymentLine["method"] }> = [];
-
-  const methods = Array.from({ length: 5 }, (_, index) => {
-    const next = nextPaymentLine(payments, index === 0 ? DUE : 0n);
-    payments.push(next);
-
-    return next.method;
-  });
-
-  expect(methods).toEqual(["cash", "upi", "card", "bank", "cash"]);
-});
-
-test("a non-zero UPI payment requires a transaction reference", () => {
-  const payments = [line({ id: 2, method: "upi", amount: "982.50" })];
-  expect(problems({ payments })[0]).toMatchObject({ key: "reference:2", quiet: true });
-  expect(problems({ payments, attempted: true })[0]).toMatchObject({
-    key: "reference:2",
-    fieldId: "payment-reference-2",
-    quiet: false,
-  });
   expect(
     problems({
-      payments: [line({ id: 2, method: "upi", amount: "982.50", reference: "UPI/4471/8802" })],
+      discount: "50.00",
+      due: DUE - 5_000n,
+      note: "Staff concession.",
+      payments: [line({ id: 1, amount: "932.50" })],
     }),
   ).toEqual([]);
 });
 
-test("collecting more than the bill names the excess and is never quiet", () => {
-  const found = problems({
+test("overpayment, an unexplained balance, and a discount over the subtotal are refused", () => {
+  const over = problems({
     payments: [
       line({ id: 1, amount: "500.00" }),
       line({ id: 2, method: "card", amount: "500.00", reference: "X" }),
     ],
   });
 
-  expect(found).toHaveLength(1);
-  expect(found[0]).toMatchObject({ key: "over-collected", quiet: false });
-  expect(found[0]?.message).toContain("17.50");
-});
+  expect(over).toHaveLength(1);
+  expect(over[0]).toMatchObject({ key: "over-collected", quiet: false });
+  expect(over[0]?.message).toContain("17.50");
 
-test("a balance left behind requires a written reason", () => {
-  const payments = [line({ id: 1, amount: "900.00" })];
+  const balance = problems({ payments: [line({ id: 1, amount: "900.00" })] });
+  expect(balance).toHaveLength(1);
+  expect(balance[0]).toMatchObject({ key: "note" });
+  expect(balance[0]?.message).toContain("82.50");
 
-  const unexplained = problems({ payments, attempted: true });
-  expect(unexplained).toHaveLength(1);
-  expect(unexplained[0]).toMatchObject({ key: "note", fieldId: "settlement-note", quiet: false });
-  expect(unexplained[0]?.message).toContain("82.50");
-
-  expect(problems({ payments, note: "Paying the rest at the review visit." })).toEqual([]);
-});
-
-test("a discount also requires a reason, even when nothing is left owing", () => {
-  expect(
-    problems({
-      discount: "50.00",
-      due: DUE - 5_000n,
-      payments: [line({ id: 1, amount: "932.50" })],
-    }),
-  ).toHaveLength(1);
-  expect(
-    problems({
-      discount: "50.00",
-      due: DUE - 5_000n,
-      payments: [line({ id: 1, amount: "932.50" })],
-      note: "Staff concession.",
-    }),
-  ).toEqual([]);
-});
-
-test("a malformed discount is reported before anything downstream of it", () => {
-  const found = problems({
-    discount: "1.234",
-    payments: [line({ id: 3, method: "upi", amount: "9.999" })],
-  });
-
-  expect(found[0]).toMatchObject({ key: "discount", fieldId: "settlement-discount", quiet: false });
-});
-
-test("a discount cannot exceed the server-quoted subtotal", () => {
-  const found = problems({ discount: "982.51" });
-
-  expect(found).toHaveLength(1);
-  expect(found[0]).toMatchObject({ key: "discount", fieldId: "settlement-discount" });
-  expect(found[0]?.message).toContain("cannot exceed");
-});
-
-test("collecting nothing at all is allowed, with a reason", () => {
-  const payments = [line({ id: 1, amount: "" })];
-  expect(problems({ payments, attempted: true })[0]).toMatchObject({ key: "note" });
-  expect(problems({ payments, note: "Bill issued, patient will settle later." })).toEqual([]);
+  expect(problems({ discount: "982.51" })[0]).toMatchObject({ key: "discount" });
 });

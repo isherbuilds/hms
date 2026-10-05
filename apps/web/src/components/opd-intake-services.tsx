@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@hms/ui/components/table";
 import { Trash2Icon } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { formatDecimal } from "@hms/api/core/money";
 
 import { formatMoney, parseMoneyInput } from "@/lib/money";
@@ -35,6 +36,15 @@ function RateInput({
   onCommit: (customUnitPrice: bigint | undefined) => void;
 }) {
   const committed = line.customUnitPrice ?? line.unitPrice;
+  const ref = useRef<HTMLInputElement>(null);
+
+  // Desktop and mobile each render this input; the copy not being edited follows a commit
+  // without remounting, so the edited one keeps focus after Enter.
+  useEffect(() => {
+    if (ref.current && ref.current !== document.activeElement) {
+      ref.current.value = formatDecimal(committed);
+    }
+  }, [committed]);
 
   const commit = (input: HTMLInputElement) => {
     const text = input.value.trim();
@@ -47,6 +57,7 @@ function RateInput({
 
   return (
     <Input
+      ref={ref}
       type="text"
       inputMode="decimal"
       enterKeyHint="done"

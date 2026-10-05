@@ -25,6 +25,11 @@ implementation; the [work registry](../README.md#work-lifecycle) owns that statu
 - [Pharmacy reference flows](./pharmacy-reference-flows.md) — Bahmni, Danphe,
   and Marley observed 2026-09-18; the shared item, batch, movement-ledger,
   FEFO, and return-to-original-batch shape the pharmacy spec adopts.
+- [Supplier bill reconciliation](./supplier-bill-reconciliation.md) — 17 populated
+  Indian B2B invoice artifacts inspected 2026-10-04; 15 fit stock lines plus
+  rounding, two need separately taxed freight/packing. D060 accepts tax-aware
+  non-stock adjustments distinct from settlement offsets; includes the exact
+  unimplemented receiving brief. Public uploads are not pilot-supplier evidence.
 - [Hospital inventory models](./hospital-inventory-models.md) — stock ownership,
   movement history, receiving, and return boundaries observed 2026-09-18.
 - [Pharmacy item master](./pharmacy-item-master.md) — ERPNext, Odoo/Bahmni,

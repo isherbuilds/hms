@@ -6,13 +6,13 @@ import {
   TableHeader,
   TableRow,
 } from "@hms/ui/components/table";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useSuspenseInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 import { appHead } from "@/config/site";
 import { DateFilter } from "@/components/list-filter";
-import { ErrorNote, ListToolbar, PageBody, PageHeader } from "@/components/page";
+import { ErrorNote, ListToolbar, LoadMore, PageBody, PageHeader } from "@/components/page";
 import { ReportActions } from "@/components/report-actions";
 import { useMembership } from "@/lib/membership";
 import { orpc } from "@/lib/orpc";
@@ -22,6 +22,15 @@ import { formatMoney } from "@/lib/money";
 import { REPORT_PRINT_LANDSCAPE_CSS } from "@/lib/report-presentation";
 import { orgMonthToDate as defaultRange, useOrgDateTime } from "@/lib/org-datetime";
 import { requireOrgPermission } from "@/lib/route-permission";
+
+type GstCursor = { date: string; number: string; id: string };
+
+const gstQuery = (orgSlug: string, range: { from: string; to: string }) =>
+  orpc.report.gst.infiniteOptions({
+    input: (cursor: GstCursor | undefined) => ({ orgSlug, ...range, cursor }),
+    initialPageParam: undefined,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+  });
 
 export const Route = createFileRoute("/$orgSlug/reports/gst")({
   head: () => appHead("GST register"),
@@ -40,9 +49,7 @@ export const Route = createFileRoute("/$orgSlug/reports/gst")({
 
     const fallback = defaultRange(timeZone);
     const range = { from: deps.from ?? fallback.from, to: deps.to ?? fallback.to };
-    await loadRouteQuery(
-      queryClient.query(orpc.report.gst.queryOptions({ input: { orgSlug, ...range } })),
-    );
+    await loadRouteQuery(queryClient.infiniteQuery(gstQuery(orgSlug, range)));
 
     return range;
   },
@@ -60,7 +67,9 @@ function GstReportRoute() {
     navigate({ search: range, replace: true });
 
   const currency = useMembership(orgSlug, (membership) => membership.currency);
-  const report = useQuery(orpc.report.gst.queryOptions({ input: { orgSlug, from, to } }));
+  const report = useSuspenseInfiniteQuery(gstQuery(orgSlug, { from, to }));
+  const summary = report.data.pages[0]?.summary;
+  const documents = report.data.pages.flatMap((page) => page.documents);
 
   const download = useMutation({ ...orpc.export.gstOutwardXlsx.mutationOptions(), ...saveXlsx });
 
@@ -70,7 +79,7 @@ function GstReportRoute() {
         title="GST register"
         action={
           <ReportActions
-            disabled={!report.data || download.isPending}
+            disabled={report.isFetching || download.isPending}
             onExport={() => download.mutate({ orgSlug, from, to })}
           />
         }
@@ -82,85 +91,90 @@ function GstReportRoute() {
           </ListToolbar>
         </div>
 
-        {report.isPending ? null : report.isError ? (
-          <ErrorNote title="Could not load the GST outward register" error={report.error} />
-        ) : (
-          <section data-report-print className="flex flex-col gap-4">
-            <header className="border-b pb-2">
-              <h1 className="text-sm font-medium">GST outward register</h1>
-              <p className="text-muted-foreground">
-                {report.data.from} to {report.data.to} · CGST/SGST split assumes intra-state supply.
-              </p>
-            </header>
+        {report.isRefetchError ? (
+          <ErrorNote title="Could not refresh the GST outward register" error={report.error} />
+        ) : null}
+        <section data-report-print className="flex flex-col gap-4">
+          <header className="border-b pb-2">
+            <h1 className="text-sm font-medium">GST outward register</h1>
+            <p className="text-muted-foreground">
+              {from} to {to} · CGST/SGST split assumes intra-state supply. Excel has every document;
+              print has the loaded rows.
+            </p>
+          </header>
 
-            <section className="flex flex-col gap-2">
-              <h2 className="min-h-6 text-muted-foreground">Documents</h2>
-              <div className="ring-1 ring-border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Number</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Patient</TableHead>
-                      <TableHead>MRN</TableHead>
-                      <TableHead className="text-right">Taxable</TableHead>
-                      <TableHead className="text-right">CGST</TableHead>
-                      <TableHead className="text-right">SGST</TableHead>
-                      <TableHead className="text-right">Tax</TableHead>
-                      <TableHead className="text-right">Gross</TableHead>
+          <section className="flex flex-col gap-2">
+            <h2 className="min-h-6 text-muted-foreground">Documents</h2>
+            <div className="ring-1 ring-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Number</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Patient</TableHead>
+                    <TableHead>MRN</TableHead>
+                    <TableHead className="text-right">Taxable</TableHead>
+                    <TableHead className="text-right">CGST</TableHead>
+                    <TableHead className="text-right">SGST</TableHead>
+                    <TableHead className="text-right">Tax</TableHead>
+                    <TableHead className="text-right">Gross</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {documents.map((row) => (
+                    <TableRow key={`${row.docType}-${row.id}`}>
+                      <TableCell className="capitalize">{row.docType.replace("_", " ")}</TableCell>
+                      <TableCell className="font-mono font-medium">{row.number}</TableCell>
+                      <TableCell className="whitespace-nowrap tabular-nums">{row.date}</TableCell>
+                      <TableCell className="capitalize">{row.patientName}</TableCell>
+                      <TableCell className="font-mono">{row.patientMrn}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(row.taxableValue, currency)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(row.cgst, currency)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(row.sgst, currency)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(row.taxAmount, currency)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">
+                        {formatMoney(row.gross, currency)}
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {report.data.documents.map((row) => (
-                      <TableRow key={`${row.docType}-${row.number}`}>
-                        <TableCell className="capitalize">
-                          {row.docType.replace("_", " ")}
-                        </TableCell>
-                        <TableCell className="font-mono font-medium">{row.number}</TableCell>
-                        <TableCell className="whitespace-nowrap tabular-nums">{row.date}</TableCell>
-                        <TableCell className="capitalize">{row.patientName}</TableCell>
-                        <TableCell className="font-mono">{row.patientMrn}</TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatMoney(row.taxableValue, currency)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatMoney(row.cgst, currency)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatMoney(row.sgst, currency)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatMoney(row.taxAmount, currency)}
-                        </TableCell>
-                        <TableCell className="text-right font-medium tabular-nums">
-                          {formatMoney(row.gross, currency)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                  ))}
+                  {summary ? (
                     <TableRow className="border-t-2 font-semibold">
-                      <TableCell colSpan={5}>Total</TableCell>
+                      <TableCell colSpan={5}>Period total</TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatMoney(report.data.totals.taxableValue, currency)}
+                        {formatMoney(summary.totals.taxableValue, currency)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatMoney(report.data.totals.cgst, currency)}
+                        {formatMoney(summary.totals.cgst, currency)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatMoney(report.data.totals.sgst, currency)}
+                        {formatMoney(summary.totals.sgst, currency)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatMoney(report.data.totals.taxAmount, currency)}
+                        {formatMoney(summary.totals.taxAmount, currency)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatMoney(report.data.totals.gross, currency)}
+                        {formatMoney(summary.totals.gross, currency)}
                       </TableCell>
                     </TableRow>
-                  </TableBody>
-                </Table>
-              </div>
-            </section>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="print:hidden">
+              <LoadMore query={report} shown={documents.length} />
+            </div>
+          </section>
 
+          {summary ? (
             <div className="grid gap-3 lg:grid-cols-2">
               <section className="flex flex-col gap-2">
                 <h2 className="min-h-6 text-muted-foreground">Rate summary</h2>
@@ -176,7 +190,7 @@ function GstReportRoute() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {report.data.rateSummary.map((row) => (
+                      {summary.rateSummary.map((row) => (
                         <TableRow key={row.taxRatePercent}>
                           <TableCell className="font-medium tabular-nums">
                             {row.taxRatePercent}%
@@ -198,16 +212,16 @@ function GstReportRoute() {
                       <TableRow className="border-t-2 font-semibold">
                         <TableCell>Total</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {formatMoney(report.data.totals.taxableValue, currency)}
+                          {formatMoney(summary.totals.taxableValue, currency)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {formatMoney(report.data.totals.cgst, currency)}
+                          {formatMoney(summary.totals.cgst, currency)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {formatMoney(report.data.totals.sgst, currency)}
+                          {formatMoney(summary.totals.sgst, currency)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {formatMoney(report.data.totals.taxAmount, currency)}
+                          {formatMoney(summary.totals.taxAmount, currency)}
                         </TableCell>
                       </TableRow>
                     </TableBody>
@@ -228,7 +242,7 @@ function GstReportRoute() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {report.data.hsnSummary.map((row) => (
+                      {summary.hsnSummary.map((row) => (
                         <TableRow key={`${row.taxCode}-${row.taxRatePercent}`}>
                           <TableCell className="font-mono font-medium">
                             {row.taxCode || "—"}
@@ -245,10 +259,10 @@ function GstReportRoute() {
                       <TableRow className="border-t-2 font-semibold">
                         <TableCell colSpan={2}>Total</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {formatMoney(report.data.totals.taxableValue, currency)}
+                          {formatMoney(summary.totals.taxableValue, currency)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {formatMoney(report.data.totals.taxAmount, currency)}
+                          {formatMoney(summary.totals.taxAmount, currency)}
                         </TableCell>
                       </TableRow>
                     </TableBody>
@@ -256,8 +270,8 @@ function GstReportRoute() {
                 </div>
               </section>
             </div>
-          </section>
-        )}
+          ) : null}
+        </section>
       </PageBody>
       <style>{REPORT_PRINT_LANDSCAPE_CSS}</style>
     </>

@@ -4,7 +4,7 @@ import { computeInvoiceLines, documentNumber, fiscalYearLabel } from "@hms/api/l
 import { postJournalEntries, revenueAccountFor, settlementAccountFor } from "@hms/api/lib/ledger";
 import { db } from "@hms/db";
 import { nextCounter } from "@hms/db/counter";
-import { organization, user } from "@hms/db/schema/auth";
+import { member, organization, user } from "@hms/db/schema/auth";
 import { advanceAllocations } from "@hms/db/schema/advance-allocations";
 import { advanceReceipts } from "@hms/db/schema/advance-receipts";
 import { catalogItems } from "@hms/db/schema/catalog-items";
@@ -33,18 +33,30 @@ import { stockMovements } from "@hms/db/schema/stock-movements";
 import { treatmentPlanItems } from "@hms/db/schema/treatment-plan-items";
 import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { env } from "@hms/env/server";
-import { and, eq, inArray, like } from "drizzle-orm";
+import { type AnyColumn, and, eq, inArray, like, sql } from "drizzle-orm";
 
 if (env.NODE_ENV === "production") throw new Error("Refusing to seed a production database.");
 
-const SLUG = "mercy-general";
+/*
+ * Default: the local `mercy-general` from `bun run db:seed`, renamed for screenshots.
+ * `--org <slug> --actor <email>` replaces all of that org's patient, billing, pharmacy,
+ * and journal rows, keeps its name and paper identity, and leaves other orgs alone. `--dry-run` rolls the whole transaction back.
+ */
+function flag(name: string): string | undefined {
+  const at = process.argv.indexOf(name);
 
-const HOSPITAL = {
-  name: "Navjeevan Hospital",
-  legalName: "Navjeevan Hospital Pvt. Ltd.",
-  address: "12 Hospital Road, Pune, Maharashtra 411001",
-  taxId: "27AAACM1234A1Z5",
-};
+  return at === -1 ? undefined : process.argv[at + 1];
+}
+
+const targetSlug = flag("--org");
+
+const SLUG = targetSlug ?? "mercy-general";
+
+const ACTOR_EMAIL = flag("--actor") ?? "owner@example.com";
+
+const DRY_RUN = process.argv.includes("--dry-run");
+
+if (targetSlug && !flag("--actor")) throw new Error("--org needs --actor <member email>.");
 
 const HISTORY_DAYS = 45;
 
@@ -63,11 +75,32 @@ const [settings] = await db
 
 if (!settings) throw new Error(`No settings for "${SLUG}". Run \`bun run db:seed\` first.`);
 
+const HOSPITAL = targetSlug
+  ? {
+      name: org.name,
+      legalName: settings.legalName,
+      address: settings.address,
+      taxId: settings.taxId,
+    }
+  : {
+      name: "Navjeevan Hospital",
+      legalName: "Navjeevan Hospital Pvt. Ltd.",
+      address: "12 Hospital Road, Pune, Maharashtra 411001",
+      taxId: "27AAACM1234A1Z5",
+    };
+
 const today = businessDate(now, settings.timeZone);
 
-const [actor] = await db.select().from(user).where(eq(user.email, "owner@example.com")).limit(1);
+const [actor] = await db.select().from(user).where(eq(user.email, ACTOR_EMAIL)).limit(1);
 
-if (!actor) throw new Error("No owner@example.com. Run `bun run db:seed` first.");
+if (!actor) throw new Error(`No user ${ACTOR_EMAIL}.`);
+
+const [membership] = await db
+  .select({ id: member.id })
+  .from(member)
+  .where(and(eq(member.organizationId, orgId), eq(member.userId, actor.id)));
+
+if (!membership) throw new Error(`${ACTOR_EMAIL} is not a member of "${SLUG}".`);
 
 const userId = actor.id;
 
@@ -1609,26 +1642,39 @@ for (let i = 0; i < 7; i++) {
   }
 }
 
-await db.transaction(async (tx) => {
-  await tx.update(user).set({ name: "Priya Nair" }).where(eq(user.id, userId));
-  await tx.update(organization).set({ name: HOSPITAL.name }).where(eq(organization.id, orgId));
-  await tx
-    .update(organizationSettings)
-    .set({ legalName: HOSPITAL.legalName, address: HOSPITAL.address, taxId: HOSPITAL.taxId })
-    .where(eq(organizationSettings.orgId, orgId));
+class DryRun extends Error {}
+
+const seeding = db.transaction(async (tx) => {
+  // Bulk inserts to a remote server can outlast the app's 15s statement timeout.
+  await tx.execute(sql`set local statement_timeout = 0`);
+
+  if (!targetSlug) {
+    await tx.update(user).set({ name: "Priya Nair" }).where(eq(user.id, userId));
+    await tx.update(organization).set({ name: HOSPITAL.name }).where(eq(organization.id, orgId));
+    await tx
+      .update(organizationSettings)
+      .set({ legalName: HOSPITAL.legalName, address: HOSPITAL.address, taxId: HOSPITAL.taxId })
+      .where(eq(organizationSettings.orgId, orgId));
+  }
+
+  // Locally only `demo-` rows go; a target org's activity is cleared with them.
+  const replaced = <T extends { orgId: AnyColumn; id: AnyColumn }>(table: T) =>
+    targetSlug ? eq(table.orgId, orgId) : and(eq(table.orgId, orgId), like(table.id, "demo-%"));
 
   // Demo journals are found by the demo document they post.
+  const journalScope = targetSlug
+    ? eq(journalEntries.orgId, orgId)
+    : and(eq(journalEntries.orgId, orgId), like(journalEntries.sourceId, "demo-%"));
+
   const demoJournals = tx
     .select({ id: journalEntries.id })
     .from(journalEntries)
-    .where(and(eq(journalEntries.orgId, orgId), like(journalEntries.sourceId, "demo-%")));
+    .where(journalScope);
 
   await tx
     .delete(journalLines)
     .where(and(eq(journalLines.orgId, orgId), inArray(journalLines.entryId, demoJournals)));
-  await tx
-    .delete(journalEntries)
-    .where(and(eq(journalEntries.orgId, orgId), like(journalEntries.sourceId, "demo-%")));
+  await tx.delete(journalEntries).where(journalScope);
 
   for (const table of [
     refunds,
@@ -1656,7 +1702,7 @@ await db.transaction(async (tx) => {
     departments,
     catalogItems,
   ]) {
-    await tx.delete(table).where(and(eq(table.orgId, orgId), like(table.id, "demo-%")));
+    await tx.delete(table).where(replaced(table));
   }
 
   for (const patient of patientRows) {
@@ -1888,6 +1934,12 @@ await db.transaction(async (tx) => {
   for (let from = 0; from < journals.length; from += 400) {
     await postJournalEntries(tx, orgId, journals.slice(from, from + 400));
   }
+
+  if (DRY_RUN) throw new DryRun();
+});
+
+await seeding.catch((error: unknown) => {
+  if (!(error instanceof DryRun)) throw error;
 });
 
 const collectedToday = paymentRows
@@ -1897,13 +1949,13 @@ const collectedToday = paymentRows
 console.info(
   [
     "",
-    "Demo practice seeded.",
+    DRY_RUN ? "Dry run: rolled back, nothing written." : "Demo practice seeded.",
     `  ${HISTORY_DAYS + 1} days, ${appointmentRows.length} appointments, ${invoiceRows.length} invoices, ${paymentRows.length} receipts.`,
     `  ${deptRows.length} departments, ${doctorRows.length} doctors, ${patientRows.length} patients.`,
     `  Pharmacy: ${productRows.length} products, ${productBatches.length} batches, ${saleRows.length} counter sales, ${movementRows.length} stock movements.`,
     `  ${creditNoteRows.length} credit notes, ${refundRows.length} refunds, ${advanceRows.length} advances, ${planRows.length} treatment plans, ${payerRows.length} payers.`,
     `  Today (${today}): ₹${formatDecimal(collectedToday)} collected.`,
-    `  Sign in as owner@example.com / password123 and open /${SLUG}/dashboard`,
+    `  Sign in as ${ACTOR_EMAIL} and open /${SLUG}/dashboard`,
     "",
   ].join("\n"),
 );

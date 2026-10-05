@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { CONTACT_EMAIL } from "@/lib/contact";
+
 import { Accent, SectionHead, stagger, WRAP } from "./primitives";
 
 /* `coming` marks a claim the product does not do yet, so the page never shows
@@ -42,9 +44,9 @@ const INDIA_FEATURES = [
     coming: false,
   },
   {
-    glyph: "+91",
+    glyph: "@",
     title: "Talk about your hospital",
-    description: "Contact us by phone or WhatsApp to discuss your needs.",
+    description: `Email ${CONTACT_EMAIL} to discuss your needs.`,
     coming: false,
   },
 ] as const;

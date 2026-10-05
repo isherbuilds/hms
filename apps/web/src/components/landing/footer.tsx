@@ -1,10 +1,10 @@
 import { Link } from "@tanstack/react-router";
-import { MessageCircleIcon, MoonIcon, PhoneIcon, SunIcon } from "lucide-react";
+import { MailIcon, MessageCircleIcon, MoonIcon, PhoneIcon, SunIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Wordmark } from "@/components/brand/wordmark";
 
-import { PHONE_DISPLAY, PHONE_TEL, WHATSAPP_URL } from "@/lib/contact";
+import { CONTACT_EMAIL, CONTACT_MAILTO, PHONE } from "@/lib/contact";
 
 import { WRAP } from "./primitives";
 
@@ -52,25 +52,36 @@ export function LandingFooter() {
             </p>
             <div className="mt-6 flex flex-col gap-2.5 text-sm">
               <a
-                href={PHONE_TEL}
+                href={CONTACT_MAILTO}
                 className="inline-flex w-fit items-center gap-2.5 font-medium pointer-fine:hover:underline"
               >
-                <PhoneIcon aria-hidden strokeWidth={1.75} className="size-4 text-band-muted" />
-                {PHONE_DISPLAY}
+                <MailIcon aria-hidden strokeWidth={1.75} className="size-4 text-band-muted" />
+                {CONTACT_EMAIL}
               </a>
-              <a
-                href={WHATSAPP_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex w-fit items-center gap-2.5 font-medium pointer-fine:hover:underline"
-              >
-                <MessageCircleIcon
-                  aria-hidden
-                  strokeWidth={1.75}
-                  className="size-4 text-band-muted"
-                />
-                WhatsApp us
-              </a>
+              {PHONE ? (
+                <>
+                  <a
+                    href={PHONE.tel}
+                    className="inline-flex w-fit items-center gap-2.5 font-medium pointer-fine:hover:underline"
+                  >
+                    <PhoneIcon aria-hidden strokeWidth={1.75} className="size-4 text-band-muted" />
+                    {PHONE.display}
+                  </a>
+                  <a
+                    href={PHONE.whatsapp}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex w-fit items-center gap-2.5 font-medium pointer-fine:hover:underline"
+                  >
+                    <MessageCircleIcon
+                      aria-hidden
+                      strokeWidth={1.75}
+                      className="size-4 text-band-muted"
+                    />
+                    WhatsApp us
+                  </a>
+                </>
+              ) : null}
             </div>
           </div>
           <nav aria-label="Footer">

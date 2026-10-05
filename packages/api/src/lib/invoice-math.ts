@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { divideHalfUp, parseDecimal } from "../core/money";
 
 export type InvoiceBalance = {
@@ -211,6 +213,34 @@ export function fiscalYearLabel(date: Date, startMonth: number): string {
   return `${startYear}-${String((startYear + 1) % 100).padStart(2, "0")}`;
 }
 
+const DOCUMENT_NUMBER_MAX_LENGTH = 16;
+
+const DOCUMENT_NUMBER_CHARACTERS = /^[A-Za-z0-9/-]+$/;
+
+// Reserve the longest fiscal-year label, separator, and 99,999 numbers a year: a busy
+// counter issues well over 9,999 bills, and an issued prefix can never change.
+const DOCUMENT_PREFIX_MAX_LENGTH = DOCUMENT_NUMBER_MAX_LENGTH - 7 - 1 - 5;
+
+export const documentPrefixSchema = z
+  .string()
+  .trim()
+  .max(DOCUMENT_PREFIX_MAX_LENGTH, "Financial document prefixes are at most 3 characters")
+  .regex(/^[A-Za-z0-9/-]*$/, "Use only letters, digits, / or -");
+
 export function documentNumber(prefix: string, fiscalYear: string, seq: number): string {
-  return `${prefix}${fiscalYear}/${seq}`;
+  if (!Number.isSafeInteger(seq) || seq < 1) {
+    throw new Error("Document sequence must be a positive safe integer");
+  }
+
+  const number = `${prefix}${fiscalYear}/${seq}`;
+
+  if (!DOCUMENT_NUMBER_CHARACTERS.test(number)) {
+    throw new Error("Document numbers may contain only letters, digits, / or -");
+  }
+
+  if (number.length > DOCUMENT_NUMBER_MAX_LENGTH) {
+    throw new Error("Document number exceeds 16 characters; the numbering series is exhausted");
+  }
+
+  return number;
 }

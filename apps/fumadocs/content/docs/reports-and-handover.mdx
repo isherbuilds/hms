@@ -15,9 +15,9 @@ Choose the report that matches the question you need to answer.
 
 Choose a date or date range near the top of a report. Check the dates before you
 print or export. Choose **Print / PDF** for a paper or PDF copy. Choose **Export
-Excel** when you need a spreadsheet. Refresh the report before handover so it
-includes recently entered money. Check that the spreadsheet's dates and totals
-match the report you intend to hand over.
+Excel** when you need a spreadsheet. Reload the page before handover so the
+report includes recently entered money. Check that the spreadsheet's dates and
+totals match the report you intend to hand over.
 
 ## Close a shift: Daily Collections
 
@@ -45,6 +45,132 @@ HMS recorded.
 Example: choose the dates for last week's clinic, then print the list for the
 manager. This report does not replace the patient's own visit record.
 
+## Review every issued bill: Invoice Register
+
+Owners, administrators and accountants can open **Invoice register** and
+**Revenue control**. Report access does not grant access to a patient visit,
+pharmacy sale or money document; source links use those records' own permissions.
+Both reports currently cover OPD and pharmacy, not IPD or other hospital systems.
+
+The Invoice Register starts at the hospital's configured fiscal-year start and
+ends today. Choose up to 366 days, an OPD/pharmacy stream, or search by the full
+invoice number, patient name or MRN. Each row is one issued Invoice, with its
+original number and fiscal year. **Number series** shows the count and
+first/last issued numbers for each stream and year; it does not renumber
+history.
+
+The dates choose the bills, but the balances are as of now: Payments, allocated
+advances, Credit Notes and Refunds include later movements. This is not the debt
+position at the end of an old month. **Paid** means Payments only;
+**Allocated credit** is separate. The billing worklists combine both. Advance
+money does not reduce a bill until allocated. Negative outstanding means
+**Refund due**, not zero.
+
+Issued line value excludes GST and includes exempt care; discounts are already
+deducted. The Invoice total includes GST and round-off. Net billed is Invoice
+total less Credit Notes; outstanding is net billed less Payments and allocated
+credit, plus Refunds. Do not compare OPD and pharmacy subtotal as if they used
+the same tax-inclusive pricing basis.
+
+The totals and **Number series** cover every matching Invoice, not just the
+loaded rows. Choose **Load more** to see more documents, newest issue date
+first. Open an authorized Invoice, Visit or Sale to check its source. Excel has
+every match, on a register sheet and a number series sheet. Print / PDF has the
+totals, the number series and only the loaded rows.
+
+## Owner review: Revenue control
+
+Choose up to 92 days for billed revenue and review signals. The expiry section
+always shows stock as it is now. For one day's collections by payment method,
+use [Daily Collections](#close-a-shift-daily-collections). Reading this report
+does not change source records.
+
+### Keep billing and collections separate
+
+**Net billed revenue** uses issued Invoice line value on the Invoice's Business
+Date, less Credit Note line value on the Credit Note's own Business Date.
+It excludes GST, includes exempt care, has discounts already netted and shows
+round-off separately. A return against an older bill can make a correction-only
+period negative. Refunds change cash and balances, not revenue again.
+Advances are receipts for later care, not billed revenue.
+
+Review billed revenue by stream, practitioner and saved service revenue category.
+OPD follows the Appointment's practitioner. Pharmacy follows its linked visit's
+practitioner, not prescriber earnings; counter sales with no linked visit stay
+**Unassigned**. Practitioner names are current display names.
+Categories come from issued lines, not today's Service master or the
+Appointment's department. Round-off is not assigned to practitioners/categories.
+These totals are not doctor payouts, profit or a department revenue report.
+
+**Why the invoice register differs** explains why the Invoice Register and this
+report's net billed revenue can differ. On the same pre-GST line-value basis:
+
+> Net billed revenue = register net line value − credits to older invoices +
+> later credits on these invoices.
+
+Do not alter old records just to force these two different date bases to match.
+
+### Review signals, not an accusation or loss estimate
+
+Next to **Review**, choose a kind. HMS shows the count and total amount of all
+matching records. For invoice discounts and credit notes, a table also groups
+them by who issued them and the reason. Choose **Load more** for more rows, and
+use the link in **Open** to check the source record. Counts and amounts use
+different bases and can overlap. Never add them to a “total lost revenue.”
+Check the recorded person, reason and source before deciding whether something
+needs correction.
+
+- **Checked-in visits with no Charge:** shows a count, not an amount. Each row
+  says whether the visit was never charged or all its Charges were voided. A
+  zero-priced non-voided Charge counts as charged. Deliberate free care is
+  valid; no missed fee is guessed and no reason is required for intentional
+  omission. The separate aged pending-Charge worklist still follows the
+  hospital's unbilled alert-hours setting.
+- **Voided Charges:** use recorded last-update date in the hospital timezone,
+  not a captured historical void time. The price/quantity, void reason and
+  creator are shown; the creator is **not** the void actor, which was not captured.
+- **Invoice discounts:** use Invoice Business Date, recorded issuer and exact
+  saved note. Issuer/reason groups preserve the saved text. Do not subtract
+  discounts twice or invent a reason category.
+- **Credit Notes:** use their own Business Date and recorded issuer/reason.
+  They can represent returns or mistakes, not only discounts. Missing legacy
+  reasons remain **Not recorded**.
+- **Sales below MRP:** lists issued pharmacy lines with a discount or a price
+  below the saved batch MRP, showing the line subtotal and its discount. Paise
+  rounding and returns are not new concessions; this is concession review, not
+  evidence of stock theft.
+- **Stock adjustments and write-offs:** lists count corrections, breakage and
+  write-offs by movement creation date in the hospital timezone, with
+  quantity, bucket, actor and note, valued at MRP. Internal issues and
+  quarantine or release moves are not listed.
+- **Refunds:** use stored Refund Business Date and distinguish invoice from
+  advance Refunds, with method and refunder. Refunds do not store a reason;
+  a linked Credit Note reason is shown if present, otherwise **Not recorded**.
+
+### Review expiry now
+
+Under **Expiry exposure now, at MRP**, choose **30 days** or **90 days**. This
+does not depend on the report dates. The totals separate shelf from quarantine
+and expired from upcoming batches. Expiry is valid through the printed date.
+Stocked inactive/internal products remain included; batches without an expiry
+date are excluded from exposure and counted visibly.
+
+**MRP exposure is not purchase cost or inventory valuation.** It uses the saved
+batch MRP and counted quantity, rounded once per batch/bucket. The same basis
+applies to write-off review; it is not a profit-loss posting. Shelf/quarantine
+and expired/upcoming are different views of the same exposure: do not add all
+four totals. Unknown purchase/opening cost is not zero. Cost and recoverable
+value require separate supported records and accounting assessment.
+
+### Print or export Revenue control
+
+**Print / PDF** prints the revenue totals and tables, why the invoice register
+differs, and the four expiry totals. It leaves out the expiry batch rows and
+the review signals. **Export Excel** has sheets for revenue by stream,
+practitioner and category, the correction bridge, one sheet for each review
+kind with every matching row, and expiry exposure. Check the dates and the
+expiry horizon before you print or export.
+
 ## Review tax: GST outward register
 
 Use **GST outward register** to review tax on issued Invoices and Credit Notes
@@ -52,9 +178,14 @@ for a period. It groups the values and tax by the saved invoice details.
 
 ![GST outward register with taxable totals and CGST and SGST amounts.](/docs/images/guides/report-gst.webp)
 
-The report's CGST and SGST split assumes the sale was within the same state.
+The report's CGST and SGST split covers the local same-state supplies supported
+by HMS. The state comes from the organization's GSTIN, not the patient's home
+state. Qualifying exempt OPD care uses **Bill of Supply**;
+registered pharmacy uses **Tax Invoice**. Without GSTIN, neutral documents make
+no GST claim. See [Organization setup](/docs/administration-and-handover#1-check-organization).
 This report is not a tax filing form. Have the hospital's accountant check the
-tax setup and every filing before it is sent to a tax authority.
+actual tax setup, saved documents and every filing before it is sent to a tax
+authority.
 
 ## Review account totals
 
@@ -84,3 +215,23 @@ manual journal entries, or the hospital's final accounts.
 If a total looks wrong, check the original patient, invoice, payment, or refund.
 Do not change old money records to make a report total match. Ask the billing
 supervisor or accountant to find the cause.
+
+For month/year accountant handover, keep four reconciliations separate: net
+issued/credited line values on each document's own date (discounts already
+netted, GST excluded and round-off separate); Payments plus advances less both
+Refund kinds (allocations excluded from new money); GST outward exempt/taxable
+values and tax with traceable credits; and billing-journal Trial Balance opening,
+debits, credits and closing balances. Tie them to revenue, cash/bank, advance
+liability, receivable and tax accounts. These remain partial billing books, not
+the hospital's final accounts or tax return.
+
+For Tally entry, retain one Sales voucher per Invoice and one Credit Note
+voucher per Credit Note, with the full issued HMS number as voucher number and
+bill-wise reference. Keep the original Invoice number/date on credits. Use
+dedicated HMS voucher types with Manual numbering and duplicate prevention;
+an automatic migration type must retain original numbers and be checked for
+renumbering. Excel is source evidence, not a Tally import adapter.
+
+Historical as-of debt/stock, department snapshots, purchase-cost valuation and
+patient/payer claim-balance extensions require their own source-model features.
+Do not fill those gaps with invented revenue, fake Payments or inferred names.

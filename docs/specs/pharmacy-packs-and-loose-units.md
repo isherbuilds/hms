@@ -81,7 +81,7 @@ were replaced by one generated migration, `0010_product_pack_and_goods`.
 Slice 3 appended the next generated migration for `expires` and nullable
 batch expiry. Neither generated file is hand-edited.
 
-Production holds the schema of `0009`. The generated migration adds required Product columns without defaults, so it fails when a Product row exists. Before the push, confirm that production has no rows in `products`, `stock_batches` and `goods_receipt_lines`, and no pharmacy Charges. If rows exist, stop and ask the owner.
+Production holds the schema of `0009`. The generated migration adds required Product columns without defaults, so it fails when a Product row exists. Before applying it, obtain read-only production counts proving no rows in `products`, `stock_batches` and `goods_receipt_lines`, and no pharmacy Charges. Nonempty production fails this no-backfill migration's prerequisite: stop the deployment, preserve retained data, and require an explicit data-preserving migration rather than a reset. Local demo-data counts do not satisfy that production gate.
 
 ### Existing API seams
 
@@ -198,6 +198,53 @@ Prior art is the committed tests at `075e22d` for the same files. Restore the ca
 
 ## Open Questions
 
-None block this spec. The owner confirms that production has no rows in
-`products`, `stock_batches` or `goods_receipt_lines` and no pharmacy Charges
-before the push. If any exist, stop and ask the owner.
+No design question remains. Production access is unavailable in this verification
+environment. The release operator must obtain read-only row-count evidence for
+`products`, `stock_batches`, `goods_receipt_lines` and pharmacy Charges before
+applying the no-backfill migration. Nonempty production fails this migration's
+prerequisite; do not guess emptiness or reset retained data.
+
+## Local browser evidence — 2026-10-04
+
+Owner account, `mercy-general`, local dev `postgres` database; records use
+`ZZ-Verify-Pharm`. SQL joins and movement reads were scoped to that Organization.
+These are local functional checks, not production or pilot evidence.
+
+| Step                                                             | UI shelf / quarantine            | SQL stock units shelf / quarantine |
+| ---------------------------------------------------------------- | -------------------------------- | ---------------------------------- |
+| Tablet Product: counted tablet, strip of 10, GST 12%, HSN 3004   | No batch yet                     | 0 / 0                              |
+| Receive 5 strips, rate ₹50/strip, MRP ₹80/10, GST ₹30, bill ₹280 | 5 strips / 0 tablets             | 50 / 0                             |
+| Sell 4 tablets, Invoice PH2026-27/1556, collect ₹32 cash         | 4 strips + 6 tablets / 0 tablets | 46 / 0                             |
+| Return 3 tablets, Unwanted, refund ₹24 cash                      | 4 strips + 6 tablets / 3 tablets | 46 / 3                             |
+| Supervisor releases 3 with inspection note                       | 4 strips + 9 tablets / 0 tablets | 49 / 0                             |
+| BP apparatus Product: piece, no expiry, GST 18%, HSN 9018        | No batch yet                     | 0 / 0                              |
+| Receive 3 BP apparatuses, rate ₹800, MRP ₹1,000, bill ₹2,832     | 3 pieces / 0 pieces; No expiry   | 3 / 0; expiry NULL                 |
+
+The tablet batch `ZZPH-TAB-01` expires 2028-10-31; apparatus batch `ZZPH-BP-01`
+has no date and its receipt had no expiry input. The Invoice PDF endpoint
+returned 200/application-pdf: quantity 4, printed MRP **80.00 / 10**, taxable
+₹28.57, GST ₹3.43, gross ₹32.00. The title was Tax Invoice while another
+verification temporarily configured a GSTIN; that concurrent title change was
+expected. The PDF prints the divisor, not the literal strip-description text.
+
+Desktop 1365×768 and mobile 390×844, light/dark screenshots covered receipt,
+four-tablet sale, three-tablet return, stock after receiving/selling and final
+released-tablet/received-apparatus stock. Post-return stock was verified by DOM
+and SQL when shared Chromium screenshot capture wedged. A compact-row defect
+had hidden quarantine behind truncation; Stock now labels and wraps both
+buckets on mobile. Final mobile light/dark screenshots show 49/0 and 3/0 without
+horizontal overflow. Checked dark Product boxes also now retain their brand
+fill and visible tick.
+
+Before adding the timing medicine, LOCAL table counts were Products 45,
+stock_batches 81, goods_receipt_lines 37 and pharmacy Charges 1,810, both
+database-wide and scoped to this org. The local database is **not empty**.
+Those counts are a point-in-time observation, not a production clearance.
+
+The timing setup additionally created `ZZ-Verify-Pharm Dolo timing tab`
+from a real Medbuzz suggestion, counted tablet/pack 15, and posted an opening
+count of 3 strips (45 units), observed in Stock. The scripted three-item sale
+attempt was interrupted by browser/SSR restarts and produced no reliable
+completed wall-clock result. BP sale and final timing remain unverified; do not
+infer their outcome from a partially executed browser script. One week of
+incumbent loose-versus-strip bills is an external pilot prerequisite.

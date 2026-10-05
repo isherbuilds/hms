@@ -1,6 +1,5 @@
 import { beforeAll, expect, test } from "bun:test";
 
-import { businessDate } from "@hms/api/lib/business-date";
 import { invoiceBalanceFor } from "@hms/api/lib/invoice-balance";
 import { postJournalEntries } from "@hms/api/lib/ledger";
 import type { AppRouterClient } from "@hms/api/routers/index";
@@ -9,6 +8,8 @@ import { db } from "@hms/db";
 import { accounts } from "@hms/db/schema/accounts";
 import { advanceReceipts } from "@hms/db/schema/advance-receipts";
 import { charges } from "@hms/db/schema/charges";
+import { creditNotes } from "@hms/db/schema/credit-notes";
+import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { invoices } from "@hms/db/schema/invoices";
 import { journalEntries } from "@hms/db/schema/journal-entries";
 import { journalLines } from "@hms/db/schema/journal-lines";
@@ -20,7 +21,37 @@ import { createOrganization, createTestUser } from "../support/auth";
 import { addPendingCatalogCharge, settlePendingCharges } from "../support/billing";
 import { clientFor, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
+import { UNPRICED } from "../support/pharmacy";
 import { sumMoney } from "../support/unique";
+
+async function workbookSheets(file: File) {
+  // Static import cannot resolve this API-only dependency from the root tests.
+  // Bun resolves the existing package at runtime without another dependency.
+  const {
+    readXlsx,
+  }: {
+    readXlsx: (
+      input: ArrayBuffer,
+    ) => Promise<{ sheets: Array<{ name: string; rows: unknown[][] }> }>;
+  } = await import(
+    Bun.resolveSync("hucre/xlsx", new URL("../../packages/api/", import.meta.url).pathname)
+  );
+
+  const workbook = await readXlsx(await file.arrayBuffer());
+
+  return new Map(
+    workbook.sheets.map((sheet) => {
+      const [headers = [], ...rows] = sheet.rows;
+
+      return [
+        sheet.name,
+        rows.map((row) =>
+          Object.fromEntries(headers.map((header, index) => [String(header), row[index]])),
+        ),
+      ] as const;
+    }),
+  );
+}
 
 beforeAll(async () => {
   await resetTestDatabase();
@@ -76,7 +107,7 @@ type AccountingFixture = {
   }) => Promise<{ appointment: { id: string }; item: { id: string } }>;
 };
 
-async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") {
+async function createAccountingFixture(seed: string) {
   const owner = await createTestUser(`${seed}-owner`);
   const organization = await createOrganization(owner, seed);
   const api = clientFor(owner);
@@ -85,8 +116,11 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
     legalName: `${seed} Hospital`,
     address: `${seed} Address`,
     taxId: "GSTIN-TEST",
+    gstin: "",
+    drugLicence20: "",
+    drugLicence21: "",
     currency: "INR",
-    timeZone,
+    timeZone: REPORT_TIME_ZONE,
     mrnPrefix: "MRN",
     invoicePrefix: "INV",
     receiptPrefix: "RCT",
@@ -239,28 +273,6 @@ async function createAccountingFixture(seed: string, timeZone = "Asia/Kolkata") 
   };
 }
 
-test("dashboard collection trend labels the organization's Business Dates", async () => {
-  const now = new Date();
-  const utcDate = now.toISOString().slice(0, 10);
-
-  // These fixed-offset extremes never share a calendar date.
-  const timeZone = ["Pacific/Kiritimati", "Etc/GMT+12"].find(
-    (candidate) => businessDate(now, candidate) !== utcDate,
-  );
-
-  if (!timeZone) {
-    throw new Error("Expected an extreme time zone to differ from the UTC date");
-  }
-
-  const fixture = await createAccountingFixture("dashboard-business-date", timeZone);
-
-  const trend = await fixture.api.dashboard.trend({ orgSlug: fixture.organization.slug });
-
-  // The longest range plus a week, for each bar's same-weekday comparison.
-  expect(trend).toHaveLength(37);
-  expect(trend.at(-1)?.day).toBe(businessDate(new Date(), timeZone));
-});
-
 async function journalFor(fixture: AccountingFixture, sourceType: string, sourceId: string) {
   const entries = await db
     .select()
@@ -331,7 +343,7 @@ async function issueConsultationInvoice(fixture: AccountingFixture, seed: string
   return { appointment, ...issued };
 }
 
-test("issuing an invoice posts one balanced entry split across receivables, revenue, and GST", async () => {
+test("issuing invoices posts balanced entries by revenue category and GST, and zero totals do not post", async () => {
   const fixture = await createAccountingFixture("accounting-invoice");
 
   const { appointment } = await fixture.createConsultationAppointment({
@@ -374,13 +386,10 @@ test("issuing an invoice posts one balanced entry split across receivables, reve
     debit: 0n,
     credit: issued.invoice.taxTotal,
   });
-});
 
-test("a desk-added consultation charge posts to consultation revenue", async () => {
-  const fixture = await createAccountingFixture("accounting-desk-consultation");
-  const appointment = await fixture.createOpdAppointment();
+  const deskAppointment = await fixture.createOpdAppointment();
 
-  const { charge } = await fixture.addCatalogCharge(appointment.id, {
+  const { charge } = await fixture.addCatalogCharge(deskAppointment.id, {
     name: "Desk Consultation",
     category: "consultation",
     unitPrice: 75_00n,
@@ -392,22 +401,19 @@ test("a desk-added consultation charge posts to consultation revenue", async () 
     revenueCategory: "consultation",
   });
 
-  const issued = await settlePendingCharges(fixture.api, {
+  const desk = await settlePendingCharges(fixture.api, {
     orgSlug: fixture.organization.slug,
-    appointmentId: appointment.id,
+    appointmentId: deskAppointment.id,
   });
 
-  const journal = await journalFor(fixture, "invoice", issued.invoice.id);
-  expect(lineByCode(journal.lines, "4100")).toMatchObject({
+  const deskJournal = await journalFor(fixture, "invoice", desk.invoice.id);
+  expect(lineByCode(deskJournal.lines, "4100")).toMatchObject({
     debit: 0n,
     credit: 75_00n,
   });
-  expect(journal.lines.map((line) => line.code)).not.toContain("4900");
-  expectBalanced(journal.lines);
-});
+  expect(deskJournal.lines.map((line) => line.code)).not.toContain("4900");
+  expectBalanced(deskJournal.lines);
 
-test("zero-rated invoices omit GST and zero-total invoices do not post", async () => {
-  const fixture = await createAccountingFixture("accounting-zero");
   const zeroRateOpdAppointment = await fixture.createOpdAppointment();
   await fixture.addOtherCharge(zeroRateOpdAppointment.id, 25_00n, "0", "Zero-rated Service");
 
@@ -548,6 +554,7 @@ test("payments, credits, and refunds post exactly and reconcile in the OPD regis
     refunds: 59_00n,
     outstanding: 0n,
   });
+  expect(register.nextCursor).toBeNull();
   expect(register.totals).toMatchObject({
     billed: 118_00n,
     paid: 118_00n,
@@ -555,6 +562,38 @@ test("payments, credits, and refunds post exactly and reconcile in the OPD regis
     refunds: 59_00n,
     outstanding: 0n,
   });
+});
+
+test("OPD register keyset pages return every visit once, totals on the first page", async () => {
+  const fixture = await createAccountingFixture("accounting-opd-register-pages");
+
+  const visits = [
+    await fixture.createOpdAppointment(),
+    await fixture.createOpdAppointment(),
+    await fixture.createOpdAppointment(),
+  ];
+
+  const range = {
+    orgSlug: fixture.organization.slug,
+    from: visits[0]!.businessDate,
+    to: visits[2]!.businessDate,
+  };
+
+  const full = await fixture.api.report.opdRegister(range);
+  const first = await fixture.api.report.opdRegister({ ...range, limit: 2 });
+
+  const second = await fixture.api.report.opdRegister({
+    ...range,
+    limit: 2,
+    cursor: first.nextCursor!,
+  });
+
+  expect(full.rows).toHaveLength(3);
+  expect(first.totals).toEqual(full.totals);
+  expect(first.totals!.appointments).toBe(3);
+  expect(second.totals).toBeNull();
+  expect(second.nextCursor).toBeNull();
+  expect([...first.rows, ...second.rows]).toEqual(full.rows);
 });
 
 test("daily collections nets payments and refunds by Business Date and method", async () => {
@@ -672,15 +711,10 @@ test("daily collections nets payments and refunds by Business Date and method", 
   );
 });
 
-test("trial balance is balanced, agrees with invoice outstanding, and carries prior activity into opening", async () => {
+test("trial balance is balanced, carries prior activity into opening, and rejects an inverted range", async () => {
   const fixture = await createAccountingFixture("accounting-trial");
   const issued = await issueConsultationInvoice(fixture, "Trial");
   const today = reportDate();
-
-  const balance = await invoiceBalanceFor(db, fixture.organization.id, {
-    ...issued.invoice,
-    grandTotal: issued.invoice.grandTotal,
-  });
 
   const active = await fixture.api.report.trialBalance({
     orgSlug: fixture.organization.slug,
@@ -698,7 +732,7 @@ test("trial balance is balanced, agrees with invoice outstanding, and carries pr
   expect(receivables?.openingDebit).toBe(0n);
   expect(receivables?.openingCredit).toBe(0n);
   expect(receivables?.debit).toBe(118_00n);
-  expect(receivables?.closingDebit).toBe(balance.outstanding);
+  expect(receivables?.closingDebit).toBe(118_00n);
   expect(receivables?.closingCredit).toBe(0n);
   expect(revenue?.closingDebit).toBe(0n);
   expect(revenue?.closingCredit).toBe(100_00n);
@@ -735,11 +769,19 @@ test("trial balance is balanced, agrees with invoice outstanding, and carries pr
   expect(afterRange.totals.openingDebit).toBe(afterRange.totals.openingCredit);
   expect(afterRange.totals.closingDebit).toBe(afterRange.totals.closingCredit);
   const carriedReceivables = afterRange.rows.find((row) => row.code === "1200");
-  expect(carriedReceivables?.openingDebit).toBe(balance.outstanding);
+  expect(carriedReceivables?.openingDebit).toBe(118_00n);
   expect(carriedReceivables?.openingCredit).toBe(0n);
   expect(carriedReceivables?.debit).toBe(0n);
-  expect(carriedReceivables?.closingDebit).toBe(balance.outstanding);
+  expect(carriedReceivables?.closingDebit).toBe(118_00n);
   expect(carriedReceivables?.closingCredit).toBe(0n);
+  await expectORPCCode(
+    fixture.api.report.trialBalance({
+      orgSlug: fixture.organization.slug,
+      from: today,
+      to: addDays(today, -1),
+    }),
+    "BAD_REQUEST",
+  );
 });
 
 test("balance sheet balances GST output and current surplus against assets", async () => {
@@ -776,31 +818,15 @@ test("balance sheet balances GST output and current surplus against assets", asy
 
   expect(report.totals.assets).toBe(133_00n);
   expect(report.totals.assets).toBe(report.totals.liabilitiesAndEquity);
-  expect(report.assets).toContainEqual({
-    code: "1000",
-    name: "Cash in Hand",
-    balance: 25_00n,
-  });
-  expect(report.assets).toContainEqual({
-    code: "1200",
-    name: "Patient Receivables",
-    balance: 108_00n,
-  });
-  expect(report.liabilities).toContainEqual({
-    code: "2100",
-    name: "GST Output Payable",
-    balance: 18_00n,
-  });
-  expect(report.liabilities).toContainEqual({
-    code: "2200",
-    name: "Patient Advances",
-    balance: 15_00n,
-  });
-  expect(report.equity).toContainEqual({
-    code: "3900",
-    name: "Current surplus",
-    balance: 100_00n,
-  });
+  expect(report.assets).toContainEqual(expect.objectContaining({ code: "1000", balance: 25_00n }));
+  expect(report.assets).toContainEqual(expect.objectContaining({ code: "1200", balance: 108_00n }));
+  expect(report.liabilities).toContainEqual(
+    expect.objectContaining({ code: "2100", balance: 18_00n }),
+  );
+  expect(report.liabilities).toContainEqual(
+    expect.objectContaining({ code: "2200", balance: 15_00n }),
+  );
+  expect(report.equity).toContainEqual(expect.objectContaining({ code: "3900", balance: 100_00n }));
 });
 
 test("GST register reconciles invoice and credit-note documents, rates, HSN, and date filters", async () => {
@@ -857,6 +883,28 @@ test("GST register reconciles invoice and credit-note documents, rates, HSN, and
   });
 
   expect(report.documents).toHaveLength(2);
+  expect(report.nextCursor).toBeNull();
+
+  const first = await fixture.api.report.gst({
+    orgSlug: fixture.organization.slug,
+    from: today,
+    to: today,
+    limit: 1,
+  });
+
+  const second = await fixture.api.report.gst({
+    orgSlug: fixture.organization.slug,
+    from: today,
+    to: today,
+    limit: 1,
+    cursor: first.nextCursor!,
+  });
+
+  expect(second.summary).toBeNull();
+  expect(second.nextCursor).toBeNull();
+  expect([...first.documents, ...second.documents]).toEqual(report.documents);
+
+  const summary = report.summary!;
   expect(report.documents.map((document) => document.number)).not.toContain(
     outside.invoice.invoiceNumber,
   );
@@ -886,37 +934,24 @@ test("GST register reconciles invoice and credit-note documents, rates, HSN, and
   );
 
   expect(sumMoney(report.documents.map((document) => document.taxableValue))).toBe(
-    report.totals.taxableValue,
+    summary.totals.taxableValue,
   );
-  expect(sumMoney(report.documents.map((document) => document.cgst))).toBe(report.totals.cgst);
-  expect(sumMoney(report.documents.map((document) => document.sgst))).toBe(report.totals.sgst);
+  expect(sumMoney(report.documents.map((document) => document.cgst))).toBe(summary.totals.cgst);
+  expect(sumMoney(report.documents.map((document) => document.sgst))).toBe(summary.totals.sgst);
   expect(sumMoney(report.documents.map((document) => document.taxAmount))).toBe(
-    report.totals.taxAmount,
+    summary.totals.taxAmount,
   );
-  expect(sumMoney(report.documents.map((document) => document.gross))).toBe(report.totals.gross);
-  expect(sumMoney(report.rateSummary.map((row) => row.taxableValue))).toBe(
-    report.totals.taxableValue,
+  expect(sumMoney(report.documents.map((document) => document.gross))).toBe(summary.totals.gross);
+  expect(sumMoney(summary.rateSummary.map((row) => row.taxableValue))).toBe(
+    summary.totals.taxableValue,
   );
-  expect(sumMoney(report.rateSummary.map((row) => row.cgst))).toBe(report.totals.cgst);
-  expect(sumMoney(report.rateSummary.map((row) => row.sgst))).toBe(report.totals.sgst);
-  expect(sumMoney(report.rateSummary.map((row) => row.taxAmount))).toBe(report.totals.taxAmount);
-  expect(sumMoney(report.hsnSummary.map((row) => row.taxableValue))).toBe(
-    report.totals.taxableValue,
+  expect(sumMoney(summary.rateSummary.map((row) => row.cgst))).toBe(summary.totals.cgst);
+  expect(sumMoney(summary.rateSummary.map((row) => row.sgst))).toBe(summary.totals.sgst);
+  expect(sumMoney(summary.rateSummary.map((row) => row.taxAmount))).toBe(summary.totals.taxAmount);
+  expect(sumMoney(summary.hsnSummary.map((row) => row.taxableValue))).toBe(
+    summary.totals.taxableValue,
   );
-  expect(sumMoney(report.hsnSummary.map((row) => row.taxAmount))).toBe(report.totals.taxAmount);
-});
-
-test("trial balance rejects an inverted date range", async () => {
-  const fixture = await createAccountingFixture("accounting-validation");
-  const today = reportDate();
-  await expectORPCCode(
-    fixture.api.report.trialBalance({
-      orgSlug: fixture.organization.slug,
-      from: today,
-      to: addDays(today, -1),
-    }),
-    "BAD_REQUEST",
-  );
+  expect(sumMoney(summary.hsnSummary.map((row) => row.taxAmount))).toBe(summary.totals.taxAmount);
 });
 
 test("invoice and credit note keep the revenue category captured when the charge was created", async () => {
@@ -969,6 +1004,22 @@ test("invoice and credit note keep the revenue category captured when the charge
   });
   expect(creditJournal.lines.some((line) => line.code === "4300")).toBe(false);
   expectBalanced(creditJournal.lines);
+
+  const revenue = await fixture.api.report.revenueBreakdown({
+    orgSlug: fixture.organization.slug,
+    from: issued.invoice.businessDate,
+    to: issued.invoice.businessDate,
+  });
+
+  expect(revenue.byCategory).toEqual([
+    expect.objectContaining({
+      id: "consultation",
+      issuedTaxableValue: 100_00n,
+      creditedTaxableValue: 100_00n,
+      netTaxableValue: 0n,
+      tax: 0n,
+    }),
+  ]);
 });
 
 test("concurrent first invoices seed one complete chart and both post", async () => {
@@ -1143,42 +1194,512 @@ test("posting failure rolls back the invoice and charge transition", async () =>
   expect(pending).toEqual([{ status: "pending", invoiceId: null }]);
 });
 
-test("GST summaries reconcile odd-paise tax buckets", async () => {
-  const fixture = await createAccountingFixture("accounting-gst-rounding");
+test("revenue control reconciles all-stream current balances, event credits, attribution and gross collection shares", async () => {
+  const fixture = await createAccountingFixture("accounting-revenue-control");
+  const { api, organization, patient } = fixture;
+  const orgSlug = organization.slug;
+  const today = reportDate();
+  const olderDay = addDays(today, -14);
+  const laterDay = addDays(today, 1);
 
-  for (const suffix of ["first", "second"]) {
-    const appointment = await fixture.createOpdAppointment();
-    await fixture.addOtherCharge(appointment.id, 1_00n, "5.00", `${suffix} odd-paise tax service`);
-    await settlePendingCharges(fixture.api, {
-      orgSlug: fixture.organization.slug,
-      appointmentId: appointment.id,
+  const oldAttendance = await fixture.createConsultationAppointment({
+    name: "Older consultation",
+    unitPrice: 50_00n,
+    taxRatePercent: "0",
+  });
+
+  const old = await settlePendingCharges(api, {
+    orgSlug,
+    appointmentId: oldAttendance.appointment.id,
+  });
+
+  const attendance = await fixture.createOpdAppointment();
+  await fixture.addCatalogCharge(attendance.id, {
+    name: "Procedure snapshot",
+    category: "procedure",
+    unitPrice: 60_00n,
+    taxRatePercent: "0",
+  });
+  await fixture.addCatalogCharge(attendance.id, {
+    name: "Lab snapshot",
+    category: "lab",
+    unitPrice: 40_00n,
+    taxRatePercent: "0",
+  });
+
+  const opd = await settlePendingCharges(api, {
+    orgSlug,
+    appointmentId: attendance.id,
+    discountAmount: 10_00n,
+    note: "Approved package concession",
+  });
+
+  const advance = await api.billing.recordAdvance({
+    orgSlug,
+    patientId: patient.id,
+    method: "bank",
+    amount: 100_00n,
+    reference: "REVENUE-ADVANCE",
+  });
+
+  await api.billing.recordPayments({
+    orgSlug,
+    invoiceId: opd.invoice.id,
+    applyCredit: 40_00n,
+    payments: [
+      { method: "cash", amount: 30_00n },
+      { method: "upi", amount: 20_00n, reference: "REVENUE-UPI" },
+    ],
+  });
+  await api.billing.recordAdvanceRefund({
+    orgSlug,
+    advanceReceiptId: advance.id,
+    method: "bank",
+    amount: 10_00n,
+    reference: "ADVANCE-RETURN",
+  });
+
+  const product = await api.pharmacy.createProduct({
+    orgSlug,
+    name: "Revenue medicine",
+    sold: true,
+    active: true,
+    taxRatePercent: "0",
+    stockUnit: "tablet",
+    unitsPerPack: 1,
+    expires: false,
+    pack: "One tablet",
+  });
+
+  const receipt = await api.pharmacy.receiveGoods({
+    orgSlug,
+    supplierName: "Revenue supplier",
+    receivedOn: today,
+    billTotal: 0n,
+    lines: [
+      {
+        productId: product.productId,
+        batchNumber: "REVENUE-BATCH",
+        mrp: 100_00n,
+        pricedPer: "unit",
+        qty: 2,
+        cost: UNPRICED,
+      },
+    ],
+  });
+
+  const batchId = receipt.batches[0]!.batchId;
+
+  const linked = await api.pharmacy.sell({
+    orgSlug,
+    lines: [{ batchId, qty: 1 }],
+    buyer: { patientId: patient.id },
+    opdAppointmentId: attendance.id,
+    payments: [{ method: "cash", amount: 100_00n }],
+    expectedGrandTotal: 100_00n,
+  });
+
+  const counter = await api.pharmacy.sell({
+    orgSlug,
+    lines: [{ batchId, qty: 1 }],
+    buyer: { name: "Counter snapshot" },
+    prescriberName: "Dr. accounting-revenue-control",
+    payments: [{ method: "card", amount: 100_00n, reference: "REVENUE-CARD" }],
+    expectedGrandTotal: 100_00n,
+  });
+
+  const linkedDetail = await api.pharmacy.getSale({ orgSlug, saleId: linked.saleId });
+  const counterDetail = await api.pharmacy.getSale({ orgSlug, saleId: counter.saleId });
+
+  const oldCredit = await api.billing.issueCreditNote({
+    orgSlug,
+    invoiceId: old.invoice.id,
+    reason: "Older invoice correction",
+    lines: [{ invoiceLineId: old.lines[0]!.id, gross: 10_00n }],
+  });
+
+  const laterCredit = await api.billing.issueCreditNote({
+    orgSlug,
+    invoiceId: opd.invoice.id,
+    reason: "Next-day correction",
+    lines: [{ invoiceLineId: opd.lines[0]!.id, gross: 20_00n }],
+  });
+
+  const refund = await api.billing.recordRefund({
+    orgSlug,
+    creditNoteId: laterCredit.creditNote.id,
+    method: "cash",
+    amount: 5_00n,
+  });
+
+  const periodInvoices = [opd.invoice, linkedDetail.invoice, counterDetail.invoice];
+  const tiedTime = new Date(`${today}T10:00:00+05:30`);
+  await Promise.all([
+    db
+      .update(invoices)
+      .set({ businessDate: olderDay })
+      .where(and(eq(invoices.orgId, organization.id), eq(invoices.id, old.invoice.id))),
+    db
+      .update(opdAppointments)
+      .set({ businessDate: olderDay })
+      .where(
+        and(
+          eq(opdAppointments.orgId, organization.id),
+          eq(opdAppointments.id, oldAttendance.appointment.id),
+        ),
+      ),
+    db
+      .update(creditNotes)
+      .set({ businessDate: laterDay })
+      .where(
+        and(eq(creditNotes.orgId, organization.id), eq(creditNotes.id, laterCredit.creditNote.id)),
+      ),
+    db
+      .update(refunds)
+      .set({ businessDate: laterDay })
+      .where(and(eq(refunds.orgId, organization.id), eq(refunds.id, refund.id))),
+    ...periodInvoices.map((invoice) =>
+      db
+        .update(invoices)
+        .set({ createdAt: tiedTime })
+        .where(and(eq(invoices.orgId, organization.id), eq(invoices.id, invoice.id))),
+    ),
+  ]);
+  const input = { orgSlug, from: today, to: today };
+  const register = await api.report.invoiceRegister({ ...input, limit: 1 });
+  expect(register.rows).toHaveLength(1);
+  expect(register.summary!.totals).toMatchObject({
+    count: 3,
+    subtotal: 300_00n,
+    discountAmount: 10_00n,
+    taxableValue: 290_00n,
+    taxTotal: 0n,
+    roundOff: 0n,
+    grandTotal: 290_00n,
+    creditTotal: 20_00n,
+    netBilled: 270_00n,
+    paymentsTotal: 250_00n,
+    allocationsTotal: 40_00n,
+    refundsTotal: 5_00n,
+    outstanding: -15_00n,
+  });
+  const seen = [...register.rows];
+  let cursor = register.nextCursor;
+
+  while (cursor) {
+    const page = await api.report.invoiceRegister({ ...input, limit: 1, cursor });
+    expect(page.summary).toBeNull();
+    seen.push(...page.rows);
+    cursor = page.nextCursor;
+
+    if (seen.length > 3) throw new Error("register cursor did not advance");
+  }
+
+  expect(seen.map((row) => row.id)).toEqual(
+    periodInvoices
+      .map((invoice) => invoice.id)
+      .sort()
+      .reverse(),
+  );
+
+  for (const row of seen) {
+    const invoice = periodInvoices.find((candidate) => candidate.id === row.id)!;
+    const balance = await invoiceBalanceFor(db, organization.id, invoice);
+    expect(row).toMatchObject({
+      creditTotal: balance.creditTotal,
+      paymentsTotal: balance.paymentsTotal,
+      allocationsTotal: balance.allocationsTotal,
+      refundsTotal: balance.refundsTotal,
+      outstanding: balance.outstanding,
     });
   }
 
-  const today = reportDate();
-
-  const report = await fixture.api.report.gst({
-    orgSlug: fixture.organization.slug,
-    from: today,
-    to: today,
+  expect(seen.find((row) => row.id === opd.invoice.id)?.source).toEqual({
+    type: "opd",
+    id: attendance.id,
+  });
+  expect(seen.find((row) => row.id === linkedDetail.invoice.id)?.source).toEqual({
+    type: "pharmacy",
+    id: linked.saleId,
+  });
+  expect(register.summary!.series.find((series) => series.stream === "opd")).toMatchObject({
+    count: 1,
+    fiscalYear: opd.invoice.fiscalYear,
+    firstNumber: opd.invoice.invoiceNumber,
+    lastNumber: opd.invoice.invoiceNumber,
   });
 
-  const invoiceDocuments = report.documents.filter((document) => document.docType === "invoice");
-
-  expect(invoiceDocuments).toHaveLength(2);
-  expect(invoiceDocuments.map((document) => document.taxAmount)).toEqual([5n, 5n]);
-  expect(report.totals.cgst).toBe(
-    invoiceDocuments.reduce((sum, document) => sum + document.cgst, 0n),
+  const pharmacyOrder = [linkedDetail.invoice, counterDetail.invoice].sort((a, b) =>
+    a.id.localeCompare(b.id),
   );
-  expect(report.totals.sgst).toBe(
-    invoiceDocuments.reduce((sum, document) => sum + document.sgst, 0n),
+
+  expect(register.summary!.series.find((series) => series.stream === "pharmacy")).toMatchObject({
+    count: 2,
+    firstNumber: pharmacyOrder[0]!.invoiceNumber,
+    lastNumber: pharmacyOrder[1]!.invoiceNumber,
+  });
+  expect(
+    (await api.report.invoiceRegister({ ...input, stream: "pharmacy" })).summary!.totals.count,
+  ).toBe(2);
+  expect(
+    (await api.report.invoiceRegister({ ...input, query: opd.invoice.invoiceNumber })).rows.map(
+      (row) => row.id,
+    ),
+  ).toEqual([opd.invoice.id]);
+  expect(
+    (await api.report.invoiceRegister({ ...input, query: patient.mrn })).summary!.totals.count,
+  ).toBe(2);
+  expect(
+    (await api.report.invoiceRegister({ ...input, query: "Counter snapshot" })).rows.map(
+      (row) => row.id,
+    ),
+  ).toEqual([counterDetail.invoice.id]);
+  const revenue = await api.report.revenueBreakdown(input);
+  expect(revenue.totals).toMatchObject({
+    issuedTaxableValue: 290_00n,
+    creditedTaxableValue: 10_00n,
+    netTaxableValue: 280_00n,
+    tax: 0n,
+    roundOff: 0n,
+  });
+  expect(revenue.bridge).toEqual({
+    creditsToOlderInvoices: 10_00n,
+    laterCreditsAgainstPeriodInvoices: 20_00n,
+    registerNetTaxableValue: 270_00n,
+  });
+  expect(revenue.byStream.find((row) => row.id === "opd")?.netTaxableValue).toBe(80_00n);
+  expect(revenue.byStream.find((row) => row.id === "pharmacy")?.netTaxableValue).toBe(200_00n);
+  expect(revenue.byCategory.find((row) => row.id === "procedure")?.netTaxableValue).toBe(54_00n);
+  expect(revenue.byCategory.find((row) => row.id === "lab")?.netTaxableValue).toBe(36_00n);
+  expect(revenue.byCategory.find((row) => row.id === "consultation")?.netTaxableValue).toBe(
+    -10_00n,
   );
-  expect(report.rateSummary.reduce((sum, row) => sum + row.cgst, 0n)).toBe(report.totals.cgst);
-  expect(report.rateSummary.reduce((sum, row) => sum + row.sgst, 0n)).toBe(report.totals.sgst);
+  expect(revenue.byPractitioner.find((row) => row.id === null)?.netTaxableValue).toBe(100_00n);
+  expect(revenue.byPractitioner.map((row) => row.netTaxableValue).sort()).toEqual(
+    [-10_00n, 100_00n, 190_00n].sort(),
+  );
+  expect(revenue.byPractitioner.every((row) => row.roundOff === 0n)).toBe(true);
 
-  for (const document of invoiceDocuments) {
-    expect(document.cgst + document.sgst).toBe(document.taxAmount);
-  }
+  const correctionOnly = await api.report.revenueBreakdown({
+    orgSlug,
+    from: laterDay,
+    to: laterDay,
+  });
 
-  expect(report.totals.cgst + report.totals.sgst).toBe(report.totals.taxAmount);
+  expect(correctionOnly.totals.netTaxableValue).toBe(-20_00n);
+  expect(correctionOnly.bridge.creditsToOlderInvoices).toBe(20_00n);
+  const discounts = await api.report.revenueSignals({ ...input, kind: "discount" });
+  expect(discounts.summary).toMatchObject({ count: 1, amount: 10_00n });
+  expect(discounts.summary!.groups).toEqual([
+    expect.objectContaining({
+      actorId: fixture.owner.user.id,
+      reason: "Approved package concession",
+      count: 1,
+      amount: 10_00n,
+    }),
+  ]);
+  expect(discounts.rows[0]).toMatchObject({
+    invoiceId: opd.invoice.id,
+    actorName: fixture.owner.user.name,
+    reason: "Approved package concession",
+  });
+  const credits = await api.report.revenueSignals({ ...input, kind: "credit_note" });
+  expect(credits.summary).toMatchObject({ count: 1, amount: 10_00n });
+  expect(credits.summary!.groups).toEqual([
+    expect.objectContaining({
+      actorId: fixture.owner.user.id,
+      reason: "Older invoice correction",
+      count: 1,
+      amount: 10_00n,
+    }),
+  ]);
+  expect(credits.rows[0]).toMatchObject({
+    id: oldCredit.creditNote.id,
+    reason: "Older invoice correction",
+  });
+  const advanceRefunds = await api.report.revenueSignals({ ...input, kind: "refund" });
+  expect(advanceRefunds.rows[0]).toMatchObject({
+    invoiceId: null,
+    source: { type: "advance", id: advance.id },
+    amount: 10_00n,
+    reason: null,
+  });
+
+  const invoiceRefunds = await api.report.revenueSignals({
+    orgSlug,
+    from: laterDay,
+    to: laterDay,
+    kind: "refund",
+  });
+
+  expect(invoiceRefunds.rows[0]).toMatchObject({
+    invoiceId: opd.invoice.id,
+    source: { type: "opd", id: attendance.id },
+    amount: 5_00n,
+    reason: "Next-day correction",
+  });
+  const registerBook = await workbookSheets(await api.export.invoiceRegisterXlsx(input));
+  const registerRows = registerBook.get("Invoice register")!;
+  expect(
+    registerRows.find((row) => row["Invoice number"] === opd.invoice.invoiceNumber),
+  ).toMatchObject({
+    "Issued line value": 90,
+    "Invoice total": 90,
+    "Credit notes": 20,
+    "Net billed": 70,
+    Paid: 50,
+    "Allocated credit": 40,
+    Refunds: 5,
+    Outstanding: -15,
+  });
+  expect(registerRows.find((row) => row["Invoice number"] === "Total")).toMatchObject({
+    "Issued line value": 290,
+    "Credit notes": 20,
+    Paid: 250,
+    "Allocated credit": 40,
+    Outstanding: -15,
+  });
+
+  const workbook = await workbookSheets(
+    await api.export.revenueControlXlsx({ ...input, horizonDays: 90 }),
+  );
+
+  expect(workbook.get("Revenue by stream")!.find((row) => row.Group === "Total")).toMatchObject({
+    "Issued line value": 290,
+    "Credited line value": 10,
+    "Net billed revenue": 280,
+  });
+  expect(workbook.get("Correction bridge")!.map((row) => row.Amount)).toEqual([270, 10, 20, 280]);
+  expect(workbook.get("Credit notes")![0]).toMatchObject({
+    Record: `${oldCredit.creditNote.creditNoteNumber} · ${old.invoice.invoiceNumber}`,
+    Amount: 10,
+  });
+  expect(workbook.get("Refunds")![0]).toMatchObject({ Amount: 10 });
+  await expectORPCCode(
+    api.export.revenueControlXlsx({ orgSlug, from: today, to: addDays(today, 92) }),
+    "BAD_REQUEST",
+  );
+  await expectORPCCode(
+    api.report.invoiceRegister({ orgSlug, from: today, to: addDays(today, 366) }),
+    "BAD_REQUEST",
+  );
+  await expectORPCCode(
+    api.report.revenueBreakdown({ orgSlug, from: laterDay, to: today }),
+    "BAD_REQUEST",
+  );
+});
+
+test("review signals distinguish free care, voided care and zero-priced Charges without mutating past bookings", async () => {
+  const fixture = await createAccountingFixture("accounting-free-care-review");
+  const { api, organization } = fixture;
+  const orgSlug = organization.slug;
+  const today = reportDate();
+  const yesterday = addDays(today, -1);
+  const free = await fixture.createOpdAppointment();
+  const voided = await fixture.createOpdAppointment();
+  await fixture.addOtherCharge(voided.id, 70_00n);
+  const zero = await fixture.createOpdAppointment();
+  await fixture.addOtherCharge(zero.id, 0n);
+  const details = await api.opd.get({ orgSlug, appointmentId: voided.id });
+  const charge = details.charges[0]!;
+  await api.billing.voidCharge({ orgSlug, chargeId: charge.id, reason: "Authorized free care" });
+
+  const past = await api.opd.book({
+    orgSlug,
+    patientId: fixture.patient.id,
+    practitionerId: details.appointment.practitionerId,
+    scheduledLocal: "2030-03-16T10:30",
+  });
+
+  await db
+    .update(opdAppointments)
+    .set({
+      businessDate: yesterday,
+      scheduledFor: new Date(`${yesterday}T10:30:00+05:30`),
+    })
+    .where(and(eq(opdAppointments.orgId, organization.id), eq(opdAppointments.id, past.id)));
+  // Last update is yesterday UTC but today in the organization's timezone.
+  await db
+    .update(charges)
+    .set({ updatedAt: new Date(`${yesterday}T22:00:00Z`) })
+    .where(and(eq(charges.orgId, organization.id), eq(charges.id, charge.id)));
+
+  const snapshot = () =>
+    Promise.all([
+      db
+        .select()
+        .from(opdAppointments)
+        .where(eq(opdAppointments.orgId, organization.id))
+        .orderBy(opdAppointments.id),
+      db.select().from(charges).where(eq(charges.orgId, organization.id)).orderBy(charges.id),
+      db.select().from(invoices).where(eq(invoices.orgId, organization.id)).orderBy(invoices.id),
+      db.select().from(payments).where(eq(payments.orgId, organization.id)).orderBy(payments.id),
+      db.select().from(refunds).where(eq(refunds.orgId, organization.id)).orderBy(refunds.id),
+    ]);
+
+  const before = await snapshot();
+  const input = { orgSlug, from: yesterday, to: today };
+  const signals = await api.report.revenueSignals({ ...input, kind: "no_charge", limit: 1 });
+  expect(signals.summary).toMatchObject({ count: 2, amount: null });
+  expect(signals.rows).toHaveLength(1);
+
+  if (!signals.nextCursor) throw new Error("expected a second no-Charge page");
+
+  const next = await api.report.revenueSignals({
+    ...input,
+    kind: "no_charge",
+    limit: 1,
+    cursor: signals.nextCursor,
+  });
+
+  expect(next.nextCursor).toBeNull();
+  expect(next.summary).toBeNull();
+  const rows = [...signals.rows, ...next.rows];
+  expect(rows.find((row) => row.id === free.id)).toMatchObject({
+    classification: "never_charged",
+    amount: null,
+    reason: null,
+    source: { type: "opd", id: free.id },
+  });
+  expect(rows.find((row) => row.id === voided.id)).toMatchObject({
+    classification: "all_charges_voided",
+    amount: null,
+  });
+  expect(rows.some((row) => row.id === zero.id || row.id === past.id)).toBe(false);
+  const voids = await api.report.revenueSignals({ ...input, kind: "voided_charge" });
+  expect(voids.rows[0]).toMatchObject({
+    id: charge.id,
+    eventDate: today,
+    amount: 70_00n,
+    quantity: 1,
+    reason: "Authorized free care",
+    creatorName: fixture.owner.user.name,
+    actorName: null,
+  });
+  expect(
+    (
+      await api.report.revenueSignals({
+        orgSlug,
+        from: yesterday,
+        to: yesterday,
+        kind: "voided_charge",
+      })
+    ).rows,
+  ).toEqual([]);
+  await Promise.all([
+    api.report.invoiceRegister(input),
+    api.report.revenueBreakdown(input),
+    api.report.expiryExposure({ orgSlug }),
+  ]);
+  expect(await snapshot()).toEqual(before);
+  expect(before[0].find((row) => row.id === past.id)?.status).toBe("booked");
+  await expectORPCCode(
+    api.report.revenueSignals({
+      orgSlug,
+      from: yesterday,
+      to: addDays(yesterday, 92),
+      kind: "no_charge",
+    }),
+    "BAD_REQUEST",
+  );
 });

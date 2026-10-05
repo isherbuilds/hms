@@ -6,6 +6,7 @@ import { formatBusinessDate } from "@/lib/business-date";
 import { formatDecimal } from "@hms/api/core/money";
 import { formatMoney, ZERO } from "@/lib/money";
 import { methodLabel } from "@/lib/settlement";
+import { gstStateLabel } from "@hms/api/lib/gst-state";
 
 export type InvoiceBundle = Awaited<ReturnType<RouterClient<AppRouter>["billing"]["getInvoice"]>>;
 
@@ -23,8 +24,34 @@ type Refund = InvoiceBundle["refunds"][number];
 
 type DocumentHeader = Pick<
   Invoice,
-  "orgAddress" | "orgLegalName" | "orgTaxId" | "currency" | "patientName" | "patientMrn"
->;
+  | "orgAddress"
+  | "orgLegalName"
+  | "orgTaxId"
+  | "orgGstin"
+  | "currency"
+  | "patientName"
+  | "patientMrn"
+> &
+  Partial<Pick<Invoice, "orgDrugLicence20" | "orgDrugLicence21" | "stream">>;
+
+export function invoiceDocumentTitle(invoice: Pick<Invoice, "orgGstin" | "stream">): string {
+  if (!invoice.orgGstin) return "Invoice";
+
+  return invoice.stream === "opd" ? "Bill of Supply" : "Tax Invoice";
+}
+
+export function advanceReceiptTitle(receipt: Pick<AdvanceBundle["receipt"], "orgGstin">): string {
+  return receipt.orgGstin ? "Receipt Voucher" : "Advance Receipt";
+}
+
+function registrationRows(gstin: string) {
+  return gstin
+    ? [
+        { label: "Place of supply", value: gstStateLabel(gstin) },
+        { label: "Reverse charge", value: "No" },
+      ]
+    : [];
+}
 
 const personName = { textTransform: "capitalize" } as const;
 
@@ -80,7 +107,16 @@ function DocumentShell({
 }) {
   const letterhead = [
     document.orgAddress.replace(/\n/g, ", ").trim(),
-    document.orgTaxId ? `Tax ID ${document.orgTaxId}` : "",
+    document.orgTaxId && document.orgTaxId !== document.orgGstin
+      ? `Tax ID ${document.orgTaxId}`
+      : "",
+    document.orgGstin ? `GSTIN ${document.orgGstin}` : "",
+    document.stream === "pharmacy" && document.orgDrugLicence20
+      ? `Drug licence (Form 20) ${document.orgDrugLicence20}`
+      : "",
+    document.stream === "pharmacy" && document.orgDrugLicence21
+      ? `Drug licence (Form 21) ${document.orgDrugLicence21}`
+      : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -99,7 +135,7 @@ function DocumentShell({
           textAlign: thermal ? "center" : "left",
         }}
       >
-        <div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <h1 style={{ fontSize: thermal ? 15 : 18, lineHeight: 1.2, margin: 0 }}>
             {document.orgLegalName}
           </h1>
@@ -107,12 +143,24 @@ function DocumentShell({
             <p style={{ color: colors.muted, fontSize: 8, margin: "4px 0 0" }}>{letterhead}</p>
           ) : null}
         </div>
-        <div style={{ marginTop: thermal ? 10 : 0, textAlign: thermal ? "center" : "right" }}>
+        <div
+          style={{
+            flexShrink: 0,
+            marginLeft: thermal ? 0 : 20,
+            marginTop: thermal ? 10 : 0,
+            textAlign: thermal ? "center" : "right",
+          }}
+        >
           <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>{title}</div>
           <div style={{ fontSize: 12, fontWeight: 700 }}>{number}</div>
         </div>
       </header>
       {children}
+      {document.orgGstin ? (
+        <p style={{ marginTop: 24, textAlign: "right" }}>
+          Authorised signatory: ____________________
+        </p>
+      ) : null}
     </main>
   );
 }
@@ -194,6 +242,55 @@ function SummaryBox({ rows }: { rows: Array<{ label: string; value: string; tota
   );
 }
 
+function TaxSummary({
+  lines,
+  thermal = false,
+}: {
+  lines: InvoiceBundle["lines"];
+  thermal?: boolean;
+}) {
+  const groups = new Map<string, { taxable: bigint; tax: bigint }>();
+
+  for (const line of lines) {
+    const amounts = groups.get(line.taxRatePercent) ?? { taxable: ZERO, tax: ZERO };
+    amounts.taxable += line.taxableValue;
+    amounts.tax += line.taxAmount;
+    groups.set(line.taxRatePercent, amounts);
+  }
+
+  return (
+    <section style={{ breakInside: "avoid", marginTop: 18 }}>
+      <SectionTitle>GST summary</SectionTitle>
+      <table style={{ ...tableStyle, width: thermal ? "100%" : 350 }}>
+        <thead>
+          <tr>
+            <th style={headingCellStyle}>Rate</th>
+            <th style={{ ...headingCellStyle, textAlign: "right" }}>Taxable</th>
+            <th style={{ ...headingCellStyle, textAlign: "right" }}>CGST</th>
+            <th style={{ ...headingCellStyle, textAlign: "right" }}>SGST</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from(groups, ([rate, amounts]) => {
+            const { cgst, sgst } = splitGst(amounts.tax);
+
+            return (
+              <tr key={rate}>
+                <td style={cellStyle}>{rate}%</td>
+                <td style={{ ...cellStyle, textAlign: "right" }}>
+                  {formatDecimal(amounts.taxable)}
+                </td>
+                <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(cgst)}</td>
+                <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(sgst)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 export function InvoiceDocument({
   invoice,
   lines,
@@ -204,6 +301,32 @@ export function InvoiceDocument({
   layout: "a4" | "thermal";
 }) {
   const currency = invoice.currency;
+  // Only a registered pharmacy bill carries GST; a registered OPD bill is exempt.
+  const taxed = Boolean(invoice.orgGstin) && invoice.stream === "pharmacy";
+
+  const unitLabel =
+    invoice.stream === "pharmacy"
+      ? invoice.orgGstin
+        ? "MRP (incl. GST)"
+        : "MRP (incl. all taxes)"
+      : "Unit";
+
+  const totals = [
+    {
+      label: taxed ? "Subtotal (incl. GST)" : "Subtotal",
+      value: formatMoney(
+        invoice.stream === "opd" ? invoice.subtotal + invoice.taxTotal : invoice.subtotal,
+        currency,
+      ),
+    },
+    { label: "Discount", value: formatMoney(invoice.discountAmount, currency) },
+    ...(taxed ? [{ label: "GST included", value: formatMoney(invoice.taxTotal, currency) }] : []),
+    ...(invoice.roundOff !== ZERO
+      ? [{ label: "Round off", value: formatMoney(invoice.roundOff, currency) }]
+      : []),
+    { label: "Grand total", value: formatMoney(invoice.grandTotal, currency), total: true },
+  ];
+
   const separator = (invoice.patientGuardian?.indexOf(" ") ?? -1) + 1;
 
   const guardian = invoice.patientGuardian ? (
@@ -215,7 +338,12 @@ export function InvoiceDocument({
 
   if (layout === "thermal") {
     return (
-      <DocumentShell document={invoice} title="Invoice" number={invoice.invoiceNumber} thermal>
+      <DocumentShell
+        document={invoice}
+        title={invoiceDocumentTitle(invoice)}
+        number={invoice.invoiceNumber}
+        thermal
+      >
         <Details
           rows={[
             { label: "Issued", value: formatBusinessDate(invoice.businessDate) },
@@ -230,6 +358,10 @@ export function InvoiceDocument({
             },
             ...(invoice.patientMrn ? [{ label: "MRN", value: invoice.patientMrn }] : []),
             { label: "Issued by", value: invoice.issuedByName },
+            ...(invoice.patientAddress
+              ? [{ label: "Address", value: invoice.patientAddress }]
+              : []),
+            ...registrationRows(invoice.orgGstin),
           ]}
         />
         <section style={{ marginTop: 10 }}>
@@ -247,53 +379,32 @@ export function InvoiceDocument({
                 <span>{formatMoney(line.gross, currency)}</span>
               </div>
               <div style={{ color: colors.muted, fontSize: 8 }}>
-                {`Unit ${formatDecimal(line.unitPrice)}${line.priceUnits > 1 ? ` / ${line.priceUnits}` : ""} · taxable ${formatDecimal(line.taxableValue)} · tax ${formatDecimal(line.taxAmount)} @ ${line.taxRatePercent}%`}
+                {`${unitLabel} ${formatDecimal(line.unitPrice)}${line.priceUnits > 1 ? ` / ${line.priceUnits}` : ""}${taxed ? ` · value ${formatDecimal(line.taxableValue)} · tax ${formatDecimal(line.taxAmount)} @ ${line.taxRatePercent}%` : ""}`}
               </div>
             </div>
           ))}
         </section>
-        <Details
-          roomy
-          rows={[
-            { label: "Subtotal", value: formatMoney(invoice.subtotal, currency) },
-            { label: "Discount", value: formatMoney(invoice.discountAmount, currency) },
-            { label: "Tax", value: formatMoney(invoice.taxTotal, currency) },
-            ...(invoice.roundOff !== ZERO
-              ? [{ label: "Round off", value: formatMoney(invoice.roundOff, currency) }]
-              : []),
-            { label: "Grand total", value: formatMoney(invoice.grandTotal, currency) },
-          ]}
-        />
+        {taxed ? <TaxSummary lines={lines} thermal /> : null}
+        <Details roomy rows={totals} />
       </DocumentShell>
     );
   }
 
-  const taxSummary = Array.from(
-    lines.reduce((groups, line) => {
-      const current = groups.get(line.taxRatePercent) ?? {
-        taxable: ZERO,
-        tax: ZERO,
-      };
-
-      current.taxable += line.taxableValue;
-      current.tax += line.taxAmount;
-      groups.set(line.taxRatePercent, current);
-
-      return groups;
-    }, new Map<string, { taxable: bigint; tax: bigint }>()),
-  );
-
   return (
-    <DocumentShell document={invoice} title="Invoice" number={invoice.invoiceNumber}>
+    <DocumentShell
+      document={invoice}
+      title={invoiceDocumentTitle(invoice)}
+      number={invoice.invoiceNumber}
+    >
       <section style={{ display: "flex", gap: 28, marginBottom: 20 }}>
         <div style={{ flex: 1 }}>
           <SectionTitle>Invoice details</SectionTitle>
           <Details
             rows={[
-              { label: "Invoice #", value: invoice.invoiceNumber },
               { label: "Issued", value: formatBusinessDate(invoice.businessDate) },
               { label: "Issued by", value: invoice.issuedByName },
               { label: "Currency", value: currency },
+              ...registrationRows(invoice.orgGstin),
             ]}
           />
         </div>
@@ -319,11 +430,15 @@ export function InvoiceDocument({
           <tr>
             <th style={headingCellStyle}>Description</th>
             <th style={{ ...headingCellStyle, textAlign: "right" }}>Qty</th>
-            <th style={{ ...headingCellStyle, textAlign: "right" }}>Unit</th>
+            <th style={{ ...headingCellStyle, textAlign: "right" }}>{unitLabel}</th>
             <th style={{ ...headingCellStyle, textAlign: "right" }}>Discount</th>
-            <th style={{ ...headingCellStyle, textAlign: "right" }}>Taxable</th>
-            <th style={{ ...headingCellStyle, textAlign: "right" }}>Rate</th>
-            <th style={{ ...headingCellStyle, textAlign: "right" }}>Tax</th>
+            {taxed ? (
+              <>
+                <th style={{ ...headingCellStyle, textAlign: "right" }}>Taxable</th>
+                <th style={{ ...headingCellStyle, textAlign: "right" }}>Rate</th>
+                <th style={{ ...headingCellStyle, textAlign: "right" }}>Tax</th>
+              </>
+            ) : null}
             <th style={{ ...headingCellStyle, textAlign: "right" }}>Gross</th>
           </tr>
         </thead>
@@ -344,60 +459,26 @@ export function InvoiceDocument({
               <td style={{ ...cellStyle, textAlign: "right" }}>
                 {formatDecimal(line.allocatedDiscount)}
               </td>
-              <td style={{ ...cellStyle, textAlign: "right" }}>
-                {formatDecimal(line.taxableValue)}
-              </td>
-              <td style={{ ...cellStyle, textAlign: "right" }}>{line.taxRatePercent}%</td>
-              <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(line.taxAmount)}</td>
+              {taxed ? (
+                <>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>
+                    {formatDecimal(line.taxableValue)}
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>{`${line.taxRatePercent}%`}</td>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>
+                    {formatDecimal(line.taxAmount)}
+                  </td>
+                </>
+              ) : null}
               <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(line.gross)}</td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      {currency === "INR" && taxSummary.length > 0 ? (
-        <section style={{ breakInside: "avoid", marginTop: 18 }}>
-          <SectionTitle>Tax summary</SectionTitle>
-          <table style={{ ...tableStyle, width: 350 }}>
-            <thead>
-              <tr>
-                <th style={headingCellStyle}>Rate</th>
-                <th style={{ ...headingCellStyle, textAlign: "right" }}>Taxable</th>
-                <th style={{ ...headingCellStyle, textAlign: "right" }}>CGST</th>
-                <th style={{ ...headingCellStyle, textAlign: "right" }}>SGST</th>
-              </tr>
-            </thead>
-            <tbody>
-              {taxSummary.map(([rate, amounts]) => {
-                const { cgst, sgst } = splitGst(amounts.tax);
+      {taxed ? <TaxSummary lines={lines} /> : null}
 
-                return (
-                  <tr key={rate}>
-                    <td style={cellStyle}>{rate}%</td>
-                    <td style={{ ...cellStyle, textAlign: "right" }}>
-                      {formatDecimal(amounts.taxable)}
-                    </td>
-                    <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(cgst)}</td>
-                    <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(sgst)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </section>
-      ) : null}
-
-      <SummaryBox
-        rows={[
-          { label: "Subtotal", value: formatMoney(invoice.subtotal, currency) },
-          { label: "Discount", value: formatMoney(invoice.discountAmount, currency) },
-          { label: "Tax", value: formatMoney(invoice.taxTotal, currency) },
-          ...(invoice.roundOff !== ZERO
-            ? [{ label: "Round off", value: formatMoney(invoice.roundOff, currency) }]
-            : []),
-          { label: "Grand total", value: formatMoney(invoice.grandTotal, currency), total: true },
-        ]}
-      />
+      <SummaryBox rows={totals} />
     </DocumentShell>
   );
 }
@@ -439,6 +520,7 @@ export function CreditNoteDocument({
   note: CreditNote;
 }) {
   const sourceLines = new Map(invoiceLines.map((line) => [line.id, line]));
+  const taxed = Boolean(invoice.orgGstin) && invoice.stream === "pharmacy";
 
   const rows = note.lines.map((line) => {
     const source = sourceLines.get(line.invoiceLineId);
@@ -459,9 +541,9 @@ export function CreditNoteDocument({
           <SectionTitle>Credit note details</SectionTitle>
           <Details
             rows={[
-              { label: "Credit note #", value: note.creditNoteNumber },
               { label: "Issued", value: formatBusinessDate(note.businessDate) },
               { label: "Against invoice", value: invoice.invoiceNumber },
+              { label: "Invoice date", value: formatBusinessDate(invoice.businessDate) },
             ]}
           />
         </div>
@@ -470,6 +552,9 @@ export function CreditNoteDocument({
           <strong style={personName}>{invoice.patientName}</strong>
           {invoice.patientMrn ? (
             <div style={{ color: colors.muted }}>MRN {invoice.patientMrn}</div>
+          ) : null}
+          {invoice.patientAddress ? (
+            <div style={{ color: colors.muted }}>{invoice.patientAddress}</div>
           ) : null}
         </div>
       </section>
@@ -480,8 +565,12 @@ export function CreditNoteDocument({
         <thead>
           <tr>
             <th style={{ ...headingCellStyle, width: "45%" }}>Description</th>
-            <th style={{ ...headingCellStyle, textAlign: "right" }}>Taxable</th>
-            <th style={{ ...headingCellStyle, textAlign: "right" }}>Tax</th>
+            {taxed ? (
+              <>
+                <th style={{ ...headingCellStyle, textAlign: "right" }}>Taxable</th>
+                <th style={{ ...headingCellStyle, textAlign: "right" }}>Tax</th>
+              </>
+            ) : null}
             <th style={{ ...headingCellStyle, textAlign: "right" }}>Gross</th>
           </tr>
         </thead>
@@ -493,12 +582,19 @@ export function CreditNoteDocument({
                 <div style={{ color: colors.muted, fontSize: 8 }}>
                   Unit {formatDecimal(source.unitPrice)}
                   {source.priceUnits > 1 ? ` / ${source.priceUnits}` : ""}
+                  {taxed ? ` · GST ${source.taxRatePercent}%` : ""}
                 </div>
               </td>
-              <td style={{ ...cellStyle, textAlign: "right" }}>
-                {formatDecimal(line.taxableValue)}
-              </td>
-              <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(line.taxAmount)}</td>
+              {taxed ? (
+                <>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>
+                    {formatDecimal(line.taxableValue)}
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>
+                    {formatDecimal(line.taxAmount)}
+                  </td>
+                </>
+              ) : null}
               <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(line.gross)}</td>
             </tr>
           ))}
@@ -506,8 +602,17 @@ export function CreditNoteDocument({
       </table>
       <SummaryBox
         rows={[
-          { label: "Taxable", value: formatMoney(note.subtotal, invoice.currency) },
-          { label: "Tax", value: formatMoney(note.taxTotal, invoice.currency) },
+          ...(taxed
+            ? [
+                { label: "Taxable", value: formatMoney(note.subtotal, invoice.currency) },
+                { label: "Tax", value: formatMoney(note.taxTotal, invoice.currency) },
+              ]
+            : [
+                {
+                  label: "Value",
+                  value: formatMoney(note.subtotal + note.taxTotal, invoice.currency),
+                },
+              ]),
           ...(note.roundOff !== ZERO
             ? [{ label: "Round off", value: formatMoney(note.roundOff, invoice.currency) }]
             : []),
@@ -558,7 +663,11 @@ export function AdvanceReceiptDocument({ data }: { data: AdvanceBundle }) {
   const receipt = data.receipt;
 
   return (
-    <DocumentShell document={receipt} title="Advance Receipt" number={receipt.receiptNumber}>
+    <DocumentShell
+      document={receipt}
+      title={advanceReceiptTitle(receipt)}
+      number={receipt.receiptNumber}
+    >
       <SectionTitle>Receipt details</SectionTitle>
       <Details
         roomy
@@ -572,7 +681,18 @@ export function AdvanceReceiptDocument({ data }: { data: AdvanceBundle }) {
               </>
             ),
           },
+          ...(receipt.patientAddress
+            ? [{ label: "Recipient address", value: receipt.patientAddress }]
+            : []),
           { label: "Purpose", value: receipt.purpose },
+          ...(receipt.orgGstin
+            ? [
+                { label: "Description", value: "Advance for exempt healthcare services" },
+                { label: "Tax rate", value: "Exempt" },
+                { label: "Tax amount", value: formatMoney(ZERO, receipt.currency) },
+                ...registrationRows(receipt.orgGstin),
+              ]
+            : []),
           { label: "Method", value: methodLabel(receipt.method) },
           ...(receipt.reference ? [{ label: "Reference", value: receipt.reference }] : []),
           { label: "Received by", value: receipt.receivedByName },

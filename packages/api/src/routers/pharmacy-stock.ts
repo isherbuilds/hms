@@ -2,6 +2,7 @@ import { db } from "@hms/db";
 import type { DbTransaction } from "@hms/db/counter";
 import { user } from "@hms/db/schema/auth";
 import { departments } from "@hms/db/schema/departments";
+import { goodsReceiptAdjustments } from "@hms/db/schema/goods-receipt-adjustments";
 import { goodsReceiptLines } from "@hms/db/schema/goods-receipt-lines";
 import { goodsReceipts } from "@hms/db/schema/goods-receipts";
 import { PRODUCT_SCHEDULES, STOCK_UNITS, products } from "@hms/db/schema/products";
@@ -14,9 +15,11 @@ import { z } from "zod";
 import { audit } from "../audit";
 import { formatDecimal } from "../core/money";
 import {
-  BILL_ROUND_OFF_LIMIT,
   MAX_STOCK_QTY,
   PERCENT_PATTERN,
+  RECEIPT_ADJUSTMENT_KINDS,
+  adjustmentsTotal,
+  billMatches,
   exactToPaise,
   receiptLineCost,
 } from "../core/receipt-math";
@@ -29,6 +32,7 @@ import {
   money,
   note,
   pageLimit,
+  positiveMoney,
   reason,
   searchQuery,
   shortName,
@@ -704,6 +708,16 @@ export const pharmacyStockRouter = {
         receivedOn: z.iso.date(),
         note,
         billTotal: money.optional(),
+        adjustments: z
+          .array(
+            z.object({
+              kind: z.enum(RECEIPT_ADJUSTMENT_KINDS),
+              reason,
+              amount: positiveMoney,
+              gstAmount: money,
+            }),
+          )
+          .default([]),
         lines: z
           .array(
             batchLine.extend({
@@ -732,6 +746,14 @@ export const pharmacyStockRouter = {
 
         // A delivery is priced line by line against its bill; an opening count is not.
         if (value.opening) {
+          if (value.adjustments.length > 0) {
+            context.addIssue({
+              code: "custom",
+              path: ["adjustments"],
+              message: "Opening stock does not have bill adjustments",
+            });
+          }
+
           if (value.billTotal !== undefined || value.lines.some((line) => line.cost)) {
             context.addIssue({
               code: "custom",
@@ -820,14 +842,13 @@ export const pharmacyStockRouter = {
         });
       }
 
-      if (input.billTotal !== undefined) {
-        const roundOff = input.billTotal - exactToPaise(exactNet);
-
-        if (roundOff > BILL_ROUND_OFF_LIMIT || roundOff < -BILL_ROUND_OFF_LIMIT) {
-          throw new ORPCError("BAD_REQUEST", {
-            message: "The lines do not add up to the bill total",
-          });
-        }
+      if (
+        input.billTotal !== undefined &&
+        !billMatches(input.billTotal - exactToPaise(exactNet) - adjustmentsTotal(input.adjustments))
+      ) {
+        throw new ORPCError("BAD_REQUEST", {
+          message: "The lines do not add up to the bill total",
+        });
       }
 
       await tx.insert(goodsReceipts).values({
@@ -842,6 +863,17 @@ export const pharmacyStockRouter = {
         receivedBy: scope.userId,
         createdAt: now,
       });
+
+      if (input.adjustments.length > 0) {
+        await tx.insert(goodsReceiptAdjustments).values(
+          input.adjustments.map((adjustment) => ({
+            ...adjustment,
+            id: Bun.randomUUIDv7(),
+            orgId: scope.orgId,
+            receiptId,
+          })),
+        );
+      }
 
       const batchIds = [...wanted.keys()];
 

@@ -32,6 +32,11 @@ Open the visit's **Billing** tab. Check the patient's name, each Charge, and the
 total. A **Charge** records a priced service or item. Only pending Charges need
 an invoice; invoiced and voided Charges remain in the history.
 
+For a GST-registered hospital, fill in the patient's address before issuing an
+OPD bill or exempt-care advance voucher, and ask the supervisor to correct any
+nonzero GST on qualifying exempt OPD care; HMS refuses those missing or
+inconsistent particulars instead of printing them.
+
 ![Visit Billing tab with a Charge waiting to be billed.](/docs/images/guides/opd-appointment-billing.webp)
 
 Choose **Review And Collect** to open the final check. Read the amount again. If
@@ -70,7 +75,10 @@ received. The Invoice lists what was sold or done. They are different papers.
 
 - **Charge** — a priced service or item; its status shows whether it is pending,
   invoiced, or voided.
-- **Invoice** — the itemized bill. An issued invoice is not edited in place.
+- **Invoice** — the itemized bill. Registered qualifying exempt OPD care prints
+  **Bill of Supply**; registered counter pharmacy prints **Tax Invoice**.
+  Without a GSTIN it prints neutral **Invoice**, with no GST claims. An issued
+  bill keeps the registration and title saved at issue and is not edited in place.
 - **Payment** — a record of money received.
 - **Receipt** — proof that the payment was recorded.
 - **Credit Note** — a paper that lowers an issued invoice after a correction.
@@ -113,6 +121,12 @@ when money should be held for future care. Pick the treatment plan, or choose
 Enter the amount and the method used to receive it. Add the reference for a
 non-cash payment. Choose **Record Advance**, then **Print Receipt**. Check that
 the receipt appears under the patient's **Advance receipts**.
+
+For an organization registered for GST, the exempt-care advance paper is titled
+**Receipt Voucher**, with exempt/nil tax particulars. Without GSTIN, it is
+**Advance Receipt** without GST claims. Both record money held for future care,
+not an invoice or earned revenue. Later hospital settings do not change the
+saved paper. See [Organization setup](/docs/administration-and-handover#1-check-organization).
 
 ![Take Advance form. This example is open but not saved.](/docs/images/guides/patient-advance.webp)
 

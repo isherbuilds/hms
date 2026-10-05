@@ -232,7 +232,7 @@ export type InvoiceParent =
         name: string;
         mrn: string | null;
         phone: string | null;
-        address: null;
+        address: string | null;
         guardian: null;
       };
     };
@@ -298,6 +298,21 @@ export async function issueInvoiceTx(
     });
   }
 
+  if (settings.gstin && parent.stream === "opd") {
+    if (!parent.patient.address?.trim()) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Add the patient's address before issuing a Bill of Supply",
+      });
+    }
+
+    if (computed.taxTotal !== 0n) {
+      throw new ORPCError("BAD_REQUEST", {
+        message:
+          "Exempt healthcare cannot carry GST. Set the service to 0% GST, then void and add the charge again",
+      });
+    }
+  }
+
   const categoryByChargeId = new Map(
     pendingCharges.map((charge) => [charge.chargeId, charge.revenueCategory]),
   );
@@ -345,6 +360,9 @@ export async function issueInvoiceTx(
       orgLegalName: settings.legalName,
       orgAddress: settings.address,
       orgTaxId: settings.taxId,
+      orgGstin: settings.gstin,
+      orgDrugLicence20: settings.drugLicence20,
+      orgDrugLicence21: settings.drugLicence21,
       currency: settings.currency,
       patientName: parent.patient.name,
       patientMrn: parent.patient.mrn,

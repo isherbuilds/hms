@@ -70,7 +70,8 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   {
     path: "/contact",
     title: "Contact",
-    description: "Reach the Edernal Care team on WhatsApp or by email.",
+    description:
+      "Reach the founder at support@edernal.com for Edernal Care demos, support and grievances.",
     ogImage: "/og/contact.png",
   },
   {

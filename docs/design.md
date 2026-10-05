@@ -188,6 +188,13 @@ border-black` because paper is white with black ink in every theme; the login
   organizations show a building symbol. Each uses `rounded` corners
   and stays legible at `size-6` in both themes. Do not use the pair for patient
   facts.
+  **Kept 2026-10-04.** The pastel square and organization building symbol mark
+  identity only; patient facts retain their separate labelled severity tokens.
+  Using the [WCAG relative-luminance calculation](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html),
+  the fixed text/background pairs clear the 4.5:1 normal-text threshold in both
+  themes: teal 6.49:1 / 8.58:1, indigo 6.46:1 / 8.62:1, rose 5.96:1 /
+  8.50:1, and ochre 5.85:1 / 8.45:1 (light / dark). The colour is not an
+  alternate status channel and never replaces the adjacent record name.
 - **Outside identity and emphasis, colour means state.** `text-destructive` marks
   a failure the user must act on. Status is carried by a `Badge`, never by colour
   alone — the word is always present.
@@ -302,6 +309,12 @@ page headings, and only application-bundled fonts. Money and other changing
 numerals stay aligned because ragged digit columns are a document defect, not a
 style choice.
 
+The public roles retain their scroll-driven deck only at desktop widths of at
+least 1024 px and viewport heights of at least 900 px. Smaller or shorter
+viewports, and reduced motion, use the same natural-height cards in a plain
+stack so no form or bill row is clipped. The roles section clips transformed
+cards at its outer boundary, including reverse scroll.
+
 - **`ErrorNote`** — the one way a page reports a failed read.
 - **`PageTabs` / `PageTab`** — the one tab strip below `PageHeader`. `PageTab`
   keeps typed route links, active state, and tab styling consistent. All sub-navigation
@@ -396,12 +409,18 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
   chrome it can build from route params: its header band. The data region stays
   empty until the data lands. The panel's `min-h-*` makes that blank region read
   as an empty panel, not a collapsed page.
+  A pending list exposes visually hidden `role="status"` loading text rather
+  than placeholder rows. A shared polite route status announces loading and
+  the destination document title when client navigation finishes.
 - **Rows already on screen stay while the search term changes.** A list that
   blanks between keystrokes reads as "nothing found", a different statement
   from "still loading". A day or filter change remounts a list whose rows carry
   actions, so another queue's rows never stand in with live controls, and a
   first load never shows placeholder rows (D037). A route loader fetches what its screen paints,
   so a panel that the page owns arrives with the page instead of after it.
+  A failed first operational read keeps its `ErrorNote` visible instead of
+  restarting a blank data region every ten seconds; reconnect or window focus
+  retries it. Reads with existing rows continue their normal background polling.
 
 ## 10. Task overlays
 
@@ -423,6 +442,11 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
   `Combobox` picker. A two-way toggle keeps a `NativeSelect` or a
   `role="group"` row of buttons that carry `aria-pressed`. Section boundaries
   use `Separator`.
+  The time-zone `NativeSelect` deduplicates ICU legacy spellings into current
+  IANA names (for example, `Asia/Calcutta` becomes `Asia/Kolkata`), and keeps any
+  stored zone selectable. The shared client/server schema validates with Intl
+  and stores the current name on save; historical business dates do not change.
+  Rename evidence: [IANA tzdb backward links](https://github.com/eggert/tz/blob/main/backward).
 - An overlay holding a pending money write ignores Escape, backdrop, and close
   until the write settles.
 - Sheet motion is limited to the existing 150 ms opacity and directional

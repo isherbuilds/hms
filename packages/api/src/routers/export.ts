@@ -1,5 +1,6 @@
 import { call } from "@orpc/server";
 import { writeXlsx } from "hucre/xlsx";
+import { z } from "zod";
 
 import {
   arrivalModeLabel,
@@ -9,7 +10,40 @@ import {
 } from "../lib/labels";
 import { orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
-import { asOfInput, periodInput, reportRouter } from "./report";
+import {
+  assertValidPeriod,
+  asOfInput,
+  gstReport,
+  invoiceRegisterExportInput,
+  opdRegisterRow,
+  opdRegisterRows,
+  opdRegisterTotals,
+  periodInput,
+  registerFilter,
+  registerRow,
+  registerRows,
+  registerSummary,
+  reportRouter,
+  REVENUE_BOUND,
+  revenueSignalKind,
+  settleOpdRegister,
+  signalRows,
+  signalSource,
+} from "./report";
+
+const revenueControlExportInput = periodInput.extend({
+  horizonDays: z.union([z.literal(30), z.literal(90)]).default(30),
+});
+
+const SIGNAL_SHEETS = {
+  no_charge: "Visits with no charge",
+  voided_charge: "Voided charges",
+  discount: "Invoice discounts",
+  credit_note: "Credit notes",
+  below_mrp: "Sales below MRP",
+  stock_adjustment: "Stock adjustments",
+  refund: "Refunds",
+} as const;
 
 // hucre keys header styles `"row,col"`; a column's own `style` would bold the
 // whole column, not row 1.
@@ -48,7 +82,203 @@ const periodFile = (prefix: string, input: { from: string; to: string }) =>
 // Spreadsheet cells want a plain number; nothing else does arithmetic on this.
 const rupees = (paise: bigint) => Number(paise) / 100;
 
+const registerMoneyColumns = [
+  { header: "Subtotal", key: "subtotal", width: 16 },
+  { header: "Discount", key: "discountAmount", width: 16 },
+  { header: "Issued line value", key: "taxableValue", width: 20 },
+  { header: "GST", key: "taxTotal", width: 16 },
+  { header: "Round-off", key: "roundOff", width: 14 },
+  { header: "Invoice total", key: "grandTotal", width: 16 },
+  { header: "Credit notes", key: "creditTotal", width: 16 },
+  { header: "Net billed", key: "netBilled", width: 16 },
+  { header: "Paid", key: "paymentsTotal", width: 16 },
+  { header: "Allocated credit", key: "allocationsTotal", width: 18 },
+  { header: "Refunds", key: "refundsTotal", width: 16 },
+  { header: "Outstanding", key: "outstanding", width: 16 },
+] as const;
+
+const revenueColumns: Column[] = [
+  { header: "Group", key: "label", width: 30 },
+  { header: "Issued line value", key: "issuedTaxableValue", width: 20 },
+  { header: "Credited line value", key: "creditedTaxableValue", width: 20 },
+  { header: "Net billed revenue", key: "netTaxableValue", width: 20 },
+  { header: "Net GST", key: "tax", width: 16 },
+];
+
+const signalColumns: Column[] = [
+  { header: "Date", key: "eventDate", width: 14 },
+  { header: "Record", key: "label", width: 50 },
+  { header: "Amount", key: "amount", width: 16 },
+  { header: "Reason", key: "reason", width: 50 },
+  { header: "Recorded by", key: "actorName", width: 28 },
+  { header: "Classification", key: "classification", width: 24 },
+  { header: "Quantity", key: "quantity", width: 12 },
+];
+
 export const exportRouter = {
+  invoiceRegisterXlsx: orgProcedure(
+    { report: ["readFinancial"] },
+    invoiceRegisterExportInput,
+  ).handler(async ({ context, input }) => {
+    const orgId = context.scope.orgId;
+    const filter = registerFilter(orgId, input);
+
+    const [rows, { totals, series }] = await Promise.all([
+      registerRows(orgId, filter),
+      registerSummary(orgId, filter),
+    ]);
+
+    return xlsxFile(periodFile("invoice-register", input), [
+      {
+        name: "Invoice register",
+        columns: [
+          { header: "Business date", key: "businessDate", width: 14 },
+          { header: "Invoice number", key: "invoiceNumber", width: 22 },
+          { header: "Stream", key: "stream", width: 12 },
+          { header: "Fiscal year", key: "fiscalYear", width: 12 },
+          { header: "Patient", key: "patientName", width: 28 },
+          { header: "MRN", key: "patientMrn", width: 16 },
+          ...registerMoneyColumns,
+        ],
+        rows: [
+          ...rows.map(registerRow).map((row) => ({
+            businessDate: row.businessDate,
+            invoiceNumber: row.invoiceNumber,
+            stream: row.stream,
+            fiscalYear: row.fiscalYear,
+            patientName: row.patientName ?? "Counter sale",
+            patientMrn: row.patientMrn ?? "",
+            ...Object.fromEntries(registerMoneyColumns.map(({ key }) => [key, rupees(row[key])])),
+          })),
+          {
+            invoiceNumber: "Total",
+            ...Object.fromEntries(
+              registerMoneyColumns.map(({ key }) => [key, rupees(totals[key])]),
+            ),
+          },
+        ],
+      },
+      {
+        name: "Invoice series",
+        columns: [
+          { header: "Stream", key: "stream", width: 12 },
+          { header: "Fiscal year", key: "fiscalYear", width: 12 },
+          { header: "Count", key: "count", width: 10 },
+          { header: "First number", key: "firstNumber", width: 22 },
+          { header: "Last number", key: "lastNumber", width: 22 },
+        ],
+        rows: series.map((row) => ({
+          stream: row.stream ?? "",
+          fiscalYear: row.fiscalYear ?? "",
+          count: row.count,
+          firstNumber: row.firstNumber,
+          lastNumber: row.lastNumber,
+        })),
+      },
+    ]);
+  }),
+
+  revenueControlXlsx: orgProcedure(
+    { report: ["readFinancial"] },
+    revenueControlExportInput,
+  ).handler(async ({ context, input }) => {
+    // Checked before the fan-out, so a refused range starts no signal scans.
+    assertValidPeriod(input.from, input.to, REVENUE_BOUND);
+    const period = { orgSlug: input.orgSlug, from: input.from, to: input.to };
+    const orgId = context.scope.orgId;
+    const { timeZone } = await readOrgSettings(orgId);
+
+    const [revenue, expiry, signals] = await Promise.all([
+      call(reportRouter.revenueBreakdown, period, { context }),
+      call(
+        reportRouter.expiryExposure,
+        { orgSlug: input.orgSlug, horizonDays: input.horizonDays },
+        {
+          context,
+        },
+      ),
+      Promise.all(
+        revenueSignalKind.options.map(async (kind) => ({
+          kind,
+          rows: await signalRows(signalSource(kind, orgId, input, timeZone)),
+        })),
+      ),
+    ]);
+
+    const revenueRows = (buckets: typeof revenue.byStream) =>
+      [...buckets, revenue.totals].map((row) => ({
+        label: row.label,
+        issuedTaxableValue: rupees(row.issuedTaxableValue),
+        creditedTaxableValue: rupees(row.creditedTaxableValue),
+        netTaxableValue: rupees(row.netTaxableValue),
+        tax: rupees(row.tax),
+      }));
+
+    return xlsxFile(periodFile("revenue-control", input), [
+      { name: "Revenue by stream", columns: revenueColumns, rows: revenueRows(revenue.byStream) },
+      {
+        name: "Revenue by practitioner",
+        columns: revenueColumns,
+        rows: revenueRows(revenue.byPractitioner),
+      },
+      {
+        name: "Revenue by category",
+        columns: revenueColumns,
+        rows: revenueRows(revenue.byCategory),
+      },
+      {
+        name: "Correction bridge",
+        columns: [
+          { header: "Line", key: "label", width: 50 },
+          { header: "Amount", key: "amount", width: 16 },
+        ],
+        rows: [
+          {
+            label: "Register net line value",
+            amount: rupees(revenue.bridge.registerNetTaxableValue),
+          },
+          {
+            label: "Less credits to older invoices",
+            amount: rupees(revenue.bridge.creditsToOlderInvoices),
+          },
+          {
+            label: "Plus later credits against period invoices",
+            amount: rupees(revenue.bridge.laterCreditsAgainstPeriodInvoices),
+          },
+          { label: "Net billed revenue", amount: rupees(revenue.totals.netTaxableValue) },
+        ],
+      },
+      ...signals.map(({ kind, rows }): Sheet => ({
+        name: SIGNAL_SHEETS[kind],
+        columns: signalColumns,
+        rows: rows.map((row) => ({
+          eventDate: row.eventDate,
+          label: row.label,
+          amount: row.amount === null ? "" : rupees(row.amount),
+          reason: row.reason ?? "",
+          actorName: row.actorName ?? "",
+          classification: row.method
+            ? PAYMENT_METHOD_LABELS[row.method]
+            : (row.classification ?? ""),
+          quantity: row.quantity ?? "",
+        })),
+      })),
+      {
+        name: "Expiry exposure",
+        columns: [
+          { header: "Product", key: "productName", width: 30 },
+          { header: "Batch", key: "batchNumber", width: 18 },
+          { header: "Expiry", key: "expiryDate", width: 14 },
+          { header: "Status", key: "status", width: 12 },
+          { header: "Bucket", key: "bucket", width: 12 },
+          { header: "Quantity", key: "quantity", width: 12 },
+          { header: "MRP exposure", key: "exposure", width: 16 },
+        ],
+        rows: expiry.rows.map((row) => ({ ...row, exposure: rupees(row.exposure) })),
+      },
+    ]);
+  }),
+
   trialBalanceXlsx: orgProcedure({ report: ["readFinancial"] }, periodInput).handler(
     async ({ context, input }) => {
       const { rows, totals } = await call(reportRouter.trialBalance, input, { context });
@@ -221,8 +451,14 @@ export const exportRouter = {
 
   opdRegisterXlsx: orgProcedure({ report: ["readOpdRegister"] }, periodInput).handler(
     async ({ context, input }) => {
-      const report = await call(reportRouter.opdRegister, input, { context });
-      const { currency, timeZone } = await readOrgSettings(context.scope.orgId);
+      const { scope } = context;
+      await settleOpdRegister(scope, input);
+
+      const [rows, totals, { currency, timeZone }] = await Promise.all([
+        opdRegisterRows(scope.orgId, input),
+        opdRegisterTotals(scope.orgId, input),
+        readOrgSettings(scope.orgId),
+      ]);
 
       const arrivedAt = new Intl.DateTimeFormat("en-IN", {
         dateStyle: "medium",
@@ -251,7 +487,7 @@ export const exportRouter = {
             { header: "Refunds", key: "refunds", width: 16 },
             { header: "Outstanding", key: "outstanding", width: 16 },
           ],
-          rows: report.rows.map((row) => ({
+          rows: rows.map(opdRegisterRow).map((row) => ({
             appointmentId: row.appointmentId,
             businessDate: row.businessDate,
             tokenNumber: row.tokenNumber ?? "",
@@ -278,16 +514,16 @@ export const exportRouter = {
           ],
           rows: [
             { metric: "Currency", value: currency },
-            { metric: "Appointments", value: report.totals.appointments },
-            { metric: "Booked", value: report.totals.byStatus.booked },
-            { metric: "Checked in", value: report.totals.byStatus.checked_in },
-            { metric: "Cancelled", value: report.totals.byStatus.cancelled },
-            { metric: "No show", value: report.totals.byStatus.no_show },
-            { metric: "Billed", value: rupees(report.totals.billed) },
-            { metric: "Paid", value: rupees(report.totals.paid) },
-            { metric: "Credits", value: rupees(report.totals.credits) },
-            { metric: "Refunds", value: rupees(report.totals.refunds) },
-            { metric: "Outstanding", value: rupees(report.totals.outstanding) },
+            { metric: "Appointments", value: totals.appointments },
+            { metric: "Booked", value: totals.byStatus.booked },
+            { metric: "Checked in", value: totals.byStatus.checked_in },
+            { metric: "Cancelled", value: totals.byStatus.cancelled },
+            { metric: "No show", value: totals.byStatus.no_show },
+            { metric: "Billed", value: rupees(totals.billed) },
+            { metric: "Paid", value: rupees(totals.paid) },
+            { metric: "Credits", value: rupees(totals.credits) },
+            { metric: "Refunds", value: rupees(totals.refunds) },
+            { metric: "Outstanding", value: rupees(totals.outstanding) },
           ],
         },
       ]);
@@ -296,9 +532,10 @@ export const exportRouter = {
 
   gstOutwardXlsx: orgProcedure({ report: ["readFinancial"] }, periodInput).handler(
     async ({ context, input }) => {
-      const { documents, rateSummary, hsnSummary, totals } = await call(reportRouter.gst, input, {
-        context,
-      });
+      const { documents, rateSummary, hsnSummary, totals } = await gstReport(
+        context.scope.orgId,
+        input,
+      );
 
       return xlsxFile(periodFile("gst-outward-register", input), [
         {

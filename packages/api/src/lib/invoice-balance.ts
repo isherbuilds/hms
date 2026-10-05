@@ -1,9 +1,10 @@
 import { db } from "@hms/db";
 import { advanceAllocations } from "@hms/db/schema/advance-allocations";
 import { creditNotes } from "@hms/db/schema/credit-notes";
+import { invoices } from "@hms/db/schema/invoices";
 import { payments } from "@hms/db/schema/payments";
 import { refunds } from "@hms/db/schema/refunds";
-import { inArray, sql } from "drizzle-orm";
+import { inArray, sql, type SQLWrapper } from "drizzle-orm";
 
 import { calculateInvoiceBalance, type InvoiceBalance } from "./invoice-math";
 
@@ -94,4 +95,33 @@ export async function invoiceBalanceFor(
   if (!balance) throw new Error(`Balance missing for invoice ${invoice.id}`);
 
   return balance;
+}
+
+// For whole-org reads (worklist, register totals and exports): each money table is summed
+// once per invoice and hash-joined, instead of correlated sums re-run per invoice: 5.7 s
+// became 0.25 s for 95k invoices. One `union all` aggregate looked simpler but hides its
+// row count from the planner, which then rescans it per invoice.
+export function invoiceMovements(orgId: string) {
+  const sumByInvoice = (
+    table: typeof payments | typeof advanceAllocations | typeof creditNotes | typeof refunds,
+    amount: SQLWrapper,
+  ) => sql`(select ${table.invoiceId} as invoice_id, sum(${amount}) as amount
+    from ${table} where ${table.orgId} = ${orgId} group by ${table.invoiceId})`;
+
+  return {
+    movements: sql`(select ${invoices.id} as invoice_id,
+        coalesce(credited.amount, 0)::bigint as credited,
+        coalesce(paid.amount, 0)::bigint as paid,
+        coalesce(allocated.amount, 0)::bigint as allocated,
+        coalesce(refunded.amount, 0)::bigint as refunded
+      from ${invoices}
+      left join ${sumByInvoice(creditNotes, creditNotes.total)} credited
+        on credited.invoice_id = ${invoices.id}
+      left join ${sumByInvoice(payments, payments.amount)} paid on paid.invoice_id = ${invoices.id}
+      left join ${sumByInvoice(advanceAllocations, advanceAllocations.amount)} allocated
+        on allocated.invoice_id = ${invoices.id}
+      left join ${sumByInvoice(refunds, refunds.amount)} refunded on refunded.invoice_id = ${invoices.id}
+      where ${invoices.orgId} = ${orgId}) movements`,
+    joinOn: sql`movements.invoice_id = ${invoices.id}`,
+  };
 }

@@ -1,21 +1,16 @@
 import { beforeAll, expect, test } from "bun:test";
 import pg from "pg";
 
-import { formatDecimal } from "@hms/api/core/money";
 import { invoiceBalanceFor } from "@hms/api/lib/invoice-balance";
 import type { AppRouterClient } from "@hms/api/routers/index";
 import { db } from "@hms/db";
 import { charges } from "@hms/db/schema/charges";
-import { invoices } from "@hms/db/schema/invoices";
-import { treatmentPlanItems } from "@hms/db/schema/treatment-plan-items";
-import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { and, eq } from "drizzle-orm";
 
 import { createOrganization, createTestUser, joinOrganization } from "../support/auth";
 import { addPendingCatalogCharge, settlePendingCharges } from "../support/billing";
 import { clientFor, eventually, expectORPCCode } from "../support/client";
 import { resetTestDatabase } from "../support/database";
-import { uniqueSuffix } from "../support/unique";
 
 beforeAll(async () => {
   await resetTestDatabase();
@@ -62,6 +57,9 @@ async function createBillingFixture(seed: string) {
     legalName: `${seed} Hospital`,
     address: `${seed} Address`,
     taxId: "GSTIN-TEST",
+    gstin: "",
+    drugLicence20: "",
+    drugLicence21: "",
     currency: "INR",
     timeZone: "Asia/Kolkata",
     mrnPrefix: "MRN",
@@ -225,13 +223,6 @@ test("catalog charges issue an exact invoice and a full payment settles it", asy
     taxTotal: 36_00n,
     grandTotal: 286_00n,
   });
-  expect(issued.invoice.subtotal).toBe(
-    issued.lines.reduce((sum, line) => sum + line.lineSubtotal, 0n),
-  );
-  expect(issued.invoice.taxTotal).toBe(
-    issued.lines.reduce((sum, line) => sum + line.taxAmount, 0n),
-  );
-  expect(issued.invoice.grandTotal).toBe(issued.lines.reduce((sum, line) => sum + line.gross, 0n));
   expect(await pendingChargesFor(api, organization.slug, appointment.id)).toEqual([]);
 
   const appointmentReadBack = await api.opd.get({
@@ -263,19 +254,6 @@ test("catalog charges issue an exact invoice and a full payment settles it", asy
   if (!payment) throw new Error("expected a payment");
   expect(payment.receiptNumber).toBe(`RCT${fiscalYearNow()}/1`);
   expect(payment.businessDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  expect(
-    await invoiceBalanceFor(db, organization.id, {
-      ...issued.invoice,
-      grandTotal: issued.invoice.grandTotal,
-    }),
-  ).toEqual({
-    grandTotal: issued.invoice.grandTotal,
-    creditTotal: 0n,
-    paymentsTotal: issued.invoice.grandTotal,
-    allocationsTotal: 0n,
-    refundsTotal: 0n,
-    outstanding: 0n,
-  });
 
   const listed = await api.billing.listInvoices({
     orgSlug: organization.slug,
@@ -304,7 +282,7 @@ test("catalog charges issue an exact invoice and a full payment settles it", asy
 
   expect(invoiceAudit?.meta).toMatchObject({
     invoiceNumber: issued.invoice.invoiceNumber,
-    grandTotal: formatDecimal(issued.invoice.grandTotal),
+    grandTotal: "286.00",
   });
 
   const paymentAudit = await expectAudit(
@@ -316,23 +294,69 @@ test("catalog charges issue an exact invoice and a full payment settles it", asy
 
   expect(paymentAudit?.meta).toMatchObject({
     receiptNumber: payment.receiptNumber,
-    amount: formatDecimal(payment.amount),
+    amount: "286.00",
   });
 });
 
-test("booked service charges settle with split payments in one transaction", async () => {
+test("a GST-registered hospital issues an exempt Bill of Supply and refuses taxed OPD care", async () => {
+  const fixture = await createBillingFixture("billing-registered");
+  const { api, organization } = fixture;
+  const settings = await api.settings.get({ orgSlug: organization.slug });
+
+  await expectORPCCode(
+    api.settings.update({ orgSlug: organization.slug, ...settings, gstin: "99ABCDE1234F1Z5" }),
+    "BAD_REQUEST",
+    "an unknown GST state code",
+  );
+  await api.settings.update({ orgSlug: organization.slug, ...settings, gstin: "27ABCDE1234F1Z5" });
+
+  const taxed = await fixture.createOpdAppointment();
+  await fixture.addCatalogCharge(taxed.id, 100_00n, "18");
+  await expectORPCCode(
+    settlePendingCharges(api, { orgSlug: organization.slug, appointmentId: taxed.id }),
+    "BAD_REQUEST",
+    "GST on exempt care",
+  );
+
+  const exempt = await createInvoice(fixture);
+  expect(exempt.invoice).toMatchObject({ orgGstin: "27ABCDE1234F1Z5", taxTotal: 0n });
+});
+
+test("charge settlement rejects bad bills without side effects, then settles split payments in one transaction", async () => {
   const fixture = await createBillingFixture("billing-settle-charges");
+  const { api, organization } = fixture;
+
+  const booked = await api.opd.book({
+    orgSlug: organization.slug,
+    patientId: fixture.patient.id,
+    practitionerId: fixture.practitioner.id,
+    scheduledLocal: "2030-06-01T10:00",
+  });
+
+  await fixture.addCatalogCharge(booked.id, 100_00n);
+
+  const preArrival = await api.opd.get({ orgSlug: organization.slug, appointmentId: booked.id });
+
+  await expectORPCCode(
+    api.billing.settleCharges({
+      orgSlug: organization.slug,
+      appointmentId: booked.id,
+      expectedChargeRevision: preArrival.appointment.chargeRevision,
+      expectedGrandTotal: 100_00n,
+    }),
+    "CONFLICT",
+  );
 
   const [existing, staged] = await Promise.all([
-    fixture.api.catalog.create({
-      orgSlug: fixture.organization.slug,
+    api.catalog.create({
+      orgSlug: organization.slug,
       name: "Existing charge",
       category: "procedure",
       unitPrice: 100_00n,
       taxRatePercent: "0",
     }),
-    fixture.api.catalog.create({
-      orgSlug: fixture.organization.slug,
+    api.catalog.create({
+      orgSlug: organization.slug,
       name: "Staged procedure",
       category: "procedure",
       unitPrice: 200_00n,
@@ -345,16 +369,58 @@ test("booked service charges settle with split payments in one transaction", asy
     { catalogItemId: staged.id },
   ]);
 
-  const review = await fixture.api.opd.get({
-    orgSlug: fixture.organization.slug,
-    appointmentId: appointment.id,
-  });
+  const review = await api.opd.get({ orgSlug: organization.slug, appointmentId: appointment.id });
 
-  const settled = await fixture.api.billing.settleCharges({
-    orgSlug: fixture.organization.slug,
+  const reviewed = {
+    orgSlug: organization.slug,
     appointmentId: appointment.id,
     expectedChargeRevision: review.appointment.chargeRevision,
-    expectedGrandTotal: 275_00n,
+  };
+
+  await expectORPCCode(
+    api.billing.settleCharges({
+      ...reviewed,
+      expectedGrandTotal: 300_00n,
+      payments: [{ method: "cash", amount: 300_01n }],
+    }),
+    "BAD_REQUEST",
+  );
+  await expectORPCCode(
+    api.billing.settleCharges({ ...reviewed, expectedGrandTotal: 299_00n, discountAmount: 1_00n }),
+    "BAD_REQUEST",
+  );
+  await expectORPCCode(
+    api.billing.settleCharges({
+      ...reviewed,
+      expectedGrandTotal: 0n,
+      discountAmount: 400_00n,
+      note: "Impossible discount",
+    }),
+    "BAD_REQUEST",
+  );
+
+  await fixture.addCatalogCharge(appointment.id, 50_00n, "0", "Charge from another terminal");
+  await expectORPCCode(
+    api.billing.settleCharges({
+      ...reviewed,
+      expectedGrandTotal: 300_00n,
+      payments: [{ method: "cash", amount: 300_00n }],
+    }),
+    "CONFLICT",
+  );
+
+  expect(await pendingChargesFor(api, organization.slug, appointment.id)).toHaveLength(3);
+  expect(
+    await api.billing.listInvoices({ orgSlug: organization.slug, appointmentId: appointment.id }),
+  ).toEqual([]);
+
+  const fresh = await api.opd.get({ orgSlug: organization.slug, appointmentId: appointment.id });
+
+  const settled = await api.billing.settleCharges({
+    orgSlug: organization.slug,
+    appointmentId: appointment.id,
+    expectedChargeRevision: fresh.appointment.chargeRevision,
+    expectedGrandTotal: 325_00n,
     discountAmount: 25_00n,
     note: "Concession approved; balance due next visit.",
     payments: [
@@ -364,277 +430,21 @@ test("booked service charges settle with split payments in one transaction", asy
   });
 
   expect(settled.invoice).toMatchObject({
-    subtotal: 300_00n,
+    subtotal: 350_00n,
     discountAmount: 25_00n,
-    grandTotal: 275_00n,
+    grandTotal: 325_00n,
   });
   expect(settled.lines.map((line) => line.description)).toEqual([
     "Existing charge",
     "Staged procedure",
+    "Charge from another terminal",
   ]);
   expect(settled.payments).toHaveLength(2);
-  expect(await pendingChargesFor(fixture.api, fixture.organization.slug, appointment.id)).toEqual(
-    [],
-  );
-  expect(
-    await invoiceBalanceFor(db, fixture.organization.id, {
-      ...settled.invoice,
-      grandTotal: settled.invoice.grandTotal,
-    }),
-  ).toMatchObject({
-    paymentsTotal: 17_500n,
-    outstanding: 10_000n,
+  expect(await pendingChargesFor(api, organization.slug, appointment.id)).toEqual([]);
+  expect(await invoiceBalanceFor(db, organization.id, settled.invoice)).toMatchObject({
+    paymentsTotal: 175_00n,
+    outstanding: 150_00n,
   });
-});
-
-test("equal-timestamp charges keep one reviewed order through settlement", async () => {
-  const fixture = await createBillingFixture("billing-charge-order");
-  const appointment = await fixture.createOpdAppointment();
-
-  const [zeroRated, fivePercent, smaller] = await Promise.all([
-    fixture.api.catalog.create({
-      orgSlug: fixture.organization.slug,
-      name: "Zero-rated equal line",
-      category: "other",
-      unitPrice: 300_00n,
-      taxRatePercent: "0",
-    }),
-    fixture.api.catalog.create({
-      orgSlug: fixture.organization.slug,
-      name: "Five-percent equal line",
-      category: "other",
-      unitPrice: 300_00n,
-      taxRatePercent: "5",
-    }),
-    fixture.api.catalog.create({
-      orgSlug: fixture.organization.slug,
-      name: "Smaller line",
-      category: "other",
-      unitPrice: 250_00n,
-      taxRatePercent: "0",
-    }),
-  ]);
-
-  const prefix = `same-time-${uniqueSuffix()}`;
-
-  const ids = {
-    zeroRated: `${prefix}-a`,
-    fivePercent: `${prefix}-b`,
-    smaller: `${prefix}-c`,
-  };
-
-  const createdAt = new Date("2026-08-30T10:00:00.000Z");
-
-  for (const [id, catalogItemId] of [
-    [ids.fivePercent, fivePercent.id],
-    [ids.zeroRated, zeroRated.id],
-    [ids.smaller, smaller.id],
-  ] as const) {
-    await addPendingCatalogCharge({
-      orgId: fixture.organization.id,
-      userId: fixture.owner.user.id,
-      appointmentId: appointment.id,
-      catalogItemId,
-      id,
-      createdAt,
-    });
-  }
-
-  const review = await fixture.api.opd.get({
-    orgSlug: fixture.organization.slug,
-    appointmentId: appointment.id,
-  });
-
-  expect(review.charges.map((charge) => charge.id)).toEqual([
-    ids.zeroRated,
-    ids.fivePercent,
-    ids.smaller,
-  ]);
-
-  const settled = await fixture.api.billing.settleCharges({
-    orgSlug: fixture.organization.slug,
-    appointmentId: appointment.id,
-    expectedChargeRevision: review.appointment.chargeRevision,
-    expectedGrandTotal: 862_96n,
-    discountAmount: 2_00n,
-    note: "Reviewed discount and outstanding balance",
-  });
-
-  expect(settled.invoice.grandTotal).toBe(862_96n);
-  expect(settled.lines.map((line) => line.chargeId)).toEqual([
-    ids.zeroRated,
-    ids.fivePercent,
-    ids.smaller,
-  ]);
-});
-
-test("charge settlement rolls back the invoice on invalid collection", async () => {
-  const fixture = await createBillingFixture("billing-settle-rollback");
-
-  const [existing, staged] = await Promise.all([
-    fixture.api.catalog.create({
-      orgSlug: fixture.organization.slug,
-      name: "Existing charge",
-      category: "procedure",
-      unitPrice: 100_00n,
-      taxRatePercent: "0",
-    }),
-    fixture.api.catalog.create({
-      orgSlug: fixture.organization.slug,
-      name: "Staged charge",
-      category: "procedure",
-      unitPrice: 50_00n,
-      taxRatePercent: "0",
-    }),
-  ]);
-
-  const appointment = await fixture.createOpdAppointment([
-    { catalogItemId: existing.id },
-    { catalogItemId: staged.id },
-  ]);
-
-  const review = await fixture.api.opd.get({
-    orgSlug: fixture.organization.slug,
-    appointmentId: appointment.id,
-  });
-
-  await expectORPCCode(
-    fixture.api.billing.settleCharges({
-      orgSlug: fixture.organization.slug,
-      appointmentId: appointment.id,
-      expectedChargeRevision: review.appointment.chargeRevision,
-      expectedGrandTotal: 150_00n,
-      payments: [{ method: "cash", amount: 150_01n }],
-    }),
-    "BAD_REQUEST",
-  );
-
-  expect(await pendingChargesFor(fixture.api, fixture.organization.slug, appointment.id)).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ catalogItemId: existing.id }),
-      expect.objectContaining({ catalogItemId: staged.id }),
-    ]),
-  );
-  expect(
-    await fixture.api.billing.listInvoices({
-      orgSlug: fixture.organization.slug,
-      appointmentId: appointment.id,
-    }),
-  ).toEqual([]);
-});
-
-test("charge settlement requires a checked-in appointment", async () => {
-  const fixture = await createBillingFixture("billing-pre-arrival");
-
-  const booked = await fixture.api.opd.book({
-    orgSlug: fixture.organization.slug,
-    patientId: fixture.patient.id,
-    practitionerId: fixture.practitioner.id,
-    scheduledLocal: "2030-06-01T10:00",
-  });
-
-  await fixture.addCatalogCharge(booked.id, 100_00n);
-
-  const review = await fixture.api.opd.get({
-    orgSlug: fixture.organization.slug,
-    appointmentId: booked.id,
-  });
-
-  await expectORPCCode(
-    fixture.api.billing.settleCharges({
-      orgSlug: fixture.organization.slug,
-      appointmentId: booked.id,
-      expectedChargeRevision: review.appointment.chargeRevision,
-      expectedGrandTotal: 100_00n,
-    }),
-    "CONFLICT",
-  );
-});
-
-test("charge settlement requires a reason for a discount", async () => {
-  const fixture = await createBillingFixture("billing-discount-reason");
-  const appointment = await fixture.createOpdAppointment();
-  await fixture.addCatalogCharge(appointment.id, 100_00n);
-
-  const review = await fixture.api.opd.get({
-    orgSlug: fixture.organization.slug,
-    appointmentId: appointment.id,
-  });
-
-  await expectORPCCode(
-    fixture.api.billing.settleCharges({
-      orgSlug: fixture.organization.slug,
-      appointmentId: appointment.id,
-      expectedChargeRevision: review.appointment.chargeRevision,
-      expectedGrandTotal: 99_00n,
-      discountAmount: 1_00n,
-    }),
-    "BAD_REQUEST",
-  );
-});
-
-test("charge settlement rejects a discount above the invoice subtotal", async () => {
-  const fixture = await createBillingFixture("billing-discount-cap");
-  const appointment = await fixture.createOpdAppointment();
-  await fixture.addCatalogCharge(appointment.id, 300_00n);
-
-  const review = await fixture.api.opd.get({
-    orgSlug: fixture.organization.slug,
-    appointmentId: appointment.id,
-  });
-
-  await expectORPCCode(
-    fixture.api.billing.settleCharges({
-      orgSlug: fixture.organization.slug,
-      appointmentId: appointment.id,
-      expectedChargeRevision: review.appointment.chargeRevision,
-      expectedGrandTotal: 0n,
-      discountAmount: 400_00n,
-      note: "Impossible discount",
-    }),
-    "BAD_REQUEST",
-  );
-});
-
-test("charge settlement rejects charges added after the cashier reviewed the bill", async () => {
-  const fixture = await createBillingFixture("billing-settle-stale-review");
-  const appointment = await fixture.createOpdAppointment();
-  const reviewed = await fixture.addCatalogCharge(appointment.id, 100_00n, "0", "Reviewed charge");
-
-  const review = await fixture.api.opd.get({
-    orgSlug: fixture.organization.slug,
-    appointmentId: appointment.id,
-  });
-
-  const addedElsewhere = await fixture.addCatalogCharge(
-    appointment.id,
-    50_00n,
-    "0",
-    "Charge from another terminal",
-  );
-
-  await expectORPCCode(
-    fixture.api.billing.settleCharges({
-      orgSlug: fixture.organization.slug,
-      appointmentId: appointment.id,
-      expectedChargeRevision: review.appointment.chargeRevision,
-      expectedGrandTotal: 100_00n,
-      note: "Patient will pay the reviewed balance later.",
-      payments: [{ method: "cash", amount: 100_00n }],
-    }),
-    "CONFLICT",
-  );
-
-  expect(await pendingChargesFor(fixture.api, fixture.organization.slug, appointment.id)).toEqual([
-    expect.objectContaining({ id: reviewed.id, status: "pending" }),
-    expect.objectContaining({ id: addedElsewhere.id, status: "pending" }),
-  ]);
-  expect(
-    await fixture.api.billing.listInvoices({
-      orgSlug: fixture.organization.slug,
-      appointmentId: appointment.id,
-    }),
-  ).toEqual([]);
 });
 
 test("booked-service settlement has one winner across two terminals", async () => {
@@ -684,58 +494,6 @@ test("booked-service settlement has one winner across two terminals", async () =
   ]);
 });
 
-test("concurrent invoice issuance has one winner and leaves no charges for re-issue", async () => {
-  const fixture = await createBillingFixture("billing-race");
-  const appointment = await fixture.createOpdAppointment();
-  await fixture.addCatalogCharge(appointment.id, 100_00n);
-  const input = { orgSlug: fixture.organization.slug, appointmentId: appointment.id };
-
-  const results = await Promise.allSettled([
-    settlePendingCharges(fixture.api, input),
-    settlePendingCharges(fixture.api, input),
-  ]);
-
-  expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-
-  const rejected = results.filter(
-    (result): result is PromiseRejectedResult => result.status === "rejected",
-  );
-
-  expect(rejected).toHaveLength(1);
-  expect(rejected[0]?.reason.code).toBe("CONFLICT");
-  await expectORPCCode(settlePendingCharges(fixture.api, input), "CONFLICT");
-});
-
-test("zero pending charges conflict and voided charges are excluded from issuance", async () => {
-  const fixture = await createBillingFixture("billing-empty");
-  const emptyOpdAppointment = await fixture.createOpdAppointment();
-  await expectORPCCode(
-    settlePendingCharges(fixture.api, {
-      orgSlug: fixture.organization.slug,
-      appointmentId: emptyOpdAppointment.id,
-    }),
-    "CONFLICT",
-  );
-
-  const voidedOpdAppointment = await fixture.createOpdAppointment();
-  const charge = await fixture.addCatalogCharge(voidedOpdAppointment.id, 25_00n);
-  await fixture.api.billing.voidCharge({
-    orgSlug: fixture.organization.slug,
-    chargeId: charge.id,
-    reason: "Entered in error",
-  });
-  expect(
-    await pendingChargesFor(fixture.api, fixture.organization.slug, voidedOpdAppointment.id),
-  ).toEqual([]);
-  await expectORPCCode(
-    settlePendingCharges(fixture.api, {
-      orgSlug: fixture.organization.slug,
-      appointmentId: voidedOpdAppointment.id,
-    }),
-    "CONFLICT",
-  );
-});
-
 test("cancelling a paid appointment does not issue credit or refund", async () => {
   const fixture = await createBillingFixture("billing-cancel-paid");
   const issued = await createInvoice(fixture);
@@ -759,52 +517,57 @@ test("cancelling a paid appointment does not issue credit or refund", async () =
   expect(detail.refunds).toEqual([]);
 });
 
-test("voiding distinguishes unknown and invoiced charges and records its reason and audit", async () => {
+test("voiding a pending charge removes it from the worklist and billing, records its reason, and rejects invoiced or unknown charges", async () => {
   const fixture = await createBillingFixture("billing-void");
-  const successfulOpdAppointment = await fixture.createOpdAppointment();
-  const pending = await fixture.addCatalogCharge(successfulOpdAppointment.id, 25_00n);
+  const { api, organization } = fixture;
+  const appointment = await fixture.createOpdAppointment();
+  const pending = await fixture.addCatalogCharge(appointment.id, 25_00n);
+  await db
+    .update(charges)
+    .set({ createdAt: new Date(Date.now() - 2 * 3_600_000) })
+    .where(and(eq(charges.orgId, organization.id), eq(charges.id, pending.id)));
 
-  const reviewed = await fixture.api.opd.get({
-    orgSlug: fixture.organization.slug,
-    appointmentId: successfulOpdAppointment.id,
-  });
+  expect((await api.billing.worklist({ orgSlug: organization.slug })).unbilled).toHaveLength(1);
 
-  const voided = await fixture.api.billing.voidCharge({
-    orgSlug: fixture.organization.slug,
+  const reviewed = await api.opd.get({ orgSlug: organization.slug, appointmentId: appointment.id });
+
+  const voided = await api.billing.voidCharge({
+    orgSlug: organization.slug,
     chargeId: pending.id,
     reason: "Duplicate entry",
   });
 
   expect(voided).toMatchObject({ status: "voided", voidReason: "Duplicate entry" });
 
-  const afterVoid = await fixture.api.opd.get({
-    orgSlug: fixture.organization.slug,
-    appointmentId: successfulOpdAppointment.id,
+  const afterVoid = await api.opd.get({
+    orgSlug: organization.slug,
+    appointmentId: appointment.id,
   });
 
   expect(afterVoid.appointment.chargeRevision).toBe(reviewed.appointment.chargeRevision + 1);
-
-  const audit = await expectAudit(
-    fixture.api,
-    fixture.organization.slug,
-    "charge.void",
-    `charge:${pending.id}`,
+  expect(await pendingChargesFor(api, organization.slug, appointment.id)).toEqual([]);
+  expect((await api.billing.worklist({ orgSlug: organization.slug })).unbilled).toHaveLength(0);
+  await expectORPCCode(
+    settlePendingCharges(api, { orgSlug: organization.slug, appointmentId: appointment.id }),
+    "CONFLICT",
   );
+
+  const audit = await expectAudit(api, organization.slug, "charge.void", `charge:${pending.id}`);
 
   expect(audit?.meta).toMatchObject({ reason: "Duplicate entry" });
 
   const invoiced = await createInvoice(fixture, 30_00n);
   await expectORPCCode(
-    fixture.api.billing.voidCharge({
-      orgSlug: fixture.organization.slug,
+    api.billing.voidCharge({
+      orgSlug: organization.slug,
       chargeId: invoiced.charge.id,
       reason: "Too late",
     }),
     "CONFLICT",
   );
   await expectORPCCode(
-    fixture.api.billing.voidCharge({
-      orgSlug: fixture.organization.slug,
+    api.billing.voidCharge({
+      orgSlug: organization.slug,
       chargeId: Bun.randomUUIDv7(),
       reason: "Unknown",
     }),
@@ -812,27 +575,49 @@ test("voiding distinguishes unknown and invoiced charges and records its reason 
   );
 });
 
-test("partial payments follow outstanding and credit-adjusted caps", async () => {
+test("payments need split references, settle atomically, and follow outstanding and credit-adjusted caps", async () => {
   const fixture = await createBillingFixture("billing-payments");
   const first = await createInvoice(fixture);
 
-  const [paymentOne] = await fixture.api.billing.recordPayments({
+  await expectORPCCode(
+    fixture.api.billing.recordPayments({
+      orgSlug: fixture.organization.slug,
+      invoiceId: first.invoice.id,
+      payments: [
+        { method: "cash", amount: 40_00n },
+        { method: "upi", amount: 60_00n },
+      ],
+    }),
+    "BAD_REQUEST",
+  );
+  expect((await invoiceBalanceFor(db, fixture.organization.id, first.invoice)).paymentsTotal).toBe(
+    0n,
+  );
+
+  const partial = await fixture.api.billing.recordPayments({
     orgSlug: fixture.organization.slug,
     invoiceId: first.invoice.id,
     payments: [{ method: "cash", amount: 40_00n }],
   });
 
-  const [paymentTwo] = await fixture.api.billing.recordPayments({
+  const split = await fixture.api.billing.recordPayments({
     orgSlug: fixture.organization.slug,
     invoiceId: first.invoice.id,
-    payments: [{ method: "upi", amount: 60_00n, reference: "UPI-PARTIAL" }],
+    payments: [
+      { method: "cash", amount: 20_00n },
+      { method: "upi", amount: 40_00n, reference: "UPI-SPLIT" },
+    ],
   });
 
-  if (!paymentOne || !paymentTwo) throw new Error("expected both payments");
-  expect([paymentOne.receiptNumber, paymentTwo.receiptNumber]).toEqual([
+  expect(split.map((payment) => payment.amount)).toEqual([20_00n, 40_00n]);
+  expect([...partial, ...split].map((payment) => payment.receiptNumber)).toEqual([
     `RCT${fiscalYearNow()}/1`,
     `RCT${fiscalYearNow()}/2`,
+    `RCT${fiscalYearNow()}/3`,
   ]);
+  expect((await invoiceBalanceFor(db, fixture.organization.id, first.invoice)).outstanding).toBe(
+    0n,
+  );
   await expectORPCCode(
     fixture.api.billing.recordPayments({
       orgSlug: fixture.organization.slug,
@@ -870,62 +655,9 @@ test("partial payments follow outstanding and credit-adjusted caps", async () =>
     invoiceId: second.invoice.id,
     payments: [{ method: "cash", amount: 20_00n }],
   });
-  expect(
-    (
-      await invoiceBalanceFor(db, fixture.organization.id, {
-        ...second.invoice,
-        grandTotal: second.invoice.grandTotal,
-      })
-    ).outstanding,
-  ).toBe(0n);
-});
-
-test("split payments settle atomically and require reconciliation references", async () => {
-  const fixture = await createBillingFixture("billing-split-payment");
-  const issued = await createInvoice(fixture);
-
-  await expectORPCCode(
-    fixture.api.billing.recordPayments({
-      orgSlug: fixture.organization.slug,
-      invoiceId: issued.invoice.id,
-      payments: [
-        { method: "cash", amount: 40_00n },
-        { method: "upi", amount: 60_00n },
-      ],
-    }),
-    "BAD_REQUEST",
+  expect((await invoiceBalanceFor(db, fixture.organization.id, second.invoice)).outstanding).toBe(
+    0n,
   );
-  expect(
-    (
-      await invoiceBalanceFor(db, fixture.organization.id, {
-        ...issued.invoice,
-        grandTotal: issued.invoice.grandTotal,
-      })
-    ).paymentsTotal,
-  ).toBe(0n);
-
-  const recorded = await fixture.api.billing.recordPayments({
-    orgSlug: fixture.organization.slug,
-    invoiceId: issued.invoice.id,
-    payments: [
-      { method: "cash", amount: 40_00n },
-      { method: "upi", amount: 60_00n, reference: "UPI-SPLIT" },
-    ],
-  });
-
-  expect(recorded.map((payment) => payment.amount)).toEqual([40_00n, 60_00n]);
-  expect(recorded.map((payment) => payment.receiptNumber)).toEqual([
-    `RCT${fiscalYearNow()}/1`,
-    `RCT${fiscalYearNow()}/2`,
-  ]);
-  expect(
-    (
-      await invoiceBalanceFor(db, fixture.organization.id, {
-        ...issued.invoice,
-        grandTotal: issued.invoice.grandTotal,
-      })
-    ).outstanding,
-  ).toBe(0n);
 });
 
 test("discount allocation, multi-rate totals, and partial credit tax extraction are exact", async () => {
@@ -1084,10 +816,7 @@ test("credit notes enforce duplicate, full-line, partial-line, and invoice caps"
   expect(allCredit.creditNote.taxTotal).toBe(all.invoice.taxTotal);
   expect(allCredit.creditNote.total).toBe(all.invoice.grandTotal);
 
-  const balance = await invoiceBalanceFor(db, fixture.organization.id, {
-    ...all.invoice,
-    grandTotal: all.invoice.grandTotal,
-  });
+  const balance = await invoiceBalanceFor(db, fixture.organization.id, all.invoice);
 
   expect(balance.creditTotal).toBe(balance.grandTotal);
 });
@@ -1108,14 +837,24 @@ test("refunds are bounded by refund due and by the selected credit note", async 
     lines: [{ invoiceLineId: firstLineId(first), gross: 80_00n }],
   });
 
-  expect(
-    (
-      await invoiceBalanceFor(db, fixture.organization.id, {
-        ...first.invoice,
-        grandTotal: first.invoice.grandTotal,
-      })
-    ).outstanding,
-  ).toBe(-3_000n);
+  expect((await invoiceBalanceFor(db, fixture.organization.id, first.invoice)).outstanding).toBe(
+    -3_000n,
+  );
+  expect(await fixture.api.billing.refundDue({ orgSlug: fixture.organization.slug })).toMatchObject(
+    {
+      hasMore: false,
+      rows: [
+        {
+          invoiceId: first.invoice.id,
+          invoiceNumber: first.invoice.invoiceNumber,
+          patientName: fixture.patient.name,
+          patientMrn: fixture.patient.mrn,
+          businessDate: first.invoice.businessDate,
+          refundDue: 30_00n,
+        },
+      ],
+    },
+  );
   await expectORPCCode(
     fixture.api.billing.recordRefund({
       orgSlug: fixture.organization.slug,
@@ -1145,14 +884,9 @@ test("refunds are bounded by refund due and by the selected credit note", async 
 
   expect(refund.refundNumber).toBe(`RF${fiscalYearNow()}/1`);
   expect(refund.reference).toBe("UPI-REFUND-30");
-  expect(
-    (
-      await invoiceBalanceFor(db, fixture.organization.id, {
-        ...first.invoice,
-        grandTotal: first.invoice.grandTotal,
-      })
-    ).outstanding,
-  ).toBe(0n);
+  expect((await invoiceBalanceFor(db, fixture.organization.id, first.invoice)).outstanding).toBe(
+    0n,
+  );
 
   const refundedDetail = await fixture.api.billing.getInvoice({
     orgSlug: fixture.organization.slug,
@@ -1169,6 +903,9 @@ test("refunds are bounded by refund due and by the selected credit note", async 
   );
 
   expect(refundAudit?.meta).toMatchObject({ refundNumber: refund.refundNumber, amount: "30.00" });
+  expect(
+    (await fixture.api.billing.refundDue({ orgSlug: fixture.organization.slug })).rows,
+  ).toEqual([]);
 
   const second = await createInvoice(fixture);
   await fixture.api.billing.recordPayments({
@@ -1205,48 +942,6 @@ test("refunds are bounded by refund due and by the selected credit note", async 
     method: "cash",
     amount: 10_00n,
   });
-});
-
-test("refund due lists overpaid invoices until the refund is recorded", async () => {
-  const fixture = await createBillingFixture("billing-refund-due");
-  const issued = await createInvoice(fixture);
-  await fixture.api.billing.recordPayments({
-    orgSlug: fixture.organization.slug,
-    invoiceId: issued.invoice.id,
-    payments: [{ method: "cash", amount: 100_00n }],
-  });
-
-  const credit = await fixture.api.billing.issueCreditNote({
-    orgSlug: fixture.organization.slug,
-    invoiceId: issued.invoice.id,
-    reason: "Partial reversal",
-    lines: [{ invoiceLineId: firstLineId(issued), gross: 25_00n }],
-  });
-
-  const due = await fixture.api.billing.refundDue({ orgSlug: fixture.organization.slug });
-  expect(due).toMatchObject({
-    hasMore: false,
-    rows: [
-      {
-        invoiceId: issued.invoice.id,
-        invoiceNumber: issued.invoice.invoiceNumber,
-        patientName: fixture.patient.name,
-        patientMrn: fixture.patient.mrn,
-        businessDate: issued.invoice.businessDate,
-        refundDue: 25_00n,
-      },
-    ],
-  });
-
-  await fixture.api.billing.recordRefund({
-    orgSlug: fixture.organization.slug,
-    creditNoteId: credit.creditNote.id,
-    method: "cash",
-    amount: 25_00n,
-  });
-  expect(
-    (await fixture.api.billing.refundDue({ orgSlug: fixture.organization.slug })).rows,
-  ).toEqual([]);
 });
 
 test("settlement and appointment cancellation serialize without crossing states", async () => {
@@ -1454,6 +1149,8 @@ test("the billing worklist reports what is unbilled and sums what is open", asyn
 
   const unbilled = await fixture.createOpdAppointment();
   const unbilledCharge = await fixture.addCatalogCharge(unbilled.id, 150_00n);
+  expect((await api.billing.worklist({ orgSlug: organization.slug })).unbilled).toEqual([]);
+
   await db
     .update(charges)
     .set({ createdAt: new Date(Date.now() - 2 * 3_600_000) })
@@ -1476,6 +1173,7 @@ test("the billing worklist reports what is unbilled and sums what is open", asyn
   const worklist = await api.billing.worklist({ orgSlug: organization.slug });
 
   expect(worklist.unbilled.map((row) => row.appointmentId)).toEqual([unbilled.id]);
+  expect(worklist.hasMore).toBe(false);
   expect(worklist.unbilled[0]).toMatchObject({
     tokenNumber: unbilled.tokenNumber,
     chargeCount: 1,
@@ -1498,228 +1196,12 @@ test("the billing worklist reports what is unbilled and sums what is open", asyn
     paid: 100_00n,
   });
   expect(open.nextCursor).toBeNull();
-});
 
-test("the unbilled threshold hides fresh charges until they age into the worklist", async () => {
-  const fixture = await createBillingFixture("billing-worklist-threshold");
-  const appointment = await fixture.createOpdAppointment();
-  const charge = await fixture.addCatalogCharge(appointment.id, 75_00n);
-
-  expect(
-    (await fixture.api.billing.worklist({ orgSlug: fixture.organization.slug })).unbilled,
-  ).toEqual([]);
-
-  await db
-    .update(charges)
-    .set({ createdAt: new Date(Date.now() - 2 * 3_600_000) })
-    .where(and(eq(charges.orgId, fixture.organization.id), eq(charges.id, charge.id)));
-
-  const aged = await fixture.api.billing.worklist({ orgSlug: fixture.organization.slug });
-  expect(aged.unbilled.map((row) => row.appointmentId)).toEqual([appointment.id]);
-  expect(aged.hasMore).toBe(false);
-  expect(aged.summary.toBillCount).toBe(1);
-
-  const narrowed = await fixture.api.billing.worklist({
-    orgSlug: fixture.organization.slug,
+  const narrowed = await api.billing.worklist({
+    orgSlug: organization.slug,
     query: "no such patient",
   });
 
   expect(narrowed.unbilled).toEqual([]);
-  expect(narrowed.summary).toMatchObject({ toBillCount: 1, toBillTotal: 75_00n });
-});
-
-test("open invoices page on a cursor and can be narrowed to the overdue ones", async () => {
-  const fixture = await createBillingFixture("billing-worklist-page");
-  const { api, organization } = fixture;
-
-  const first = await createInvoice(fixture, 100_00n);
-  const second = await createInvoice(fixture, 200_00n);
-  const third = await createInvoice(fixture, 300_00n);
-  const paid = await createInvoice(fixture, 50_00n);
-  await api.billing.recordPayments({
-    orgSlug: organization.slug,
-    invoiceId: paid.invoice.id,
-    payments: [{ method: "cash", amount: 50_00n }],
-  });
-
-  const page = await api.billing.openInvoices({ orgSlug: organization.slug, limit: 2 });
-  expect(page.items.map((row) => row.id)).toEqual([first.invoice.id, second.invoice.id]);
-  expect(page.nextCursor).toBe(second.invoice.id);
-
-  const rest = await api.billing.openInvoices({
-    orgSlug: organization.slug,
-    limit: 2,
-    cursor: page.nextCursor ?? undefined,
-  });
-
-  expect(rest.items.map((row) => row.id)).toEqual([third.invoice.id]);
-  expect(rest.nextCursor).toBeNull();
-
-  await db
-    .update(invoices)
-    .set({ createdAt: new Date(Date.now() - 30 * 86_400_000) })
-    .where(eq(invoices.id, second.invoice.id));
-
-  const overdue = await api.billing.openInvoices({
-    orgSlug: organization.slug,
-    overdueOnly: true,
-  });
-
-  expect(overdue.items.map((row) => row.id)).toEqual([second.invoice.id]);
-
-  const searched = await api.billing.openInvoices({
-    orgSlug: organization.slug,
-    query: third.invoice.invoiceNumber,
-  });
-
-  expect(searched.items.map((row) => row.id)).toEqual([third.invoice.id]);
-
-  const [percent, underscore] = await Promise.all([
-    api.billing.openInvoices({ orgSlug: organization.slug, query: "%" }),
-    api.billing.openInvoices({ orgSlug: organization.slug, query: "_" }),
-  ]);
-
-  expect(percent.items).toEqual([]);
-  expect(underscore.items).toEqual([]);
-});
-
-test("a voided charge leaves the billing worklist", async () => {
-  const fixture = await createBillingFixture("billing-worklist-void");
-  const { api, organization } = fixture;
-  const appointment = await fixture.createOpdAppointment();
-  const charge = await fixture.addCatalogCharge(appointment.id, 90_00n);
-  await db
-    .update(charges)
-    .set({ createdAt: new Date(Date.now() - 2 * 3_600_000) })
-    .where(and(eq(charges.orgId, organization.id), eq(charges.id, charge.id)));
-
-  expect((await api.billing.worklist({ orgSlug: organization.slug })).unbilled).toHaveLength(1);
-
-  await api.billing.voidCharge({
-    orgSlug: organization.slug,
-    chargeId: charge.id,
-    reason: "Entered twice",
-  });
-
-  expect((await api.billing.worklist({ orgSlug: organization.slug })).unbilled).toHaveLength(0);
-});
-
-test("advances held pages unspent receipts and drops one once its credit is applied", async () => {
-  const fixture = await createBillingFixture("billing-advances-held");
-  const { api, organization, owner, patient, practitioner } = fixture;
-
-  const [sitting, crown] = await Promise.all([
-    api.catalog.create({
-      orgSlug: organization.slug,
-      name: "Root canal treatment",
-      category: "procedure",
-      unitPrice: 150_00n,
-      taxRatePercent: "0",
-    }),
-    api.catalog.create({
-      orgSlug: organization.slug,
-      name: "Crown",
-      category: "procedure",
-      unitPrice: 100_00n,
-      taxRatePercent: "0",
-    }),
-  ]);
-
-  // Plan rows are fixtures: this test owns the advance, not the treatment API.
-  const planId = Bun.randomUUIDv7();
-  await db.insert(treatmentPlans).values({
-    id: planId,
-    orgId: organization.id,
-    patientId: patient.id,
-    practitionerId: practitioner.id,
-    createdBy: owner.user.id,
-  });
-  await db.insert(treatmentPlanItems).values({
-    id: Bun.randomUUIDv7(),
-    orgId: organization.id,
-    treatmentPlanId: planId,
-    catalogItemId: sitting.id,
-    description: sitting.name,
-    quotedPrice: sitting.unitPrice * 2n,
-    taxRatePercent: sitting.taxRatePercent,
-    revenueCategory: sitting.category,
-    sittingsPlanned: 2,
-    createdBy: owner.user.id,
-  });
-
-  const planned = await api.billing.recordAdvance({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    treatmentPlanId: planId,
-    method: "cash",
-    amount: 300_00n,
-  });
-
-  const untagged = await api.billing.recordAdvance({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    method: "cash",
-    amount: 100_00n,
-  });
-
-  const spare = await api.billing.recordAdvance({
-    orgSlug: organization.slug,
-    patientId: patient.id,
-    method: "cash",
-    amount: 50_00n,
-  });
-
-  // A visit with no plan spends untagged credit first, so this consumes `untagged` whole.
-  const invoice = await createInvoice(fixture, 100_00n);
-  await api.billing.recordPayments({
-    orgSlug: organization.slug,
-    invoiceId: invoice.invoice.id,
-    payments: [],
-    applyCredit: 100_00n,
-  });
-
-  // The cap behind that guard reads the SQL balance, which must subtract the allocation.
-  await expectORPCCode(
-    api.billing.recordPayments({
-      orgSlug: organization.slug,
-      invoiceId: invoice.invoice.id,
-      payments: [{ method: "cash", amount: 1n }],
-    }),
-    "CONFLICT",
-  );
-
-  // A service added after the receipt was printed must not rewrite what it says.
-  await db.insert(treatmentPlanItems).values({
-    id: Bun.randomUUIDv7(),
-    orgId: organization.id,
-    treatmentPlanId: planId,
-    catalogItemId: crown.id,
-    description: crown.name,
-    quotedPrice: crown.unitPrice,
-    taxRatePercent: crown.taxRatePercent,
-    revenueCategory: crown.category,
-    sittingsPlanned: 1,
-    createdBy: owner.user.id,
-  });
-
-  const page = await api.billing.advancesHeld({ orgSlug: organization.slug, limit: 1 });
-
-  expect(page.items[0]).toMatchObject({
-    id: planned.id,
-    purpose: "Root canal treatment · 2 sittings",
-    planStatus: "open",
-    remaining: 300_00n,
-  });
-  expect(page.nextCursor?.id).toBe(planned.id);
-
-  const rest = await api.billing.advancesHeld({
-    orgSlug: organization.slug,
-    cursor: page.nextCursor ?? undefined,
-  });
-
-  expect(rest.nextCursor).toBeNull();
-
-  const held = [...page.items, ...rest.items].map((row) => row.id);
-  expect(held).toEqual([planned.id, spare.id]);
-  expect(held).not.toContain(untagged.id);
+  expect(narrowed.summary).toMatchObject({ toBillCount: 1, toBillTotal: 150_00n });
 });

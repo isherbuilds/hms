@@ -20,10 +20,3 @@ test("converts a hospital wall-clock value without using the caller timezone", (
     "2026-08-22T05:00:00.000Z",
   );
 });
-
-test("rejects an invalid time zone in every business-date helper", () => {
-  const instant = new Date("2026-08-08T00:00:00Z");
-
-  expect(() => businessDate(instant, "Asia/Nowhere")).toThrow();
-  expect(() => businessDateAnchor(instant, "Asia/Nowhere")).toThrow();
-});

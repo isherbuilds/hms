@@ -1,22 +1,31 @@
 import { parseDecimal } from "@hms/api/core/money";
-import { exactToPaise } from "@hms/api/core/receipt-math";
+import { exactToPaise, RECEIPT_ADJUSTMENT_KINDS } from "@hms/api/core/receipt-math";
 import { Badge } from "@hms/ui/components/badge";
 import { Button } from "@hms/ui/components/button";
-import { Form } from "@hms/ui/components/form";
+import { Form, FormControl } from "@hms/ui/components/form";
+import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link, useBlocker, useNavigate } from "@tanstack/react-router";
+import { Trash2Icon } from "lucide-react";
 import { useState } from "react";
-import { type Control, useFormContext, useFormState, useWatch } from "react-hook-form";
+import {
+  type Control,
+  useFieldArray,
+  useFormContext,
+  useFormState,
+  useWatch,
+} from "react-hook-form";
 import { toast } from "sonner";
 
 import { appHead } from "@/config/site";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { TextField } from "@/components/form-fields";
+import { ControlledField, TextField } from "@/components/form-fields";
 import { ProductSheet } from "@/components/product-sheet";
 import { PageBody, PageHeader } from "@/components/page";
 import { BatchLines } from "@/components/receipt-batch-lines";
 import {
+  blankAdjustment,
   blankLine,
   fillLine,
   type Receipt,
@@ -61,6 +70,7 @@ function ReceiveGoodsRoute() {
       billTotal: "",
       note: "",
       lines: [blankLine()],
+      adjustments: [],
     },
   });
 
@@ -95,6 +105,12 @@ function ReceiveGoodsRoute() {
       receivedOn: values.receivedOn,
       billTotal: values.opening ? undefined : parseDecimal(values.billTotal),
       note: values.note || undefined,
+      adjustments: values.adjustments.map((row) => ({
+        kind: row.kind,
+        reason: row.reason,
+        amount: parseDecimal(row.amount),
+        gstAmount: parseDecimal(row.gstAmount),
+      })),
       lines: values.lines.map((line) => {
         const row = rowText(line);
         const quantities = stockQuantities(row, values.opening);
@@ -169,11 +185,11 @@ function ReceiveGoodsRoute() {
                         size="xs"
                         variant={opening === mode.value ? "default" : "ghost"}
                         aria-pressed={opening === mode.value}
-                        onClick={() =>
-                          form.setValue("opening", mode.value, {
-                            shouldDirty: true,
-                          })
-                        }
+                        onClick={() => {
+                          // An opening count has no bill, so it carries no bill adjustments.
+                          if (mode.value) form.setValue("adjustments", []);
+                          form.setValue("opening", mode.value, { shouldDirty: true });
+                        }}
                       >
                         {mode.label}
                       </Button>
@@ -204,6 +220,7 @@ function ReceiveGoodsRoute() {
                     type="date"
                   />
                 </div>
+                {opening ? null : <BillAdjustments />}
               </section>
 
               <BatchLines
@@ -248,6 +265,83 @@ function ReceiveGoodsRoute() {
   );
 }
 
+const ADJUSTMENT_LABELS = {
+  landed_charge: "Charge (freight, packing)",
+  invoice_discount: "Discount",
+} satisfies Record<(typeof RECEIPT_ADJUSTMENT_KINDS)[number], string>;
+
+/** Charges or discounts printed apart from the lines; owns its rows without re-rendering the page. */
+function BillAdjustments() {
+  const { control } = useFormContext<ReceiptInput, unknown, Receipt>();
+  const adjustments = useFieldArray({ control, name: "adjustments", keyName: "fieldKey" });
+
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      {adjustments.fields.map((row, index) => (
+        <fieldset
+          key={row.fieldKey}
+          className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+        >
+          <legend className="sr-only">Bill adjustment {index + 1}</legend>
+          <ControlledField
+            name={`adjustments.${index}.kind`}
+            label="Kind"
+            className="col-span-2 sm:col-span-1"
+            render={(field) => (
+              <FormControl>
+                <NativeSelect {...field}>
+                  {RECEIPT_ADJUSTMENT_KINDS.map((value) => (
+                    <option key={value} value={value}>
+                      {ADJUSTMENT_LABELS[value]}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </FormControl>
+            )}
+          />
+          <TextField
+            name={`adjustments.${index}.reason`}
+            label="Reason"
+            maxLength={500}
+            className="col-span-2 sm:col-span-1"
+          />
+          <TextField
+            name={`adjustments.${index}.amount`}
+            label="Amount"
+            inputMode="decimal"
+            placeholder="0.00"
+          />
+          <TextField
+            name={`adjustments.${index}.gstAmount`}
+            label="GST"
+            inputMode="decimal"
+            placeholder="0.00"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="col-span-2 justify-self-end sm:col-span-1 sm:self-end"
+            aria-label={`Remove adjustment ${index + 1}`}
+            onClick={() => adjustments.remove(index)}
+          >
+            <Trash2Icon />
+          </Button>
+        </fieldset>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        size="xs"
+        className="w-fit"
+        onClick={() => adjustments.append(blankAdjustment())}
+      >
+        Add freight or discount
+      </Button>
+    </div>
+  );
+}
+
 /** Reads `isDirty` here, so a dirty change never re-renders the page and its rows. */
 function LeaveGuard({
   control,
@@ -281,9 +375,9 @@ function ReceiptTotals({ orgSlug, opening }: { orgSlug: string; opening: boolean
   const { control } = useFormContext<ReceiptInput, unknown, Receipt>();
   const currency = useMembership(orgSlug, (membership) => membership.currency);
 
-  const [lines, billTotal] = useWatch({
+  const [lines, billTotal, adjustments] = useWatch({
     control,
-    name: ["lines", "billTotal"],
+    name: ["lines", "billTotal", "adjustments"],
   });
 
   let quantity = 0;
@@ -293,7 +387,7 @@ function ReceiptTotals({ orgSlug, opening }: { orgSlug: string; opening: boolean
     quantity += quantities ? quantities.qty + quantities.freeQty : 0;
   }
 
-  const summary = opening ? null : billSummary(lines.map(rowText), billTotal);
+  const summary = opening ? null : billSummary(lines.map(rowText), billTotal, adjustments);
 
   return (
     <div className="flex flex-col gap-1 tabular-nums lg:items-end lg:text-right">
@@ -307,6 +401,9 @@ function ReceiptTotals({ orgSlug, opening }: { orgSlug: string; opening: boolean
             Taxable {formatMoney(exactToPaise(summary.taxable), currency)} · GST{" "}
             {formatMoney(exactToPaise(summary.gst), currency)} · Lines{" "}
             {formatMoney(summary.net, currency)}
+            {adjustments.length > 0
+              ? ` · Adjustments ${formatMoney(summary.adjustments, currency)}`
+              : null}
           </p>
           {summary.roundOff === null ? (
             <p className="text-muted-foreground">

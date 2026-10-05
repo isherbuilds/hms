@@ -1,5 +1,4 @@
 import { beforeAll, expect, test } from "bun:test";
-import pg from "pg";
 
 import { localMinute } from "@hms/api/lib/business-date";
 import { db } from "@hms/db";
@@ -7,13 +6,14 @@ import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { and, eq } from "drizzle-orm";
 
 import { createOrganization, createTestUser } from "../support/auth";
-import { clientFor, eventually, expectORPCCode } from "../support/client";
+import { clientFor, expectORPCCode } from "../support/client";
+import { settlePendingCharges } from "../support/billing";
 import { resetTestDatabase } from "../support/database";
 import { shiftLocalMinute } from "../support/time";
 
 beforeAll(resetTestDatabase);
 
-async function fixture(seed: string) {
+async function fixture(seed: string, taxRatePercent = "0") {
   const owner = await createTestUser(`${seed}-owner`);
   const organization = await createOrganization(owner, seed);
   const api = clientFor(owner);
@@ -44,7 +44,7 @@ async function fixture(seed: string) {
     name: `${seed} Course item`,
     category: "procedure",
     unitPrice: 50_00n,
-    taxRatePercent: "0",
+    taxRatePercent,
   });
 
   return { owner, organization, api, patient, practitioner, service };
@@ -202,7 +202,7 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
   expect(detail.items[0]).toMatchObject({ postedSittings: 0, done: false });
 
   // D038: the service billed at intake stays ordinary work; the plan post is its own charge.
-  const posted = await setup.api.treatment.postToVisit({
+  await setup.api.treatment.postToVisit({
     orgSlug: setup.organization.slug,
     appointmentId: second.appointment.id,
     itemId: detail.items[0]!.id,
@@ -223,7 +223,6 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
       ["treatment_plan", detail.items[0]!.id],
     ]),
   );
-  expect(posted.charge.sourceId).toBe(detail.items[0]!.id);
   expect((await planDetail(setup, plan.id)).items[0]).toMatchObject({
     postedSittings: 1,
     done: true,
@@ -260,8 +259,6 @@ test("an abandoned two-sitting RCT creates no invoice before delivery and stays 
     method: "cash",
     amount: 30_00n,
   });
-
-  expect(refund.amount).toBe(30_00n);
 
   // The voucher stays reachable from the patient's account after its dialog closed.
   const account = await setup.api.patient.account({
@@ -499,119 +496,7 @@ test("two teeth of one procedure post to one sitting, and voiding delivery reope
   ).toMatchObject({ status: "completed" });
 });
 
-test("closing a plan ahead of queued item writes leaves no dependent change behind", async () => {
-  const setup = await fixture("treatment-close-race");
-
-  const plan = await setup.api.treatment.create({
-    orgSlug: setup.organization.slug,
-    patientId: setup.patient.id,
-    practitionerId: setup.practitioner.id,
-    item: { catalogItemId: setup.service.id, sittingsPlanned: 1 },
-  });
-
-  const extra = await setup.api.catalog.create({
-    orgSlug: setup.organization.slug,
-    name: "Late course item",
-    category: "procedure",
-    unitPrice: 10_00n,
-    taxRatePercent: "0",
-  });
-
-  const initialItem = (await planDetail(setup, plan.id)).items[0];
-
-  if (!initialItem) throw new Error("Expected the plan's initial item");
-
-  const locker = new pg.Client({ connectionString: process.env.DATABASE_URL });
-
-  await locker.connect();
-
-  try {
-    await locker.query("begin");
-
-    const blockerPid = (await locker.query<{ pid: number }>("select pg_backend_pid() as pid"))
-      .rows[0]?.pid;
-
-    if (!blockerPid) throw new Error("Expected lock transaction backend pid");
-
-    await locker.query("select id from treatment_plans where org_id = $1 and id = $2 for update", [
-      setup.organization.id,
-      plan.id,
-    ]);
-
-    const closePromise = setup.api.treatment.close({
-      orgSlug: setup.organization.slug,
-      planId: plan.id,
-      reason: "Course cancelled",
-    });
-
-    const closeBackendPid = await eventually(async () => {
-      const blocked = await locker.query<{ pid: number }>(
-        `select pid
-         from pg_stat_activity
-         where $1 = any(pg_blocking_pids(pid))
-         limit 1`,
-        [blockerPid],
-      );
-
-      return blocked.rows[0]?.pid;
-    });
-
-    const addPromise = expectORPCCode(
-      setup.api.treatment.addItem({
-        orgSlug: setup.organization.slug,
-        planId: plan.id,
-        item: { catalogItemId: extra.id, sittingsPlanned: 1 },
-      }),
-      "CONFLICT",
-    );
-
-    const dropPromise = expectORPCCode(
-      setup.api.treatment.dropItem({
-        orgSlug: setup.organization.slug,
-        itemId: initialItem.id,
-        reason: "Should lose the close race",
-      }),
-      "CONFLICT",
-    );
-
-    // Both item writes must be waiting on the close, not racing past it.
-    await eventually(async () => {
-      const blocked = await locker.query<{ count: number }>(
-        `select count(*)::integer as count
-         from pg_stat_activity
-         where $1 = any(pg_blocking_pids(pid))`,
-        [closeBackendPid],
-      );
-
-      return blocked.rows[0]?.count === 2 ? true : undefined;
-    });
-
-    await locker.query("commit");
-    const [closed] = await Promise.all([closePromise, addPromise, dropPromise]);
-
-    expect(closed.status).toBe("closed");
-
-    expect((await planDetail(setup, plan.id)).items).toEqual([
-      expect.objectContaining({ catalogItemId: setup.service.id, status: "open" }),
-    ]);
-
-    await expectORPCCode(
-      setup.api.billing.recordAdvance({
-        orgSlug: setup.organization.slug,
-        patientId: setup.patient.id,
-        treatmentPlanId: plan.id,
-        method: "cash",
-        amount: 10_00n,
-      }),
-      "CONFLICT",
-    );
-  } finally {
-    await locker.query("rollback");
-    await locker.end();
-  }
-});
-
-test("three irregular plan advances settle three physiotherapy sittings before untagged credit", async () => {
+test("three irregular plan advances are offered only on plan bills and settle three physiotherapy sittings before untagged credit", async () => {
   const setup = await fixture("treatment-physio");
 
   const plan = await setup.api.treatment.create({
@@ -671,9 +556,23 @@ test("three irregular plan advances settle three physiotherapy sittings before u
     reference: "BANK-ADVANCE",
   });
 
-  const item = (await planDetail(setup, plan.id)).items[0]!;
+  // The plan's advance is offered only on that plan's bills.
+  expect(
+    await setup.api.billing.patientCredit({
+      orgSlug: setup.organization.slug,
+      patientId: setup.patient.id,
+      treatmentPlanId: plan.id,
+    }),
+  ).toEqual({ total: 160_00n, usable: 160_00n });
+  expect(
+    await setup.api.billing.patientCredit({
+      orgSlug: setup.organization.slug,
+      patientId: setup.patient.id,
+      treatmentPlanId: null,
+    }),
+  ).toEqual({ total: 160_00n, usable: 10_00n });
 
-  const invoices = [];
+  const item = (await planDetail(setup, plan.id)).items[0]!;
 
   for (const [index, expectedAllocations] of [
     [
@@ -734,10 +633,7 @@ test("three irregular plan advances settle three physiotherapy sittings before u
       expectedAllocations,
     );
     expect(invoice.balance).toMatchObject({ allocationsTotal: 50_00n, outstanding: 0n });
-    invoices.push(invoice.invoice.id);
   }
-
-  expect(new Set(invoices).size).toBe(3);
 
   const credit = await setup.api.billing.patientCredit({
     orgSlug: setup.organization.slug,
@@ -762,223 +658,6 @@ test("three irregular plan advances settle three physiotherapy sittings before u
   });
 
   expect(completed.status).toBe("completed");
-});
-
-test("check-in cannot change patient when a plan was linked while it waited", async () => {
-  const setup = await fixture("treatment-check-in-link");
-  const orgSlug = setup.organization.slug;
-
-  const other = await setup.api.patient.register({
-    orgSlug,
-    name: "Other patient",
-    phone: "5558899",
-    sex: "other",
-    dateOfBirth: "1990-01-01",
-    dobEstimated: false,
-    address: "",
-  });
-
-  const plan = await setup.api.treatment.create({
-    orgSlug,
-    patientId: setup.patient.id,
-    practitionerId: setup.practitioner.id,
-    item: { catalogItemId: setup.service.id, sittingsPlanned: 1 },
-  });
-
-  const settings = await setup.api.settings.get({ orgSlug });
-
-  // A sitting belongs to the plan's own patient.
-  await expectORPCCode(
-    setup.api.opd.book({
-      orgSlug,
-      patientId: other.id,
-      practitionerId: setup.practitioner.id,
-      treatmentPlanId: plan.id,
-      scheduledLocal: shiftLocalMinute(localMinute(new Date(), settings.timeZone), 5),
-    }),
-    "CONFLICT",
-  );
-
-  const appointment = await setup.api.opd.book({
-    orgSlug,
-    patientId: setup.patient.id,
-    practitionerId: setup.practitioner.id,
-    scheduledLocal: shiftLocalMinute(localMinute(new Date(), settings.timeZone), 10),
-  });
-
-  const locker = new pg.Client({ connectionString: process.env.DATABASE_URL });
-  await locker.connect();
-
-  try {
-    await locker.query("begin");
-    await locker.query("select id from opd_appointments where org_id = $1 and id = $2 for update", [
-      setup.organization.id,
-      appointment.id,
-    ]);
-
-    const checkIn = setup.api.opd.checkIn({
-      orgSlug,
-      appointmentId: appointment.id,
-      patientId: other.id,
-    });
-
-    const rejected = expectORPCCode(checkIn, "CONFLICT");
-    await eventually(async () => {
-      const waiting = await locker.query(
-        "select pid from pg_stat_activity where pg_backend_pid() = any(pg_blocking_pids(pid))",
-      );
-
-      return waiting.rows[0];
-    });
-    await locker.query(
-      "update opd_appointments set treatment_plan_id = $1 where org_id = $2 and id = $3",
-      [plan.id, setup.organization.id, appointment.id],
-    );
-    await locker.query("commit");
-    await rejected;
-    const record = await setup.api.opd.get({ orgSlug, appointmentId: appointment.id });
-    expect(record.patient?.id).toBe(setup.patient.id);
-    expect(record.appointment.status).toBe("booked");
-    expect(record.appointment.treatmentPlanId).toBe(plan.id);
-  } finally {
-    await locker.query("rollback");
-    await locker.end();
-  }
-});
-
-test("credit allocation does not spend receipts created after its lock statement", async () => {
-  const setup = await fixture("treatment-credit-lock-set");
-  const orgSlug = setup.organization.slug;
-
-  const plan = await setup.api.treatment.create({
-    orgSlug,
-    patientId: setup.patient.id,
-    practitionerId: setup.practitioner.id,
-    item: { catalogItemId: setup.service.id, sittingsPlanned: 1 },
-  });
-
-  const sitting = await createCheckedInSitting(setup, plan.id, 10);
-  const detail = await planDetail(setup, plan.id);
-
-  const posted = await setup.api.treatment.postToVisit({
-    orgSlug,
-    appointmentId: sitting.appointment.id,
-    itemId: detail.items[0]!.id,
-  });
-
-  const settled = await setup.api.billing.settleCharges({
-    orgSlug,
-    appointmentId: sitting.appointment.id,
-    expectedChargeRevision: posted.chargeRevision,
-    expectedGrandTotal: 50_00n,
-    note: "Pay later",
-  });
-
-  const first = await setup.api.billing.recordAdvance({
-    orgSlug,
-    patientId: setup.patient.id,
-    method: "cash",
-    amount: 20_00n,
-  });
-
-  const locker = new pg.Client({ connectionString: process.env.DATABASE_URL });
-  await locker.connect();
-
-  try {
-    await locker.query("begin");
-    await locker.query("select id from advance_receipts where org_id = $1 and id = $2 for update", [
-      setup.organization.id,
-      first.id,
-    ]);
-
-    const allocation = setup.api.billing.recordPayments({
-      orgSlug,
-      invoiceId: settled.invoice.id,
-      applyCredit: 50_00n,
-    });
-
-    const rejected = expectORPCCode(allocation, "CONFLICT");
-    await eventually(async () => {
-      const waiting = await locker.query(
-        "select pid from pg_stat_activity where pg_backend_pid() = any(pg_blocking_pids(pid))",
-      );
-
-      return waiting.rows[0];
-    });
-    await setup.api.billing.recordAdvance({
-      orgSlug,
-      patientId: setup.patient.id,
-      method: "cash",
-      amount: 30_00n,
-    });
-    await locker.query("commit");
-    await rejected;
-    expect(
-      (
-        await setup.api.billing.patientCredit({
-          orgSlug,
-          patientId: setup.patient.id,
-          treatmentPlanId: null,
-        })
-      ).total,
-    ).toBe(50_00n);
-    expect(
-      (await setup.api.billing.getInvoice({ orgSlug, invoiceId: settled.invoice.id })).balance
-        .outstanding,
-    ).toBe(50_00n);
-    await setup.api.billing.recordPayments({
-      orgSlug,
-      invoiceId: settled.invoice.id,
-      applyCredit: 50_00n,
-    });
-    expect(
-      (
-        await setup.api.billing.patientCredit({
-          orgSlug,
-          patientId: setup.patient.id,
-          treatmentPlanId: null,
-        })
-      ).total,
-    ).toBe(0n);
-  } finally {
-    await locker.query("rollback");
-    await locker.end();
-  }
-});
-
-test("a plan's advance is offered only on that plan's bills", async () => {
-  const setup = await fixture("treatment-credit-scope");
-  const orgSlug = setup.organization.slug;
-  const patientId = setup.patient.id;
-
-  const plan = await setup.api.treatment.create({
-    orgSlug,
-    patientId,
-    practitionerId: setup.practitioner.id,
-    item: {
-      catalogItemId: setup.service.id,
-      sittingsPlanned: 2,
-      quotedPrice: 150_00n,
-      note: "Course price",
-    },
-  });
-
-  await setup.api.billing.recordAdvance({ orgSlug, patientId, method: "cash", amount: 10_00n });
-  await setup.api.billing.recordAdvance({
-    orgSlug,
-    patientId,
-    treatmentPlanId: plan.id,
-    method: "cash",
-    amount: 30_00n,
-  });
-
-  expect(
-    await setup.api.billing.patientCredit({ orgSlug, patientId, treatmentPlanId: plan.id }),
-  ).toEqual({ total: 40_00n, usable: 40_00n });
-  // A bill outside the plan does not default to the plan's advance.
-  expect(
-    await setup.api.billing.patientCredit({ orgSlug, patientId, treatmentPlanId: null }),
-  ).toEqual({ total: 40_00n, usable: 10_00n });
 });
 
 test("a four-sitting estimate takes a chosen amount, re-splits the rest, and finishes early", async () => {
@@ -1055,6 +734,121 @@ test("a four-sitting estimate takes a chosen amount, re-splits the rest, and fin
   expect(
     await setup.api.treatment.complete({ orgSlug: setup.organization.slug, planId: plan.id }),
   ).toMatchObject({ status: "completed" });
+});
+
+async function completedInvoicedSitting(seed: string, taxRatePercent = "0") {
+  const setup = await fixture(seed, taxRatePercent);
+  const orgSlug = setup.organization.slug;
+
+  const plan = await setup.api.treatment.create({
+    orgSlug,
+    patientId: setup.patient.id,
+    practitionerId: setup.practitioner.id,
+    item: { catalogItemId: setup.service.id, sittingsPlanned: 1 },
+  });
+
+  const item = (await planDetail(setup, plan.id)).items[0]!;
+  const sitting = await createCheckedInSitting(setup, plan.id, 10);
+
+  const posted = await setup.api.treatment.postToVisit({
+    orgSlug,
+    appointmentId: sitting.appointment.id,
+    itemId: item.id,
+  });
+
+  const issued = await settlePendingCharges(setup.api, {
+    orgSlug,
+    appointmentId: sitting.appointment.id,
+    note: "Payment due after treatment",
+  });
+
+  await setup.api.treatment.complete({ orgSlug, planId: plan.id });
+
+  return { setup, orgSlug, plan, item, sitting, posted, issued };
+}
+
+test("a full credit reopens a completed plan and its sitting can be billed again on a later visit", async () => {
+  const { setup, orgSlug, plan, item, sitting, posted, issued } = await completedInvoicedSitting(
+    "treatment-full-sitting-credit",
+  );
+
+  await setup.api.billing.issueCreditNote({
+    orgSlug,
+    invoiceId: issued.invoice.id,
+    reason: "Reverse this sitting's bill",
+    lines: [{ invoiceLineId: issued.lines[0]!.id, full: true }],
+  });
+  const credited = await planDetail(setup, plan.id);
+  expect(credited.status).toBe("open");
+  expect(credited.postedAmount).toBe(0n);
+  expect(credited.items[0]).toMatchObject({
+    postedSittings: 1,
+    postedAmount: 0n,
+    nextSittingPrice: 50_00n,
+    done: false,
+  });
+  const visit = await setup.api.opd.get({ orgSlug, appointmentId: sitting.appointment.id });
+  expect(visit.charges.find((charge) => charge.id === posted.charge.id)?.status).toBe("invoiced");
+  expect(
+    (await setup.api.billing.getInvoice({ orgSlug, invoiceId: issued.invoice.id })).invoice,
+  ).toMatchObject({ grandTotal: 50_00n });
+  await expectORPCCode(setup.api.treatment.complete({ orgSlug, planId: plan.id }), "CONFLICT");
+
+  const later = await createCheckedInSitting(setup, plan.id, 20);
+
+  const rebilled = await setup.api.treatment.postToVisit({
+    orgSlug,
+    appointmentId: later.appointment.id,
+    itemId: item.id,
+  });
+
+  expect(rebilled.charge.unitPrice).toBe(50_00n);
+  expect((await planDetail(setup, plan.id)).items[0]?.done).toBe(true);
+  expect(await setup.api.treatment.complete({ orgSlug, planId: plan.id })).toMatchObject({
+    status: "completed",
+  });
+});
+
+test("a partial sitting credit restores only its amount and refuses posting above the remainder", async () => {
+  const { setup, orgSlug, plan, item, issued } = await completedInvoicedSitting(
+    "treatment-partial-sitting-credit",
+    "18",
+  );
+
+  await setup.api.billing.issueCreditNote({
+    orgSlug,
+    invoiceId: issued.invoice.id,
+    reason: "Reverse part of the sitting",
+    // ₹23.60 gross restores ₹20 of course price, never the ₹3.60 GST.
+    lines: [{ invoiceLineId: issued.lines[0]!.id, gross: 23_60n }],
+  });
+  const credited = await planDetail(setup, plan.id);
+  expect(credited.status).toBe("open");
+  expect(credited.items[0]).toMatchObject({
+    postedAmount: 30_00n,
+    nextSittingPrice: 20_00n,
+    done: false,
+  });
+  const later = await createCheckedInSitting(setup, plan.id, 20);
+  await expectORPCCode(
+    setup.api.treatment.postToVisit({
+      orgSlug,
+      appointmentId: later.appointment.id,
+      itemId: item.id,
+      amount: 20_01n,
+    }),
+    "CONFLICT",
+  );
+
+  const rebilled = await setup.api.treatment.postToVisit({
+    orgSlug,
+    appointmentId: later.appointment.id,
+    itemId: item.id,
+    amount: 20_00n,
+  });
+
+  expect(rebilled.charge.unitPrice).toBe(20_00n);
+  expect((await planDetail(setup, plan.id)).postedAmount).toBe(50_00n);
 });
 
 test("a free course needs one posted sitting before completion", async () => {

@@ -35,47 +35,66 @@ until their trigger is met and they enter this registry.
 
 ### [Landing page code reduction](./design.md)
 
-**Verification.** The owner requested restoration of the original landing
-animations, role-stack layout and planned IPD/lab presentation on 2 October 2026.
-Those changes were reversed. The roles section now clips transformed cards at
-its boundary to prevent them painting into the preceding journey on reverse
-scroll; its original animation calculations and layout remain unchanged. A new
-treatment section reuses the application’s plan item row. Desktop/mobile,
-light/dark, reverse-scroll and dashboard failure/loading/empty-state browser
-checks remain pending: the connected Mac browser-control requests timed out on
-2 October 2026. Short-viewport card-content clipping remains unverified.
+**Verification.** On 2026-10-04 these passed: desktop/mobile light/dark,
+native-wheel reverse scroll (no overlap with the journey), short viewports and
+reduced motion. On constrained viewports the role cards now take their natural
+height; the animated deck stays on viewports of at least 1024×900 (D050
+amended). The slow-4G dashboard was captured, and the treatment demo's lower
+rows are present in the DOM without overflow. Still owed: a visual capture of
+those lower rows.
 
 ### [Bot review UI fixes](./design.md#8-layout-primitives)
 
-**Verification.** Start local services, then check mobile audit actor name and email, OPD service rate and large totals, and medicine suggestion pack values after an operator edit. Docker and the web app were unavailable on 2026-09-24.
-
-### [Patient routes and compact workspaces](./design.md#8-layout-primitives)
-
-**Verification.** Desktop/mobile layout and patient active-route checks passed. Repeat Take Advance and advance receipt disclosure on the new patient Billing route, and verify a foreign-org patient direct URL is denied, in an isolated browser session. The shared browser changed during the final interaction checks.
+**Verification.** At 390px, the mobile OPD ₹900 rate and ₹8,99,100 totals read
+correctly in light and dark with no overflow. Still owed: the mobile audit
+actor's name and email, and medicine suggestion pack values after an operator
+edit.
 
 ### [Keyboard focus](./design.md#7-sidebar)
 
-**Verification.** Desktop light: login fields and Sign in, page tabs, sidebar, list filter search, patient table row, organization menu item, and catalog checkbox show the rounded ring unclipped; page tabs also checked dark. Remaining: mobile widths, dark theme beyond tabs, dialogs and sheets, comboboxes and the custom date popover, compact list rows, `/join` and onboarding.
+**Verification.** With physical Tab, the patient sheet and founder `/create`
+show unclipped rings on desktop/mobile light/dark. Still owed: `/join`, org
+onboarding, compact rows, the mobile sidebar, the custom date popover and the
+record combobox.
 
 ### [Static choice controls](./design.md#10-task-overlays)
 
-**Verification.** Start the web and API after the local migration mismatch is resolved. In desktop and mobile light/dark, exercise native choices in patient, pharmacy, billing, and settings forms. Verify current values, keyboard selection, and submission; confirm loaded-record comboboxes still search.
-
-### [Credit note on a plan sitting](./opd.md#intake)
-
-**Blocked.** A credit note leaves the charge invoiced, so the plan still counts that sitting as billed and cannot re-bill it; voiding before invoicing is correct. Needs an accounting decision on whether credited plan charges stop counting as posted before code changes.
+**Verification.** Patient native choices pass on desktop/mobile light/dark:
+current value, keyboard selection and submission. Time zones now use modern
+IANA names on client and server: Asia/Tokyo → Asia/Kolkata → reload persists
+Asia/Kolkata. Still owed: the pharmacy and billing choices. Known issue: the
+"Settings saved" toast covers the Save button until it fades.
 
 ### [Treatment plans and advances](./opd.md#intake)
 
-**Verification.** After a pilot month: every open course is a plan, no Invoice precedes its posting, Follow-ups is in daily use, and three cases work without a pre-delivery Invoice (an RCT abandoned after two sittings; a ten-session course paid by three advances across several Invoices; an RCT with a crown added mid-course). The chartered accountant answers the two open questions in [OPD](./opd.md#intake). D047 cutover remains unverified: a pilot database owner must confirm migration `0008` ran once, compare affected plan quotes with the pre-migration unit price × sittings, and record the stopped-writer interval. Once the app runs, check invoice and settlement credit fields with only another plan's advance: start at zero, allow a typed amount up to total credit, and reject amounts above it on desktop and mobile in both themes.
+**Verification.** D052 settles the Advance Receipt GST particulars. D053 fixes
+the earning milestone as per-sitting proportionate completion under D047.
+
+- **After a pilot month:** every open course is a plan, no Invoice precedes its
+  posting, and Follow-ups is in daily use. Three cases work without a
+  pre-delivery Invoice: an RCT abandoned after two sittings; a ten-session
+  course paid by three advances across several Invoices; an RCT with a crown
+  added mid-course.
+- **D047 cutover:** a pilot database owner confirms migration `0008` ran once,
+  compares affected plan quotes with the pre-migration unit price × sittings,
+  and records the stopped-writer interval.
+- **In-app:** passed 2026-10-04 on desktop/mobile light/dark. With only another
+  plan's ₹300 advance, both credit fields start at zero, accept 300 and reject 301.
+  D051 also passed at runtime: crediting a billed sitting returns it to
+  unbilled, reopens the plan, and a later visit re-bills it.
 
 ### [Custom OPD rates](./opd.md#catalog-and-charge-meaning)
 
-**Verification.** Finish desktop/mobile browser checks
+**Verification.** Edit, blank reset, server quote and booking pass on
+desktop/mobile light/dark; SQL confirms the custom ₹900 on Charges and the
+issued Invoice line. Fixed: the mobile rate input kept a stale value after a
+desktop commit.
 
 ### [Patient contacts and name casing](./product.md#patient-contacts)
 
-**Verification.** Inspect thermal, Receipt, Credit Note, and refund layouts with retained sample documents
+**Verification.** Print layouts pass. On 2026-10-04 the thermal, Receipt, Credit
+Note and Refund PDFs (registered and neutral) were fetched as owner and
+inspected. Still owed: checks on physical A4 and 80 mm printers at the pilot.
 
 ### [Invitation account onboarding](./research/invitation-account-onboarding.md)
 
@@ -87,8 +106,18 @@ checks remain pending: the connected Mac browser-control requests timed out on
 
 ### Public site owner decisions
 
-**Blocked.** Legal review must approve `/terms`, `/privacy` and `/security` before
-publication; the draft terms are not release approval. The owner confirms who answers the public contact channels and decides on training-crawler access. The site uses direct contact links; set `VITE_WHATSAPP_NUMBER` in the Coolify web build before the next deploy. Company-address placeholders and unused marketing pages have been removed.
+**Blocked.** D062 settles the open decisions:
+
+- AI-training crawlers are disallowed.
+- support@edernal.com is the public channel; the founder answers it and
+  acknowledges within 48 hours.
+- `/privacy`, `/terms` and `/security` had an engineering gap review against
+  the DPDP, SPDI, e-commerce and CERT-In rules.
+- Phone and WhatsApp links are hidden when unset.
+
+Counsel must approve the pages before publication, with the verified operator
+identity and the grievance officer's details. `/terms`, `/security`, `/contact`
+(desktop/mobile) and the live `/robots.txt` are verified.
 
 ### [Production hardening](./operations.md#production-hardening)
 
@@ -98,53 +127,123 @@ publication; the draft terms are not release approval. The owner confirms who an
 
 **Active.** A named owner records every operational, accounting, print, restore, and compliance gate complete
 
-### [Frontend pattern items](./research/frontend-patterns.md#remaining-work)
-
-**Active.** Batching is measured and landed or dropped; the remaining `useSearch` selector sites are measured or dropped
-
-### [Midday adoption performance exceptions](./research/data/perf-midday-adoption/README.md)
-
-**Verification.** A named owner accepts the three bound misses as ambient drift, or re-measures them within bounds
-
 ### [Pharmacy counter sale and stock](./specs/pharmacy-counter-sale-and-stock.md)
 
-**Verification.** Slices 1–3 landed 2026-09-18 with products, opening receipts, department issues and the filter toolbar (D042); the sales list became the section landing page and the desk moved to `/pharmacy/new` on OPD intake's layout. A signed-in browser pass on desktop and mobile covers the new desk end to end (batch search, H1 prescriber, Collect overlay, hand-off to the opened sale), Products, Receive goods (priced supplier delivery with free quantity and bill-total check, opening count, inline new medicine, pack counting), Stock (internal issue, filter chips, Load more) and the date defaults on Dashboard, OPD and Sales. A 2026-09-23 pass covered the Movements tab (org-wide and batch-filtered), 1mg name suggestions with keyboard pick and the duplicate-name warning, and the receive mode toggle without attachments; the 2026-09-24 switch to browser-fetched Medbuzz and Truemeds suggestions (D046) still needs that pick exercised in a signed-in browser. Then one pilot month with the incumbent read-only: sales by day, stock per batch reconciled to a physical count, and zero movements recorded outside HMS. The owner confirms the assumed Stage 0 answers at the walkthrough
+**Verification.** D061 closes the assumed Stage 0 answers. D052 settles GST
+classification, statutory particulars, 16-character numbering and purchase-GST
+cost. The 2026-10-04 browser pass on desktop/mobile light/dark covered:
+
+- Product creation
+- receipt and opening conversion
+- the Medbuzz keyboard pick
+- a sale and its PDF (inclusive MRP: 112 = 100 + 6 + 6)
+- return, quarantine and release
+
+H1 prescriber, internal issue, filter chips, Load more and date defaults also
+pass. External: one pilot month (sales by day, stock reconciled to a physical
+count, zero movements outside HMS), and the real issuer and licence documents.
 
 ### [Supplier bill reconciliation](./specs/pharmacy-counter-sale-and-stock.md#out-of-scope)
 
-**Active.** Before the purchasing spec locks bill reconciliation, inspect 10–20 real supplier invoices for header-level freight, handling, and miscellaneous adjustments outside the current line-sum ±₹0.99 model; record whether that model holds. Do not build header-charge support before the evidence and purchasing decision.
+**Verification.** D060 as simplified on 2026-10-04: a receipt carries freight/packing
+charges and bill discounts with their GST, typed as positive amounts whose kind
+sets the sign, and the lines plus adjustments match the bill total within ₹0.99.
+Settlement credits, historical TCS, references and a stored round-off were
+removed. Still owed: the receive page on desktop/mobile light/dark, and
+consecutive real bills from the pilot's suppliers.
 
 ### [Pharmacy goods and services](./specs/pharmacy-goods-and-services.md)
 
-**Verification.** Implemented 2026-09-29: Products own sale facts, Services excludes pharmacy, and pharmacy Charges trace batches without a catalog link. Owner browser verification remains: Products, Receive goods, counter sale/return, Services and OPD quote on desktop/mobile in light/dark, including GST, counted unit, and printed pack. Production migration is manual with no data backfill; pilot setup and opening stock require a fresh physical count.
+**Verification.** Products, Receive goods and counter sale/return pass on
+desktop/mobile light/dark, including GST, counted unit and printed pack. Fixed
+along the way: checked checkboxes in dark mode and truncated mobile stock rows.
+Services and the OPD GST quote (₹400 + ₹100 + ₹18) pass on desktop/mobile
+light/dark. The production migration is manual with no data backfill, and
+pilot setup needs a fresh physical count.
 
 ### [Pharmacy packs and loose units](./specs/pharmacy-packs-and-loose-units.md)
 
-**Verification.** Owner browser seam: add a tablet Product with a strip of 10, receive 5 strips, sell 4 tablets, print, return 3, release; check stock after each step on desktop/mobile in light/dark. Receive and sell a BP apparatus without expiry. Pilot evidence: count loose versus whole-strip lines in one week of incumbent bills and time a three-item sale with one loose line. Before push, the owner confirms production has no rows in `products`, `stock_batches` or `goods_receipt_lines` and no pharmacy Charges.
+**Verification.** The strip-of-10 seam passes: UI and SQL agreed at each step
+(receive 50, sell 4 → 46, return 3 to quarantine, release → 49). A BP apparatus
+was received with no expiry and sold (3 → 2). A scripted three-item sale with
+one loose line takes a median of 3.2 s. Pilot evidence: count loose versus
+whole-strip lines in one week of incumbent bills. Before push, the owner
+confirms production has no rows in `products`, `stock_batches` or
+`goods_receipt_lines` and no pharmacy Charges.
 
 ### [Blank data regions](./design.md#9-density-and-emptiness)
 
-**Verification.** Slow-4G cold-open and screen-reader checks confirm no collapsed region and no ambiguous silent navigation
-
-### [Patient monogram colour experiment](./design.md#5-colour)
-
-**Verification.** Inspect the patient header, selected patient input, and shell organization and user profiles in a signed-in browser on desktop and mobile, in light and dark themes. Confirm the pastel colours and symbols read as identity only, then keep or revert the experiment.
+**Verification.** Lists now announce loading through a hidden status, and route
+changes announce their title. A failed optional panel keeps its ErrorNote, with
+no interval refetch until data exists, and recovers on focus or reconnect.
+Slow-4G dashboard samples showed no zero-height region. Still owed: cold opens
+of OPD, patients, billing and pharmacy, and a full screen-reader pass.
 
 ### [Sidebar active state](./design.md#7-sidebar)
 
-**Verification.** With the app running, click between sidebar destinations on desktop and mobile in light and dark themes. Confirm the old and new active rows change colour without a flash.
+**Verification.** Desktop light passes: across 1432 sampled frames only the old
+and new states appear. Still owed: desktop dark and mobile light/dark.
 
 ### [List row activation](./design.md#8-layout-primitives)
 
-**Verification.** With OPD appointments, open money, a refund due, held advances, and patient invoices in local data, click empty space in each row and its second control on desktop; confirm the row opens its record and the second control still works
+**Verification.** Clicking a held-advance row opens patient Billing. Still owed:
+OPD appointments, open money, refund due, patient invoices, and each row's
+second control.
 
 ### [Choice controls](./design.md#8-layout-primitives)
 
-**Verification.** Start the local services, then inspect the organization and account menus, list filters and custom date popover, and a record combobox on desktop and mobile in light and dark themes. Check keyboard focus, opening near viewport edges, selection, empty results, and the active organization mark. On 2026-09-29, desktop light checks passed for OPD and pharmacy patient picks, pharmacy batch add, receipt product pick and edit, and treatment procedure pick and edit. The input kept focus after each pick; the batch search cleared for the next item. The receipt product popup and empty state had no horizontal overflow at 500px in light and dark. Remaining: physical Tab checks (the Chrome tool sent no keydown event) and mobile interaction checks. Also inspect the organization and account menus, list filters, and custom date popover in both themes.
+**Verification.** Desktop light passes: the organization menu's active mark,
+keyboard opening and selection, and the account menu opening above its trigger.
+Still owed: dark and mobile menus, list filters, the custom calendar, and on
+record comboboxes physical Tab, search and empty results.
 
 ### [OPD appointment forms](./opd.md)
 
-**Verification.** With the web and API running, reschedule and cancel an appointment on desktop/mobile in light/dark. Check the local date and time default, required field messages, success, and close while pending. The Portless web and API registrations did not respond on 2026-09-29.
+**Verification.** Desktop light passes: the reschedule default matches the
+booked local time, an empty value shows "Choose a date and time", and the
+submit shows pending, then success. Still owed: cancel, the other viewports and
+themes, and close-while-pending.
+
+### [Revenue control](./specs/revenue-control.md)
+
+**Verification.** Simplified on 2026-10-04: the owner digest and weekly module use
+were removed. The page keeps net billed revenue with its correction bridge,
+expiry exposure and review signals; register and signal totals come with the
+first page only, and each Excel sheet is one query. Integration tests pass.
+Still owed: both pages on mobile and dark, staff denial, downloads, print, and
+one hand reconciliation.
+
+### [Backups](./operations.md#backups-and-restore)
+
+**Active.** The in-app data-safety subsystem was removed on 2026-10-04. Provision
+the Coolify scheduled PostgreSQL backup and `weed filer.backup`, then run and
+record the first isolated restore before go-live.
+
+### [Outage continuity](./specs/outage-continuity.md)
+
+**Blocked.** Review only: D058 settles the design (a paper bridge of up to four
+hours, separate manual books, re-entry dated on the recording date with the
+original time). Implementation was reverted on the owner's instruction. It
+waits for the owner's go-ahead and for real books, a roster and a staffed drill.
+
+### [Onboarding import](./specs/onboarding-import.md)
+
+**Blocked.** D059 settles the design: fresh MRNs with searchable legacy
+identifiers, read-only old finances and the reserved operator role. It needs an
+authorised sample export from an unrelated hospital and its approvers.
+
+### [IPD admission to discharge](./specs/ipd-admission-to-discharge.md)
+
+**Blocked.** D056 settles the design: noon checkout, a one-day minimum,
+occupancy-weighted transfers, packages and a self-pay-first release. D025, D027,
+D042 and D049 are amended conditionally. The only open gate is the
+[IPD/ADT gate](./product.md#roadmap-gates): a paying hospital and a named owner.
+
+### [Cashless claims](./specs/cashless-claims.md)
+
+**Blocked.** D055 settles TDS, payer Credit Notes, patient liability, the
+approved write-off path and retention. D029 and D012 are amended conditionally.
+It needs live IPD and the [Insurance/TPA gate](./product.md#roadmap-gates).
 
 End-user help belongs in `apps/fumadocs`, not here. Code is authoritative for
 exact APIs, schemas, permissions, and environment validation; these docs explain

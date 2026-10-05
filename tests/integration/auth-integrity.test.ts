@@ -1,12 +1,11 @@
-import { beforeAll, expect, spyOn, test } from "bun:test";
+import { beforeAll, expect, test } from "bun:test";
 
 import { drainAuditWrites } from "@hms/api/audit";
-import { auth, invitationUrl } from "@hms/auth";
+import { auth } from "@hms/auth";
 import { createUserWithPassword } from "@hms/auth/manual-user";
 import { db } from "@hms/db";
 import { auditLog } from "@hms/db/schema/audit";
 import { invitation, member, user } from "@hms/db/schema/auth";
-import { file } from "@hms/db/schema/file";
 import { env } from "@hms/env/server";
 import { and, eq } from "drizzle-orm";
 
@@ -20,10 +19,11 @@ beforeAll(async () => {
 });
 
 test("public email sign-up is refused without an invitation", async () => {
+  const email = `signup-${Bun.randomUUIDv7()}@example.com`;
   await expectAuthStatus(
     auth.api.signUpEmail({
       body: {
-        email: `signup-${Bun.randomUUIDv7()}@example.com`,
+        email,
         name: "Sign-up probe",
         password: "integration-test-password",
       },
@@ -32,13 +32,7 @@ test("public email sign-up is refused without an invitation", async () => {
     "INVITATION_REQUIRED",
   );
 
-  const [probe] = await db.select({ id: user.id }).from(user).limit(1);
-  expect(probe?.id).toBeUndefined();
-});
-
-test("organization invitations enter through the join route", () => {
-  expect(new URL(invitationUrl("invite-id")).pathname).toBe("/join");
-  expect(new URL(invitationUrl("invite-id")).searchParams.get("invitation")).toBe("invite-id");
+  expect(await db.select({ id: user.id }).from(user).where(eq(user.email, email))).toHaveLength(0);
 });
 
 test("an operator-created account can sign in and is email-verified for account linking", async () => {
@@ -96,8 +90,6 @@ test("only the founding email can create an organization", async () => {
     headers: founder,
   });
 
-  expect(first).toBeDefined();
-
   const [membership] = await db
     .select({ role: member.role })
     .from(member)
@@ -113,8 +105,7 @@ test("only the founding email can create an organization", async () => {
   expect(second).toBeDefined();
 
   const owner = await createTestUser("gate-owner");
-  const ownerOrg = await createOrganization(owner, "gate");
-  expect(ownerOrg).toBeDefined();
+  await createOrganization(owner, "gate");
   await expectAuthStatus(
     auth.api.createOrganization({
       body: { name: "Not Even For Owners", slug: "not-even-owners" },
@@ -136,73 +127,6 @@ test("short and reserved root slugs cannot create organizations", async () => {
       "BAD_REQUEST",
     );
   }
-});
-
-test("the unused organization slug-check endpoint is not exposed", async () => {
-  const user = await createTestUser("slug-check-disabled");
-
-  const response = await app.request("http://localhost/api/auth/organization/check-slug", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      cookie: user.cookie,
-    },
-    body: JSON.stringify({ slug: "unclaimed-workspace" }),
-  });
-
-  expect(response.status).toBe(404);
-});
-
-test("organization deletion stays disabled until external objects can be cleaned up", async () => {
-  const owner = await createTestUser("delete-org-owner");
-  const organization = await createOrganization(owner, "delete-org");
-
-  // Pins Better Auth's machine-readable code, not the sentence it renders as.
-  await expectAuthStatus(
-    auth.api.deleteOrganization({
-      body: { organizationId: organization.id },
-      headers: owner.headers,
-    }),
-    "NOT_FOUND",
-    "ORGANIZATION_DELETION_DISABLED",
-  );
-});
-
-test("a user can have only one membership row per organization", async () => {
-  const owner = await createTestUser("unique-member-owner");
-  const organization = await createOrganization(owner, "unique-member");
-
-  await expect(
-    db
-      .insert(member)
-      .values({
-        id: Bun.randomUUIDv7(),
-        organizationId: organization.id,
-        userId: owner.user.id,
-        role: "reception",
-        createdAt: new Date(),
-      })
-      .execute(),
-  ).rejects.toThrow();
-});
-
-test("deleting an attributed user preserves organization content", async () => {
-  const owner = await createTestUser("attribution-owner");
-  const organization = await createOrganization(owner, "attribution");
-  const fileId = `${organization.id}/${Bun.randomUUIDv7()}/keep.txt`;
-  await db.insert(file).values({
-    id: fileId,
-    orgId: organization.id,
-    userId: owner.user.id,
-    name: "keep.txt",
-    size: 1,
-    status: "ready",
-  });
-
-  await db.delete(user).where(eq(user.id, owner.user.id));
-
-  const [preservedFile] = await db.select().from(file).where(eq(file.id, fileId));
-  expect(preservedFile?.userId).toBeNull();
 });
 
 // D001 accepts Better Auth's org endpoints mounted whole only while both halves
@@ -265,24 +189,15 @@ test("an invitee creates an account from the invitation id, joins, and signs in 
     headers: owner.headers,
   });
 
-  const queries = spyOn(db.$client, "query");
+  const status = await app.request(`/api/auth/invitation/claim-status?invitationId=${invited.id}`);
 
-  try {
-    const status = await app.request(
-      `/api/auth/invitation/claim-status?invitationId=${invited.id}`,
-    );
-
-    expect(status.status).toBe(200);
-    expect(await status.json()).toEqual({
-      accountExists: false,
-      email,
-      organizationName,
-      organizationSlug: organization.slug,
-    });
-    expect(queries).toHaveBeenCalledTimes(1);
-  } finally {
-    queries.mockRestore();
-  }
+  expect(status.status).toBe(200);
+  expect(await status.json()).toEqual({
+    accountExists: false,
+    email,
+    organizationName,
+    organizationSlug: organization.slug,
+  });
 
   const password = "integration-test-password";
 

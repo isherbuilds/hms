@@ -1,6 +1,5 @@
-/* Crawl-budget rules only (D030). Indexing is denied by `X-Robots-Tag`, not
-   here: a `Disallow` stops the fetch, so a crawler never reads a `noindex`, and a
-   deny-all rule would keep social scrapers off `/og/`, `/hero/` and `/landing/`. */
+/* D030: indexing remains controlled by X-Robots-Tag, not crawl rules.
+   D062: search/social discovery stays allowed; training/dataset use is opted out. */
 export function renderRobots(origin: string): string {
   return [
     "User-agent: *",
@@ -9,6 +8,16 @@ export function renderRobots(origin: string): string {
     "Disallow: /create",
     "Disallow: /api/",
     "Allow: /",
+    "",
+    "User-agent: GPTBot",
+    "User-agent: CCBot",
+    "User-agent: Google-Extended",
+    "User-agent: ClaudeBot",
+    "User-agent: anthropic-ai",
+    "User-agent: Applebot-Extended",
+    "User-agent: Bytespider",
+    "User-agent: meta-externalagent",
+    "Disallow: /",
     "",
     `Sitemap: ${origin}/sitemap.xml`,
     "",

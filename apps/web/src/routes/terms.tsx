@@ -1,7 +1,7 @@
-import { env } from "@hms/env/web";
 import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { PROSE, PublicPage } from "@/components/landing/public-page";
+import { CONTACT_EMAIL, CONTACT_MAILTO, CONTACT_RESPONSE } from "@/lib/contact";
 import { pageHead } from "@/lib/seo";
 
 /* A plain-language summary of the terms of use, not the contract: each
@@ -11,7 +11,7 @@ export const Route = createFileRoute("/terms")({
   component: () => (
     <PublicPage
       title="The terms, in plain words."
-      lead="Effective 2 October 2026. These terms cover this website and the use of Edernal Care. A hospital's written agreement with us, where one exists, takes priority over this page."
+      lead="Draft reviewed 4 October 2026; publication awaits counsel approval. These terms cover the website and Edernal Care; a hospital's written agreement governs its contracted service, subject to mandatory law."
     >
       <div className={PROSE}>
         <h2>Who may use Edernal Care</h2>
@@ -48,9 +48,10 @@ export const Route = createFileRoute("/terms")({
 
         <h2>Money and records</h2>
         <p>
-          Issued invoices are never overwritten; corrections are credit notes and refunds. Fees,
-          where they apply, are set out in the hospital's agreement. Prices on this website are a
-          guide until that agreement is signed.
+          Issued invoices are never overwritten; corrections are credit notes and refunds. Access is
+          invite-only and this site does not take online orders or payments. Fees, taxes, delivery,
+          support, cancellation and refunds for the software are agreed in writing before purchase.
+          No price or refund entitlement is invented by this page.
         </p>
 
         <h2>Availability and changes</h2>
@@ -63,13 +64,19 @@ export const Route = createFileRoute("/terms")({
 
         <h2>Leaving</h2>
         <p>
-          A hospital may stop at any time. Every report exports to Excel or PDF, so its records
-          leave with it. Indian law governs these terms.
+          A hospital may request its records and end service under its written agreement. Report
+          exports are not a complete database exit package; arrange the full export and applicable
+          retained-record schedule with us. Indian law governs these terms. Nothing here or in a
+          hospital agreement excludes mandatory consumer remedies or statutory data-protection
+          rights.
         </p>
 
-        <h2>Questions</h2>
+        <h2>Questions and grievances</h2>
         <p>
-          Write to <a href={`mailto:${env.VITE_CONTACT_EMAIL}`}>{env.VITE_CONTACT_EMAIL}</a>.
+          The founder is the designated public grievance contact. Write to{" "}
+          <a href={CONTACT_MAILTO}>{CONTACT_EMAIL}</a> with the subject “Service grievance” and your
+          hospital name or enquiry reference, without patient information. {CONTACT_RESPONSE} For
+          privacy requests, use the <Link to="/privacy">privacy notice</Link>.
         </p>
       </div>
     </PublicPage>

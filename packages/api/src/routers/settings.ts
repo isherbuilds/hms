@@ -3,65 +3,11 @@ import { invoices } from "@hms/db/schema/invoices";
 import { SETTINGS_DEFAULTS, organizationSettings } from "@hms/db/schema/organization-settings";
 import { and, eq } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
-import { z } from "zod";
 
 import { audit } from "../audit";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { invalidateOrgSettings } from "../lib/settings-cache";
-
-// Time zones are validated by probing the formatter: Bun's JavaScriptCore lists
-// only legacy canonical ids (Asia/Calcutta), so a membership check would reject
-// Asia/Kolkata — the default the migration backfills.
-function isSupportedTimeZone(value: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: value });
-
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const settingsFields = z.object({
-  legalName: z.string().trim().max(200),
-  address: z.string().trim().max(500),
-  taxId: z.string().trim().max(50),
-  currency: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^[A-Z]{3}$/, "Use a three-letter currency code"),
-  timeZone: z.string().refine(isSupportedTimeZone, {
-    message: "Use a valid IANA time zone like Asia/Kolkata",
-  }),
-  mrnPrefix: z.string().trim().max(10),
-  invoicePrefix: z.string().trim().max(10),
-  receiptPrefix: z.string().trim().max(10),
-  advanceReceiptPrefix: z.string().trim().max(10),
-  creditNotePrefix: z.string().trim().max(10),
-  pharmacyInvoicePrefix: z.string().trim().max(10),
-  fiscalYearStartMonth: z.number().int().min(1).max(12),
-  followUpValidityDays: z.number().int().min(1).max(365),
-  unbilledAlertHours: z.number().int().min(1).max(168),
-});
-
-// OPD and pharmacy invoices count on separate counters but share one uniqueness
-// index on `(orgId, invoiceNumber)`. Equal prefixes render the same number twice
-// and the second sale dies on a constraint error, so they are refused here.
-function rejectSharedInvoicePrefix(
-  value: { invoicePrefix: string; pharmacyInvoicePrefix: string },
-  context: z.RefinementCtx,
-): void {
-  if (value.invoicePrefix !== value.pharmacyInvoicePrefix) return;
-
-  context.addIssue({
-    code: "custom",
-    path: ["pharmacyInvoicePrefix"],
-    message: "Use a different prefix from the OPD invoice prefix",
-  });
-}
-
-export type SettingsFields = z.infer<typeof settingsFields>;
+import { type SettingsFields, settingsFields, settingsRules } from "../lib/settings-schema";
 
 export const settingsRouter = {
   get: orgProcedure({ settings: ["read"] }, orgInput).handler(
@@ -84,7 +30,7 @@ export const settingsRouter = {
 
   update: orgProcedure(
     { settings: ["update"] },
-    orgInput.extend(settingsFields.shape).superRefine(rejectSharedInvoicePrefix),
+    orgInput.extend(settingsFields.shape).superRefine(settingsRules),
   ).handler(async ({ context, input }): Promise<SettingsFields> => {
     const { scope } = context;
     const { orgSlug: _claim, ...fields } = input;

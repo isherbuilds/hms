@@ -62,6 +62,8 @@ export * from "./goods-receipts";
 
 export * from "./goods-receipt-lines";
 
+export * from "./goods-receipt-adjustments";
+
 export * from "./pharmacy-sales";
 
 export * from "./pharmacy-returns";

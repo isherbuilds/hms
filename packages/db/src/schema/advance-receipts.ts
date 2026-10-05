@@ -35,6 +35,7 @@ export const advanceReceipts = pgTable(
     orgLegalName: text("org_legal_name").notNull(),
     orgAddress: text("org_address").notNull(),
     orgTaxId: text("org_tax_id").notNull(),
+    orgGstin: text("org_gstin").notNull().default(""),
     currency: text("currency").notNull(),
     patientName: text("patient_name").notNull(),
     patientMrn: text("patient_mrn").notNull(),
