@@ -22,7 +22,6 @@ export const followUpsQuery = (orgSlug: string, query: string) =>
       orgSlug,
       query: query || undefined,
       cursor,
-      limit: 25,
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,

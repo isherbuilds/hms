@@ -40,6 +40,7 @@ function RateInput({
 
   // Desktop and mobile each render this input; the copy not being edited follows a commit
   // without remounting, so the edited one keeps focus after Enter.
+  // oxlint-disable-next-line accly/no-use-effect -- writes the committed rate into an uncontrolled DOM input
   useEffect(() => {
     if (ref.current && ref.current !== document.activeElement) {
       ref.current.value = formatDecimal(committed);

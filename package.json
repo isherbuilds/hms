@@ -55,7 +55,7 @@
     "create-user": "bun scripts/create-user.ts",
     "create-founder": "bun scripts/create-founder.ts",
     "cleanup-uploads": "bun scripts/cleanup-uploads.ts",
-    "check": "oxlint && oxfmt --write"
+    "check": "oxlint && bun scripts/check-migrations.ts && oxfmt --write"
   },
   "dependencies": {
     "@hms/env": "workspace:*"

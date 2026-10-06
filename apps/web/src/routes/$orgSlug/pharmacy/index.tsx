@@ -30,7 +30,6 @@ const salesQuery = (orgSlug: string, range: { from?: string; to?: string }) =>
       from: range.from,
       to: range.to,
       cursor,
-      limit: 50,
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,

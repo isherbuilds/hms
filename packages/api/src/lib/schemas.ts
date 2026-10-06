@@ -57,7 +57,7 @@ export function likePattern(query: string): string {
   return `%${query.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
 }
 
-export const pageLimit = z.number().int().min(1).max(100).default(50);
+export const pageLimit = z.number().int().min(1).max(100).default(30);
 
 export const paymentMethod = z.enum(PAYMENT_METHODS);
 

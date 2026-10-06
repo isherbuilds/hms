@@ -63,6 +63,7 @@ export function PatientSheet({
   };
 
   // A new form is mounted whenever the sheet opens again, so it is safe to arm then.
+  // oxlint-disable-next-line accly/no-use-effect -- re-arms the router blocker
   useEffect(() => {
     if (open) leaving.current = false;
   }, [open]);

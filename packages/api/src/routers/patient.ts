@@ -28,6 +28,7 @@ import {
   emergencyContactRelation,
   guardianRelation,
   likePattern,
+  pageLimit,
   personName,
   phone,
   searchQuery,
@@ -221,7 +222,7 @@ export const patientRouter = {
       // Keyset on the UUIDv7 id alone: ids are minted at registration so they order
       // chronologically, and a timestamp cursor's millisecond truncation loses rows.
       cursor: z.string().optional(),
-      limit: z.number().int().min(1).max(100).default(20),
+      limit: pageLimit,
     }),
   ).handler(async ({ context, input }) => {
     const normalizedPhone = input.phone ? normalizePhone(input.phone) : undefined;
@@ -285,7 +286,7 @@ export const patientRouter = {
       // Keyset on (business_date, id): a visit is ordered by the day it happened, so a
       // booking made today for next week must not sort above last week's attendance.
       cursor: z.object({ businessDate: z.string(), id: z.string() }).optional(),
-      limit: z.number().int().min(1).max(50).default(20),
+      limit: pageLimit,
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;

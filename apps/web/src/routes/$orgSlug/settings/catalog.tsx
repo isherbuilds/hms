@@ -63,7 +63,6 @@ const catalogListQuery = (
       category: filters.category,
       activeOnly: filters.activeOnly,
       cursor,
-      limit: 25,
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,

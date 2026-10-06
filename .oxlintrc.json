@@ -34,7 +34,8 @@
     "anti-slop/no-unknown-type-aliases": "error",
     "anti-slop/no-widen-then-assert": "error",
     "anti-slop/require-readable-spacing": "error",
-    "anti-slop/require-safety-comment-for-type-assertion": "error"
+    "anti-slop/require-safety-comment-for-type-assertion": "error",
+    "accly/no-local-page-size": "error"
   },
   "env": {
     "builtin": true
@@ -44,13 +45,20 @@
       "files": ["tests/**"],
       "rules": {
         "anti-slop/no-chained-type-assertions": "off",
-        "anti-slop/no-unknown-returns": "off"
+        "anti-slop/no-unknown-returns": "off",
+        "accly/no-local-page-size": "off"
       }
     },
     {
       "files": ["**/*.tsx"],
       "rules": {
         "accly/no-bigint-in-components": "error"
+      }
+    },
+    {
+      "files": ["apps/web/**"],
+      "rules": {
+        "accly/no-use-effect": "error"
       }
     }
   ]

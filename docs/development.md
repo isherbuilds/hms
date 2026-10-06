@@ -126,7 +126,7 @@ membership through invitation or an operator-managed membership.
 | `bun run dev`                | Start database/storage, migrate, and run all apps                  |
 | `bun run dev:status`         | Check local services, app URLs, database, and migration status     |
 | `bun run check-types`        | Typecheck TypeScript packages and `tests/`                         |
-| `bun run check`              | Run oxlint and oxfmt (writes formatting)                           |
+| `bun run check`              | Run oxlint, the migration check, and oxfmt (writes formatting)     |
 | `bun run test`               | Run real-Postgres integration and isolated tests; wipes `hms_test` |
 | `bun run build`              | Build all workspaces                                               |
 | `bun run db:up`              | Start local PostgreSQL and SeaweedFS                               |
@@ -201,8 +201,10 @@ range; a passing TypeScript build cannot prove an auth database is migratable.
   `UPDATE/DELETE ... RETURNING` where possible.
 - Never hand-edit generated migrations or `apps/web/src/routeTree.gen.ts`.
 - Applied migration history is append-only; an unapplied migration is a draft
-  to regenerate, and a squash needs its own decision entry (D022). A local
-  database whose journal no longer matches is recreated with
+  to regenerate, and a squash needs its own decision entry (D022). Every
+  migration on `origin/main` is applied, because a push to `main` deploys;
+  `scripts/check-migrations.ts` (part of `bun run check`) fails when one changes.
+  A local database whose journal no longer matches is recreated with
   `bun run db:seed -- --reset`.
 - A write that checks more than one row, creates money, or changes a Charge set
   follows [Writes and concurrency](./architecture.md#writes-and-concurrency):

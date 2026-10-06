@@ -68,7 +68,7 @@ type SignalCursor = { eventAt: string; id: string };
 
 const signalsQuery = (orgSlug: string, from: string, to: string, kind: SignalKind) =>
   orpc.report.revenueSignals.infiniteOptions({
-    input: (cursor: SignalCursor | undefined) => ({ orgSlug, from, to, kind, cursor, limit: 25 }),
+    input: (cursor: SignalCursor | undefined) => ({ orgSlug, from, to, kind, cursor }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });

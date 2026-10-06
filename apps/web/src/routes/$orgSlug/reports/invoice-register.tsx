@@ -37,7 +37,7 @@ type RegisterCursor = { businessDate: string; createdAt: string; id: string };
 
 const registerQuery = (orgSlug: string, filters: RegisterFilters) =>
   orpc.report.invoiceRegister.infiniteOptions({
-    input: (cursor: RegisterCursor | undefined) => ({ orgSlug, ...filters, cursor, limit: 25 }),
+    input: (cursor: RegisterCursor | undefined) => ({ orgSlug, ...filters, cursor }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });

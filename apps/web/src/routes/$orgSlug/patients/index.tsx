@@ -49,7 +49,6 @@ const patientSearchQuery = (orgSlug: string, filters: PatientFilters) =>
       query: filters.q,
       sex: filters.sex,
       cursor,
-      limit: 20,
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,

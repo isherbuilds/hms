@@ -56,6 +56,7 @@ function useScrub(steps: number) {
   const outer = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState(0);
 
+  // oxlint-disable-next-line accly/no-use-effect -- scroll listener and animation frames
   useEffect(() => {
     const el = outer.current!;
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -127,6 +128,7 @@ function useTween(value: number) {
   const [shown, setShown] = useState(value);
   const from = useRef(value);
 
+  // oxlint-disable-next-line accly/no-use-effect -- animation frames
   useEffect(() => {
     const start = performance.now();
     const a = from.current;

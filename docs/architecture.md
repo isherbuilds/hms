@@ -150,7 +150,8 @@ tab reads the other. `apps/web/src/lib/opd-record.ts` is why.
 Every query identity includes `orgSlug`. Growing lists use keysets containing
 all stable ordering columns and select `limit + 1` base rows through a
 tenant-leading index before joining display data. Never use `OFFSET` for
-operational lists.
+operational lists. Every cursor procedure takes the shared `pageLimit` (30 rows,
+at most 100) and clients omit `limit`.
 
 The OPD operational surfaces poll every 10 seconds with a 5-second stale time
 and refetch on focus; background tabs pause, and a paged list stops polling once

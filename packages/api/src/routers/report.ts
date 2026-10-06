@@ -51,7 +51,13 @@ import {
   type AccountAggregate,
   type GstBucket,
 } from "../lib/report-math";
-import { likePattern, paymentMethod, searchQuery, type PaymentMethod } from "../lib/schemas";
+import {
+  likePattern,
+  pageLimit,
+  paymentMethod,
+  searchQuery,
+  type PaymentMethod,
+} from "../lib/schemas";
 
 const reportDate = z.iso.date();
 
@@ -62,7 +68,7 @@ export const asOfInput = orgInput.extend({ asOf: reportDate });
 const invoiceRegisterInput = periodInput.extend({
   stream: z.enum(["opd", "pharmacy"]).optional(),
   query: searchQuery,
-  limit: z.number().int().min(1).max(100).default(25),
+  limit: pageLimit,
   cursor: z
     .object({
       businessDate: reportDate,
@@ -88,7 +94,7 @@ type SignalKind = z.infer<typeof revenueSignalKind>;
 
 const revenueSignalsInput = periodInput.extend({
   kind: revenueSignalKind,
-  limit: z.number().int().min(1).max(100).default(25),
+  limit: pageLimit,
   cursor: z.object({ eventAt: z.iso.datetime(), id: z.string().min(1) }).optional(),
 });
 
@@ -585,7 +591,7 @@ async function signalSummary(source: SQL, kind: SignalKind) {
 }
 
 const opdRegisterInput = periodInput.extend({
-  limit: z.number().int().min(1).max(100).default(50),
+  limit: pageLimit,
   cursor: z
     .object({
       businessDate: reportDate,
@@ -759,7 +765,7 @@ export async function opdRegisterTotals(orgId: string, period: Period) {
 }
 
 const gstInput = periodInput.extend({
-  limit: z.number().int().min(1).max(100).default(50),
+  limit: pageLimit,
   cursor: z
     .object({ date: reportDate, number: z.string().min(1), id: z.string().min(1) })
     .optional(),

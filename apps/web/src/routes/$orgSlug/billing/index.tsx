@@ -62,7 +62,6 @@ const openInvoicesQuery = (orgSlug: string, query: string, overdueOnly: boolean)
       query: query || undefined,
       overdueOnly,
       cursor,
-      limit: 25,
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,

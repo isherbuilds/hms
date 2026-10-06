@@ -23,7 +23,7 @@ import { SettingsTabs } from "./route";
 // every entry rather than relying on each mutation to invalidate it.
 const auditQuery = (orgSlug: string) =>
   orpc.audit.list.infiniteOptions({
-    input: (cursor: number | undefined) => ({ orgSlug, cursor, limit: 50 }),
+    input: (cursor: number | undefined) => ({ orgSlug, cursor }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     staleTime: 0,

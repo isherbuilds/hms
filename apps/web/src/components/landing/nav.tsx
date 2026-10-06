@@ -19,6 +19,7 @@ export function LandingNav() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
+  // oxlint-disable-next-line accly/no-use-effect -- window scroll listener
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
     onScroll();

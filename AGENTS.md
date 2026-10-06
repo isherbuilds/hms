@@ -24,6 +24,31 @@ source files or shared data. Do not run writing formatters or database-wiping te
 as part of a read-only review.
 One session at a time owns a database-wiping test run.
 
+## Stage
+
+Pre-production code: no backward compatibility, deprecated aliases, or shims (see
+`lean-code`). Migrations follow hard rule 4.
+
+## Runtime check
+
+Run this before reporting UI, route, or API work.
+
+1. `docker info` fails → `open -ga Docker`, then retry until it answers.
+2. `bun run dev:status`. Web or API down → start `bun run dev` once as a background
+   process owned by the main session (it runs `db:up` and `db:migrate` first). Portless
+   needs `bunx portless proxy start` once per machine.
+3. "Migrations unverified" means the local database follows another branch or
+   worktree. Report it and ask before `bun run db:seed -- --reset`, which drops the
+   dev schema.
+4. Empty database → `bun run db:seed`. Sign in at `https://hms.localhost/login` as
+   `owner@example.com` / `password123` (also `admin@` and `staff@`; local seed only).
+5. Drive the changed path with populated data at a phone and a desktop width, and in
+   dark theme where the screen has one. A redirect to `/login` after step 4 is a
+   blocker to report, not a pass.
+6. Teardown: stop only what you started. Killing the `bun run dev` wrapper leaves the
+   portless children holding the URLs, so stop the listeners on ports 56443–56445
+   (`lsof -nP -iTCP:56443-56445 -sTCP:LISTEN`) if you started them.
+
 ## Hard rules
 
 1. **Every domain row belongs to exactly one org (`orgId NOT NULL`), and every query carries the tenant predicate `eq(orgId, scope.orgId)`.** This includes infrastructure tables (`audit_log`, `file`). `userId` columns are attribution, never scope.
@@ -37,28 +62,29 @@ One session at a time owns a database-wiping test run.
 6. **No secrets or server-only modules in client assets.**
 7. **Stored objects are always private.** `@hms/storage` issues only short-lived presigned URLs; the bucket is never anonymously readable.
 
+## Enforced rules
+
+When an agent repeats a corrected mistake, move its rule up this table: architecture, type, lint, test, prose.
+
+| Rule                                                                         | Enforced by                             |
+| ---------------------------------------------------------------------------- | --------------------------------------- |
+| One page size: cursor procedures take `pageLimit`; list queries omit `limit` | lint `accly/no-local-page-size`         |
+| No bigint literals in `.tsx` (React Compiler rewrites them)                  | lint `accly/no-bigint-in-components`    |
+| `apps/web` Effects only sync an external system, with a reason               | lint `accly/no-use-effect`              |
+| Migrations on `origin/main` ran in production: never edit, delete or squash  | `scripts/check-migrations.ts`           |
+| Static choices use `NativeSelect`                                            | architecture (no `Select` in `@hms/ui`) |
+| No compatibility code, backfills or legacy paths (pre-production)            | prose (Stage)                           |
+| Say it once: no subtitle or heading that repeats the body                    | prose (`docs/design.md`)                |
+| A review or "check" request produces findings, not an implementation         | prose (personal guidance)               |
+
 ## How to work
 
-Keep one implementation owner; delegate only independent work with explicit file
-ownership. Reviews produce findings without editing or staging. Preserve concurrent
-work and its staged/unstaged split; leave changes uncommitted unless requested.
-Personal guidance can add preferences; this file owns the project rules.
+Personal guidance covers ownership, reviews, git, testing, and verification; this
+file adds the project rules.
 
-- Restate in a few lines before editing: what the user wants, scope, what you will not do, what counts as done. Read the code that owns the behaviour; never conclude from grep hits.
-- When an instruction is ambiguous in a way that would change behaviour, data, or scope, ask before proceeding; otherwise state the assumption in the restatement and continue.
-- YAGNI/KISS: extract a helper at the second real call site; delete unused exports. Fail loud on config, auth, money, and data-integrity errors. No defaults, no broad catches.
-- Fix the root cause once. No stacked patches or dual code paths. A second failed correction means a narrower reproduction and a new hypothesis, not a third patch.
-- Irreversible operations need explicit confirmation immediately before execution. Git revert, branch switch, running tests, and read-only analysis are not irreversible.
-- Done means: checks per the Development command policy; UI fixes exercised in the running app on the affected desktop/mobile and theme states; performance fixes measured before and after on the same interaction. Missing runtime evidence is Verification, not completion. Record the blocker and next action in the work registry.
-
-## Testing
-
-Tests prove this change; they do not fill historical gaps or build a test system.
-
-- Run the existing tests that cover the change first. If they prove it correct, add nothing.
-- Add a test only when the change alters behaviour nothing covers, or the user asks: at most one happy path plus one key failure path.
-- No new frameworks, dependencies, directories, large snapshots, parameter matrices, or end-to-end suites. A test longer or trickier than the implementation is over-engineered.
-- Never reshape product behaviour to satisfy a test, and never treat a green suite as licence for more abstraction.
+- Fail loud on config, auth, money, and data-integrity errors: no defaults, no broad catches.
+- Irreversible operations need confirmation right before execution. Git revert, branch switch, running tests, and read-only analysis are not irreversible.
+- Missing runtime evidence is Verification, not completion: record the blocker and next action in the [work registry](./docs/README.md#work-lifecycle).
 
 ## UI
 
@@ -67,14 +93,3 @@ Tests prove this change; they do not fill historical gaps or build a test system
 - All-day console, so motion is rationed: none on frequent or keyboard-driven actions; `ease-out` enter/exit under 200ms only where it carries spatial continuity. `prefers-reduced-motion` is honoured globally.
 - The desk is run by receptionists, not technical staff: each fact appears once per screen (no identity repeated between `PageHeader` and body), main actions visible with their amounts, rare or destructive ones in a `⋯` menu, readable controls (default height for money actions), and plain labels ("Bill this sitting", not ledger terms). See `docs/design.md` "Say it once".
 - Keyboard focus comes from an unlayered `:focus-visible` rule in `globals.css`; do not remove it. Hover effects are gated to `(hover: hover) and (pointer: fine)`.
-
-<!-- BEGIN:turborepo-agent-rules -->
-
-# This is NOT the Turborepo you know
-
-Turborepo configuration, task behavior, and CLI commands can vary between installed versions and may differ from your training data. Resolve the `turbo` package from this file's directory or relevant workspace; in monorepos, it may not be visible from the repository root. For example, run `node -p "require.resolve('turbo/package.json')"` from a workspace that depends on `turbo`.
-
-Read `docs/README.md` inside that installed package first, then read the relevant pages from its `docs/` directory before changing Turborepo configuration or commands. Heed deprecation notices. These bundled docs match the installed package version and are available without network access.
-
-This block is written and re-added by `turbo` before repository-scoped commands when an AI agent is detected. In the Turborepo source repository, its template is defined in `crates/turborepo-cli/src/cli/agent_guidance.rs`. Removing the managed block while updates are enabled means a later qualifying invocation will add it again. Set `"agentGuidance": false` in the root `turbo.json` or `turbo.jsonc` to opt out; this does not remove an existing block. Keep the block committed with your work to avoid an uncommitted change on the next agent invocation.
-<!-- END:turborepo-agent-rules -->

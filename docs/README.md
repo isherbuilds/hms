@@ -249,6 +249,15 @@ End-user help belongs in `apps/fumadocs`, not here. Code is authoritative for
 exact APIs, schemas, permissions, and environment validation; these docs explain
 the stable shape and why it exists.
 
+### [Standard page size](./architecture.md#web-data-flow)
+
+**Verification.** Every cursor list takes the shared `pageLimit` (30 rows), enforced
+by `accly/no-local-page-size`; types, lint and integration tests pass. Still owed:
+a browser pass. On 2026-10-06 `bun run dev` failed because the portless proxy needs
+`sudo portless proxy start --https` from a TTY. Then check Pharmacy → Items in the
+42-product demo org ("30 shown", Load more → "All 42 shown") and an OPD day with
+more than 30 visits.
+
 ## Documentation rules
 
 - Write current behavior in present tense. Git is the changelog.

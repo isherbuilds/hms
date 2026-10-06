@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 export function useDebouncedValue<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
 
+  // oxlint-disable-next-line accly/no-use-effect -- timer
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(value), delay);
 
@@ -21,6 +22,7 @@ export function useDebouncedValue<T>(value: T, delay: number): T {
 export function useDebouncedCallback<T>(callback: (value: T) => void, delay: number) {
   const timer = useRef<number | undefined>(undefined);
 
+  // oxlint-disable-next-line accly/no-use-effect -- clears the timer on unmount
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
   const schedule = (value: T) => {

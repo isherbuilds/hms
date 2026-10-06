@@ -47,6 +47,7 @@ import {
   reason,
   resolveDayRange,
   likePattern,
+  pageLimit,
   searchQuery,
   personName,
 } from "../lib/schemas";
@@ -732,7 +733,7 @@ export const opdRouter = {
       q: searchQuery,
       includeClosed: z.boolean().default(false),
       cursor: z.object({ dayOrderAt: z.coerce.date(), id: z.string() }).optional(),
-      limit: z.number().int().min(1).max(200).default(100),
+      limit: pageLimit,
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;

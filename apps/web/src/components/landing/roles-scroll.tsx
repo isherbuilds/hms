@@ -46,6 +46,7 @@ export function LandingRoles() {
   const fills = useRef<(HTMLSpanElement | null)[]>([]);
   const [active, setActive] = useState(0);
 
+  // oxlint-disable-next-line accly/no-use-effect -- scroll listener and media query
   useEffect(() => {
     const stacked = window.matchMedia(STACKED);
 

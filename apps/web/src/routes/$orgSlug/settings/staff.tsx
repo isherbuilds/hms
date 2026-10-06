@@ -30,7 +30,6 @@ const feeItemsQuery = (orgSlug: string) =>
       orgSlug,
       activeOnly: true,
       cursor,
-      limit: 50,
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,

@@ -385,6 +385,7 @@ export function SearchInput({
 
   // Clear, Back, or a link changes the URL; the box follows, but never while the
   // operator types in it.
+  // oxlint-disable-next-line accly/no-use-effect -- writes the URL value into an uncontrolled DOM input
   useEffect(() => {
     const element = input.current;
 

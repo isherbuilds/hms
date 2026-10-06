@@ -28,7 +28,6 @@ const productListQuery = (orgSlug: string, query: string) =>
       orgSlug,
       query: query || undefined,
       cursor,
-      limit: 50,
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,

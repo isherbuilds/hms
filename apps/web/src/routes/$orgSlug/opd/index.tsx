@@ -64,7 +64,6 @@ const dayQuery = (
       q: q || undefined,
       includeClosed,
       cursor,
-      limit: 100,
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,

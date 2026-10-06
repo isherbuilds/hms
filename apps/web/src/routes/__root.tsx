@@ -104,6 +104,7 @@ function RouteAnnouncement() {
   const [title, setTitle] = useState("");
   const announced = useRef(pathname);
 
+  // oxlint-disable-next-line accly/no-use-effect -- reads document.title after the router commits
   useEffect(() => {
     if (pathname === announced.current) return;
     announced.current = pathname;

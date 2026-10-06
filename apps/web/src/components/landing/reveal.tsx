@@ -7,6 +7,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 export function RevealRoot({ className, children }: { className?: string; children: ReactNode }) {
   const root = useRef<HTMLDivElement>(null);
 
+  // oxlint-disable-next-line accly/no-use-effect -- IntersectionObserver
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {

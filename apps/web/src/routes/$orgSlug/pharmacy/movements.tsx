@@ -27,7 +27,6 @@ const movementsQuery = (orgSlug: string, batchId?: string) =>
       orgSlug,
       batchId,
       cursor,
-      limit: 50,
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,

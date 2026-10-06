@@ -79,7 +79,6 @@ const stockQuery = (orgSlug: string, filters: StockFilters) =>
       quarantineOnly: filters.quarantine ?? false,
       includeZero: filters.zero ?? false,
       cursor,
-      limit: 50,
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,

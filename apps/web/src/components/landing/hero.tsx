@@ -13,6 +13,7 @@ const PAIN_WORDS = ["paperwork.", "Excel sheets.", "registers."];
 function PainWord() {
   const [index, setIndex] = useState(0);
 
+  // oxlint-disable-next-line accly/no-use-effect -- interval timer
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 

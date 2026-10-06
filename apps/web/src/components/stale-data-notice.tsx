@@ -8,6 +8,7 @@ const STALE_AFTER_MS = 30_000;
 export function StaleDataNotice({ dataUpdatedAt }: { dataUpdatedAt: number }) {
   const [now, setNow] = useState<number | null>(null);
 
+  // oxlint-disable-next-line accly/no-use-effect -- interval clock, mounted only
   useEffect(() => {
     setNow(Date.now());
     const tick = window.setInterval(() => setNow(Date.now()), 5_000);

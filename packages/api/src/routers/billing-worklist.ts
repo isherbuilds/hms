@@ -282,7 +282,7 @@ export const billingWorklistRouter = {
       // Keyset on the UUIDv7 id alone: ids are minted at issue so they order
       // chronologically, and a timestamp cursor's millisecond truncation loses rows.
       cursor: z.string().optional(),
-      limit: z.number().int().min(1).max(100).default(25),
+      limit: pageLimit,
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;

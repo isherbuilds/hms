@@ -6,7 +6,6 @@ export const patientVisitsQuery = (orgSlug: string, patientId: string) =>
       orgSlug,
       patientId,
       cursor,
-      limit: 20,
     }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
