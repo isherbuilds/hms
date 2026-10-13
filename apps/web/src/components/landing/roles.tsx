@@ -15,7 +15,7 @@ function Visual({ children, reveal = false }: { children: ReactNode; reveal?: bo
     <div
       data-role-visual
       data-reveal={reveal || undefined}
-      className="flex min-w-0 flex-col gap-3.5 overflow-hidden rounded-2xl border border-border bg-background bg-[radial-gradient(circle_at_1px_1px,color-mix(in_oklch,var(--foreground)_9%,transparent)_1px,transparent_1.5px)] bg-size-[24px_24px] p-4.5 md:min-h-[400px] md:p-7"
+      className="flex min-w-0 flex-col gap-3.5 overflow-hidden rounded-2xl border border-border bg-background bg-[radial-gradient(circle_at_1px_1px,color-mix(in_oklch,var(--foreground)_9%,transparent)_1px,transparent_1.5px)] bg-size-[24px_24px] p-4.5 md:min-h-[400px] md:p-7 role-short:min-h-0 role-short:gap-2.5 role-short:p-5"
     >
       {children}
     </div>
@@ -44,7 +44,7 @@ function Line({
 }) {
   return (
     <div
-      className={`grid grid-cols-[minmax(0,1fr)_auto] gap-4 border-t border-border px-4 py-[11px] text-sm leading-6 first:border-t-0 ${className}`}
+      className={`grid grid-cols-[minmax(0,1fr)_auto] gap-4 border-t border-border px-4 py-[11px] text-sm leading-6 first:border-t-0 role-short:py-1.5 ${className}`}
     >
       <span>
         {title}

@@ -11,7 +11,7 @@ import { ROLES, Ticks } from "./roles";
 const N = ROLES.length;
 
 /* The `role-stack` variant in index.css; the two queries must match. */
-const STACKED = "(max-width: 1023px), (max-height: 899px), (prefers-reduced-motion: reduce)";
+const STACKED = "(max-width: 1023px), (max-height: 719px), (prefers-reduced-motion: reduce)";
 
 const STEP_SVH = 85;
 
@@ -103,9 +103,9 @@ export function LandingRoles() {
         className="role-stack:h-auto!"
       >
         <div
-          className={`${WRAP} sticky top-16 flex h-[calc(100svh-4rem)] flex-col justify-center gap-3 py-6 md:py-10 role-stack:static role-stack:h-auto role-stack:py-20`}
+          className={`${WRAP} sticky top-16 flex h-[calc(100svh-4rem)] flex-col justify-center gap-3 py-6 md:py-10 role-short:py-4 role-stack:static role-stack:h-auto role-stack:py-20`}
         >
-          <h2 className={`${SECTION_HEADING} mb-3 md:mb-6`}>
+          <h2 className={`${SECTION_HEADING} mb-3 md:mb-6 role-short:mb-2`}>
             Simple enough <Accent>without a manual.</Accent>
           </h2>
           <nav aria-label="Roles" className="grid grid-cols-5 gap-2 md:gap-3 role-stack:hidden">
@@ -152,7 +152,7 @@ export function LandingRoles() {
                 >
                   {String(index + 1).padStart(2, "0")} · {role.label}
                 </p>
-                <div className="grid h-full grid-cols-1 items-center gap-6 p-5 pt-9 md:p-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-14 role-stack:h-auto">
+                <div className="grid h-full grid-cols-1 items-center gap-6 p-5 pt-9 md:p-9 role-short:pt-8 role-short:pb-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-14 role-stack:h-auto">
                   <div className="flex flex-col gap-4 md:gap-5.5">
                     <h3 className="text-2xl font-semibold tracking-[0.01em] md:text-3xl">
                       {role.title}
