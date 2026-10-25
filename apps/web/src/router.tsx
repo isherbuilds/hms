@@ -8,6 +8,7 @@ import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query
 
 import { siteConfig } from "./config/site";
 import { routeTree } from "./routeTree.gen";
+import { trackPageViews } from "./lib/analytics";
 import { routeErrorMessage } from "./lib/orpc-error";
 import { createQueryClient } from "./lib/query-client";
 
@@ -33,6 +34,8 @@ export const getRouter = () => {
     router,
     queryClient,
   });
+
+  trackPageViews(router);
 
   return router;
 };
