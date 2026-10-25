@@ -14,7 +14,6 @@ import { createMiddleware } from "@tanstack/react-start";
 import { evlogErrorHandler } from "evlog/nitro/v3";
 import { useEffect, useRef, useState } from "react";
 
-import { analyticsScripts } from "@/lib/analytics";
 import { PUBLIC_PATHS } from "@/config/public-paths";
 import { siteConfig } from "@/config/site";
 import { shouldDenyIndexing } from "@/lib/public-crawl";
@@ -70,7 +69,6 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         href: appCss,
       },
     ],
-    scripts: analyticsScripts,
   }),
 
   component: RootDocument,

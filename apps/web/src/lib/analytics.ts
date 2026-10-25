@@ -1,18 +1,62 @@
 import { env } from "@hms/env/web";
+import type { AnyRouter } from "@tanstack/react-router";
 
-/* Cookieless Umami page counts, kept off the critical path: the tracker is
-   requested only after `load`, once the main thread is idle, so it never
-   competes with hydration or the first interaction. It cannot run in a worker
-   (Partytown): it wraps the page's own `history.pushState` to see client-side
-   navigations. Query strings stay out: org pages carry filters and search text. */
-function umamiLoader(origin: string, websiteId: string) {
-  const src = JSON.stringify(`${origin}/script.js`);
-  const id = JSON.stringify(websiteId);
+type UmamiPayload = { url: string; title: string; referrer: string };
 
-  return `addEventListener("load",()=>{const s=()=>{const t=document.createElement("script");t.src=${src};t.dataset.websiteId=${id};t.dataset.excludeSearch="true";document.head.append(t)};"requestIdleCallback"in window?requestIdleCallback(s,{timeout:5000}):setTimeout(s,2000)},{once:true});`;
+declare global {
+  interface Window {
+    umami?: { track: (payload: (props: UmamiPayload) => UmamiPayload) => void };
+  }
 }
 
-export const analyticsScripts =
-  env.VITE_UMAMI_URL && env.VITE_UMAMI_WEBSITE_ID
-    ? [{ children: umamiLoader(env.VITE_UMAMI_URL, env.VITE_UMAMI_WEBSITE_ID) }]
-    : [];
+/* Cookieless Umami page counts, kept off the critical path: the tracker is
+   requested only after `load`, once the main thread is idle. It cannot run in a
+   worker (Partytown), which would not see the router's navigations.
+
+   Automatic tracking is off because it sends `document.title` and the full
+   address, and org pages put names and record ids in both. Each view sends the
+   matched route pattern instead (`/$orgSlug/invoices/$invoiceId`) with no title,
+   and only an external referrer. A route without params is its own path. */
+export function trackPageViews(router: AnyRouter) {
+  const origin = env.VITE_UMAMI_URL;
+  const websiteId = env.VITE_UMAMI_WEBSITE_ID;
+
+  if (!origin || !websiteId || typeof window === "undefined") return;
+
+  let referrer = document.referrer.startsWith(location.origin) ? "" : document.referrer;
+
+  const send = () => {
+    const leaf = router.state.matches.at(-1);
+
+    if (!leaf) return;
+
+    const url = leaf.fullPath.includes("$") ? leaf.fullPath : location.pathname;
+
+    window.umami?.track((props) => ({ ...props, url, title: "", referrer }));
+    referrer = "";
+  };
+
+  const load = () => {
+    const script = document.createElement("script");
+
+    script.src = `${origin}/script.js`;
+    script.dataset.websiteId = websiteId;
+    script.dataset.autoTrack = "false";
+    script.addEventListener("load", () => {
+      send();
+      // Filters and refreshes change only the search string; they are not page views.
+      router.subscribe("onResolved", (event) => {
+        if (event.pathChanged) send();
+      });
+    });
+    document.head.append(script);
+  };
+
+  const whenIdle = () => {
+    if ("requestIdleCallback" in window) requestIdleCallback(load, { timeout: 5000 });
+    else setTimeout(load, 2000);
+  };
+
+  if (document.readyState === "complete") whenIdle();
+  else addEventListener("load", whenIdle, { once: true });
+}

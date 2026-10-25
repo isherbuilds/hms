@@ -78,7 +78,9 @@ receive the server environment because web SSR imports auth/database code. The
 web build also receives `VITE_SERVER_URL`, `VITE_WEB_URL` and, optionally,
 `VITE_WHATSAPP_NUMBER`, `VITE_UMAMI_URL` (`https://umami.edernal.com`) and
 `VITE_UMAMI_WEBSITE_ID` (the `care.edernal.com` website in Umami). With both
-Umami values the CSP allows that origin for scripts and `connect-src`. Public email is fixed at `support@edernal.com` (D062);
+Umami values the CSP allows that origin for scripts and `connect-src`. Each view
+sends the matched route pattern (`/$orgSlug/opd/$appointmentId`), no page title
+and only an external referrer, so no patient name or record id reaches Umami. Public email is fixed at `support@edernal.com` (D062);
 remove the obsolete `VITE_CONTACT_EMAIL` Coolify build argument.
 
 Coolify deploys each app on a push to `main` through a GitHub push webhook,
