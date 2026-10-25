@@ -1,4 +1,3 @@
-import { env } from "@hms/env/web";
 import { Toaster } from "@hms/ui/components/sonner";
 import { ThemeProvider } from "next-themes";
 import type { QueryClient } from "@tanstack/react-query";
@@ -15,6 +14,7 @@ import { createMiddleware } from "@tanstack/react-start";
 import { evlogErrorHandler } from "evlog/nitro/v3";
 import { useEffect, useRef, useState } from "react";
 
+import { analyticsScripts } from "@/lib/analytics";
 import { PUBLIC_PATHS } from "@/config/public-paths";
 import { siteConfig } from "@/config/site";
 import { shouldDenyIndexing } from "@/lib/public-crawl";
@@ -70,19 +70,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         href: appCss,
       },
     ],
-    /* Cookieless page counts. Query strings stay out: org pages carry filters
-       and search text in them. */
-    scripts:
-      env.VITE_UMAMI_URL && env.VITE_UMAMI_WEBSITE_ID
-        ? [
-            {
-              src: `${env.VITE_UMAMI_URL}/script.js`,
-              defer: true,
-              "data-website-id": env.VITE_UMAMI_WEBSITE_ID,
-              "data-exclude-search": "true",
-            },
-          ]
-        : [],
+    scripts: analyticsScripts,
   }),
 
   component: RootDocument,
