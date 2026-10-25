@@ -7,6 +7,7 @@ import {
   Outlet,
   Scripts,
   createRootRouteWithContext,
+  useRouter,
   useRouterState,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
@@ -16,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { PUBLIC_PATHS } from "@/config/public-paths";
 import { siteConfig } from "@/config/site";
+import { trackPageViews } from "@/lib/analytics";
 import { shouldDenyIndexing } from "@/lib/public-crawl";
 import appCss from "../index.css?url";
 
@@ -119,6 +121,11 @@ function RouteAnnouncement() {
 }
 
 function RootDocument() {
+  const router = useRouter();
+
+  // oxlint-disable-next-line accly/no-use-effect -- Umami tracker script and router subscription
+  useEffect(() => trackPageViews(router), [router]);
+
   return (
     // The theme class is written onto <html> by next-themes before React hydrates, so
     // the server markup deliberately differs by that one attribute.
