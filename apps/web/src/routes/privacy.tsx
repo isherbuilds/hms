@@ -35,10 +35,11 @@ export const Route = createFileRoute("/privacy")({
 
         <h2>This website</h2>
         <p>
-          We do not run analytics, advertising or tracking on these pages. The only thing stored in
-          your browser is your light/dark theme preference, which never leaves it. Our server keeps
-          ordinary access logs (address, page, time) only to keep the site running and to
-          investigate abuse.
+          We count page visits with Umami, which we host ourselves. It sets no cookies, keeps no IP
+          address and shares nothing with anyone. We run no advertising or cross-site tracking. The
+          only thing stored in your browser is your light/dark theme preference, which never leaves
+          it. Our server keeps ordinary access logs (address, page, time) only to keep the site
+          running and to investigate abuse.
         </p>
         <p>
           <strong>Enquiries:</strong> your email address, name and message let us answer a demo,

@@ -1,3 +1,4 @@
+import { env } from "@hms/env/web";
 import { Toaster } from "@hms/ui/components/sonner";
 import { ThemeProvider } from "next-themes";
 import type { QueryClient } from "@tanstack/react-query";
@@ -69,6 +70,19 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
         href: appCss,
       },
     ],
+    /* Cookieless page counts. Query strings stay out: org pages carry filters
+       and search text in them. */
+    scripts:
+      env.VITE_UMAMI_URL && env.VITE_UMAMI_WEBSITE_ID
+        ? [
+            {
+              src: `${env.VITE_UMAMI_URL}/script.js`,
+              defer: true,
+              "data-website-id": env.VITE_UMAMI_WEBSITE_ID,
+              "data-exclude-search": "true",
+            },
+          ]
+        : [],
   }),
 
   component: RootDocument,

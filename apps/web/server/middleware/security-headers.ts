@@ -8,6 +8,8 @@ const storageOrigin = serverEnv.SEAWEEDFS_ENDPOINT
   ? new URL(serverEnv.SEAWEEDFS_ENDPOINT).origin
   : undefined;
 
+const analyticsOrigin = webEnv.VITE_UMAMI_URL;
+
 const isDevelopment = import.meta.env.DEV;
 
 const connectSrc = [
@@ -16,6 +18,7 @@ const connectSrc = [
   "https://searchapi.medbuzz.in",
   "https://nal.tmmumbai.in",
   ...(storageOrigin ? [storageOrigin] : []),
+  ...(analyticsOrigin ? [analyticsOrigin] : []),
   ...(isDevelopment ? ["ws:"] : []),
 ].join(" ");
 
@@ -23,6 +26,7 @@ const connectSrc = [
 const scriptSrc = [
   "'self'",
   "'unsafe-inline'",
+  ...(analyticsOrigin ? [analyticsOrigin] : []),
   ...(isDevelopment ? ["'unsafe-eval'", "https://unpkg.com"] : []),
 ].join(" ");
 

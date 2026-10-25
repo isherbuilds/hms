@@ -25,7 +25,26 @@ export const env = createEnv({
       .string()
       .regex(/^[1-9]\d{7,14}$/, "E.164 digits without +")
       .optional(),
+    // Self-hosted Umami, both or neither. Unset in development and tests, so
+    // nothing loads the tracker or counts a visit there.
+    VITE_UMAMI_URL: z
+      .url()
+      .refine((value) => new URL(value).origin === value, {
+        message: "VITE_UMAMI_URL must be a bare origin such as https://umami.example",
+      })
+      .optional(),
+    VITE_UMAMI_WEBSITE_ID: z.uuid().optional(),
   },
+  createFinalSchema: (fields) =>
+    z.object(fields).superRefine((values, context) => {
+      if ((values.VITE_UMAMI_URL === undefined) !== (values.VITE_UMAMI_WEBSITE_ID === undefined)) {
+        context.addIssue({
+          code: "custom",
+          path: [values.VITE_UMAMI_URL === undefined ? "VITE_UMAMI_URL" : "VITE_UMAMI_WEBSITE_ID"],
+          message: "Set both VITE_UMAMI_* values or neither",
+        });
+      }
+    }),
   runtimeEnv,
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
   emptyStringAsUndefined: true,

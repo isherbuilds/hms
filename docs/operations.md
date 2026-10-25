@@ -18,6 +18,7 @@ Real process variables win over the file; no `.env` is copied into an image.
 | `VITE_SERVER_URL`                                         | web build            | Public API origin used by browser RPC                                                      |
 | `VITE_WEB_URL`                                            | web build            | Public web origin, bare (no path); canonical, sitemap and OG URLs                          |
 | `VITE_WHATSAPP_NUMBER`                                    | web build            | Optional founder-managed E.164 digits without `+`; absent/empty hides phone/WhatsApp links |
+| `VITE_UMAMI_URL`, `VITE_UMAMI_WEBSITE_ID`                 | web build            | Optional, both or neither: self-hosted Umami origin and website id; unset loads no tracker |
 | `SEAWEEDFS_ENDPOINT`                                      | server + web SSR     | Publicly reachable S3 gateway for direct browser transfer                                  |
 | `SEAWEEDFS_BUCKET`                                        | server + web SSR     | Private bucket name                                                                        |
 | `SEAWEEDFS_ACCESS_KEY_ID` / `SEAWEEDFS_SECRET_ACCESS_KEY` | server + web SSR     | S3 credentials                                                                             |
@@ -75,7 +76,9 @@ There is no production Compose file. The local
 `packages/db/docker-compose.dev.yaml` is development-only. Both app containers
 receive the server environment because web SSR imports auth/database code. The
 web build also receives `VITE_SERVER_URL`, `VITE_WEB_URL` and, optionally,
-`VITE_WHATSAPP_NUMBER`. Public email is fixed at `support@edernal.com` (D062);
+`VITE_WHATSAPP_NUMBER`, `VITE_UMAMI_URL` (`https://umami.edernal.com`) and
+`VITE_UMAMI_WEBSITE_ID` (the `care.edernal.com` website in Umami). With both
+Umami values the CSP allows that origin for scripts and `connect-src`. Public email is fixed at `support@edernal.com` (D062);
 remove the obsolete `VITE_CONTACT_EMAIL` Coolify build argument.
 
 Coolify deploys each app on a push to `main` through a GitHub push webhook,
