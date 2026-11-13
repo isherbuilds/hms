@@ -79,10 +79,10 @@ known.
 | Batch             | `/$orgSlug/pharmacy/stock`        | Stock batch / `stockBatches`        | One received lot with batch number, expiry and printed MRP per `mrpUnits` counted units; stock displays as packs plus loose units where a conversion exists                                                                                 |
 | Stock movement    | `/$orgSlug/pharmacy/movements`    | `stockMovements`                    | One signed, reason-coded change in smallest counted units on a batch and bucket; stock on hand is their sum (D041)                                                                                                                          |
 | Pharmacy return   | Pharmacy sale Sheet               | Pharmacy return / `pharmacyReturns` | Goods coming back against a sale into quarantine, with its Credit Note and any refund                                                                                                                                                       |
-| IPD               | future `/$orgSlug/ipd`            | Admission                           | A future inpatient stay with its own lifecycle                                                                                                                                                                                              |
+| IPD               | `/$orgSlug/ipd`                   | Admission / `admissions`            | One inpatient stay: bed occupancy history (`admission_bed_stays`) from admission through ready-to-leave to departure or cancellation; billing is not built yet (Slice 2 of the IPD spec)                                                    |
 | Emergency         | future `/$orgSlug/emergency`      | Emergency Case                      | A future emergency workflow with its own lifecycle                                                                                                                                                                                          |
 
-There is no universal care wrapper. OPD Appointments, future Admissions, and
+There is no universal care wrapper. OPD Appointments, Admissions, and
 future Emergency Cases own separate tables and state machines. Typed child
 records point to their exact parent. A shared anchor is reconsidered only after
 two live care settings prove a concrete cross-setting record or query needs it.

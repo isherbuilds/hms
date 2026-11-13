@@ -118,7 +118,7 @@ Slices are sequential because finance/schema/route registries overlap. One integ
   - Owns/Touches: `packages/db/src/schema/`, `packages/db/src/migrations/`, `packages/api/src/routers/ipd.ts`, `pharmacy.ts`, `lib/stock.ts`, `lib/invoice-math.ts`, `lib/billing-documents.ts`; `apps/web/src/routes/$orgSlug/ipd/`, `pharmacy/`; `tests/integration/`, `tests/unit/`, `docs/architecture.md`, `docs/decisions.md`. Registries/permissions are coordinator-owned.
   - Interfaces: `ipd.admit({orgSlug,patientId,practitionerId,bedId,admittedAt}) → Admission`; `pharmacy.issueToAdmission({orgSlug,admissionId,expectedChargeRevision,lines,prescriberName?}) → {issueId,chargeRevision}`; shared typed `ipd` Invoice parent and per-line `priceBasis`.
 
-- [ ] Slice 2: Facility, bed board and lifecycle
+- [x] Slice 2: Facility, bed board and lifecycle (built first on the owner's instruction, 2026-11-13; see the [work registry](../README.md#ipd-admission-to-discharge))
   - Acceptance: Master UI manages wards/categories/tariffs/beds; transfer history and current board agree. Two simultaneous admissions cannot occupy one Bed or duplicate one active Patient. Ready, departure, blocked-bed release and restricted cancellation/backdating obey defined transitions and audit reasons without payment gating.
   - Verify: `bun run check-types`; `bun run test`; `bun run build --filter=web`; receptionist walkthrough of transfer/discharge and stale-terminal conflict.
   - Depends on: Slice 1.

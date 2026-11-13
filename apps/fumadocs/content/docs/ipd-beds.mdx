@@ -1,0 +1,60 @@
+---
+title: IPD beds and admissions
+description: Admit Patients to beds, move them, and record when they leave
+---
+
+IPD tracks who is in which bed. It does not bill inpatient stays yet: keep the
+inpatient bill on paper until your administrator says IPD billing is live.
+
+## Set up wards and beds
+
+An administrator opens **IPD**, then **Wards and beds**:
+
+1. **New ward**, for example General Ward or ICU.
+2. **New bed type**, for example General bed or Private room, then **Set rate**
+   on its row. Choose the service the day is billed as, the daily rate, and
+   when the rate starts. A new rate applies to beds taken after it starts;
+   Patients already in a bed keep their rate.
+3. **New bed**: choose the ward and bed type and give the label staff use, such
+   as GW-01. A label can repeat in another ward.
+
+A bed type with no rate shows **No rate**, and its beds cannot take a Patient.
+**Retire** removes a bed from the board without losing its history. A bed with a
+Patient in it cannot be retired.
+
+## The bed board
+
+**IPD** opens on **Beds**: one panel per ward, each bed **Free**, **Occupied**
+or **Blocked**. An occupied bed shows the Patient and opens their admission.
+
+- **Admit** on a free bed: find or register the Patient and choose the admitting
+  doctor.
+- **⋯ → Block bed** takes a free bed out of use, with a reason, for example
+  repairs.
+- **Release bed** puts a blocked bed back in use once it is clean.
+
+## During the stay
+
+Open the admission from the board or from **Admissions**.
+
+- **Move bed** moves the Patient to a free bed. The old bed is free at once.
+- **Ready to leave** records the signed discharge handoff. The Patient keeps
+  the bed until they leave.
+- **Record departure** ends the stay. Payment is not needed first. The bed
+  becomes **Blocked** until someone releases it after cleaning.
+- **⋯ → Not leaving yet** returns a ready Patient to admitted, with a reason.
+
+If someone else changed the admission on another screen, HMS refuses your
+change. Refresh and check before trying again.
+
+## Corrections
+
+Only an administrator can:
+
+- record an admission, move, ready or departure that happened more than ten
+  minutes ago. Fill **Only if it happened earlier** with the time and a reason.
+  HMS refuses a time that clashes with another Patient's stay in that bed.
+- **⋯ → Cancel admission**, for an admission made in error. Once the Patient
+  received care, record their departure instead.
+
+Both are kept in the audit log with the reason.

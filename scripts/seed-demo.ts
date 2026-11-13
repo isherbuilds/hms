@@ -16,6 +16,14 @@ import { goodsReceiptLines } from "@hms/db/schema/goods-receipt-lines";
 import { goodsReceipts } from "@hms/db/schema/goods-receipts";
 import { invoiceLines } from "@hms/db/schema/invoice-lines";
 import { invoices } from "@hms/db/schema/invoices";
+import {
+  admissionBedStays,
+  admissions,
+  bedCategories,
+  bedTariffs,
+  beds,
+  wards,
+} from "@hms/db/schema/ipd";
 import { journalEntries } from "@hms/db/schema/journal-entries";
 import { journalLines } from "@hms/db/schema/journal-lines";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
@@ -1644,6 +1652,202 @@ for (let i = 0; i < 7; i++) {
 
 class DryRun extends Error {}
 
+// IPD: three wards, a handful of current admissions (one moved out of ICU, some ready
+// to leave), past stays, one cancelled admission and two blocked beds. Each bed's
+// stays never overlap, as the app enforces.
+const HOUR_MS = 60 * 60 * 1_000;
+
+const ipdTimeZone = settings.timeZone;
+
+const hoursAgo = (hours: number) => new Date(now.getTime() - hours * HOUR_MS);
+
+const ipdServices = [
+  {
+    key: "general",
+    ward: "General Ward",
+    category: "General bed",
+    prefix: "GW-",
+    beds: 12,
+    price: "1500.00",
+  },
+  {
+    key: "private",
+    ward: "Private Rooms",
+    category: "Private room",
+    prefix: "P-",
+    beds: 6,
+    price: "4000.00",
+  },
+  { key: "icu", ward: "ICU", category: "ICU bed", prefix: "ICU-", beds: 4, price: "9000.00" },
+] as const;
+
+const ipdItems = ipdServices.map((service) => ({
+  id: id("item"),
+  orgId,
+  name: `${service.category} day`,
+  category: "other" as const,
+  unitPrice: parseDecimal(service.price),
+  taxRatePercent: "0",
+  taxCode: null,
+  active: true,
+}));
+
+const wardRows = ipdServices.map((service) => ({ id: id("ward"), orgId, name: service.ward }));
+
+const bedCategoryRows = ipdServices.map((service) => ({
+  id: id("bedcat"),
+  orgId,
+  name: service.category,
+}));
+
+const tariffRows = ipdServices.map((service, index) => ({
+  id: id("tariff"),
+  orgId,
+  categoryId: bedCategoryRows[index]!.id,
+  catalogItemId: ipdItems[index]!.id,
+  dailyPrice: parseDecimal(service.price),
+  effectiveFrom: hoursAgo(24 * 120),
+  createdBy: userId,
+}));
+
+type SeedBed = typeof beds.$inferInsert & { id: string };
+
+const bedRows = ipdServices.flatMap((service, index): SeedBed[] =>
+  Array.from({ length: service.beds }, (_, n) => ({
+    id: id("bed"),
+    orgId,
+    wardId: wardRows[index]!.id,
+    categoryId: bedCategoryRows[index]!.id,
+    label:
+      service.key === "private"
+        ? `${service.prefix}${101 + n}`
+        : `${service.prefix}${String(n + 1).padStart(2, "0")}`,
+    active: true,
+  })),
+);
+
+const bedsOf = (key: (typeof ipdServices)[number]["key"]) =>
+  bedRows.filter((bed) => bed.wardId === wardRows[ipdServices.findIndex((s) => s.key === key)]!.id);
+
+const tariffOf = (bed: (typeof bedRows)[number]) =>
+  tariffRows.find((tariff) => tariff.categoryId === bed.categoryId)!;
+
+const admissionRows: (typeof admissions.$inferInsert)[] = [];
+
+const stayRows: (typeof admissionBedStays.$inferInsert)[] = [];
+
+const ipdPatients = patientRows.slice(0, 40)[Symbol.iterator]();
+
+function ipdAdmission(
+  stays: { bed: (typeof bedRows)[number]; from: Date; to: Date | null }[],
+  end: { status: "admitted" | "discharge_ready" | "discharged" | "cancelled"; readyAt?: Date },
+) {
+  const patient = ipdPatients.next().value;
+
+  if (!patient) throw new Error("Seed ran out of IPD patients");
+
+  const admissionId = id("adm");
+  const last = stays.at(-1)!;
+  const doctor = doctorRows[admissionRows.length % doctorRows.length]!;
+
+  admissionRows.push({
+    id: admissionId,
+    orgId,
+    patientId: patient.id,
+    practitionerId: doctor.id,
+    status: end.status,
+    admittedAt: stays[0]!.from,
+    readyAt: end.readyAt ?? null,
+    dischargedAt: end.status === "discharged" ? last.to : null,
+    cancelledAt: end.status === "cancelled" ? last.to : null,
+    cancelReason: end.status === "cancelled" ? "Admitted under the wrong Patient" : null,
+    timeZone: ipdTimeZone,
+    revision:
+      stays.length -
+      1 +
+      (end.readyAt ? 1 : 0) +
+      (end.status === "discharged" || end.status === "cancelled" ? 1 : 0),
+    createdBy: userId,
+    createdAt: stays[0]!.from,
+  });
+
+  for (const stay of stays) {
+    const tariff = tariffOf(stay.bed);
+    stayRows.push({
+      id: id("stay"),
+      orgId,
+      admissionId,
+      bedId: stay.bed.id,
+      tariffId: tariff.id,
+      dailyPrice: tariff.dailyPrice,
+      startedAt: stay.from,
+      endedAt: stay.to,
+      createdBy: userId,
+      createdAt: stay.from,
+    });
+  }
+}
+
+{
+  const general = bedsOf("general");
+  const privateRooms = bedsOf("private");
+  const icu = bedsOf("icu");
+
+  // Past stays on the first four general beds, all ended weeks ago.
+  for (const [n, bed] of general.slice(0, 4).entries()) {
+    const from = hoursAgo(24 * (40 - n * 2) + 3 * n);
+    ipdAdmission([{ bed, from, to: new Date(from.getTime() + 24 * (2 + n) * HOUR_MS) }], {
+      status: "discharged",
+      readyAt: new Date(from.getTime() + 24 * (2 + n) * HOUR_MS - 3 * HOUR_MS),
+    });
+    const later = hoursAgo(24 * (24 - n));
+    ipdAdmission([{ bed, from: later, to: new Date(later.getTime() + 24 * 4 * HOUR_MS) }], {
+      status: "discharged",
+      readyAt: new Date(later.getTime() + 24 * 4 * HOUR_MS - 2 * HOUR_MS),
+    });
+  }
+
+  // Left a few hours ago; the bed waits for cleaning.
+  ipdAdmission([{ bed: general[2]!, from: hoursAgo(24 * 5), to: hoursAgo(3) }], {
+    status: "discharged",
+    readyAt: hoursAgo(6),
+  });
+  general[2]!.blockedAt = hoursAgo(3);
+  general[2]!.blockedReason = "Awaiting cleaning after discharge";
+
+  icu[3]!.blockedAt = hoursAgo(30);
+  icu[3]!.blockedReason = "Ventilator under service";
+
+  // In hospital now.
+  for (const [n, bed] of general.slice(4, 11).entries()) {
+    ipdAdmission(
+      [{ bed, from: hoursAgo(10 + n * 17), to: null }],
+      n % 3 === 1
+        ? { status: "discharge_ready", readyAt: hoursAgo(2 + n) }
+        : { status: "admitted" },
+    );
+  }
+
+  for (const [n, bed] of privateRooms.slice(0, 3).entries()) {
+    ipdAdmission([{ bed, from: hoursAgo(20 + n * 30), to: null }], { status: "admitted" });
+  }
+
+  ipdAdmission([{ bed: icu[0]!, from: hoursAgo(14), to: null }], { status: "admitted" });
+
+  // Stepped down from ICU to a private room two days ago.
+  ipdAdmission(
+    [
+      { bed: icu[2]!, from: hoursAgo(24 * 6), to: hoursAgo(48) },
+      { bed: privateRooms[3]!, from: hoursAgo(48), to: null },
+    ],
+    { status: "admitted" },
+  );
+
+  ipdAdmission([{ bed: privateRooms[4]!, from: hoursAgo(24 * 10), to: hoursAgo(24 * 10 - 0.3) }], {
+    status: "cancelled",
+  });
+}
+
 const seeding = db.transaction(async (tx) => {
   // Bulk inserts to a remote server can outlast the app's 15s statement timeout.
   await tx.execute(sql`set local statement_timeout = 0`);
@@ -1677,6 +1881,12 @@ const seeding = db.transaction(async (tx) => {
   await tx.delete(journalEntries).where(journalScope);
 
   for (const table of [
+    admissionBedStays,
+    admissions,
+    bedTariffs,
+    beds,
+    bedCategories,
+    wards,
     refunds,
     advanceAllocations,
     creditNoteLines,
@@ -1782,7 +1992,7 @@ const seeding = db.transaction(async (tx) => {
     }
   }
 
-  await insertAll(catalogItems, [...consultItems, ...procedureItems]);
+  await insertAll(catalogItems, [...consultItems, ...procedureItems, ...ipdItems]);
   await insertAll(
     departments,
     deptRows.map(({ share: _share, ...row }) => row),
@@ -1812,6 +2022,12 @@ const seeding = db.transaction(async (tx) => {
   await insertAll(refunds, refundRows);
   await insertAll(goodsReceiptLines, receiptLineRows);
   await insertAll(stockMovements, movementRows);
+  await insertAll(wards, wardRows);
+  await insertAll(bedCategories, bedCategoryRows);
+  await insertAll(beds, bedRows);
+  await insertAll(bedTariffs, tariffRows);
+  await insertAll(admissions, admissionRows);
+  await insertAll(admissionBedStays, stayRows);
 
   // The same balanced entries the billing documents post in the app, so the trial
   // balance and balance sheet agree with the seeded invoices and receipts.
@@ -1953,6 +2169,7 @@ console.info(
     `  ${HISTORY_DAYS + 1} days, ${appointmentRows.length} appointments, ${invoiceRows.length} invoices, ${paymentRows.length} receipts.`,
     `  ${deptRows.length} departments, ${doctorRows.length} doctors, ${patientRows.length} patients.`,
     `  Pharmacy: ${productRows.length} products, ${productBatches.length} batches, ${saleRows.length} counter sales, ${movementRows.length} stock movements.`,
+    `  IPD: ${bedRows.length} beds in ${wardRows.length} wards, ${admissionRows.length} admissions.`,
     `  ${creditNoteRows.length} credit notes, ${refundRows.length} refunds, ${advanceRows.length} advances, ${planRows.length} treatment plans, ${payerRows.length} payers.`,
     `  Today (${today}): ₹${formatDecimal(collectedToday)} collected.`,
     `  Sign in as ${ACTOR_EMAIL} and open /${SLUG}/dashboard`,

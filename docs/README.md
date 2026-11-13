@@ -234,10 +234,14 @@ authorised sample export from an unrelated hospital and its approvers.
 
 ### [IPD admission to discharge](./specs/ipd-admission-to-discharge.md)
 
-**Blocked.** D056 settles the design: noon checkout, a one-day minimum,
-occupancy-weighted transfers, packages and a self-pay-first release. D025, D027,
-D042 and D049 are amended conditionally. The only open gate is the
-[IPD/ADT gate](./product.md#roadmap-gates): a paying hospital and a named owner.
+**Verification.** On 2026-11-13 the owner lifted the IPD/ADT gate for Slice 2
+only, ahead of Slice 1: wards, bed types with effective-dated daily rates, beds,
+the bed board, admit, transfer, ready to leave, departure, cancellation, bed
+block and release, and audited backdating under `ipd:correct`. Integration tests
+cover concurrency, tenancy and grants. No Admission Charges, bed-day billing,
+inpatient pharmacy or settlement exist yet; Slices 1 and 3–6 stay gated on a
+paying hospital and named owner. Still owed: a receptionist walkthrough on
+desktop/mobile light/dark and a two-terminal conflict check in the browser.
 
 ### [Cashless claims](./specs/cashless-claims.md)
 
