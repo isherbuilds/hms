@@ -7,6 +7,7 @@ import { practitioners } from "@hms/db/schema/practitioners";
 import {
   equipmentUnits,
   MAX_CASE_BUFFER_MINUTES,
+  MAX_CASE_HOURS,
   surgicalCaseEquipment,
   surgicalCases,
   theatreRooms,
@@ -18,7 +19,7 @@ import { z } from "zod";
 import { BACKDATE_TOLERANCE_MS, requireInScope } from "./ipd-beds";
 import { note } from "./schemas";
 
-export const MAX_CASE_MS = 24 * 60 * 60 * 1_000;
+export const MAX_CASE_MS = MAX_CASE_HOURS * 60 * 60 * 1_000;
 
 type Executor = typeof db | DbTransaction;
 
@@ -71,7 +72,8 @@ export function requireInterval(fields: CaseFields, now: Date, keptStart?: Date)
 
   if (end <= start) throw badRequest("The case must end after it starts.");
 
-  if (end - start > MAX_CASE_MS) throw badRequest("A case can be planned for at most 24 hours.");
+  if (end - start > MAX_CASE_MS)
+    throw badRequest(`A case can be planned for at most ${MAX_CASE_HOURS} hours.`);
 
   if (keptStart?.getTime() !== start && now.getTime() - start > BACKDATE_TOLERANCE_MS) {
     throw badRequest("That start time has already passed.");

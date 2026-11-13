@@ -26,6 +26,9 @@ export const SURGICAL_CASE_STATUSES = ["draft", "confirmed", "disrupted", "cance
 // Preparation and cleanup buffers, in minutes, each side of the planned interval.
 export const MAX_CASE_BUFFER_MINUTES = 240;
 
+/** One limit for the API's validation and the table's CHECK; the schedule query relies on it. */
+export const MAX_CASE_HOURS = 24;
+
 // Rooms and units are never deleted, so cases keep pointing at them; they retire.
 export const theatreRooms = pgTable(
   "theatre_rooms",
@@ -139,7 +142,7 @@ export const surgicalCases = pgTable(
     // The schedule's lower bound on a stored start relies on this limit.
     check(
       "surgical_cases_duration_check",
-      sql`${table.plannedEndAt} - ${table.plannedStartAt} <= interval '24 hours'`,
+      sql`${table.plannedEndAt} - ${table.plannedStartAt} <= interval '${sql.raw(String(MAX_CASE_HOURS))} hours'`,
     ),
     check(
       "surgical_cases_buffers_check",

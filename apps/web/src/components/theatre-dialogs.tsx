@@ -442,7 +442,7 @@ export function LinkAdmissionDialog({
           <span className="font-mono">{theatreCase.mrn}</span>) is in for this case.
         </>
       }
-      submitLabel="Link admission"
+      submitLabel={title}
       schema={linkSchema}
       // Mounted per open, after the list loads, so the only stay is chosen for the desk.
       key={own[0]?.id ?? "none"}
