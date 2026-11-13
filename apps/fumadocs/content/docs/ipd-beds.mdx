@@ -43,7 +43,8 @@ find the Patient, choose the bed type and the planned arrival and departure.
   not keep any bed free.
 - A **held bed** keeps one bed for that Patient. Choose **Hold a bed**, pick a
   free bed and set **Hold until**: the latest time you will keep the bed if the
-  Patient has not arrived. Nobody else can be admitted or moved into a held bed.
+  Patient has not arrived. Nobody else can be admitted or moved into a held bed,
+  unless an owner or administrator overrides the hold with a reason.
 
 Only a free bed can be held. A bed with a Patient in it cannot be held, even for
 next week: nobody knows for certain when that Patient will leave. Put the
@@ -51,7 +52,8 @@ Patient on the waiting list and hold a bed once one is free.
 
 The views:
 
-- **Arrivals**: held beds with Patients due in the next two days.
+- **Arrivals**: held beds with Patients due in the next two days, and late
+  Patients while their bed is still held.
 - **Waiting list**: requests that still need a bed.
 - **Needs attention**: reservations that need a decision now.
 - **All**: every reservation.
@@ -75,10 +77,6 @@ Under **Needs attention**:
 - **Hold lapsed**: **Hold until** passed before the Patient arrived. The bed is
   no longer kept. **Change dates** with a new **Hold until** to keep it again,
   or cancel.
-
-A held bed whose current Patient has not left by the planned arrival also shows
-here. Nobody is moved out: find the arriving Patient another bed or change the
-dates.
 
 Blocking a bed, for example for repairs, always works. When an owner or
 administrator blocks it, its holds are released and show **Needs a bed again**.

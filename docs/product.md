@@ -98,10 +98,13 @@ Bed reservation terms:
 - **Waiting list:** a requested reservation with no bed held. It promises no
   capacity.
 - **Hold:** a confirmed reservation on one free bed until **Hold until**. Other
-  holds cannot overlap it, and a walk-in cannot take that bed. After **Hold
+  holds cannot overlap it, and a walk-in or a move cannot take that bed unless
+  an owner or administrator overrides the hold with a reason. After **Hold
   until** the hold has lapsed and promises nothing.
-- **Disrupted:** a hold whose bed was blocked or taken over with a reason. It
-  promises nothing until it is held on a ready bed again or cancelled.
+- **Disrupted:** a hold released by that override, or by an owner or
+  administrator blocking its bed. It promises nothing until it is held on a ready
+  bed again or cancelled. Anyone else's block leaves the hold confirmed and
+  flagged **Bed blocked**.
 
 There is no universal care wrapper. OPD Appointments, Admissions, and
 future Emergency Cases own separate tables and state machines. Typed child

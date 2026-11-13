@@ -4,6 +4,7 @@ import { ORPCError } from "@orpc/server";
 import { and, asc, eq, gt, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 
 import { audit } from "../audit";
+import { conflict } from "./conflict";
 import type { Scope } from "./procedures/factory";
 
 // A desk entry a few minutes late is ordinary; anything older is a correction.
@@ -160,11 +161,12 @@ export async function clearHoldsForOccupancy(
   if (ids.length === 0) return [];
 
   if (!displace) {
-    throw new ORPCError("CONFLICT", {
-      message: exceptId
+    throw conflict(
+      "bed_held",
+      exceptId
         ? "Another reservation is held on this bed. Move or cancel it first."
         : "That bed is held for a planned arrival.",
-    });
+    );
   }
 
   return tx

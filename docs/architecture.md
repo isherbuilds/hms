@@ -300,9 +300,11 @@ keeps its own locks (D040).
   a reservation never changes Patient), then the target bed, then the reservation
   row and compares its `revision`; the overlap check needs no further lock.
   Conversion is part of `admit`: Patient → bed → the reservation. A walk-in
-  admission, a transfer, a block and a deactivation lock the bed, then its
-  confirmed, unlapsed holds by `id`, and refuse, disrupt or (with `ipd:correct`
-  and a reason) displace them in the same transaction. Cancellation is one
+  admission and a transfer lock the bed, then its confirmed, unlapsed holds by
+  `id`, and refuse or (with `ipd:correct` and a reason) displace them in the same
+  transaction. A block by an `ipd:correct` holder disrupts them the same way; any
+  other block leaves them confirmed. A deactivation checks for a live hold under
+  the Bed lock and refuses. Cancellation is one
   conditional update. Expiry is derived from `holdUntil` at read, so no job locks
   anything; a Patient lock is never taken after a Bed lock.
   Every change to an Admission's Charge set locks the Admission first

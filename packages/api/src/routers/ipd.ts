@@ -1031,6 +1031,28 @@ export const ipdRouter = {
           throw new ORPCError("CONFLICT", { message: "This Patient is already admitted." });
         }
 
+        // A walk-in would leave the Patient's reservation live, and its bed held for nobody.
+        if (input.reservationId === undefined) {
+          const [reserved] = await tx
+            .select({ id: bedReservations.id })
+            .from(bedReservations)
+            .where(
+              and(
+                eq(bedReservations.orgId, scope.orgId),
+                eq(bedReservations.patientId, input.patientId),
+                inArray(bedReservations.status, ["requested", "confirmed"]),
+                or(isNull(bedReservations.holdUntil), gt(bedReservations.holdUntil, new Date())),
+              ),
+            )
+            .limit(1);
+
+          if (reserved) {
+            throw new ORPCError("CONFLICT", {
+              message: "This Patient has a reservation. Admit them from it, or cancel it first.",
+            });
+          }
+        }
+
         const bed = (await lockBeds(tx, scope.orgId, [input.bedId])).get(input.bedId);
 
         if (!bed) {

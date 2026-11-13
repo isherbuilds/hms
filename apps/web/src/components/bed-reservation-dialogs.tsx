@@ -325,9 +325,21 @@ export function HoldBedDialog({
   );
 }
 
-const rescheduleSchema = z
-  .object({ ...windowFields, bedId: z.string() })
-  .superRefine(requireOrderedWindow);
+// A held bed always needs a future hold time; a request's deadline is optional.
+function rescheduleSchema(held: boolean, nowInput: string) {
+  return z
+    .object({
+      ...windowFields,
+      holdUntil: held
+        ? z
+            .string()
+            .min(1, "Choose how long to hold the bed")
+            .refine((value) => value > nowInput, "Hold until a future time")
+        : z.string(),
+      bedId: z.string(),
+    })
+    .superRefine(requireOrderedWindow);
+}
 
 export function ChangeDatesDialog({
   orgSlug,
@@ -345,8 +357,12 @@ export function ChangeDatesDialog({
   const arrival = localInputValue(reservation.plannedArrivalAt, timeZone);
   const others = holdable.beds.filter((bed) => bed.id !== reservation.bedId);
 
-  const liveHold =
-    reservation.holdUntil && reservation.holdUntil.getTime() > Date.now()
+  const now = Date.now();
+
+  // A lapsed hold time is replaced with a suggestion, never carried into the new window.
+  const holdUntil = held
+    ? localInputValue(suggestedHoldUntil(reservation, now), timeZone)
+    : reservation.holdUntil && reservation.holdUntil.getTime() > now
       ? localInputValue(reservation.holdUntil, timeZone)
       : "";
 
@@ -359,11 +375,11 @@ export function ChangeDatesDialog({
           : "The request stays on the waiting list."
       }
       submitLabel="Save dates"
-      schema={rescheduleSchema}
+      schema={rescheduleSchema(held, localInputValue(new Date(now), timeZone))}
       defaultValues={{
         plannedArrivalAt: arrival,
         plannedDepartureAt: localInputValue(reservation.plannedDepartureAt, timeZone),
-        holdUntil: liveHold,
+        holdUntil,
         bedId: "",
       }}
       success="Dates changed"
@@ -381,12 +397,8 @@ export function ChangeDatesDialog({
               ? reservation.plannedArrivalAt
               : localDateTime(value.plannedArrivalAt, timeZone),
           plannedDepartureAt: localDateTime(value.plannedDepartureAt, timeZone),
-          // A blank hold time clears a request's deadline; a held bed keeps its own.
-          holdUntil: value.holdUntil
-            ? localDateTime(value.holdUntil, timeZone)
-            : held
-              ? undefined
-              : null,
+          // A blank hold time clears a request's deadline; a held bed always has one.
+          holdUntil: value.holdUntil ? localDateTime(value.holdUntil, timeZone) : null,
           bedId: value.bedId || undefined,
         })
       }
