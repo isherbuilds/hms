@@ -246,9 +246,8 @@ and an admission fit a 390px phone in dark; an administrator added a bed, and
 retiring an occupied bed was refused. A second pass (GPT 6.1 Sol) confirmed
 two-terminal refusals for move, ready and departure, a stale **Release bed**
 refused with the newer block kept, and an earlier-time clash keeping the dialog
-open. Still owed for Slice 2: screenshots of every Slice 2 screen at desktop
-dark and phone light (frame capture failed; no overflow was measured), and
-choosing the doctor and submitting Admit by keyboard alone.
+open. The desktop-dark and phone-light inspection and the keyboard-only Admit
+that Slice 2 still owed were done in the reservations pass below.
 
 Slice 2 reservations are built
 ([D064](./decisions.md#d064--bed-reservations-holds-expire-by-time-occupied-beds-are-never-promised-and-displacement-is-explicit)):
@@ -263,7 +262,19 @@ demo seed carries two holds arriving today and tomorrow, two waiting-list
 requests, a disrupted hold, a lapsed hold, a cancelled reservation and one
 converted on arrival.
 
-**Reservations browser verification: pending.**
+On 2026-11-13 two browser passes (GPT 6.1 Sol) on a production build covered
+reservations: the four views, reserve, hold, arrival, change, cancel, the
+reasoned override for admit and move, blocking, two terminals and read-only
+roles, at desktop and a 390px phone in light and dark. The second pass confirmed
+the rules changed in review: a block by reception keeps the hold, an arrival is
+refused while another reservation is on the bed, a late arrival can be extended,
+a stale dialog closes, and each refusal shows once. It also completed Reserve a
+bed and Admit, including choosing the doctor, by keyboard alone, and inspected
+the bed board, admissions list, an admission and the setup page at desktop dark
+and phone light, which closes what Slice 2 still owed. Not seen in a browser:
+Admit appearing as the arrival minute passes, **Load more** on All, and the fixes
+made after the second pass (phone wrapping on the admissions and setup lists,
+the lapsed-hold form, the rate gate on Admit).
 
 Slice 1 built inpatient medicine issue (`pharmacy.issueToAdmission`, each line
 bundled or independent), posted services (`ipd.postServices`), and one `ipd`
