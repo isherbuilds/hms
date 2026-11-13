@@ -12,6 +12,7 @@ import {
   ListOrderedIcon,
   PillIcon,
   ReceiptTextIcon,
+  ScissorsIcon,
   WalletIcon,
   StethoscopeIcon,
   UsersIcon,
@@ -36,6 +37,7 @@ type PrimaryNavItem = NavEntry<
   | "/$orgSlug/patients"
   | "/$orgSlug/opd"
   | "/$orgSlug/ipd"
+  | "/$orgSlug/theatre"
   | "/$orgSlug/pharmacy"
   | "/$orgSlug/billing"
   | "/$orgSlug/reports"
@@ -67,6 +69,13 @@ export const PRIMARY_NAV: readonly PrimaryNavItem[] = [
     icon: BedDoubleIcon,
     group: "Care",
     permission: { ipd: ["read"] },
+  },
+  {
+    to: "/$orgSlug/theatre",
+    label: "Theatre",
+    icon: ScissorsIcon,
+    group: "Care",
+    permission: { theatre: ["read"] },
   },
   {
     to: "/$orgSlug/pharmacy",
@@ -167,6 +176,18 @@ export const IPD_TABS: readonly IpdTab[] = [
     to: "/$orgSlug/ipd/facility",
     label: "Wards and beds",
     permission: { ipd: ["manageFacility"] },
+  },
+];
+
+type TheatreTab = NavEntry<"/$orgSlug/theatre" | "/$orgSlug/theatre/resources">;
+
+// Booking a case is a task opened from the schedule, not a tab.
+export const THEATRE_TABS: readonly TheatreTab[] = [
+  { to: "/$orgSlug/theatre", label: "Schedule", permission: { theatre: ["read"] } },
+  {
+    to: "/$orgSlug/theatre/resources",
+    label: "Rooms and equipment",
+    permission: { theatre: ["manageResources"] },
   },
 ];
 

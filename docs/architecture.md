@@ -281,7 +281,8 @@ keeps its own locks (D040).
 - **Lock order.** A transaction takes locks in this order and skips what it
   does not need: Patient (to admit or to change a bed reservation) → OPD
   Appointment → Admission → Beds (by `id`) → Bed reservations (by `id`) →
-  Treatment plan item → Treatment plan →
+  Theatre rooms (by `id`) → Equipment units (by `id`) → Practitioner (the
+  consultant) → Surgical cases (by `id`) → Treatment plan item → Treatment plan →
   Charges → Invoice → Products (by `id`) → Stock batches (by `expiryDate`
   ascending, nulls last, then `id`) → Advance Receipts (by `createdAt`, `id`).
   Receipts and product updates both lock the Product before reading or
@@ -307,6 +308,16 @@ keeps its own locks (D040).
   the Bed lock and refuses. Cancellation is one
   conditional update. Expiry is derived from `holdUntil` at read, so no job locks
   anything; a Patient lock is never taken after a Bed lock.
+  The theatre schedule (facility booking slice 1) serializes on the room and unit
+  rows: confirming or rescheduling a surgical case locks its room, its units by
+  `id` and the consultant's Practitioner row, then the case row with its
+  `revision`, and only then runs every clash check (inactive resource, live block,
+  another confirmed case holding the room or a unit for an overlapping buffered
+  interval, the consultant's overlapping planned interval). A block locks the one
+  room or unit, then the confirmed cases holding it by `id`; deactivation locks the
+  resource and refuses while a confirmed case still holds it. Attaching an Admission locks the Admission before the case. Drafts and
+  cancellation take no resource lock: a draft promises nothing, and cancelling
+  only frees.
   Every change to an Admission's Charge set locks the Admission first
   (`lockAdmissionCharges`) and bumps its `chargeRevision`. An inpatient issue,
   posting services and issuing the bill also compare the caller's expected

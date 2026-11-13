@@ -1502,3 +1502,49 @@ no-overlap rule to bed holds, which Bahmni does not document for beds.
 beds that may not empty; automatic expiry jobs, which add a moving part for a
 state time already gives; and silently overriding holds, which would break a
 promise without a record or a reason.
+
+### D065 — Theatre bookings hold a room, named units and the consultant atomically; booking is never care or revenue
+
+**Accepted 2026-11-13 on the owner's instruction for facility booking delivery
+slice 1, autonomously; to be confirmed by the owner.** Contract:
+[Theatre, rooms and equipment](./specs/facility-booking-and-theatre.md#theatre-rooms-and-equipment-separate-delivery-slices).
+
+- **Grants.** `theatre: read, schedule, manageResources, override` in
+  `access.ts`. Owner and admin hold all four; reception holds `read` and
+  `schedule` as the coordinator desk; cashier, accountant and pharmacist hold
+  none. `schedule` never implies `override`.
+- **States.** A draft holds nothing and is checked only for valid references.
+  A confirmed case holds its room, units and consultant. A disrupted case
+  ("Needs rescheduling") lost a resource to a block, holds nothing and must be
+  confirmed again or cancelled. A cancelled case has a reason and frees every hold.
+- **What is held.** The room and each named unit for the buffered interval
+  `[start − prep, end + cleanup)`; the consultant for the planned interval only.
+  OPD Appointments and other staff are not checked: no schedulable staff
+  calendar exists yet.
+- **All or nothing.** Confirming or rescheduling locks rooms → units →
+  Practitioner → case (extending D040), then checks every clash and writes once
+  or not at all. Adjacent intervals are allowed after buffers.
+- **Blocks.** A maintenance block over a confirmed case is refused unless a
+  `theatre:override` holder gives a reason; the overlapping cases then become
+  disrupted in the same transaction. Deactivating a room or unit that a
+  confirmed future case holds is refused.
+- **Admission comes later.** A case can be booked before the Patient is
+  admitted; the Patient's current Admission is linked when they are. That link
+  is the precondition for recording actual use in the next slice.
+- **No money.** Booking writes no Charge, stock movement, Invoice or journal.
+
+**Evidence:**
+[Bahmni surgical blocks](https://bahmni.atlassian.net/wiki/spaces/BAH/pages/703660044/Surgical%2BBlock)
+refuse overlapping blocks for one theatre and one principal surgeon, and its
+[surgery workflow](https://bahmni.atlassian.net/wiki/spaces/BAH/pages/703594508/Managing%2BSurgeries%2Bin%2Ba%2BSurgical%2BBlock)
+records estimated duration and cleaning time. We depart by booking individual
+equipment units against the same clash rule and by holding the consultant per
+case rather than per surgeon block.
+[Frappe clinical procedures](https://frappehealth.com/docs/v13/user/manual/en/healthcare/clinical_procedure)
+keep the appointment apart from execution, consumed stock and billing; we keep
+the same split, so the schedule records neither use nor revenue.
+
+**Rejected:** pooled or forecast capacity, which promises equipment that may not
+be there; free-text team fields treated as availability, which check nothing;
+and emergency flags that bypass conflicts, which would double-book silently
+instead of making a coordinator move or cancel the affected cases.

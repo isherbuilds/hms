@@ -1,8 +1,10 @@
 # Facility booking, theatre and care-setting handoffs
 
 Owner: facility scheduling. Planning contract requested 2026-11-13. Bed reservations shipped on 2026-11-13
-([D064](../decisions.md#d064--bed-reservations-holds-expire-by-time-occupied-beds-are-never-promised-and-displacement-is-explicit));
-the theatre slices have not.
+([D064](../decisions.md#d064--bed-reservations-holds-expire-by-time-occupied-beds-are-never-promised-and-displacement-is-explicit)),
+and so did theatre delivery slice 1, the resource schedule
+([D065](../decisions.md#d065--theatre-bookings-hold-a-room-named-units-and-the-consultant-atomically-booking-is-never-care-or-revenue));
+slices 2 and 3 have not.
 Work status lives in the [registry](../README.md#work-lifecycle).
 
 ## Boundaries
@@ -99,6 +101,12 @@ OT product gate; reservations do not imply that OT is clinically operational.
    release books concrete units for surgical cases. Standalone room/equipment
    bookings, pooled capacity, additional staff calendars and recurring bookings
    are deferred; their owners and conflicts must be settled before adding them.
+
+   _Shipped 2026-11-13 (D065):_ `theatre.resources`, `createRoom`,
+   `setRoomActive`, `createEquipment`, `setEquipmentActive`, `blockResource`,
+   `removeBlock`, `schedule`, `getCase`, `draftCase`, `updateCase`,
+   `confirmCase`, `cancelCase` and `attachCaseAdmission`.
+
 2. **Changes and actual use.** Reschedule/cancel with reason, notify an assigned
    staff worklist, and retain history. Emergency priority flags do not bypass
    conflicts: an authorized coordinator explicitly moves/cancels affected cases.

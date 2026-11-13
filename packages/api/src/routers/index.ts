@@ -15,6 +15,7 @@ import { reportRouter } from "./report";
 import { settingsRouter } from "./settings";
 import { staffRouter } from "./staff";
 import { opdRouter } from "./opd";
+import { theatreRouter } from "./theatre";
 import { treatmentRouter } from "./treatment";
 
 export const appRouter = {
@@ -33,6 +34,7 @@ export const appRouter = {
   settings: settingsRouter,
   staff: staffRouter,
   opd: opdRouter,
+  theatre: theatreRouter,
   treatment: treatmentRouter,
 };
 

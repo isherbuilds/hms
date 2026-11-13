@@ -169,6 +169,13 @@
       "when": 1794578759534,
       "tag": "0023_bed_reservations_review",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794580236114,
+      "tag": "0024_theatre_schedule",
+      "breakpoints": true
     }
   ]
 }

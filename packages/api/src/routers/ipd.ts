@@ -40,7 +40,7 @@ import {
   settleIssuedInvoiceTx,
 } from "../lib/billing-documents";
 import { impossible } from "../lib/conflict";
-import { uniqueViolationConstraint } from "../lib/db-errors";
+import { nameConflict, uniqueViolationConstraint } from "../lib/db-errors";
 import {
   assertUnoccupied,
   auditDisruptions,
@@ -256,14 +256,6 @@ function occupancyConflict(error: unknown): never {
           ? "This Patient is already admitted."
           : "That bed was just taken on another screen.",
     });
-  }
-
-  throw error;
-}
-
-function nameConflict(error: unknown, what: string): never {
-  if (uniqueViolationConstraint(error) !== undefined) {
-    throw new ORPCError("CONFLICT", { message: `${what} already exists.` });
   }
 
   throw error;

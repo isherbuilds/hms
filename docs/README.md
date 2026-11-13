@@ -311,7 +311,14 @@ bed reservations and the theatre resource schedule to be built ahead of the
 product and clinical gates; operational release still waits for those gates.
 Bed reservations are built (D064; see
 [IPD admission to discharge](#ipd-admission-to-discharge)). The theatre resource
-schedule is in progress.
+schedule (delivery slice 1) is built (D065) with `tests/integration/theatre.test.ts`
+and its rows in the tenancy table; the demo seed has rooms, units, blocks and cases.
+
+Theatre browser verification: pending
+
+Still owed: delivery slice 2 (changes and actual use) and slice 3 (safety handoff
+and delivered billing), and the spec's missing contracts table. Clinical release
+still needs the OT gate.
 
 ### [Cashless claims](./specs/cashless-claims.md)
 
