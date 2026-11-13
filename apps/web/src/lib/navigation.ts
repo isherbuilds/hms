@@ -132,6 +132,7 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
 type PharmacyTab = NavEntry<
   | "/$orgSlug/pharmacy"
   | "/$orgSlug/pharmacy/stock"
+  | "/$orgSlug/pharmacy/inpatient"
   | "/$orgSlug/pharmacy/items"
   | "/$orgSlug/pharmacy/movements"
 >;
@@ -140,6 +141,11 @@ type PharmacyTab = NavEntry<
 export const PHARMACY_TABS: readonly PharmacyTab[] = [
   { to: "/$orgSlug/pharmacy", label: "Sales", permission: { pharmacy: ["read"] } },
   { to: "/$orgSlug/pharmacy/stock", label: "Stock", permission: { pharmacy: ["read"] } },
+  {
+    to: "/$orgSlug/pharmacy/inpatient",
+    label: "Inpatient issue",
+    permission: { pharmacy: ["read", "issueAdmission"], ipd: ["read"] },
+  },
   { to: "/$orgSlug/pharmacy/items", label: "Products", permission: { pharmacy: ["manageItems"] } },
   // Last: the movement ledger is an audit view, opened rarely.
   { to: "/$orgSlug/pharmacy/movements", label: "Movements", permission: { pharmacy: ["read"] } },

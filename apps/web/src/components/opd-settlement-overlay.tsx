@@ -51,6 +51,8 @@ type SettlementOverlayProps = {
   availableCredit: PatientCredit;
   /** A sale nobody can owe: a short payment is refused here, not by the server. */
   fullPayment?: boolean;
+  /** False where the server takes no discount, so the field is not offered. */
+  discountable?: boolean;
   /**
    * A reason the page behind knows and the draft cannot — charges that moved on
    * another terminal. Blocks the submit, because the server would refuse the stale
@@ -86,6 +88,7 @@ export function SettlementOverlay({
   pending,
   availableCredit,
   fullPayment,
+  discountable = true,
   onOpenChange,
   onConfirm,
 }: SettlementOverlayProps) {
@@ -232,7 +235,7 @@ export function SettlementOverlay({
             pending={pending}
             due={due}
             problems={problems}
-            onDiscountChange={setDiscount}
+            onDiscountChange={discountable ? setDiscount : undefined}
             onNoteChange={setNote}
             onPaymentsChange={setPayments}
           />

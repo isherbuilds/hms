@@ -1,0 +1,462 @@
+import { Button } from "@hms/ui/components/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@hms/ui/components/dialog";
+import { Input } from "@hms/ui/components/input";
+import { Separator } from "@hms/ui/components/separator";
+import { SubmitButton } from "@hms/ui/components/submit-button";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { ClientOnly, Link } from "@tanstack/react-router";
+import { Trash2Icon } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+
+import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
+import { ServicePicker, type ServiceLine } from "@/components/opd-service-picker";
+import { DataList, ErrorNote, Panel, PanelEmpty } from "@/components/page";
+import { billingPdfUrl } from "@/lib/billing-document";
+import { formatMoney, ZERO } from "@/lib/money";
+import type { WalkInQuote } from "@/lib/opd-service-preview";
+import { orpc } from "@/lib/orpc";
+import { closeOnConflict } from "@/lib/orpc-error";
+
+type AdmissionStatus = "admitted" | "discharge_ready" | "discharged" | "cancelled";
+
+export const admissionBillQuery = (orgSlug: string, admissionId: string) =>
+  orpc.ipd.previewInvoice.queryOptions({ input: { orgSlug, admissionId } });
+
+type Bill = Awaited<ReturnType<typeof orpc.ipd.previewInvoice.call>>;
+
+type BillLine = Bill["lines"][number];
+
+function priceLabel(line: BillLine, currency: string) {
+  const price = `${formatMoney(line.unitPrice, currency)}${line.priceUnits > 1 ? ` / ${line.priceUnits}` : ""}`;
+
+  // MRP already contains its GST; a service rate has GST added on top, when it has any.
+  if (line.priceBasis === "inclusive") return `${price} MRP`;
+
+  return Number(line.taxRatePercent) > 0 ? `${price} + GST` : price;
+}
+
+function taxLabel(line: BillLine, currency: string) {
+  if (Number(line.taxRatePercent) === 0) return "No GST";
+
+  return `${formatMoney(line.taxAmount, currency)} (${line.taxRatePercent}%)`;
+}
+
+export function AdmissionBill({
+  orgSlug,
+  admission,
+  bill,
+  canWrite,
+  currency,
+}: {
+  orgSlug: string;
+  admission: { id: string; status: AdmissionStatus; chargeRevision: number };
+  bill: { data?: Bill; isError: boolean; error: unknown };
+  canWrite: boolean;
+  currency: string;
+}) {
+  const [overlay, setOverlay] = useState<"service" | "collect" | null>(null);
+  const close = () => setOverlay(null);
+  const data = bill.data;
+
+  const issue = useMutation(
+    orpc.ipd.issueInvoice.mutationOptions({
+      onSuccess: () => {
+        toast.success("Invoice issued");
+        close();
+      },
+      onError: closeOnConflict(close),
+    }),
+  );
+
+  if (!data) {
+    return (
+      <Panel label="Bill" minHeight="">
+        {bill.isError ? (
+          <div className="p-3">
+            <ErrorNote title="Could not load the bill" error={bill.error} />
+          </div>
+        ) : (
+          <span role="status" className="sr-only">
+            Loading bill…
+          </span>
+        )}
+      </Panel>
+    );
+  }
+
+  const issued = data.invoiceId !== null;
+  const canAddService = canWrite && !issued && admission.status !== "cancelled";
+
+  const billable = admission.status === "discharge_ready" || admission.status === "discharged";
+
+  // The revision the bill was read at: a charge posted since moves it, and the server
+  // refuses a settlement against the old figure.
+  const stale = data.chargeRevision !== admission.chargeRevision;
+  const addedTax = data.grandTotal - data.subtotal - data.roundOff;
+
+  const quote: WalkInQuote = {
+    currency,
+    lines: data.lines.map((line) => ({
+      ...line,
+      source: "service" as const,
+      category: line.admissionKind ?? "service",
+    })),
+    subtotal: data.subtotal,
+    discountAmount: ZERO,
+    taxTotal: data.taxTotal,
+    roundOff: data.roundOff,
+    grandTotal: data.grandTotal,
+  };
+
+  const settle = (draft: SettlementDraft) => {
+    const collected = draft.payments.reduce((sum, payment) => sum + payment.amount, ZERO);
+
+    issue.mutate({
+      orgSlug,
+      admissionId: admission.id,
+      expectedChargeRevision: data.chargeRevision,
+      expectedGrandTotal: draft.expectedGrandTotal,
+      payments: draft.payments,
+      // A reason travels only with a balance: a bill paid in full has nothing to explain.
+      outstandingReason: draft.expectedGrandTotal > collected ? draft.note : undefined,
+    });
+  };
+
+  return (
+    <Panel
+      label="Bill"
+      minHeight=""
+      action={
+        canAddService ? (
+          <Button size="xs" variant="outline" onClick={() => setOverlay("service")}>
+            Add service
+          </Button>
+        ) : undefined
+      }
+    >
+      {data.lines.length === 0 ? (
+        <PanelEmpty>Nothing charged yet</PanelEmpty>
+      ) : (
+        <DataList
+          columns={[
+            {
+              head: "Item",
+              cell: (line) => (
+                <span className="block min-w-0">
+                  <span className="block capitalize">{line.description}</span>
+                  {line.batch ? (
+                    <span className="block font-mono text-muted-foreground">
+                      {line.batch.batchNumber}
+                    </span>
+                  ) : null}
+                </span>
+              ),
+            },
+            {
+              head: "Qty",
+              cell: (line) => <span className="tabular-nums">× {line.qty}</span>,
+              className: "text-right",
+              mobile: "title",
+            },
+            {
+              head: "Price",
+              cell: (line) => (
+                <span className="whitespace-nowrap tabular-nums">{priceLabel(line, currency)}</span>
+              ),
+              className: "text-right",
+            },
+            {
+              head: "GST",
+              cell: (line) => (
+                <span className="whitespace-nowrap tabular-nums">{taxLabel(line, currency)}</span>
+              ),
+              className: "text-right",
+            },
+            {
+              head: "Amount",
+              cell: (line) => (
+                <span className="font-medium tabular-nums">
+                  {formatMoney(line.gross, currency)}
+                </span>
+              ),
+              className: "text-right",
+              mobile: "title",
+            },
+          ]}
+          rows={data.lines}
+          rowKey={(line) => line.chargeId}
+        />
+      )}
+
+      <div className="flex flex-col gap-3 border-t border-border p-3 sm:flex-row sm:items-end sm:justify-between">
+        <dl className="grid w-full gap-1 sm:order-2 sm:max-w-64">
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted-foreground">Subtotal</dt>
+            <dd className="tabular-nums">{formatMoney(data.subtotal, currency)}</dd>
+          </div>
+          {addedTax === ZERO ? null : (
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">GST added</dt>
+              <dd className="tabular-nums">{formatMoney(addedTax, currency)}</dd>
+            </div>
+          )}
+          <Separator />
+          <div className="flex justify-between gap-3 font-medium">
+            <dt>Total</dt>
+            <dd className="tabular-nums">{formatMoney(data.grandTotal, currency)}</dd>
+          </div>
+          {data.taxTotal === ZERO ? null : (
+            <div className="flex justify-between gap-3 text-muted-foreground">
+              <dt>GST in total</dt>
+              <dd className="tabular-nums">{formatMoney(data.taxTotal, currency)}</dd>
+            </div>
+          )}
+        </dl>
+
+        <div className="sm:order-1">
+          {data.invoiceId !== null ? (
+            <IssuedInvoice orgSlug={orgSlug} invoiceId={data.invoiceId} currency={currency} />
+          ) : !canWrite || admission.status === "cancelled" ? null : billable ? (
+            <Button
+              disabled={data.lines.length === 0 || stale}
+              onClick={() => setOverlay("collect")}
+            >
+              <span className="tabular-nums">
+                Issue invoice {formatMoney(data.grandTotal, currency)}
+              </span>
+            </Button>
+          ) : (
+            <p className="text-muted-foreground">
+              The bill is issued once the Patient is ready to leave.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {overlay === "service" ? (
+        <AddServiceDialog
+          orgSlug={orgSlug}
+          admission={admission}
+          currency={currency}
+          onClose={close}
+        />
+      ) : null}
+      {overlay === "collect" ? (
+        <ClientOnly fallback={null}>
+          <SettlementOverlay
+            quote={quote}
+            stream="ipd"
+            discountable={false}
+            availableCredit={{ usable: ZERO, total: ZERO }}
+            description={`${data.lines.length} item${data.lines.length === 1 ? "" : "s"} on this admission`}
+            label="Issue invoice"
+            pending={issue.isPending}
+            blockedReason={
+              stale ? "The bill changed. Close this and review the current bill." : undefined
+            }
+            onOpenChange={(open) => {
+              if (!open) close();
+            }}
+            onConfirm={settle}
+          />
+        </ClientOnly>
+      ) : null}
+    </Panel>
+  );
+}
+
+function IssuedInvoice({
+  orgSlug,
+  invoiceId,
+  currency,
+}: {
+  orgSlug: string;
+  invoiceId: string;
+  currency: string;
+}) {
+  const invoice = useQuery(orpc.billing.getInvoice.queryOptions({ input: { orgSlug, invoiceId } }));
+
+  if (!invoice.data) {
+    return invoice.isError ? (
+      <ErrorNote title="Could not load the invoice" error={invoice.error} />
+    ) : null;
+  }
+
+  const { balance } = invoice.data;
+  const paid = balance.paymentsTotal + balance.allocationsTotal;
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <div>
+        <Link
+          to="/$orgSlug/billing/invoices/$invoiceId"
+          params={{ orgSlug, invoiceId }}
+          className="font-mono font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+        >
+          {invoice.data.invoice.invoiceNumber}
+        </Link>
+        <p className="tabular-nums text-muted-foreground">
+          Paid {formatMoney(paid, currency)}
+          {balance.outstanding > ZERO ? null : " · settled"}
+        </p>
+        {balance.outstanding > ZERO ? (
+          <p className="font-medium tabular-nums">
+            Outstanding {formatMoney(balance.outstanding, currency)}
+          </p>
+        ) : null}
+      </div>
+      <Button
+        variant="outline"
+        nativeButton={false}
+        render={
+          <a
+            href={billingPdfUrl({
+              orgSlug,
+              invoiceId,
+              request: { kind: "invoice", documentId: null, layout: "a4" },
+            })}
+            target="_blank"
+            rel="noreferrer"
+          />
+        }
+      >
+        Print
+      </Button>
+    </div>
+  );
+}
+
+// Mounted per open, so the list starts empty without an effect.
+function AddServiceDialog({
+  orgSlug,
+  admission,
+  currency,
+  onClose,
+}: {
+  orgSlug: string;
+  admission: { id: string; chargeRevision: number };
+  currency: string;
+  onClose: () => void;
+}) {
+  const [lines, setLines] = useState<ServiceLine[]>([]);
+
+  const post = useMutation(
+    orpc.ipd.postServices.mutationOptions({
+      onSuccess: () => {
+        toast.success(lines.length === 1 ? "Service added" : "Services added");
+        onClose();
+      },
+      onError: closeOnConflict(onClose),
+    }),
+  );
+
+  const commitQty = (line: ServiceLine, input: HTMLInputElement) => {
+    const qty = Math.max(1, Math.trunc(input.valueAsNumber) || 1);
+    input.value = String(qty);
+    setLines((current) =>
+      current.map((each) => (each.catalogItemId === line.catalogItemId ? { ...each, qty } : each)),
+    );
+  };
+
+  return (
+    <ClientOnly fallback={null}>
+      <Dialog open onOpenChange={(open) => (open || post.isPending ? undefined : onClose())}>
+        <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Add service</DialogTitle>
+            <DialogDescription>
+              Charged at today&apos;s catalog price, with GST added where the service carries it.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            noValidate
+            className="flex min-w-0 flex-col gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+
+              if (lines.length === 0) return;
+
+              post.mutate({
+                orgSlug,
+                admissionId: admission.id,
+                expectedChargeRevision: admission.chargeRevision,
+                lines: lines.map((line) => ({ catalogItemId: line.catalogItemId, qty: line.qty })),
+              });
+            }}
+          >
+            <fieldset disabled={post.isPending} className="contents">
+              <ServicePicker
+                orgSlug={orgSlug}
+                chosen={new Set(lines.map((line) => line.catalogItemId))}
+                allowConsultation={false}
+                onAdd={(line) => setLines((current) => [...current, line])}
+              />
+              {lines.length > 0 ? (
+                <ul className="grid gap-2">
+                  {lines.map((line) => (
+                    <li
+                      key={line.catalogItemId}
+                      className="grid grid-cols-[minmax(0,1fr)_4.5rem_auto] items-center gap-2"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate">{line.name}</span>
+                        <span className="text-muted-foreground tabular-nums">
+                          {formatMoney(line.unitPrice, currency)}
+                          {Number(line.taxRatePercent) > 0 ? " + GST" : ""}
+                        </span>
+                      </span>
+                      <Input
+                        key={`${line.catalogItemId}:${line.qty}`}
+                        type="number"
+                        min={1}
+                        step={1}
+                        defaultValue={line.qty}
+                        aria-label={`${line.name} quantity`}
+                        className="tabular-nums"
+                        onBlur={(event) => commitQty(line, event.currentTarget)}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter") return;
+                          event.preventDefault();
+                          commitQty(line, event.currentTarget);
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="destructive"
+                        aria-label={`Remove ${line.name}`}
+                        onClick={() =>
+                          setLines((current) =>
+                            current.filter((each) => each.catalogItemId !== line.catalogItemId),
+                          )
+                        }
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <DialogFooter>
+                <SubmitButton
+                  isSubmitting={post.isPending}
+                  aria-disabled={lines.length === 0 || undefined}
+                >
+                  Add to bill
+                </SubmitButton>
+              </DialogFooter>
+            </fieldset>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </ClientOnly>
+  );
+}

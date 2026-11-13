@@ -51,7 +51,8 @@ export function SettlementFields({
   pending: boolean;
   due: bigint;
   problems: SettlementProblem[];
-  onDiscountChange: (value: string) => void;
+  /** Omitted where the bill takes no discount, such as an Admission bill. */
+  onDiscountChange?: (value: string) => void;
   onNoteChange: (value: string) => void;
   onPaymentsChange: (payments: PaymentLineValue[]) => void;
 }) {
@@ -86,31 +87,33 @@ export function SettlementFields({
       <FinancialSummary
         quote={quote}
         discountRow={
-          <div
-            className="flex items-center justify-between gap-3"
-            data-invalid={Boolean(discountProblem) || undefined}
-          >
-            <dt>
-              <FieldLabel htmlFor="settlement-discount" className="text-muted-foreground">
-                Discount
-              </FieldLabel>
-            </dt>
-            <dd className="flex w-28 flex-none flex-col items-end gap-0.5 text-right">
-              <Input
-                id="settlement-discount"
-                name="discount"
-                inputMode="decimal"
-                value={discount}
-                placeholder="0"
-                disabled={pending}
-                aria-invalid={Boolean(discountProblem)}
-                aria-describedby={discountProblem ? "settlement-discount-error" : undefined}
-                className="tabular-nums text-right"
-                onChange={(event) => onDiscountChange(event.target.value)}
-              />
-              <FieldError id="settlement-discount-error">{discountProblem?.message}</FieldError>
-            </dd>
-          </div>
+          onDiscountChange ? (
+            <div
+              className="flex items-center justify-between gap-3"
+              data-invalid={Boolean(discountProblem) || undefined}
+            >
+              <dt>
+                <FieldLabel htmlFor="settlement-discount" className="text-muted-foreground">
+                  Discount
+                </FieldLabel>
+              </dt>
+              <dd className="flex w-28 flex-none flex-col items-end gap-0.5 text-right">
+                <Input
+                  id="settlement-discount"
+                  name="discount"
+                  inputMode="decimal"
+                  value={discount}
+                  placeholder="0"
+                  disabled={pending}
+                  aria-invalid={Boolean(discountProblem)}
+                  aria-describedby={discountProblem ? "settlement-discount-error" : undefined}
+                  className="tabular-nums text-right"
+                  onChange={(event) => onDiscountChange(event.target.value)}
+                />
+                <FieldError id="settlement-discount-error">{discountProblem?.message}</FieldError>
+              </dd>
+            </div>
+          ) : undefined
         }
       />
 
