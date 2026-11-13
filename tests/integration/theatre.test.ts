@@ -3,6 +3,9 @@ import { beforeAll, expect, test } from "bun:test";
 
 import { drainAuditWrites } from "@hms/api/audit";
 import type { AppRouterClient } from "@hms/api/routers/index";
+import { db } from "@hms/db";
+import { surgicalCases } from "@hms/db/schema/theatre";
+import { and, eq } from "drizzle-orm";
 
 import {
   createOrganization,
@@ -470,6 +473,9 @@ test("a draft refuses a malformed interval, a past start, a non-procedure or ina
     ["inactive unit", { ...base, equipmentIds: [retiredUnit.id] }],
     ["prep over 240 minutes", { ...base, prepMinutes: 241 }],
     ["negative cleanup", { ...base, cleanupMinutes: -1 }],
+    ["empty room id", { ...base, roomId: "" }],
+    ["empty unit id", { ...base, equipmentIds: [""] }],
+    ["empty reservation id", { ...base, bedReservationId: "" }],
   ] satisfies Array<[string, DraftInput]>) {
     await expectORPCCode(api.theatre.draftCase(input), "BAD_REQUEST", label);
   }
@@ -607,18 +613,21 @@ test("the schedule lists cases overlapping its window and refuses a window over 
   const soon = await draft(theatre, "Soon", slot(DAY));
   const later = await draft(theatre, "Later", slot(10 * DAY));
 
-  const window = (from: Date, to: Date) => api.theatre.schedule({ orgSlug, from, to });
+  // One captured instant, so the 31-day bound is exact rather than a clock read apart.
+  const now = Date.now();
+  const at = (ms: number) => new Date(now + ms);
 
-  expect((await window(fromNow(0), fromNow(2 * DAY))).cases.map((entry) => entry.id)).toEqual([
-    soon.surgicalCase.id,
-  ]);
-  expect((await window(fromNow(0), fromNow(31 * DAY))).cases.map((entry) => entry.id)).toEqual([
+  const window = (from: number, to: number) =>
+    api.theatre.schedule({ orgSlug, from: at(from), to: at(to) });
+
+  expect((await window(0, 2 * DAY)).cases.map((entry) => entry.id)).toEqual([soon.surgicalCase.id]);
+  expect((await window(0, 31 * DAY)).cases.map((entry) => entry.id)).toEqual([
     soon.surgicalCase.id,
     later.surgicalCase.id,
   ]);
 
-  await expectORPCCode(window(fromNow(0), fromNow(31 * DAY + MINUTE)), "BAD_REQUEST", "32 days");
-  await expectORPCCode(window(fromNow(DAY), fromNow(0)), "BAD_REQUEST", "inverted window");
+  await expectORPCCode(window(0, 31 * DAY + MINUTE), "BAD_REQUEST", "32 days");
+  await expectORPCCode(window(DAY, 0), "BAD_REQUEST", "inverted window");
 });
 
 // ── Slice 3: atomic confirmation ────────────────────────────────────────────
@@ -641,13 +650,25 @@ async function booked(theatre: Theatre, name: string, overrides: Partial<DraftFi
   return { patient, surgicalCase: await confirm(theatre, surgicalCase) };
 }
 
+type Refusal = { code?: string; message?: string; data?: { reason?: string } };
+
 async function settled<T>(promise: Promise<T>) {
   try {
     return { ok: true as const, value: await promise };
   } catch (error) {
-    // SAFETY: oRPC client errors carry `code`; asserted by the callers.
-    return { ok: false as const, code: (error as { code?: string }).code };
+    // SAFETY: oRPC client errors carry `code`, `message` and `data`; asserted by the callers.
+    const { code, message, data } = error as Refusal;
+
+    return { ok: false as const, code, message, reason: data?.reason };
   }
+}
+
+async function refusal(promise: Promise<unknown>) {
+  const result = await settled(promise);
+
+  if (result.ok) throw new Error("Expected the call to be refused");
+
+  return result;
 }
 
 // The refusal wrote nothing: the case is still the same unconfirmed draft.
@@ -980,7 +1001,10 @@ test("a block over a confirmed case's held interval is CONFLICT and writes nothi
 
   const inCleanup = blockWindow(new Date(held.plannedEndAt.getTime() + 10 * MINUTE));
 
-  await expectORPCCode(block(theatre, { roomId: rooms[0].id, ...inCleanup }), "CONFLICT", "room");
+  expect(await refusal(block(theatre, { roomId: rooms[0].id, ...inCleanup }))).toMatchObject({
+    code: "CONFLICT",
+    reason: "case_held",
+  });
   await expectORPCCode(
     block(theatre, { equipmentId: units[0].id, ...inCleanup }),
     "CONFLICT",
@@ -1150,22 +1174,24 @@ test("reception cannot block, disrupt or remove blocks: FORBIDDEN, nothing writt
   expect((await auditEntries(theatre, "rbac.permission")).length).toBe(deniedBefore + 3);
 });
 
-test("a room or unit with a confirmed future case cannot be deactivated", async () => {
+test("a room or unit a confirmed case still needs cannot be deactivated", async () => {
   const theatre = await createTheatre("ot-deactivate-held");
   const { api, orgSlug, rooms, units } = theatre;
 
   await booked(theatre, "Keeps Room", { equipmentIds: [units[0].id] });
 
-  await expectORPCCode(
+  await expect(
     api.theatre.setRoomActive({ orgSlug, roomId: rooms[0].id, active: false }),
-    "CONFLICT",
-    "room",
-  );
-  await expectORPCCode(
+  ).rejects.toMatchObject({
+    code: "CONFLICT",
+    message: "A confirmed case still needs Theatre 1. Move or cancel it first.",
+  });
+  await expect(
     api.theatre.setEquipmentActive({ orgSlug, equipmentId: units[0].id, active: false }),
-    "CONFLICT",
-    "unit",
-  );
+  ).rejects.toMatchObject({
+    code: "CONFLICT",
+    message: "A confirmed case still needs C-arm 1. Move or cancel it first.",
+  });
 
   const listed = await resources(theatre);
   expect(listed.rooms.map((entry) => [entry.name, entry.active])).toEqual([
@@ -1280,6 +1306,10 @@ test("a reschedule into a clash or a block is CONFLICT and leaves the case confi
     await expectORPCCode(update(theatre, surgicalCase, overrides), "CONFLICT", label);
     expect(await getCase(theatre, surgicalCase.id), label).toEqual(snapshot);
   }
+
+  expect(
+    (await refusal(update(theatre, surgicalCase, { ...own, roomId: undefined }))).message,
+  ).toBe("A confirmed case needs a room. Cancel it or choose another room.");
 
   expect(await auditEntries(theatre, "theatre.case.reschedule")).toEqual([]);
 });
@@ -1476,6 +1506,12 @@ test("a case attaches only its own Patient's active Admission", async () => {
     reason: "Admitted in error",
   });
   const foreignAdmission = await admit(other, foreignPatient.id, otherBeds[0].id);
+
+  // The stay picker asks for one Patient's admissions only, within this organization.
+  expect(
+    (await api.ipd.list({ orgSlug, patientId: neighbour.id })).items.map((entry) => entry.id),
+  ).toEqual([neighbourAdmission.id]);
+  expect((await api.ipd.list({ orgSlug, patientId: foreignPatient.id })).items).toEqual([]);
 
   expect(discharged.status).toBe("discharged");
 
@@ -1718,4 +1754,317 @@ test("another organization's member cannot read, edit, confirm, cancel or attach
   expect(await getCase(theatre, drafted.id)).toEqual(beforeDraft);
   expect(await resources(theatre)).toEqual(beforeResources);
   expect(await scheduled(theatre)).toEqual(beforeSchedule);
+});
+
+// ── Review fixes: races, stale screens, started and retired cases ──────────
+
+type StoredCase = Awaited<ReturnType<AppRouterClient["theatre"]["getCase"]>>;
+
+// Moves a stored case in time past the API's start guard, standing in for a case
+// that has started or is already over.
+async function backdate(theatre: Theatre, caseId: string, plannedStartAt: Date, hours = 2) {
+  await db
+    .update(surgicalCases)
+    .set({ plannedStartAt, plannedEndAt: new Date(plannedStartAt.getTime() + hours * HOUR) })
+    .where(and(eq(surgicalCases.orgId, theatre.organization.id), eq(surgicalCases.id, caseId)));
+
+  return getCase(theatre, caseId);
+}
+
+// Sends a case's own stored values back, with the given changes.
+function edit(theatre: Theatre, stored: StoredCase, overrides: Partial<DraftFields> = {}) {
+  return theatre.api.theatre.updateCase({
+    orgSlug: theatre.orgSlug,
+    caseId: stored.id,
+    expectedRevision: stored.revision,
+    practitionerId: stored.practitionerId,
+    procedureItemId: stored.procedureItemId,
+    roomId: stored.roomId ?? undefined,
+    plannedStartAt: stored.plannedStartAt,
+    plannedEndAt: stored.plannedEndAt,
+    prepMinutes: stored.prepMinutes,
+    cleanupMinutes: stored.cleanupMinutes,
+    equipmentIds: stored.equipment.map((unit) => unit.id),
+    bedReservationId: stored.bedReservationId ?? undefined,
+    notes: stored.notes ?? undefined,
+    ...overrides,
+  });
+}
+
+test("a stale revision is refused as stale_record on change, confirm and cancel", async () => {
+  const theatre = await createTheatre("ot-stale-reason");
+  const { surgicalCase } = await draft(theatre, "Stale Reason");
+  const stale = { ...surgicalCase, revision: surgicalCase.revision + 2 };
+
+  for (const [label, call] of [
+    ["change", () => update(theatre, stale)],
+    ["confirm", () => confirm(theatre, stale)],
+    ["cancel", () => cancel(theatre, stale)],
+  ] as const) {
+    expect(await refusal(call()), label).toMatchObject({
+      code: "CONFLICT",
+      reason: "stale_record",
+    });
+  }
+
+  expect(await getCase(theatre, surgicalCase.id)).toMatchObject({ status: "draft", revision: 0 });
+});
+
+test("a draft edit racing its own confirmation: exactly one wins, the other is stale, never a server error", async () => {
+  const theatre = await createTheatre("ot-race-edit-confirm");
+  const { units } = theatre;
+
+  for (let round = 0; round < 10; round += 1) {
+    const label = `round ${round}`;
+
+    const { surgicalCase } = await draft(theatre, `Edit Race ${round}`, {
+      ...slot(DAY + round * 3 * HOUR, 2),
+      equipmentIds: [units[0].id],
+    });
+
+    const stored = await getCase(theatre, surgicalCase.id);
+
+    const results = await Promise.all([
+      settled(edit(theatre, stored, { equipmentIds: [units[0].id, units[1].id], notes: label })),
+      settled(confirm(theatre, surgicalCase)),
+    ]);
+
+    expect(
+      results.filter((result) => result.ok),
+      label,
+    ).toHaveLength(1);
+    expect(
+      results.find((result) => !result.ok),
+      label,
+    ).toMatchObject({ code: "CONFLICT", reason: "stale_record" });
+    expect(await getCase(theatre, surgicalCase.id), label).toMatchObject({ revision: 1 });
+  }
+});
+
+test("two desks confirming one consultant's overlapping cases in different rooms: exactly one wins", async () => {
+  const theatre = await createTheatre("ot-race-consultant");
+
+  for (let round = 0; round < 10; round += 1) {
+    const label = `round ${round}`;
+    const window = slot(DAY + round * 3 * HOUR, 2);
+    const { surgicalCase: first } = await draft(theatre, `Consultant Race ${round} A`, window);
+
+    const { surgicalCase: second } = await draft(theatre, `Consultant Race ${round} B`, {
+      ...window,
+      roomId: theatre.rooms[1].id,
+    });
+
+    const results = await Promise.all(
+      [first, second].map((entry) => settled(confirm(theatre, entry))),
+    );
+
+    expect(
+      results.filter((result) => result.ok),
+      label,
+    ).toHaveLength(1);
+    expect(
+      results.find((result) => !result.ok),
+      label,
+    ).toMatchObject({ code: "CONFLICT" });
+
+    const statuses = await Promise.all(
+      [first, second].map(async (entry) => (await getCase(theatre, entry.id)).status),
+    );
+
+    expect(statuses.sort(), label).toEqual(["confirmed", "draft"]);
+  }
+});
+
+test("a block and a confirmation for the same room and time at once: never both", async () => {
+  const theatre = await createTheatre("ot-race-block-confirm");
+  const roomId = theatre.rooms[0].id;
+
+  for (let round = 0; round < 10; round += 1) {
+    const label = `round ${round}`;
+    const window = slot(DAY + round * 3 * HOUR, 2);
+    const { surgicalCase } = await draft(theatre, `Block Race ${round}`, window);
+
+    const [blocked, confirmed] = await Promise.all([
+      settled(block(theatre, { roomId, ...blockWindow(window.plannedStartAt, 1) })),
+      settled(confirm(theatre, surgicalCase)),
+    ]);
+
+    expect([blocked.ok, confirmed.ok].filter(Boolean), label).toHaveLength(1);
+
+    const stored = await getCase(theatre, surgicalCase.id);
+
+    const blocksThen = (await resources(theatre)).blocks.filter(
+      (entry) => entry.startsAt.getTime() === window.plannedStartAt.getTime(),
+    );
+
+    if (blocked.ok) {
+      expect(confirmed, label).toMatchObject({ code: "CONFLICT" });
+      expect(stored.status, label).toBe("draft");
+      expect(blocksThen, label).toHaveLength(1);
+    } else {
+      expect(blocked, label).toMatchObject({ code: "CONFLICT", reason: "case_held" });
+      expect(stored.status, label).toBe("confirmed");
+      expect(blocksThen, label).toEqual([]);
+    }
+  }
+});
+
+test("a block entered after the fact neither refuses over nor disrupts a case that is already over", async () => {
+  const theatre = await createTheatre("ot-block-past");
+  const { rooms, secondSurgeon } = theatre;
+  const { surgicalCase } = await booked(theatre, "Already Done");
+  const yesterday = fromNow(-DAY);
+  const done = await backdate(theatre, surgicalCase.id, yesterday);
+
+  await block(theatre, { roomId: rooms[0].id, ...blockWindow(yesterday, 1) });
+  await block(theatre, {
+    roomId: rooms[0].id,
+    ...blockWindow(new Date(yesterday.getTime() + HOUR), 1),
+    disrupt: { reason: "Recorded late" },
+  });
+
+  expect(await getCase(theatre, surgicalCase.id)).toEqual(done);
+  expect(await auditEntries(theatre, "theatre.case.disrupt")).toEqual([]);
+
+  // A case still in theatre counts: its held interval has not ended.
+  const { surgicalCase: running } = await booked(theatre, "In Theatre Now", {
+    roomId: rooms[1].id,
+    practitionerId: secondSurgeon.id,
+  });
+
+  await backdate(theatre, running.id, fromNow(-HOUR));
+
+  expect(
+    await refusal(block(theatre, { roomId: rooms[1].id, ...blockWindow(fromNow(-2 * HOUR), 4) })),
+  ).toMatchObject({ code: "CONFLICT", reason: "case_held" });
+});
+
+test("a started confirmed case takes a notes fix, but not a move of its time, room, units or consultant", async () => {
+  const theatre = await createTheatre("ot-started-edit");
+  const { rooms, units, secondSurgeon } = theatre;
+
+  const { surgicalCase } = await booked(theatre, "Started Case", {
+    equipmentIds: [units[0].id],
+  });
+
+  const started = await backdate(theatre, surgicalCase.id, fromNow(-HOUR));
+  const noted = await edit(theatre, started, { notes: "Second unit of blood ready" });
+
+  expect(noted).toMatchObject({
+    status: "confirmed",
+    revision: started.revision + 1,
+    roomId: rooms[0].id,
+    equipment: [{ id: units[0].id, name: "C-arm 1" }],
+    plannedStartAt: started.plannedStartAt,
+    notes: "Second unit of blood ready",
+  });
+
+  for (const [label, overrides] of [
+    ["room", { roomId: rooms[1].id }],
+    ["units", { equipmentIds: [] }],
+    ["consultant", { practitionerId: secondSurgeon.id }],
+    ["end", { plannedEndAt: new Date(started.plannedEndAt.getTime() + HOUR) }],
+  ] satisfies Array<[string, Partial<DraftFields>]>) {
+    expect((await refusal(edit(theatre, noted, overrides))).code, label).toBe("CONFLICT");
+  }
+
+  expect(await getCase(theatre, surgicalCase.id)).toEqual(noted);
+});
+
+test("a draft keeps its retired room, unit and procedure through an edit, but cannot take another retired one or be confirmed", async () => {
+  const theatre = await createTheatre("ot-retired-references");
+  const { api, orgSlug, rooms, units } = theatre;
+
+  const procedure = (name: string) =>
+    api.catalog.create({
+      orgSlug,
+      name,
+      category: "procedure",
+      unitPrice: 1_000_00n,
+      taxRatePercent: "0",
+      taxCode: "",
+      customRate: false,
+    });
+
+  const hernia = await procedure("Hernia repair");
+  const retiredProcedure = await procedure("Old technique");
+
+  const closedRoom = await api.theatre.createRoom({
+    orgSlug,
+    name: "Closed",
+    kind: "procedure_room",
+  });
+
+  const oldDrill = await api.theatre.createEquipment({ orgSlug, name: "Old drill", kind: "Drill" });
+
+  const { surgicalCase } = await draft(theatre, "Retired References", {
+    roomId: rooms[1].id,
+    equipmentIds: [units[1].id],
+    procedureItemId: hernia.id,
+  });
+
+  await api.theatre.setRoomActive({ orgSlug, roomId: rooms[1].id, active: false });
+  await api.theatre.setRoomActive({ orgSlug, roomId: closedRoom.id, active: false });
+  await api.theatre.setEquipmentActive({ orgSlug, equipmentId: units[1].id, active: false });
+  await api.theatre.setEquipmentActive({ orgSlug, equipmentId: oldDrill.id, active: false });
+  await api.catalog.setActive({ orgSlug, itemId: hernia.id, active: false });
+  await api.catalog.setActive({ orgSlug, itemId: retiredProcedure.id, active: false });
+
+  const stored = await getCase(theatre, surgicalCase.id);
+  const kept = await edit(theatre, stored, { notes: "Kept as booked" });
+
+  expect(kept).toMatchObject({
+    status: "draft",
+    revision: 1,
+    roomId: rooms[1].id,
+    procedureItemId: hernia.id,
+    equipment: [{ id: units[1].id, name: "C-arm 2" }],
+    notes: "Kept as booked",
+  });
+
+  for (const [label, overrides] of [
+    ["another retired room", { roomId: closedRoom.id }],
+    ["another retired unit", { equipmentIds: [units[1].id, oldDrill.id] }],
+    ["another retired procedure", { procedureItemId: retiredProcedure.id }],
+  ] satisfies Array<[string, Partial<DraftFields>]>) {
+    await expectORPCCode(edit(theatre, kept, overrides), "BAD_REQUEST", label);
+  }
+
+  await expectRefused(theatre, kept, "retired room on confirmation");
+});
+
+test("the database ties a case's bed reservation to the case's own Patient", async () => {
+  const theatre = await createTheatre("ot-reservation-patient");
+  const { api, orgSlug } = theatre;
+  const { patient, surgicalCase } = await draft(theatre, "Own Reservation");
+  const someoneElse = await registerPatient(api, orgSlug, "Someone Else");
+  const category = await api.ipd.createBedCategory({ orgSlug, name: "General bed" });
+
+  const reservationFor = (patientId: string) =>
+    api.ipd.requestBed({
+      orgSlug,
+      patientId,
+      categoryId: category.id,
+      plannedArrivalAt: fromNow(DAY - 4 * HOUR),
+      plannedDepartureAt: fromNow(3 * DAY),
+    });
+
+  const own = await reservationFor(patient.id);
+  const theirs = await reservationFor(someoneElse.id);
+
+  const link = async (bedReservationId: string) => {
+    await db
+      .update(surgicalCases)
+      .set({ bedReservationId })
+      .where(
+        and(
+          eq(surgicalCases.orgId, theatre.organization.id),
+          eq(surgicalCases.id, surgicalCase.id),
+        ),
+      );
+  };
+
+  await expect(link(theirs.id)).rejects.toThrow();
+  await link(own.id);
+  expect(await getCase(theatre, surgicalCase.id)).toMatchObject({ bedReservationId: own.id });
 });
