@@ -444,7 +444,15 @@ export const pharmacyRouter = {
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
-    const { timeZone } = await readOrgSettings(scope.orgId);
+    const { timeZone, gstin } = await readOrgSettings(scope.orgId);
+
+    // Without a GSTIN there is no separately taxed supply (CGST Act s.32(1), D063).
+    if (!gstin && input.lines.some((line) => line.supply === "independent")) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "This hospital has no GSTIN, so medicines are issued as part of treatment",
+      });
+    }
+
     const now = new Date();
     const issueId = Bun.randomUUIDv7();
 

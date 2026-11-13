@@ -268,10 +268,15 @@ phone in light and dark with no page overflow. Changed after that pass and not y
 (shared with OPD), a hydration error on **Settings → Organization** from the
 time-zone list (predates IPD), and a Gemini council seat (quota).
 
-Still owed: Slices 3–6 (bed-day review, interim bill, packages, inpatient
-returns, deposits and final settlement, IPD reports). Credit Notes on `ipd`
-Invoices are refused until Slice 4/5, and an Admission takes one Invoice until
-supplemental billing in Slice 5 (D063).
+A hospital without a GSTIN cannot add GST to an inpatient bill or issue a
+separately taxed medicine (D063); the demo hospital has none, so its seeded
+inpatient bills carry no GST.
+
+Still owed, in order: Credit Notes for service lines on `ipd` Invoices, before
+any live hospital bills inpatients; then Slices 3–6 (bed-day review, interim
+bill, packages, inpatient returns, deposits and final settlement, IPD reports).
+An Admission takes one Invoice until supplemental billing in Slice 5 (D063).
+The same no-GSTIN rule is not yet applied to OPD or counter Pharmacy.
 
 ### [Cashless claims](./specs/cashless-claims.md)
 

@@ -1808,8 +1808,9 @@ function ipdAdmission(
 }
 
 /* IPD Slice 1: medicines issued to the ward and services posted against a stay, as
-   pending Admission Charges that the stay's single ipd Invoice later bills. Ward
-   medicine keeps its MRP price; bundled supply is exempt, independent keeps its GST. */
+   pending Admission Charges that the stay's single ipd Invoice later bills. The demo
+   hospital has no GSTIN, so it adds no GST and every ward medicine is bundled (D063):
+   services are priced without tax and medicine keeps its MRP. */
 const issueRows: (typeof admissionPharmacyIssues.$inferInsert)[] = [];
 
 const issueLineRows: (typeof admissionPharmacyIssueLines.$inferInsert)[] = [];
@@ -1820,7 +1821,7 @@ const roomSupplementItem = {
   name: "Deluxe room supplement",
   category: "other" as const,
   unitPrice: parseDecimal("1200.00"),
-  taxRatePercent: "5.00",
+  taxRatePercent: "0.00",
   taxCode: "996311",
   active: true,
 };
@@ -2112,12 +2113,12 @@ function billAdmission(admission: SeedAdmission, issuedAt: Date) {
     status: "cancelled",
   });
 
-  // Still in the ward: two issues and a taxable service, all waiting for the bill.
+  // Still in the ward: two issues and a service, all waiting for the bill.
   issueToWard(steppedDown, hoursAgo(100), [
     { name: "Paracetamol 500 mg", qty: 20, supply: "bundled" },
   ]);
   issueToWard(steppedDown, hoursAgo(30), [
-    { name: "Pantoprazole 40 mg", qty: 10, supply: "independent" },
+    { name: "Pantoprazole 40 mg", qty: 10, supply: "bundled" },
   ]);
   postWardServices(steppedDown, hoursAgo(20), [{ item: roomSupplementItem, qty: 2 }]);
 
@@ -2130,11 +2131,11 @@ function billAdmission(admission: SeedAdmission, issuedAt: Date) {
     { item: procedureItems[1]!, qty: 2 },
   ]);
 
-  // Left today with the bill issued and paid: GST-exclusive service, bundled and
-  // independent medicine on one ipd Invoice.
+  // Left today with the bill issued and paid: a service priced before tax and two
+  // medicines at MRP on one ipd Invoice.
   issueToWard(leftToday, hoursAgo(100), [
     { name: "Paracetamol 500 mg", qty: 20, supply: "bundled" },
-    { name: "Pantoprazole 40 mg", qty: 15, supply: "independent" },
+    { name: "Pantoprazole 40 mg", qty: 15, supply: "bundled" },
   ]);
   postWardServices(leftToday, hoursAgo(30), [{ item: roomSupplementItem, qty: 3 }]);
   billAdmission(leftToday, hoursAgo(4));

@@ -1395,3 +1395,37 @@ to be confirmed by the owner.**
 **Rejected:** defaulting medicine to the Product's GST, which would tax exempt
 inpatient care mechanically, and a per-Admission running Invoice before
 supplemental-billing rules exist.
+
+**Confirmed and extended 2026-11-13 on the owner's instruction, by reference to
+comparable systems and the GST law; evidence:
+[CGST Act s.32](https://www.cggst.com/uploads/document/1753339153-section-32.pdf),
+advance rulings on inpatient medicine
+([taxmann](https://www.taxmann.com/post/blog/in-patient-medicine-supply-exempt-as-part-of-health-care-services-aar),
+[taxscan](https://www.taxscan.in/top-stories/supply-of-medicines-to-in-patients-by-pharmacy-amounts-to-composite-supply-exempt-from-gst-aar-1431642)),
+[ERPNext Inpatient Medication Entry](https://docs.frappe.io/erpnext/v13/user/manual/en/healthcare/inpatient_medication_entry),
+[ERPNext Inpatient ADT](https://docs.frappe.io/erpnext/v13/user/manual/en/healthcare/inpatient_adt),
+[Marley Health medication requests](https://marley.frappe.cloud/docs/v15/user/manual/en/healthcare/servicemedicationrequest)
+and [OpenMRS billing improvements 2026](https://openmrs.atlassian.net/wiki/spaces/projects/pages/751206405/Billing+Improvements+2026).**
+
+- **No GSTIN, no GST.** An unregistered person may not collect any amount by
+  way of tax (s.32(1)). An Organization without a GSTIN cannot issue an `ipd`
+  Invoice that adds GST on top of a price, and cannot issue an `independent`
+  inpatient medicine; the issue form offers the choice only to a GST-registered
+  hospital. OPD and counter Pharmacy keep D052's behaviour for now; aligning
+  them is owed, not decided here.
+- **Bundled by default stands.** Advance rulings treat medicines for admitted
+  patients as part of exempt composite healthcare while outpatient pharmacy
+  sales stay taxable. They bind only their applicant, so they are persuasive,
+  not general law.
+- **Issue first, bill later stands.** ERPNext's Inpatient Medication Entry
+  posts a Stock Entry on submission, and Marley bills unbilled prescriptions
+  from the Sales Invoice. No documented path from the Medication Entry itself to
+  an invoice was found, so our typed issue-line Charge is our own design.
+- **One Invoice per Admission stands until Slice 5.** It is this product's
+  choice under D056. ERPNext checks at discharge that services are invoiced; how
+  it handles several invoices per stay was not confirmed.
+- **Corrections come first in the next slice.** Credit Notes on `ipd` Invoices
+  stay refused in Slice 1, and no live hospital bills inpatients until a
+  correction path exists. Credit Notes for service lines on `ipd` Invoices are
+  built before medicine returns. OpenMRS plans refunds as an approved
+  cancel-paid-bill flow; the decision rests mainly on our own gap.

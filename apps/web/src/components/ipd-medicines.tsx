@@ -128,6 +128,8 @@ export function IssueMedicinesDialog({
   onClose: () => void;
 }) {
   const currency = useMembership(orgSlug, (membership) => membership.currency);
+  // Without a GSTIN every medicine is part of treatment, so the choice is not offered.
+  const gstRegistered = useMembership(orgSlug, (membership) => membership.gstRegistered);
   const [lines, setLines] = useState<IssueLine[]>([]);
   const [prescriberName, setPrescriberName] = useState("");
   const [attempted, setAttempted] = useState(false);
@@ -289,21 +291,25 @@ export function IssueMedicinesDialog({
                             }}
                           />
                         </label>
-                        <NativeSelect
-                          aria-label={`How ${line.productName} is supplied`}
-                          value={line.supply}
-                          onChange={(event) => {
-                            const supply = SUPPLIES.find(([value]) => value === event.target.value);
+                        {gstRegistered ? (
+                          <NativeSelect
+                            aria-label={`How ${line.productName} is supplied`}
+                            value={line.supply}
+                            onChange={(event) => {
+                              const supply = SUPPLIES.find(
+                                ([value]) => value === event.target.value,
+                              );
 
-                            if (supply) update(line.batchId, { supply: supply[0] });
-                          }}
-                        >
-                          {SUPPLIES.map(([value, label]) => (
-                            <option key={value} value={value}>
-                              {label}
-                            </option>
-                          ))}
-                        </NativeSelect>
+                              if (supply) update(line.batchId, { supply: supply[0] });
+                            }}
+                          >
+                            {SUPPLIES.map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </NativeSelect>
+                        ) : null}
                         <p className="col-span-2 text-right tabular-nums sm:col-span-1 sm:self-center">
                           {formatMoney(priced.lines[index]?.gross ?? ZERO, currency)}
                         </p>

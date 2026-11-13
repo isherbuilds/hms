@@ -50,6 +50,7 @@ export const memberRouter = {
         .select({
           timeZone: organizationSettings.timeZone,
           currency: organizationSettings.currency,
+          gstin: organizationSettings.gstin,
         })
         .from(organizationSettings)
         .where(eq(organizationSettings.orgId, orgId))
@@ -62,6 +63,8 @@ export const memberRouter = {
       organizations,
       timeZone: settings?.timeZone ?? SETTINGS_DEFAULTS.timeZone,
       currency: settings?.currency ?? SETTINGS_DEFAULTS.currency,
+      // Decides which GST choices the desk is offered (D052, D063).
+      gstRegistered: Boolean(settings?.gstin),
     };
   }),
 

@@ -56,11 +56,14 @@ admission, not sold at the counter.
 1. Open the Patient's admission and choose **Issue medicines**.
 2. Pick each medicine and batch, and the quantity in tablets, vials or other
    smallest units: the field names the unit, so a strip of 10 is 10, not 1.
-3. For each line choose how it is supplied:
+3. In a GST-registered hospital, choose how each line is supplied:
    - **Part of treatment (no GST)**: the usual choice. The medicine is part of
      the Patient's care and carries no GST.
    - **Sold separately (GST as on pack)**: only for something the Patient buys
      apart from their treatment. It carries the GST printed on the pack.
+
+   A hospital without a GSTIN is not asked: every medicine is part of treatment.
+
 4. Enter the prescribing doctor where the medicine needs one, then **Issue**.
 
 The stock leaves the shelf at once. Nothing is paid now: each line waits on the
@@ -80,6 +83,9 @@ For the billing desk.
    and expiry. For a GST-registered hospital the bill also shows **GST added**
    on services and **GST included in MRP** for medicines.
 4. **Issue invoice**, and take payment now or record why some is left to pay.
+
+A hospital without a GSTIN cannot add GST. If a service on the bill is set to
+charge GST, the invoice is refused: remove that line and add the service at 0%.
 
 A service added by mistake can be taken off before the bill is issued: on its
 line, **⋯ → Remove**, and give the reason. Issued medicines cannot be taken
