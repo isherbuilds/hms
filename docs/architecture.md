@@ -279,8 +279,9 @@ keeps its own locks (D040).
   then re-read balances in a new statement, because under READ COMMITTED only a
   statement that starts after the lock sees what committed while it waited.
 - **Lock order.** A transaction takes locks in this order and skips what it
-  does not need: Patient (only to admit) → OPD Appointment → Admission → Beds
-  (by `id`) → Treatment plan item → Treatment plan →
+  does not need: Patient (to admit or to change a bed reservation) → OPD
+  Appointment → Admission → Beds (by `id`) → Bed reservations (by `id`) →
+  Treatment plan item → Treatment plan →
   Charges → Invoice → Products (by `id`) → Stock batches (by `expiryDate`
   ascending, nulls last, then `id`) → Advance Receipts (by `createdAt`, `id`).
   Receipts and product updates both lock the Product before reading or
@@ -293,6 +294,17 @@ keeps its own locks (D040).
   Invoice. Goods receipts likewise lock batches before inserting priced lines.
   An admission locks the Patient before checking for an overlapping stay, then
   the bed; a transfer locks the Admission, then both beds by `id`.
+  Bed reservations (IPD Slice 2) lock after the Bed, so every writer that could
+  promise or occupy a bed serializes on that Bed row. Confirming or rescheduling a
+  reservation locks its Patient (found through the reservation in one statement;
+  a reservation never changes Patient), then the target bed, then the reservation
+  row and compares its `revision`; the overlap check needs no further lock.
+  Conversion is part of `admit`: Patient → bed → the reservation. A walk-in
+  admission, a transfer, a block and a deactivation lock the bed, then its
+  confirmed, unlapsed holds by `id`, and refuse, disrupt or (with `ipd:correct`
+  and a reason) displace them in the same transaction. Cancellation is one
+  conditional update. Expiry is derived from `holdUntil` at read, so no job locks
+  anything; a Patient lock is never taken after a Bed lock.
   Every change to an Admission's Charge set locks the Admission first
   (`lockAdmissionCharges`) and bumps its `chargeRevision`. An inpatient issue,
   posting services and issuing the bill also compare the caller's expected
