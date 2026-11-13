@@ -344,10 +344,11 @@ export async function issueInvoiceTx(
 
   // An unregistered person may not collect tax (CGST Act s.32(1), D063). The inpatient
   // stream starts with the rule; OPD and counter Pharmacy keep D052's behaviour for now.
-  if (!settings.gstin && parent.stream === "ipd" && computed.addedTaxTotal > 0n) {
+  // Any GST counts, including GST inside the MRP of a medicine issued while registered.
+  if (!settings.gstin && parent.stream === "ipd" && computed.taxTotal > 0n) {
     throw new ORPCError("BAD_REQUEST", {
       message:
-        "This hospital has no GSTIN, so it cannot add GST. Set the service to 0% GST, then remove it from the bill and add it again",
+        "This hospital has no GSTIN, so this bill cannot carry GST. Remove the taxed service and add it at 0% GST, or enter the GSTIN in Settings",
     });
   }
 

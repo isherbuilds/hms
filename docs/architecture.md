@@ -294,7 +294,10 @@ keeps its own locks (D040).
   An admission locks the Patient before checking for an overlapping stay, then
   the bed; a transfer locks the Admission, then both beds by `id`.
   Every change to an Admission's Charge set locks the Admission first
-  (`lockAdmissionCharges`) and compares its `chargeRevision`. An inpatient issue
+  (`lockAdmissionCharges`) and bumps its `chargeRevision`. An inpatient issue,
+  posting services and issuing the bill also compare the caller's expected
+  revision and refuse a stale one; `billing.voidCharge` only bumps it, so a void
+  makes any open bill stale without itself checking a revision. An inpatient issue
   then locks Products and batches exactly as a sale does; posting services locks
   nothing else; the bill locks the pending Charges, then takes the invoice and
   receipt counters. Cancellation keeps the lifecycle lock and refuses once a

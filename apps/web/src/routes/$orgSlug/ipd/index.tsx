@@ -20,7 +20,7 @@ import {
 } from "@/components/ipd-dialogs";
 import { ListState, PageBody, PageHeader, Panel } from "@/components/page";
 import { useCan } from "@/lib/membership";
-import { formatDate, useOrgDateTime } from "@/lib/org-datetime";
+import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
 
@@ -177,7 +177,7 @@ function BedTile({
           </span>
           <span className="truncate text-muted-foreground">
             <span className="font-mono">{admission.mrn}</span> · since{" "}
-            {formatDate(admission.admittedAt, timeZone)}
+            {formatDateTime(admission.admittedAt, timeZone)}
           </span>
         </Link>
       </li>
@@ -197,7 +197,7 @@ function BedTile({
             <Button
               className="mt-auto self-start"
               variant="outline"
-
+              aria-label={`Release bed ${bed.label}`}
               disabled={release.isPending}
               onClick={() =>
                 release.mutate({ orgSlug, bedId: bed.id, expectedBlockedAt: bed.blockedAt! })
@@ -209,7 +209,15 @@ function BedTile({
         </>
       ) : (
         <div className="mt-auto flex items-center justify-between gap-2">
-          {canAdmit ? <Button onClick={onAdmit}>Admit</Button> : <span />}
+          {!bed.rateSet ? (
+            <span className="text-muted-foreground">No rate set</span>
+          ) : canAdmit ? (
+            <Button aria-label={`Admit to bed ${bed.label}`} onClick={onAdmit}>
+              Admit
+            </Button>
+          ) : (
+            <span />
+          )}
           {canUpdate ? (
             <ClientOnly fallback={null}>
               <DropdownMenu>

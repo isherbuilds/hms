@@ -72,7 +72,10 @@ export const Route = createFileRoute("/$orgSlug/ipd/$admissionId")({
   component: AdmissionRoute,
 });
 
-type Dialog = "transfer" | "ready" | "discharge" | "undo" | "cancel" | null;
+type DialogKind = "transfer" | "ready" | "discharge" | "undo" | "cancel";
+
+// A dialog acts on the Admission as it was when it opened, never a newer refresh.
+type OpenDialog = { kind: DialogKind; admission: { id: string; revision: number } };
 
 function AdmissionRoute() {
   const { orgSlug, admissionId } = Route.useParams();
@@ -84,7 +87,7 @@ function AdmissionRoute() {
   const canReadIssues = useCan(orgSlug, { pharmacy: ["read"] });
   const canReadBill = useCan(orgSlug, { billing: ["read"] });
   const canWriteBill = useCan(orgSlug, { billing: ["write"] });
-  const [dialog, setDialog] = useState<Dialog>(null);
+  const [opened, setOpened] = useState<OpenDialog | null>(null);
   const issuing = Route.useSearch().issue === 1;
   const navigate = Route.useNavigate();
   const detail = useQuery(admissionQuery(orgSlug, admissionId));
@@ -112,8 +115,18 @@ function AdmissionRoute() {
   const { admission, patient, practitionerName, stays } = detail.data;
   const current = stays.find((stay) => stay.endedAt === null);
   const active = admission.status === "admitted" || admission.status === "discharge_ready";
-  const ref = { id: admission.id, revision: admission.revision };
-  const close = () => setDialog(null);
+
+  const open = (kind: DialogKind) =>
+    setOpened({ kind, admission: { id: admission.id, revision: admission.revision } });
+
+  const close = () => setOpened(null);
+  // A dialog belongs to the Admission it opened on: one left open while the page moved
+  // to another Admission is dropped rather than submitted against the old one.
+  const mine = opened?.admission.id === admission.id ? opened : null;
+  // Another screen changed the Admission: the open form no longer describes it.
+  const stale = mine !== null && mine.admission.revision !== admission.revision;
+  const dialog = stale ? null : mine?.kind;
+  const ref = mine?.admission;
 
   const setIssuing = (open: boolean) =>
     void navigate({ search: open ? { issue: 1 } : {}, replace: true });
@@ -130,13 +143,13 @@ function AdmissionRoute() {
         action={
           active && canUpdate ? (
             <>
-              <Button variant="outline" onClick={() => setDialog("transfer")}>
+              <Button variant="outline" onClick={() => open("transfer")}>
                 Move bed
               </Button>
               {admission.status === "admitted" ? (
-                <Button onClick={() => setDialog("ready")}>Ready to leave</Button>
+                <Button onClick={() => open("ready")}>Ready to leave</Button>
               ) : (
-                <Button onClick={() => setDialog("discharge")}>Record departure</Button>
+                <Button onClick={() => open("discharge")}>Record departure</Button>
               )}
               {admission.status === "discharge_ready" || canCorrect ? (
                 <ClientOnly fallback={null}>
@@ -149,12 +162,12 @@ function AdmissionRoute() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="min-w-44">
                       {admission.status === "discharge_ready" ? (
-                        <DropdownMenuItem onClick={() => setDialog("undo")}>
+                        <DropdownMenuItem onClick={() => open("undo")}>
                           Not leaving yet
                         </DropdownMenuItem>
                       ) : null}
                       {canCorrect ? (
-                        <DropdownMenuItem variant="destructive" onClick={() => setDialog("cancel")}>
+                        <DropdownMenuItem variant="destructive" onClick={() => open("cancel")}>
                           Cancel admission
                         </DropdownMenuItem>
                       ) : null}
@@ -169,6 +182,11 @@ function AdmissionRoute() {
       <IpdTabs orgSlug={orgSlug} />
 
       <PageBody width="max-w-4xl">
+        {stale ? (
+          <p role="status" className="text-muted-foreground">
+            This admission changed on another screen, so the form was closed.
+          </p>
+        ) : null}
         <Panel padded minHeight="">
           <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
             <Fact label="Patient">
@@ -285,7 +303,7 @@ function AdmissionRoute() {
         />
       ) : null}
 
-      {dialog === "transfer" ? (
+      {ref && dialog === "transfer" ? (
         <TransferDialog
           orgSlug={orgSlug}
           admission={ref}
@@ -293,16 +311,16 @@ function AdmissionRoute() {
           onClose={close}
         />
       ) : null}
-      {dialog === "ready" ? (
+      {ref && dialog === "ready" ? (
         <ReadyDialog orgSlug={orgSlug} admission={ref} onClose={close} />
       ) : null}
-      {dialog === "discharge" ? (
+      {ref && dialog === "discharge" ? (
         <DischargeDialog orgSlug={orgSlug} admission={ref} onClose={close} />
       ) : null}
-      {dialog === "undo" ? (
+      {ref && dialog === "undo" ? (
         <UndoReadyDialog orgSlug={orgSlug} admission={ref} onClose={close} />
       ) : null}
-      {dialog === "cancel" ? (
+      {ref && dialog === "cancel" ? (
         <CancelAdmissionDialog orgSlug={orgSlug} admission={ref} onClose={close} />
       ) : null}
     </>
@@ -313,7 +331,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 truncate">{children}</dd>
+      <dd className="min-w-0 break-words">{children}</dd>
     </div>
   );
 }

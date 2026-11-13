@@ -3,7 +3,9 @@
 import { expect, test } from "bun:test";
 
 import {
+  gstSummaryRows,
   invoiceDocumentTitle,
+  invoicePrintParticulars,
   invoiceTaxBreakdown,
   linePriceBasis,
 } from "../../apps/web/src/lib/invoice-print";
@@ -87,4 +89,51 @@ test("an exempt line names its basis without a GST claim; taxed lines add or inc
   expect(linePriceBasis(true, independentMedicine)).toEqual({ label: "MRP", suffix: "incl. GST" });
   expect(linePriceBasis(false, service)).toEqual({ label: "Rate", suffix: "" });
   expect(linePriceBasis(false, independentMedicine)).toEqual({ label: "MRP", suffix: "" });
+});
+
+test("an ipd Invoice prints GST columns only when registered and a line carries GST", () => {
+  const registered = { orgGstin: GSTIN, stream: "ipd" as const };
+
+  const cases = [
+    { invoice: registered, lines: [bundledMedicine], title: "Bill of Supply", taxed: false },
+    {
+      invoice: registered,
+      lines: [service, bundledMedicine],
+      title: "Invoice-cum-Bill of Supply",
+      taxed: true,
+    },
+    {
+      invoice: registered,
+      lines: [service, independentMedicine],
+      title: "Tax Invoice",
+      taxed: true,
+    },
+    {
+      invoice: { orgGstin: "", stream: "ipd" as const },
+      lines: [service, bundledMedicine],
+      title: "Invoice",
+      taxed: false,
+    },
+  ];
+
+  for (const { invoice, lines, title, taxed } of cases) {
+    expect(invoiceDocumentTitle(invoice, lines)).toBe(title);
+    expect(invoicePrintParticulars(invoice, lines).taxed).toBe(taxed);
+  }
+});
+
+test("the rate-wise GST summary of a mixed bill leaves out exempt lines; a counter bill keeps every rate", () => {
+  const exemptService = { ...service, taxRatePercent: "0.00", taxAmount: 0n };
+
+  expect(
+    gstSummaryRows([service, bundledMedicine, independentMedicine, exemptService], true),
+  ).toEqual([
+    { rate: "5.00", taxable: 6_000_00n, tax: 300_00n },
+    { rate: "12.00", taxable: 100_00n, tax: 12_00n },
+  ]);
+
+  expect(gstSummaryRows([bundledMedicine, independentMedicine, bundledMedicine], false)).toEqual([
+    { rate: "0.00", taxable: 448_00n, tax: 0n },
+    { rate: "12.00", taxable: 100_00n, tax: 12_00n },
+  ]);
 });

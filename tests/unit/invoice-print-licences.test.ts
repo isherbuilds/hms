@@ -4,9 +4,9 @@ import { invoicePrintParticulars } from "../../apps/web/src/lib/invoice-print";
 
 const GSTIN = "27ABCDE1234F1Z5";
 
-const service = { priceBasis: "exclusive" as const };
+const service = { priceBasis: "exclusive" as const, taxRatePercent: "5.00" };
 
-const medicine = { priceBasis: "inclusive" as const };
+const medicine = { priceBasis: "inclusive" as const, taxRatePercent: "0.00" };
 
 test("an ipd document prints drug licences only with a medicine line", () => {
   for (const orgGstin of [GSTIN, ""]) {

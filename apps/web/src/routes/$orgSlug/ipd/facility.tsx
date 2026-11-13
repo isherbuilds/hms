@@ -191,7 +191,11 @@ function FacilityRoute() {
                     head: "Use",
                     cell: (bed) =>
                       bed.active ? (
-                        "In use"
+                        bed.blockedAt ? (
+                          "Blocked"
+                        ) : (
+                          "In use"
+                        )
                       ) : (
                         <span className="text-muted-foreground">Retired</span>
                       ),

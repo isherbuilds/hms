@@ -78,7 +78,7 @@ export function AdmissionMedicines({
             {
               head: "Batch",
               cell: (row) => (
-                <span className="whitespace-nowrap">
+                <span className="md:whitespace-nowrap">
                   <span className="font-mono">{row.batchNumber}</span>
                   {row.expiryDate ? (
                     <span className="text-muted-foreground">
@@ -98,7 +98,7 @@ export function AdmissionMedicines({
             {
               head: "Issued",
               cell: (row) => (
-                <span className="whitespace-nowrap tabular-nums">
+                <span className="tabular-nums md:whitespace-nowrap">
                   {formatDateTime(row.issue.createdAt, timeZone)} · {row.issue.issuedByName}
                 </span>
               ),
