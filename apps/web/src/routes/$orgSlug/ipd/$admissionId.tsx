@@ -76,8 +76,10 @@ function AdmissionRoute() {
   const { admission, patient, practitionerName, stays } = detail.data;
   const current = stays.find((stay) => stay.endedAt === null);
   const active = admission.status === "admitted" || admission.status === "discharge_ready";
+
   const open = (kind: DialogKind) =>
     setOpened({ kind, admission: { id: admission.id, revision: admission.revision } });
+
   const close = () => setOpened(null);
   // Another screen changed the Admission: the open form no longer describes it.
   const stale = opened !== null && opened.admission.revision !== admission.revision;
