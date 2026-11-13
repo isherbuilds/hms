@@ -298,6 +298,52 @@ test("a bed without a current tariff cannot take an admission", async () => {
     }),
     "CONFLICT",
   );
+
+  // A rate that starts later does not price a bed taken now.
+  await api.ipd.setBedTariff({
+    orgSlug,
+    categoryId: unpriced.id,
+    catalogItemId: hospital.roomService.id,
+    dailyPrice: 900_00n,
+    effectiveFrom: new Date(Date.now() + 24 * HOUR),
+  });
+
+  expect((await boardBed(hospital, bed.id)).rateSet).toBe(false);
+  expect((await boardBed(hospital, hospital.beds[0].id)).rateSet).toBe(true);
+});
+
+test("facility setup and releasing a bed are audited after they commit", async () => {
+  const hospital = await createHospital("ipd-facility-audit");
+  const { api, orgSlug, ward, category, beds } = hospital;
+
+  const [wardEntry] = await auditEntries(hospital, "ipd.ward.create");
+  expect(wardEntry).toMatchObject({ target: `ward:${ward.id}`, meta: { name: "General" } });
+
+  const [categoryEntry] = await auditEntries(hospital, "ipd.bedCategory.create");
+  expect(categoryEntry).toMatchObject({
+    target: `bed_category:${category.id}`,
+    meta: { name: "General bed" },
+  });
+
+  const bedEntries = await auditEntries(hospital, "ipd.bed.create");
+  expect(bedEntries.map((entry) => entry.target).sort()).toEqual(
+    beds.map((bed) => `bed:${bed.id}`).sort(),
+  );
+  expect(bedEntries.find((entry) => entry.target === `bed:${beds[0].id}`)?.meta).toMatchObject({
+    label: "G-1",
+    wardId: ward.id,
+    categoryId: category.id,
+  });
+
+  const blocked = await api.ipd.blockBed({ orgSlug, bedId: beds[0].id, reason: "Deep clean" });
+  await api.ipd.releaseBed({ orgSlug, bedId: beds[0].id, expectedBlockedAt: blocked.blockedAt! });
+
+  const releases = await auditEntries(hospital, "ipd.bed.release");
+  expect(releases).toHaveLength(1);
+  expect(releases[0]).toMatchObject({
+    target: `bed:${beds[0].id}`,
+    meta: { blockedAt: blocked.blockedAt!.toISOString(), blockedReason: "Deep clean" },
+  });
 });
 
 test("an inactive or blocked bed refuses admission, and an occupied bed cannot be deactivated", async () => {
