@@ -1409,8 +1409,8 @@ and [OpenMRS billing improvements 2026](https://openmrs.atlassian.net/wiki/space
 
 - **No GSTIN, no GST.** An unregistered person may not collect any amount by
   way of tax (s.32(1)). An Organization without a GSTIN cannot issue an `ipd`
-  Invoice that adds GST on top of a price, and cannot issue an `independent`
-  inpatient medicine; the issue form offers the choice only to a GST-registered
+  Invoice that carries any GST, added on top or inside an MRP, and cannot issue
+  an `independent` inpatient medicine; the issue form offers the choice only to a GST-registered
   hospital. OPD and counter Pharmacy keep D052's behaviour for now; aligning
   them is owed, not decided here.
 - **Bundled by default stands.** Advance rulings treat medicines for admitted

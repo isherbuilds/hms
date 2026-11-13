@@ -311,7 +311,9 @@ function DataRow<T>({
         "flex min-h-10 min-w-0 flex-1 flex-col gap-1 px-3 py-2",
         <>
           <span className="flex min-w-0 items-center gap-2">
-            <span className={wrap ? "min-w-0 font-medium" : "min-w-0 truncate font-medium"}>
+            <span
+              className={wrap ? "min-w-0 font-medium break-words" : "min-w-0 truncate font-medium"}
+            >
               {name.cell(row)}
             </span>
             {titles.map((column, index) => (
@@ -321,7 +323,13 @@ function DataRow<T>({
             ))}
           </span>
           {meta.length > 0 && (
-            <span className={wrap ? "text-muted-foreground" : "truncate text-muted-foreground"}>
+            <span
+              className={
+                wrap
+                  ? "min-w-0 break-words text-muted-foreground"
+                  : "truncate text-muted-foreground"
+              }
+            >
               {meta.map((column, index) => (
                 <span key={index}>
                   {index > 0 && " · "}
