@@ -34,7 +34,8 @@ CREATE TABLE "admissions" (
 	CONSTRAINT "admissions_org_id_id_unique" UNIQUE("org_id","id"),
 	CONSTRAINT "admissions_ready_check" CHECK ("admissions"."status" <> 'discharge_ready' or "admissions"."ready_at" is not null),
 	CONSTRAINT "admissions_discharged_check" CHECK (("admissions"."status" = 'discharged') = ("admissions"."discharged_at" is not null)),
-	CONSTRAINT "admissions_cancelled_check" CHECK (("admissions"."status" = 'cancelled') = ("admissions"."cancelled_at" is not null and "admissions"."cancel_reason" is not null))
+	CONSTRAINT "admissions_cancelled_check" CHECK (("admissions"."status" = 'cancelled') = ("admissions"."cancelled_at" is not null and "admissions"."cancel_reason" is not null)),
+	CONSTRAINT "admissions_timeline_check" CHECK (("admissions"."ready_at" is null or "admissions"."ready_at" >= "admissions"."admitted_at") and ("admissions"."discharged_at" is null or "admissions"."discharged_at" >= coalesce("admissions"."ready_at", "admissions"."admitted_at")))
 );
 --> statement-breakpoint
 CREATE TABLE "bed_categories" (
@@ -106,7 +107,7 @@ CREATE UNIQUE INDEX "admission_bed_stays_org_admission_open_uq" ON "admission_be
 CREATE INDEX "admission_bed_stays_org_bed_started_idx" ON "admission_bed_stays" USING btree ("org_id","bed_id","started_at");--> statement-breakpoint
 CREATE INDEX "admission_bed_stays_org_admission_started_idx" ON "admission_bed_stays" USING btree ("org_id","admission_id","started_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "admissions_org_patient_active_uq" ON "admissions" USING btree ("org_id","patient_id") WHERE "admissions"."status" in ('admitted', 'discharge_ready');--> statement-breakpoint
-CREATE INDEX "admissions_org_status_id_idx" ON "admissions" USING btree ("org_id","status","id" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "admissions_org_status_admitted_idx" ON "admissions" USING btree ("org_id","status","admitted_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
 CREATE UNIQUE INDEX "bed_categories_org_name_uq" ON "bed_categories" USING btree ("org_id","name");--> statement-breakpoint
 CREATE INDEX "bed_tariffs_org_category_effective_idx" ON "bed_tariffs" USING btree ("org_id","category_id","effective_from" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
 CREATE UNIQUE INDEX "beds_org_ward_label_uq" ON "beds" USING btree ("org_id","ward_id","label");--> statement-breakpoint

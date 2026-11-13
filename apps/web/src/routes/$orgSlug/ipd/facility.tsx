@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { appHead } from "@/config/site";
 import { useConfirm } from "@/components/confirm-dialog";
 import { BedCategoryDialog, BedDialog, TariffDialog, WardDialog } from "@/components/ipd-dialogs";
-import { DataList, ListState, PageBody, PageHeader, Panel } from "@/components/page";
+import { DataList, ListState, LoadMore, PageBody, PageHeader, Panel } from "@/components/page";
 import { useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
@@ -246,6 +246,7 @@ function FacilityRoute() {
           orgSlug={orgSlug}
           category={open.tariffFor}
           services={serviceOptions}
+          servicesFooter={<LoadMore query={services} shown={serviceOptions.length} />}
           onClose={close}
         />
       ) : null}

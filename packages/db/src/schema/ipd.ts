@@ -133,6 +133,11 @@ export const ACTIVE_ADMISSION_STATUSES = [
   "discharge_ready",
 ] as const satisfies readonly AdmissionStatus[];
 
+export const ENDED_ADMISSION_STATUSES = [
+  "discharged",
+  "cancelled",
+] as const satisfies readonly AdmissionStatus[];
+
 // An inpatient stay with its own lifecycle (D013/D019): not an Encounter or Visit.
 export const admissions = pgTable(
   "admissions",
@@ -172,6 +177,10 @@ export const admissions = pgTable(
       "admissions_cancelled_check",
       sql`(${table.status} = 'cancelled') = (${table.cancelledAt} is not null and ${table.cancelReason} is not null)`,
     ),
+    check(
+      "admissions_timeline_check",
+      sql`(${table.readyAt} is null or ${table.readyAt} >= ${table.admittedAt}) and (${table.dischargedAt} is null or ${table.dischargedAt} >= coalesce(${table.readyAt}, ${table.admittedAt}))`,
+    ),
     unique("admissions_org_id_id_unique").on(table.orgId, table.id),
     foreignKey({
       columns: [table.orgId, table.patientId],
@@ -184,7 +193,12 @@ export const admissions = pgTable(
     uniqueIndex("admissions_org_patient_active_uq")
       .on(table.orgId, table.patientId)
       .where(sql`${table.status} in ('admitted', 'discharge_ready')`),
-    index("admissions_org_status_id_idx").on(table.orgId, table.status, table.id.desc()),
+    index("admissions_org_status_admitted_idx").on(
+      table.orgId,
+      table.status,
+      table.admittedAt.desc(),
+      table.id.desc(),
+    ),
   ],
 );
 

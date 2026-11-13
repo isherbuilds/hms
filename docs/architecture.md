@@ -269,7 +269,8 @@ keeps its own locks (D040).
   then re-read balances in a new statement, because under READ COMMITTED only a
   statement that starts after the lock sees what committed while it waited.
 - **Lock order.** A transaction takes locks in this order and skips what it
-  does not need: OPD Appointment → Treatment plan item → Treatment plan →
+  does not need: Patient (only to admit) → OPD Appointment → Admission → Beds
+  (by `id`) → Treatment plan item → Treatment plan →
   Charges → Invoice → Products (by `id`) → Stock batches (by `expiryDate`
   ascending, nulls last, then `id`) → Advance Receipts (by `createdAt`, `id`).
   Receipts and product updates both lock the Product before reading or
@@ -280,6 +281,8 @@ keeps its own locks (D040).
   counter. A return locks its existing Invoice first, then its batches before
   inserting return lines with batch FKs; sales never wait on that existing
   Invoice. Goods receipts likewise lock batches before inserting priced lines.
+  An admission locks the Patient before checking for an overlapping stay, then
+  the bed; a transfer locks the Admission, then both beds by `id`.
 - **Counters are locks.** A counter row stays locked until commit, which keeps a
   series gapless. One transaction takes series in the order token → invoice →
   receipt; every other command takes a single series.

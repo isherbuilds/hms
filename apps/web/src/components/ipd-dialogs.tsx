@@ -5,6 +5,7 @@ import { Badge } from "@hms/ui/components/badge";
 import { FormControl } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { z } from "zod";
 
 import { FormDialog } from "@/components/form-dialog";
@@ -442,11 +443,14 @@ export function TariffDialog({
   orgSlug,
   category,
   services,
+  servicesFooter,
   onClose,
 }: {
   orgSlug: string;
   category: { id: string; name: string };
   services: { id: string; name: string }[];
+  /** Loads the next page of services, so every one can be chosen. */
+  servicesFooter: ReactNode;
   onClose: () => void;
 }) {
   const { timeZone } = useOrgDateTime();
@@ -490,6 +494,7 @@ export function TariffDialog({
           </FormControl>
         )}
       />
+      {servicesFooter}
       <TextField
         name="dailyPrice"
         label="Daily rate"

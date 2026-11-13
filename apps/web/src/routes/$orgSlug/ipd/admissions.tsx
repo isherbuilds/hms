@@ -33,7 +33,7 @@ const STATE_LABELS: Record<AdmissionState, string> = {
 
 const admissionsQuery = (orgSlug: string, state: AdmissionState) =>
   orpc.ipd.list.infiniteOptions({
-    input: (cursor: string | undefined) => ({ orgSlug, state, cursor }),
+    input: (cursor: { admittedAt: Date; id: string } | undefined) => ({ orgSlug, state, cursor }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     placeholderData: keepPreviousData,

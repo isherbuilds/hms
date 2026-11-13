@@ -1,8 +1,8 @@
-import { authorize } from "@hms/auth/access";
 import { db } from "@hms/db";
 import { catalogItems } from "@hms/db/schema/catalog-items";
 import {
   ACTIVE_ADMISSION_STATUSES,
+  ENDED_ADMISSION_STATUSES,
   admissionBedStays,
   admissions,
   bedCategories,
@@ -14,13 +14,13 @@ import {
 import { patients } from "@hms/db/schema/patients";
 import { practitioners } from "@hms/db/schema/practitioners";
 import { ORPCError } from "@orpc/server";
-import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
 import { impossible } from "../lib/conflict";
 import { uniqueViolationConstraint } from "../lib/db-errors";
-import { orgInput, orgProcedure, type Scope } from "../lib/procedures/factory";
+import { orgInput, orgProcedure, requirePermission, type Scope } from "../lib/procedures/factory";
 import { money, pageLimit, reason, shortName } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
 
@@ -45,18 +45,7 @@ function effectiveTime(scope: Scope, requested: Date | undefined, why: string | 
   const backdated = now.getTime() - at.getTime() > BACKDATE_TOLERANCE_MS;
 
   if (backdated) {
-    if (!authorize(scope.roles, { ipd: ["correct"] })) {
-      audit({
-        action: "rbac.permission",
-        denied: true,
-        actorId: scope.userId,
-        orgId: scope.orgId,
-        meta: { roles: scope.roles, permission: { ipd: ["correct"] } },
-      });
-      throw new ORPCError("FORBIDDEN", {
-        message: "Only an administrator can record an earlier time.",
-      });
-    }
+    requirePermission(scope, { ipd: ["correct"] });
 
     if (!why) {
       throw new ORPCError("BAD_REQUEST", { message: "Give a reason for the earlier time." });
@@ -184,7 +173,7 @@ async function assertBedFree(
   }
 
   const [clash] = await tx
-    .select({ id: admissionBedStays.id })
+    .select({ endedAt: admissionBedStays.endedAt })
     .from(admissionBedStays)
     .innerJoin(
       admissions,
@@ -203,8 +192,15 @@ async function assertBedFree(
     )
     .limit(1);
 
+  if (clash?.endedAt === null) {
+    throw new ORPCError("CONFLICT", { message: "That bed is occupied." });
+  }
+
+  // A closed stay clashes only with a typed earlier time, which the operator corrects.
   if (clash) {
-    throw new ORPCError("CONFLICT", { message: "That bed is occupied for that time." });
+    throw new ORPCError("BAD_REQUEST", {
+      message: "Another Patient was in that bed at that time.",
+    });
   }
 }
 
@@ -288,14 +284,13 @@ const transitionInput = orgInput.extend({
 });
 
 const ADMISSION_STATES = {
-  current: ["admitted", "discharge_ready"],
-  past: ["discharged", "cancelled"],
+  current: ACTIVE_ADMISSION_STATUSES,
+  past: ENDED_ADMISSION_STATUSES,
 } as const;
 
 export const ipdRouter = {
   facility: orgProcedure({ ipd: ["read"] }, orgInput).handler(async ({ context }) => {
     const { orgId } = context.scope;
-    const now = new Date();
 
     const [wardRows, categoryRows, bedRows, tariffRows] = await Promise.all([
       db
@@ -322,7 +317,7 @@ export const ipdRouter = {
         .where(eq(beds.orgId, orgId))
         .orderBy(asc(beds.label)),
       db
-        .select({
+        .selectDistinctOn([bedTariffs.categoryId], {
           id: bedTariffs.id,
           categoryId: bedTariffs.categoryId,
           catalogItemId: bedTariffs.catalogItemId,
@@ -338,21 +333,18 @@ export const ipdRouter = {
             eq(catalogItems.id, bedTariffs.catalogItemId),
           ),
         )
-        .where(eq(bedTariffs.orgId, orgId))
-        .orderBy(desc(bedTariffs.effectiveFrom), desc(bedTariffs.id)),
+        .where(and(eq(bedTariffs.orgId, orgId), lte(bedTariffs.effectiveFrom, new Date())))
+        .orderBy(bedTariffs.categoryId, desc(bedTariffs.effectiveFrom), desc(bedTariffs.id)),
     ]);
+
+    const currentTariff = new Map(tariffRows.map((tariff) => [tariff.categoryId, tariff]));
 
     return {
       wards: wardRows,
-      categories: categoryRows.map((category) => {
-        const tariffs = tariffRows.filter((tariff) => tariff.categoryId === category.id);
-
-        return {
-          ...category,
-          currentTariff: tariffs.find((tariff) => tariff.effectiveFrom <= now) ?? null,
-          tariffs,
-        };
-      }),
+      categories: categoryRows.map((category) => ({
+        ...category,
+        currentTariff: currentTariff.get(category.id) ?? null,
+      })),
       beds: bedRows,
     };
   }),
@@ -570,29 +562,37 @@ export const ipdRouter = {
     return bed;
   }),
 
-  releaseBed: orgProcedure({ ipd: ["update"] }, orgInput.extend({ bedId: z.string() })).handler(
-    async ({ context, input }) => {
-      const { scope } = context;
+  // Names the block it lifts, so a stale screen cannot clear a newer one.
+  releaseBed: orgProcedure(
+    { ipd: ["update"] },
+    orgInput.extend({ bedId: z.string(), expectedBlockedAt: z.date() }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
 
-      return db.transaction(async (tx) => {
-        const locked = (await lockBeds(tx, scope.orgId, [input.bedId])).get(input.bedId);
+    return db.transaction(async (tx) => {
+      const locked = (await lockBeds(tx, scope.orgId, [input.bedId])).get(input.bedId);
 
-        if (!locked) {
-          throw new ORPCError("NOT_FOUND", { message: "That bed no longer exists." });
-        }
+      if (!locked) {
+        throw new ORPCError("NOT_FOUND", { message: "That bed no longer exists." });
+      }
 
-        await assertUnoccupied(tx, scope.orgId, input.bedId);
+      await assertUnoccupied(tx, scope.orgId, input.bedId);
 
-        const [updated] = await tx
-          .update(beds)
-          .set({ blockedAt: null, blockedReason: null, updatedAt: new Date() })
-          .where(and(eq(beds.orgId, scope.orgId), eq(beds.id, input.bedId)))
-          .returning();
+      if (locked.blockedAt?.getTime() !== input.expectedBlockedAt.getTime()) {
+        throw new ORPCError("CONFLICT", {
+          message: "This bed changed on another screen. Refresh and try again.",
+        });
+      }
 
-        return updated!;
-      });
-    },
-  ),
+      const [updated] = await tx
+        .update(beds)
+        .set({ blockedAt: null, blockedReason: null, updatedAt: new Date() })
+        .where(and(eq(beds.orgId, scope.orgId), eq(beds.id, input.bedId)))
+        .returning();
+
+      return updated!;
+    });
+  }),
 
   bedBoard: orgProcedure({ ipd: ["read"] }, orgInput).handler(async ({ context }) => {
     const { orgId } = context.scope;
@@ -609,7 +609,6 @@ export const ipdRouter = {
         admissionId: admissions.id,
         admissionStatus: admissions.status,
         admittedAt: admissions.admittedAt,
-        revision: admissions.revision,
         patientId: patients.id,
         patientName: patients.name,
         mrn: patients.mrn,
@@ -652,19 +651,18 @@ export const ipdRouter = {
 
     return {
       beds: rows.map((row) => {
-        const admission =
-          row.admissionId && row.admissionStatus && row.admittedAt && row.patientId
-            ? {
-                id: row.admissionId,
-                status: row.admissionStatus,
-                admittedAt: row.admittedAt,
-                revision: row.revision ?? 0,
-                patientId: row.patientId,
-                patientName: row.patientName ?? "",
-                mrn: row.mrn ?? "",
-                practitionerName: row.practitionerName ?? "",
-              }
-            : null;
+        // Foreign keys guarantee the rest of the chain once a stay is open.
+        const admission = row.admissionId
+          ? {
+              id: row.admissionId,
+              status: row.admissionStatus!,
+              admittedAt: row.admittedAt!,
+              patientId: row.patientId!,
+              patientName: row.patientName!,
+              mrn: row.mrn!,
+              practitionerName: row.practitionerName!,
+            }
+          : null;
 
         return {
           id: row.id,
@@ -677,6 +675,7 @@ export const ipdRouter = {
             : row.blockedAt
               ? ("blocked" as const)
               : ("available" as const),
+          blockedAt: row.blockedAt,
           blockedReason: row.blockedReason,
           admission,
         };
@@ -688,8 +687,8 @@ export const ipdRouter = {
     { ipd: ["read"] },
     orgInput.extend({
       state: z.enum(["current", "past", "all"]).default("current"),
-      // Admission ids are UUIDv7, so the id alone is a chronological keyset.
-      cursor: z.string().optional(),
+      // Newest admission time first; backdated entries sort by when care began.
+      cursor: z.object({ admittedAt: z.date(), id: z.string() }).optional(),
       limit: pageLimit,
     }),
   ).handler(async ({ context, input }) => {
@@ -740,10 +739,12 @@ export const ipdRouter = {
           input.state === "all"
             ? undefined
             : inArray(admissions.status, ADMISSION_STATES[input.state]),
-          input.cursor ? lt(admissions.id, input.cursor) : undefined,
+          input.cursor
+            ? sql`(${admissions.admittedAt}, ${admissions.id}) < (${input.cursor.admittedAt}, ${input.cursor.id})`
+            : undefined,
         ),
       )
-      .orderBy(desc(admissions.id))
+      .orderBy(desc(admissions.admittedAt), desc(admissions.id))
       .limit(input.limit + 1);
 
     const hasNextPage = items.length > input.limit;
@@ -752,67 +753,80 @@ export const ipdRouter = {
       items.pop();
     }
 
-    return { items, nextCursor: hasNextPage ? (items.at(-1)?.id ?? null) : null };
+    const last = items.at(-1);
+
+    return {
+      items,
+      nextCursor: hasNextPage && last ? { admittedAt: last.admittedAt, id: last.id } : null,
+    };
   }),
 
   get: orgProcedure({ ipd: ["read"] }, orgInput.extend({ admissionId: z.string() })).handler(
     async ({ context, input }) => {
       const { orgId } = context.scope;
 
-      const [row] = await db
-        .select({
-          ...admissionSelection,
-          patientName: patients.name,
-          mrn: patients.mrn,
-          practitionerName: practitioners.name,
-        })
-        .from(admissions)
-        .innerJoin(
-          patients,
-          and(eq(patients.orgId, admissions.orgId), eq(patients.id, admissions.patientId)),
-        )
-        .innerJoin(
-          practitioners,
-          and(
-            eq(practitioners.orgId, admissions.orgId),
-            eq(practitioners.id, admissions.practitionerId),
-          ),
-        )
-        .where(and(eq(admissions.orgId, orgId), eq(admissions.id, input.admissionId)))
-        .limit(1);
+      // One snapshot, so a concurrent move or departure cannot split admission and beds.
+      return db.transaction(
+        async (tx) => {
+          const [row] = await tx
+            .select({
+              ...admissionSelection,
+              patientName: patients.name,
+              mrn: patients.mrn,
+              practitionerName: practitioners.name,
+            })
+            .from(admissions)
+            .innerJoin(
+              patients,
+              and(eq(patients.orgId, admissions.orgId), eq(patients.id, admissions.patientId)),
+            )
+            .innerJoin(
+              practitioners,
+              and(
+                eq(practitioners.orgId, admissions.orgId),
+                eq(practitioners.id, admissions.practitionerId),
+              ),
+            )
+            .where(and(eq(admissions.orgId, orgId), eq(admissions.id, input.admissionId)))
+            .limit(1);
 
-      if (!row) {
-        throw new ORPCError("NOT_FOUND", { message: "That admission does not exist." });
-      }
+          if (!row) {
+            throw new ORPCError("NOT_FOUND", { message: "That admission does not exist." });
+          }
 
-      const stays = await db
-        .select({
-          id: admissionBedStays.id,
-          bedId: admissionBedStays.bedId,
-          bedLabel: beds.label,
-          wardName: wards.name,
-          dailyPrice: admissionBedStays.dailyPrice,
-          startedAt: admissionBedStays.startedAt,
-          endedAt: admissionBedStays.endedAt,
-        })
-        .from(admissionBedStays)
-        .innerJoin(
-          beds,
-          and(eq(beds.orgId, admissionBedStays.orgId), eq(beds.id, admissionBedStays.bedId)),
-        )
-        .innerJoin(wards, and(eq(wards.orgId, beds.orgId), eq(wards.id, beds.wardId)))
-        .where(and(eq(admissionBedStays.orgId, orgId), eq(admissionBedStays.admissionId, row.id)))
-        .orderBy(asc(admissionBedStays.startedAt), asc(admissionBedStays.id));
+          const stays = await tx
+            .select({
+              id: admissionBedStays.id,
+              bedId: admissionBedStays.bedId,
+              bedLabel: beds.label,
+              wardName: wards.name,
+              dailyPrice: admissionBedStays.dailyPrice,
+              startedAt: admissionBedStays.startedAt,
+              endedAt: admissionBedStays.endedAt,
+            })
+            .from(admissionBedStays)
+            .innerJoin(
+              beds,
+              and(eq(beds.orgId, admissionBedStays.orgId), eq(beds.id, admissionBedStays.bedId)),
+            )
+            .innerJoin(wards, and(eq(wards.orgId, beds.orgId), eq(wards.id, beds.wardId)))
+            .where(
+              and(eq(admissionBedStays.orgId, orgId), eq(admissionBedStays.admissionId, row.id)),
+            )
+            .orderBy(asc(admissionBedStays.startedAt), asc(admissionBedStays.id));
 
-      const { patientName, mrn, practitionerName, ...admission } = row;
-      const current = stays.find((stay) => stay.endedAt === null);
+          const { patientName, mrn, practitionerName, ...admission } = row;
+          const current = stays.find((stay) => stay.endedAt === null);
 
-      return {
-        admission: admissionView(admission, current?.bedId ?? null),
-        patient: { id: admission.patientId, name: patientName, mrn },
-        practitionerName,
-        stays,
-      };
+          return {
+            admission: admissionView(admission, current?.bedId ?? null),
+            patient: { id: admission.patientId, name: patientName, mrn },
+            practitionerName,
+            stays,
+          };
+        },
+        { isolationLevel: "repeatable read", accessMode: "read only" },
+      );
     },
   ),
 
@@ -854,19 +868,29 @@ export const ipdRouter = {
           "That Patient no longer exists.",
         );
 
-        const [active] = await tx
-          .select({ id: admissions.id })
+        // One stay per Patient at a time, including a backdated one against a past stay.
+        const [overlap] = await tx
+          .select({ status: admissions.status })
           .from(admissions)
           .where(
             and(
               eq(admissions.orgId, scope.orgId),
               eq(admissions.patientId, input.patientId),
-              inArray(admissions.status, ACTIVE_ADMISSION_STATUSES),
+              or(
+                inArray(admissions.status, ACTIVE_ADMISSION_STATUSES),
+                gt(admissions.dischargedAt, effective.at),
+              ),
             ),
           )
           .limit(1);
 
-        if (active) {
+        if (overlap?.status === "discharged") {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "This Patient was still in hospital at that time.",
+          });
+        }
+
+        if (overlap) {
           throw new ORPCError("CONFLICT", { message: "This Patient is already admitted." });
         }
 
@@ -987,11 +1011,8 @@ export const ipdRouter = {
       const row = await lockAdmission(tx, scope.orgId, input.admissionId, input.expectedRevision);
       requireStatus(row, ["admitted"], "Only an admitted Patient can be made ready for discharge.");
 
-      if (effective.at.getTime() < row.admittedAt.getTime()) {
-        throw new ORPCError("BAD_REQUEST", { message: "That time is before the admission." });
-      }
-
       const stay = await openStay(tx, scope.orgId, row.id);
+      requireNotBeforeStay(effective.at, stay);
 
       const [updated] = await tx
         .update(admissions)
@@ -1060,6 +1081,13 @@ export const ipdRouter = {
 
         const stay = await openStay(tx, scope.orgId, row.id);
         requireNotBeforeStay(effective.at, stay);
+
+        if (row.readyAt && effective.at.getTime() < row.readyAt.getTime()) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "That time is before the Patient was ready to leave.",
+          });
+        }
+
         await lockBeds(tx, scope.orgId, [stay.bedId]);
 
         await tx

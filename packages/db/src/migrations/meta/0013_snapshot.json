@@ -1,5 +1,5 @@
 {
-  "id": "6881982d-e9fa-4c2f-970a-11a92fe26abd",
+  "id": "12d0ac94-09d7-4d01-bc9c-df69cc25fd36",
   "prevId": "1a391cae-a25a-4ea7-95d9-ff8587d2d35f",
   "version": "7",
   "dialect": "postgresql",
@@ -7883,8 +7883,8 @@
           "method": "btree",
           "with": {}
         },
-        "admissions_org_status_id_idx": {
-          "name": "admissions_org_status_id_idx",
+        "admissions_org_status_admitted_idx": {
+          "name": "admissions_org_status_admitted_idx",
           "columns": [
             {
               "expression": "org_id",
@@ -7896,6 +7896,12 @@
               "expression": "status",
               "isExpression": false,
               "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "admitted_at",
+              "isExpression": false,
+              "asc": false,
               "nulls": "last"
             },
             {
@@ -7993,6 +7999,10 @@
         "admissions_cancelled_check": {
           "name": "admissions_cancelled_check",
           "value": "(\"admissions\".\"status\" = 'cancelled') = (\"admissions\".\"cancelled_at\" is not null and \"admissions\".\"cancel_reason\" is not null)"
+        },
+        "admissions_timeline_check": {
+          "name": "admissions_timeline_check",
+          "value": "(\"admissions\".\"ready_at\" is null or \"admissions\".\"ready_at\" >= \"admissions\".\"admitted_at\") and (\"admissions\".\"discharged_at\" is null or \"admissions\".\"discharged_at\" >= coalesce(\"admissions\".\"ready_at\", \"admissions\".\"admitted_at\"))"
         }
       },
       "isRLSEnabled": false

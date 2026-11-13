@@ -199,7 +199,9 @@ function BedTile({
               variant="outline"
 
               disabled={release.isPending}
-              onClick={() => release.mutate({ orgSlug, bedId: bed.id })}
+              onClick={() =>
+                release.mutate({ orgSlug, bedId: bed.id, expectedBlockedAt: bed.blockedAt! })
+              }
             >
               Release bed
             </Button>
