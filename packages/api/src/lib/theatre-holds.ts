@@ -11,6 +11,7 @@ import { ORPCError } from "@orpc/server";
 import { and, asc, eq, gt, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 
 import { conflict, impossible } from "./conflict";
+import { practitionerDisplayName } from "./labels";
 import { buffered, bufferedEndAt, bufferedStartAt } from "./theatre-cases";
 
 // Lock order (D040): theatre rooms by id → equipment units by id → Practitioner →
@@ -260,8 +261,15 @@ export async function assertHoldable(
 
   // The consultant is needed for the planned interval only, not the room turnover.
   const [consultantClash] = await tx
-    .select({ id: surgicalCases.id })
+    .select({ name: practitioners.name })
     .from(surgicalCases)
+    .innerJoin(
+      practitioners,
+      and(
+        eq(practitioners.orgId, surgicalCases.orgId),
+        eq(practitioners.id, surgicalCases.practitionerId),
+      ),
+    )
     .where(
       and(
         eq(surgicalCases.orgId, orgId),
@@ -274,7 +282,9 @@ export async function assertHoldable(
     )
     .limit(1);
 
-  if (consultantClash) throw clash("The consultant has another case at that time.");
+  if (consultantClash) {
+    throw clash(`${practitionerDisplayName(consultantClash.name)} has another case at that time.`);
+  }
 }
 
 // One room or unit, locked in its place in the order; NOT_FOUND outside scope.

@@ -9,6 +9,7 @@ import {
 } from "@hms/ui/components/dialog";
 import { Form } from "@hms/ui/components/form";
 import { SubmitButton } from "@hms/ui/components/submit-button";
+import { cn } from "@hms/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 import { ClientOnly } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
@@ -75,7 +76,10 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   return (
     <ClientOnly fallback={null}>
       <Dialog open onOpenChange={(open) => (open || submit.isPending ? undefined : onClose())}>
-        <DialogContent className={contentClassName}>
+        {/* A tall form scrolls inside the screen, so Close and Save stay reachable on a phone. */}
+        <DialogContent
+          className={cn("max-h-[calc(100svh-2rem)] overflow-y-auto", contentClassName)}
+        >
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription>{description}</DialogDescription>
