@@ -661,6 +661,15 @@ const GUARDED_CALLS = {
     }),
   "pharmacy.getSale": (api, claim) => api.pharmacy.getSale({ ...claim, saleId: "missing" }),
   "pharmacy.listSales": (api, claim) => api.pharmacy.listSales({ ...claim }),
+  "pharmacy.issueToAdmission": (api, claim) =>
+    api.pharmacy.issueToAdmission({
+      ...claim,
+      admissionId: "missing",
+      expectedChargeRevision: 0,
+      lines: [{ batchId: "missing", qty: 1 }],
+    }),
+  "pharmacy.listAdmissionIssues": (api, claim) =>
+    api.pharmacy.listAdmissionIssues({ ...claim, admissionId: "missing" }),
   "ipd.facility": (api, claim) => api.ipd.facility({ ...claim }),
   "ipd.createWard": (api, claim) => api.ipd.createWard({ ...claim, name: "Intrusion" }),
   "ipd.createBedCategory": (api, claim) =>
@@ -705,6 +714,24 @@ const GUARDED_CALLS = {
     api.ipd.discharge({ ...claim, admissionId: "missing", expectedRevision: 0 }),
   "ipd.cancel": (api, claim) =>
     api.ipd.cancel({ ...claim, admissionId: "missing", expectedRevision: 0, reason: "x" }),
+  "ipd.postServices": (api, claim) =>
+    api.ipd.postServices({
+      ...claim,
+      admissionId: "missing",
+      expectedChargeRevision: 0,
+      lines: [{ catalogItemId: "missing", qty: 1 }],
+    }),
+  "ipd.previewInvoice": (api, claim) =>
+    api.ipd.previewInvoice({ ...claim, admissionId: "missing" }),
+  "ipd.issueInvoice": (api, claim) =>
+    api.ipd.issueInvoice({
+      ...claim,
+      admissionId: "missing",
+      expectedChargeRevision: 0,
+      expectedGrandTotal: 0n,
+      payments: [],
+      outstandingReason: "Guarded-call tenant probe",
+    }),
 } satisfies Record<string, (api: AppRouterClient, claim: OrgClaim) => Promise<object | void>>;
 
 // SAFETY: deliberately empty claim, typed only to reach the procedure signatures.
