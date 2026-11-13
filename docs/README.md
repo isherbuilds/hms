@@ -240,8 +240,12 @@ the bed board, admit, transfer, ready to leave, departure, cancellation, bed
 block and release, and audited backdating under `ipd:correct`. Integration tests
 cover concurrency, tenancy and grants. No Admission Charges, bed-day billing,
 inpatient pharmacy or settlement exist yet; Slices 1 and 3–6 stay gated on a
-paying hospital and named owner. Still owed: a receptionist walkthrough on
-desktop/mobile light/dark and a two-terminal conflict check in the browser.
+paying hospital and named owner. On 2026-11-13 a production build passed on the
+seeded demo org: reception admitted, moved, marked ready and recorded departure
+on desktop light; the board and an admission fit a 390px phone in dark; an
+administrator added a bed, and retiring an occupied bed was refused. Still owed:
+a two-terminal conflict check and a stale **Release bed** in the browser, and
+desktop dark and phone light.
 
 ### [Cashless claims](./specs/cashless-claims.md)
 
