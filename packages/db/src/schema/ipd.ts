@@ -19,7 +19,7 @@ import { patients } from "./patients";
 import { practitioners } from "./practitioners";
 import { stockBatches } from "./stock-batches";
 
-// Facility masters deactivate rather than disappear: stays keep pointing at them.
+// Facility masters are never deleted, so stays keep pointing at them; only beds retire.
 export const wards = pgTable(
   "wards",
   {

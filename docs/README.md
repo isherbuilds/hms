@@ -234,8 +234,10 @@ authorised sample export from an unrelated hospital and its approvers.
 
 ### [IPD admission to discharge](./specs/ipd-admission-to-discharge.md)
 
-**Verification.** On 2026-11-13 the owner lifted the IPD/ADT gate for Slice 2
-first, then for Slice 1 the same day. Slice 2 built wards, bed types with
+**Verification.** On 2026-11-13 the owner lifted the IPD/ADT build gate for
+Slice 2 first, then for Slice 1 the same day
+([D056](./decisions.md#d056--calendar-checkout-segmented-occupancy-and-an-ipd-financial-desk)).
+Slice 2 built wards, bed types with
 effective-dated daily rates, beds, the bed board, admit, transfer, ready to
 leave, departure, cancellation, bed block and release, and audited backdating
 under `ipd:correct`. A production build passed on the seeded demo org: reception

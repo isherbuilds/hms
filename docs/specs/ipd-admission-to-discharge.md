@@ -1,6 +1,6 @@
 # Spec: IPD admission to discharge
 
-Status: active — design accepted in D056; Slices 1 and 2 built on the owner's instruction (2026-11-13); Slices 3–6 remain market-gated
+Status: active — design accepted in D056. The owner lifted the build gate for Slices 1 and 2 on 2026-11-13 (D056); Slices 3–6 and release to a hospital remain market-gated
 Authority: Founder request for implementation-ready next-build options, evaluated only on hospital desire and moat; October 2026.
 Supersedes: none
 
