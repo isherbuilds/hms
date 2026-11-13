@@ -325,7 +325,15 @@ Bed reservations are built (D064; see
 schedule (delivery slice 1) is built (D065) with `tests/integration/theatre.test.ts`
 and its rows in the tenancy table; the demo seed has rooms, units, blocks and cases.
 
-Theatre browser verification: pending
+On 2026-11-13 a browser pass (GPT 6.1 Sol) on a production build covered the
+theatre schedule: the day view, booking and confirming, refusals for a taken
+room, unit and consultant, changing and cancelling, linking an admission, rooms,
+equipment, blocks and the reasoned override, two terminals, roles without
+access, and that booking added no charge. Late-evening times showed on the right
+day and no page errors were reported. It found the booking dialog unreachable on
+a 390px phone and a consultant refusal that did not name the consultant; both
+are fixed and not yet seen again in a browser, as are the review fixes made
+after the pass. Keyboard-only booking could not be driven and is still owed.
 
 Still owed: delivery slice 2 (changes and actual use) and slice 3 (safety handoff
 and delivered billing), and the spec's missing contracts table. Clinical release
