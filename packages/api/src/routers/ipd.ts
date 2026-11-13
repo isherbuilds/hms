@@ -440,18 +440,46 @@ export const ipdRouter = {
 
     const id = Bun.randomUUIDv7();
 
-    const [tariff] = await db
-      .insert(bedTariffs)
-      .values({
-        id,
-        orgId: scope.orgId,
-        categoryId: input.categoryId,
-        catalogItemId: input.catalogItemId,
-        dailyPrice: input.dailyPrice,
-        effectiveFrom: input.effectiveFrom,
-        createdBy: scope.userId,
-      })
-      .returning();
+    const [tariff] = await db.transaction(async (tx) => {
+      // The category lock serialises its rate writers, so two rates cannot start at one
+      // instant and leave the rate in force to an id tiebreak.
+      await tx
+        .select({ id: bedCategories.id })
+        .from(bedCategories)
+        .where(and(eq(bedCategories.orgId, scope.orgId), eq(bedCategories.id, input.categoryId)))
+        .for("update");
+
+      const [sameInstant] = await tx
+        .select({ id: bedTariffs.id })
+        .from(bedTariffs)
+        .where(
+          and(
+            eq(bedTariffs.orgId, scope.orgId),
+            eq(bedTariffs.categoryId, input.categoryId),
+            eq(bedTariffs.effectiveFrom, input.effectiveFrom),
+          ),
+        )
+        .limit(1);
+
+      if (sameInstant) {
+        throw new ORPCError("CONFLICT", {
+          message: "A rate starting at that time already exists.",
+        });
+      }
+
+      return tx
+        .insert(bedTariffs)
+        .values({
+          id,
+          orgId: scope.orgId,
+          categoryId: input.categoryId,
+          catalogItemId: input.catalogItemId,
+          dailyPrice: input.dailyPrice,
+          effectiveFrom: input.effectiveFrom,
+          createdBy: scope.userId,
+        })
+        .returning();
+    });
 
     audit({
       action: "ipd.tariff.set",
