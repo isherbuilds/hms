@@ -58,13 +58,14 @@ export function invoiceTaxBreakdown(lines: TaxedLine[]) {
 /**
  * `licences`: print the drug licences, which an ipd document carries only with a
  * medicine (MRP) line; a document without lines at hand (a receipt) passes none.
- * `taxed`: print taxable value, rate and tax per line and the CGST/SGST summary.
+ * `taxed`: print taxable value, rate and tax per line and the CGST/SGST summary; an ipd
+ * document is taxed only when a line carries GST, so an all-exempt one prints as a Bill of Supply.
  * `mixedLines`: lines may differ in price basis and exemption, so each line names its
  * basis, 0% prints as Exempt, and the totals separate taxable, exempt, added and MRP GST.
  */
 export function invoicePrintParticulars(
   invoice: PrintedInvoice,
-  lines: ReadonlyArray<{ priceBasis: PriceBasis }>,
+  lines: ReadonlyArray<RatedLine & { priceBasis: PriceBasis }>,
 ) {
   const registered = Boolean(invoice.orgGstin);
 
@@ -81,7 +82,7 @@ export function invoicePrintParticulars(
     case "ipd":
       return {
         licences: lines.some((line) => line.priceBasis === "inclusive"),
-        taxed: registered,
+        taxed: registered && !lines.every(isExempt),
         mixedLines: true,
         priceHeading: "Price",
       };

@@ -313,7 +313,7 @@ export function InvoiceDocument({
 }) {
   const currency = invoice.currency;
   const registered = Boolean(invoice.orgGstin);
-  // A registered OPD bill is exempt; registered pharmacy and ipd bills carry GST.
+  // A registered OPD bill is exempt; a registered ipd bill carries GST when a line does.
   const { taxed, mixedLines, priceHeading } = invoicePrintParticulars(invoice, lines);
   const title = invoiceDocumentTitle(invoice, lines);
 
