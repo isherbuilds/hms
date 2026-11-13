@@ -1,5 +1,7 @@
 import { getRouteApi } from "@tanstack/react-router";
 
+import { dateLabel, dayMonthLabel, dayParts } from "./business-date";
+
 export { formatBusinessDate } from "./business-date";
 
 const orgRoute = getRouteApi("/$orgSlug");
@@ -52,39 +54,72 @@ export function nextHalfHour(timeZone: string): string {
   return localInputValue(date, timeZone);
 }
 
-export function formatDateTime(value: string | Date, timeZone: string): string {
-  return formatter(`dateTime|${timeZone}`, "en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short",
+/**
+ * An instant's wall-clock numbers in the org zone. Only digits come from Intl; the
+ * words are assembled from constants (see business-date.ts) so server and browser agree.
+ */
+function zonedParts(value: string | Date, timeZone: string) {
+  const parts = formatter(`parts|${timeZone}`, "en-CA", {
     timeZone,
-  }).format(new Date(value));
-}
-
-export function formatDate(value: string | Date, timeZone: string): string {
-  return formatter(`date|${timeZone}`, "en-IN", {
-    dateStyle: "medium",
-    timeZone,
-  }).format(new Date(value));
-}
-
-export function formatTime(value: string | Date, timeZone: string): string {
-  return formatter(`time|${timeZone}`, "en-IN", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-    timeZone,
-  }).format(new Date(value));
+    hourCycle: "h23",
+  }).formatToParts(new Date(value));
+
+  const part = (type: Intl.DateTimeFormatPartTypes) => {
+    const found = parts.find((each) => each.type === type);
+
+    if (!found) throw new RangeError(`No ${type} in the formatted instant ${String(value)}`);
+
+    return Number(found.value);
+  };
+
+  return {
+    year: part("year"),
+    month: part("month"),
+    day: part("day"),
+    hour: part("hour"),
+    minute: part("minute"),
+  };
+}
+
+function dateOf(parts: ReturnType<typeof zonedParts>): string {
+  return dateLabel(parts.year, parts.month, parts.day);
+}
+
+// en-IN's 12-hour clock: `12:00 am` at midnight, `12:00 pm` at noon, no leading zero.
+function timeOf({ hour, minute }: ReturnType<typeof zonedParts>): string {
+  return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${hour < 12 ? "am" : "pm"}`;
+}
+
+/** `13 Nov 2026, 2:59 am` */
+export function formatDateTime(value: string | Date, timeZone: string): string {
+  const parts = zonedParts(value, timeZone);
+
+  return `${dateOf(parts)}, ${timeOf(parts)}`;
+}
+
+/** `13 Nov 2026` */
+export function formatDate(value: string | Date, timeZone: string): string {
+  return dateOf(zonedParts(value, timeZone));
+}
+
+/** `2:59 am` */
+export function formatTime(value: string | Date, timeZone: string): string {
+  return timeOf(zonedParts(value, timeZone));
 }
 
 /**
- * Pinned to UTC: the input names a day, not a moment, so formatting it in the org
- * zone would shift a midnight anchor onto the neighbouring date.
+ * `4 Sept`. The input names a day, not a moment, so it is read as written rather than
+ * placed in the org zone, which would shift it onto the neighbouring date.
  */
 export function formatDay(day: string): string {
-  return formatter("day|UTC", "en-IN", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  }).format(new Date(`${day}T00:00:00Z`));
+  const parts = dayParts(day);
+
+  return dayMonthLabel(parts.month, parts.day);
 }
 
 // `en-CA` is the shortest way to get `YYYY-MM-DD` out of Intl.
