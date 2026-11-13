@@ -12,6 +12,7 @@ export function FinancialSummary({
   discountRow?: ReactNode;
 }) {
   const { currency, addedTaxTotal } = quote;
+  const claimsGst = quote.registered !== false;
 
   return (
     <dl className="grid gap-2 group-aria-busy/quote:opacity-50">
@@ -33,7 +34,7 @@ export function FinancialSummary({
         </div>
       ) : addedTaxTotal === ZERO ? null : (
         <div className="flex justify-between">
-          <dt className="text-muted-foreground">GST added</dt>
+          <dt className="text-muted-foreground">{claimsGst ? "GST added" : "Tax"}</dt>
           <dd className="tabular-nums">{formatMoney(addedTaxTotal, currency)}</dd>
         </div>
       )}
@@ -49,7 +50,7 @@ export function FinancialSummary({
         <dd className="tabular-nums">{formatMoney(quote.grandTotal, currency)}</dd>
       </div>
       {/* Already inside the MRP lines, so it reads after the total it does not add to. */}
-      {addedTaxTotal === undefined || quote.taxTotal === addedTaxTotal ? null : (
+      {addedTaxTotal === undefined || !claimsGst || quote.taxTotal === addedTaxTotal ? null : (
         <div className="flex justify-between text-muted-foreground">
           <dt>GST included in MRP</dt>
           <dd className="tabular-nums">{formatMoney(quote.taxTotal - addedTaxTotal, currency)}</dd>

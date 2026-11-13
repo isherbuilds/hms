@@ -1,4 +1,5 @@
 import { formatDecimal, parseDecimal } from "@hms/api/core/money";
+import { admissionIssueDescription } from "@hms/api/lib/admission-charges";
 import { businessDate } from "@hms/api/lib/business-date";
 import {
   computeInvoiceLines,
@@ -1887,7 +1888,11 @@ function issueToWard(
       admissionKind: "pharmacy_issue",
       admissionIssueLineId: lineId,
       catalogItemId: null,
-      description: `${product.name} · batch ${batch.batchNumber}`,
+      description: admissionIssueDescription({
+        name: product.name,
+        batchNumber: batch.batchNumber!,
+        expiryDate: batch.expiryDate ?? null,
+      }),
       unitPrice: batch.mrp!,
       priceUnits: batch.mrpUnits,
       taxRatePercent: line.supply === "independent" ? spec.gst : "0.00",

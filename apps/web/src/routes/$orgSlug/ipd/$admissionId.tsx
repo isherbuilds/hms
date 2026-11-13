@@ -14,7 +14,7 @@ import { useState } from "react";
 import { z } from "zod";
 
 import { appHead } from "@/config/site";
-import { AdmissionBill, admissionBillQuery } from "@/components/ipd-bill";
+import { AdmissionBill, admissionBillQuery, issuedInvoiceQuery } from "@/components/ipd-bill";
 import {
   AdmissionStatusBadge,
   CancelAdmissionDialog,
@@ -57,8 +57,15 @@ export const Route = createFileRoute("/$orgSlug/ipd/$admissionId")({
       authorize(roles, { pharmacy: ["read"] })
         ? queryClient.query(admissionIssuesQuery(orgSlug, admissionId))
         : null,
+      // A billed stay shows its Invoice's payments, so that loads with the bill.
       authorize(roles, { billing: ["read"] })
-        ? queryClient.query(admissionBillQuery(orgSlug, admissionId))
+        ? queryClient
+            .query(admissionBillQuery(orgSlug, admissionId))
+            .then((bill) =>
+              bill.invoiceId === null
+                ? null
+                : queryClient.query(issuedInvoiceQuery(orgSlug, bill.invoiceId)),
+            )
         : null,
     ]).catch(() => {});
   },

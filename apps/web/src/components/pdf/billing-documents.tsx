@@ -98,16 +98,19 @@ function DocumentShell({
   title,
   number,
   thermal = false,
+  lines = [],
   children,
 }: {
   document: DocumentHeader;
   title: string;
   number: string;
   thermal?: boolean;
+  /** The Invoice's lines where the document has them; they decide the ipd licences. */
+  lines?: InvoiceBundle["lines"];
   children: ReactNode;
 }) {
   const { orgGstin, stream } = document;
-  const licences = stream ? invoicePrintParticulars({ orgGstin, stream }).licences : false;
+  const licences = stream ? invoicePrintParticulars({ orgGstin, stream }, lines).licences : false;
 
   const letterhead = [
     document.orgAddress.replace(/\n/g, ", ").trim(),
@@ -311,7 +314,7 @@ export function InvoiceDocument({
   const currency = invoice.currency;
   const registered = Boolean(invoice.orgGstin);
   // A registered OPD bill is exempt; registered pharmacy and ipd bills carry GST.
-  const { taxed, mixedLines, priceHeading } = invoicePrintParticulars(invoice);
+  const { taxed, mixedLines, priceHeading } = invoicePrintParticulars(invoice, lines);
   const title = invoiceDocumentTitle(invoice, lines);
 
   const linePrice = (line: InvoiceBundle["lines"][number]) =>
@@ -369,7 +372,13 @@ export function InvoiceDocument({
 
   if (layout === "thermal") {
     return (
-      <DocumentShell document={invoice} title={title} number={invoice.invoiceNumber} thermal>
+      <DocumentShell
+        document={invoice}
+        title={title}
+        number={invoice.invoiceNumber}
+        lines={lines}
+        thermal
+      >
         <Details
           rows={[
             { label: "Issued", value: formatBusinessDate(invoice.businessDate) },
@@ -417,7 +426,7 @@ export function InvoiceDocument({
   }
 
   return (
-    <DocumentShell document={invoice} title={title} number={invoice.invoiceNumber}>
+    <DocumentShell document={invoice} title={title} number={invoice.invoiceNumber} lines={lines}>
       <section style={{ display: "flex", gap: 28, marginBottom: 20 }}>
         <div style={{ flex: 1 }}>
           <SectionTitle>Invoice details</SectionTitle>
@@ -547,7 +556,7 @@ export function CreditNoteDocument({
   note: CreditNote;
 }) {
   const sourceLines = new Map(invoiceLines.map((line) => [line.id, line]));
-  const { taxed } = invoicePrintParticulars(invoice);
+  const { taxed } = invoicePrintParticulars(invoice, invoiceLines);
 
   const rows = note.lines.map((line) => {
     const source = sourceLines.get(line.invoiceLineId);
@@ -562,7 +571,12 @@ export function CreditNoteDocument({
   });
 
   return (
-    <DocumentShell document={invoice} title="Credit note" number={note.creditNoteNumber}>
+    <DocumentShell
+      document={invoice}
+      title="Credit note"
+      number={note.creditNoteNumber}
+      lines={invoiceLines}
+    >
       <section style={{ display: "flex", gap: 28, marginBottom: 18 }}>
         <div style={{ flex: 1 }}>
           <SectionTitle>Credit note details</SectionTitle>

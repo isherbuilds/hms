@@ -89,3 +89,18 @@ export async function bumpChargeRevision(tx: DbTransaction, orgId: string, admis
 
   return row.chargeRevision;
 }
+
+/** An issued medicine's bill line: batch and expiry travel with the Charge to the Invoice. */
+export function admissionIssueDescription(batch: {
+  name: string;
+  batchNumber: string;
+  expiryDate: string | null;
+}): string {
+  const base = `${batch.name} · batch ${batch.batchNumber}`;
+
+  if (batch.expiryDate === null) return base;
+
+  const [year, month] = batch.expiryDate.split("-");
+
+  return `${base} · exp ${month}/${year}`;
+}

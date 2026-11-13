@@ -38,6 +38,9 @@ type AdmissionStatus = "admitted" | "discharge_ready" | "discharged" | "cancelle
 export const admissionBillQuery = (orgSlug: string, admissionId: string) =>
   orpc.ipd.previewInvoice.queryOptions({ input: { orgSlug, admissionId } });
 
+export const issuedInvoiceQuery = (orgSlug: string, invoiceId: string) =>
+  orpc.billing.getInvoice.queryOptions({ input: { orgSlug, invoiceId } });
+
 type Bill = Awaited<ReturnType<typeof orpc.ipd.previewInvoice.call>>;
 
 type BillLine = Bill["lines"][number];
@@ -124,6 +127,7 @@ export function AdmissionBill({
     discountAmount: ZERO,
     taxTotal: reviewed.taxTotal,
     addedTaxTotal: reviewed.addedTaxTotal,
+    registered: reviewed.registered,
     roundOff: reviewed.roundOff,
     grandTotal: reviewed.grandTotal,
   });
@@ -161,16 +165,7 @@ export function AdmissionBill({
           columns={[
             {
               head: "Item",
-              cell: (line) => (
-                <span className="block min-w-0">
-                  <span className="block capitalize">{line.description}</span>
-                  {line.batch ? (
-                    <span className="block font-mono text-muted-foreground">
-                      {line.batch.batchNumber}
-                    </span>
-                  ) : null}
-                </span>
-              ),
+              cell: (line) => <span className="block min-w-0">{line.description}</span>,
             },
             {
               head: "Qty",
@@ -185,17 +180,22 @@ export function AdmissionBill({
               ),
               className: "text-right",
             },
-            {
-              head: "GST",
-              cell: (line) => (
-                <span className="whitespace-nowrap tabular-nums">
-                  {line.taxAmount === ZERO
-                    ? mixedRateLabel(line)
-                    : `${formatMoney(line.taxAmount, currency)} (${mixedRateLabel(line)})`}
-                </span>
-              ),
-              className: "text-right",
-            },
+            // An organization without a GSTIN claims no GST on screen or paper (D052).
+            ...(data.registered
+              ? [
+                  {
+                    head: "GST",
+                    cell: (line: BillLine) => (
+                      <span className="whitespace-nowrap tabular-nums">
+                        {line.taxAmount === ZERO
+                          ? mixedRateLabel(line)
+                          : `${formatMoney(line.taxAmount, currency)} (${mixedRateLabel(line)})`}
+                      </span>
+                    ),
+                    className: "text-right",
+                  },
+                ]
+              : []),
             {
               head: "Amount",
               cell: (line) => (
@@ -245,7 +245,7 @@ export function AdmissionBill({
           </div>
           {data.addedTaxTotal === ZERO ? null : (
             <div className="flex justify-between gap-3">
-              <dt className="text-muted-foreground">GST added</dt>
+              <dt className="text-muted-foreground">{data.registered ? "GST added" : "Tax"}</dt>
               <dd className="tabular-nums">{formatMoney(data.addedTaxTotal, currency)}</dd>
             </div>
           )}
@@ -254,7 +254,7 @@ export function AdmissionBill({
             <dt>Total</dt>
             <dd className="tabular-nums">{formatMoney(data.grandTotal, currency)}</dd>
           </div>
-          {includedTax === ZERO ? null : (
+          {!data.registered || includedTax === ZERO ? null : (
             <div className="flex justify-between gap-3 text-muted-foreground">
               <dt>GST included in MRP</dt>
               <dd className="tabular-nums">{formatMoney(includedTax, currency)}</dd>
@@ -332,7 +332,7 @@ function IssuedInvoice({
   invoiceId: string;
   currency: string;
 }) {
-  const invoice = useQuery(orpc.billing.getInvoice.queryOptions({ input: { orgSlug, invoiceId } }));
+  const invoice = useQuery(issuedInvoiceQuery(orgSlug, invoiceId));
 
   if (!invoice.data) {
     return invoice.isError ? (

@@ -28,6 +28,11 @@ export type WalkInQuote = {
    * so the summary separates it from the GST already inside MRP.
    */
   addedTaxTotal?: bigint;
+  /**
+   * False on a mixed-basis bill of an organization without a GSTIN: it claims no GST
+   * (D052), so the summary shows only the tax added on top, as plain Tax.
+   */
+  registered?: boolean;
   roundOff: bigint;
   grandTotal: bigint;
 };

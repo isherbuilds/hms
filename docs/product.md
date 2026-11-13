@@ -173,7 +173,8 @@ fixes the document rules for the current local-supply scope:
   requires `legalName` and `address`; its GSTIN must start with a known state
   code. Local in-person care and counter sales use that state as place of supply
   and the existing CGST/SGST split; interstate supplies are outside this scope.
-  Pharmacy prints configured `drugLicence20` and `drugLicence21` particulars.
+  Pharmacy prints configured `drugLicence20` and `drugLicence21` particulars;
+  an IPD Invoice prints them only when it carries a medicine line.
 - Issuance stores `orgGstin` on Invoices and Advance Receipts, and
   `orgDrugLicence20`/`orgDrugLicence21` on Invoices; the printed place of
   supply comes from the GSTIN's first two digits. Later settings changes

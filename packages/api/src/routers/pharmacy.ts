@@ -28,6 +28,7 @@ import { z } from "zod";
 import { audit } from "../audit";
 import { divideHalfUp, formatDecimal } from "../core/money";
 import {
+  admissionIssueDescription,
   bumpChargeRevision,
   expectedChargeRevision,
   lockAdmissionCharges,
@@ -501,7 +502,7 @@ export const pharmacyRouter = {
           admissionKind: "pharmacy_issue" as const,
           admissionIssueLineId: lineId,
           catalogItemId: null,
-          description: `${batch.name} · batch ${batch.batchNumber}`,
+          description: admissionIssueDescription(batch),
           unitPrice: batch.mrp,
           priceUnits: batch.mrpUnits,
           // Bundled inpatient medicine is exempt composite healthcare; an independent

@@ -1407,7 +1407,7 @@ export const ipdRouter = {
 
 // Cancellation erases a stay; once care was charged or medicine issued, discharge it.
 async function requireNoCare(tx: Tx, orgId: string, admissionId: string) {
-  const [charged] = await tx
+  const charged = tx
     .select({ id: charges.id })
     .from(charges)
     .where(
@@ -1416,10 +1416,9 @@ async function requireNoCare(tx: Tx, orgId: string, admissionId: string) {
         eq(charges.admissionId, admissionId),
         ne(charges.status, "voided"),
       ),
-    )
-    .limit(1);
+    );
 
-  const [issued] = await tx
+  const issued = tx
     .select({ id: admissionPharmacyIssues.id })
     .from(admissionPharmacyIssues)
     .where(
@@ -1427,10 +1426,15 @@ async function requireNoCare(tx: Tx, orgId: string, admissionId: string) {
         eq(admissionPharmacyIssues.orgId, orgId),
         eq(admissionPharmacyIssues.admissionId, admissionId),
       ),
-    )
-    .limit(1);
+    );
 
-  if (charged || issued) {
+  const {
+    rows: [care],
+  } = await tx.execute<{ found: boolean }>(
+    sql`select exists (${charged}) or exists (${issued}) as found`,
+  );
+
+  if (care?.found) {
     throw new ORPCError("CONFLICT", {
       message: "Care was already charged to this admission. Discharge it instead.",
     });

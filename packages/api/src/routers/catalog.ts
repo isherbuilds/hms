@@ -36,7 +36,6 @@ export const catalogRouter = {
     }),
   ).handler(async ({ context, input }) => {
     const pattern = input.query ? likePattern(input.query) : undefined;
-    const categories = input.categories === "all" ? SERVICE_CATEGORIES : OPD_BILLABLE_CATEGORIES;
 
     const rows = await db
       .select({
@@ -52,7 +51,9 @@ export const catalogRouter = {
         and(
           eq(catalogItems.orgId, context.scope.orgId),
           eq(catalogItems.active, true),
-          inArray(catalogItems.category, [...categories]),
+          input.categories === "all"
+            ? undefined
+            : inArray(catalogItems.category, [...OPD_BILLABLE_CATEGORIES]),
           input.includeConsultation ? undefined : ne(catalogItems.category, "consultation"),
           pattern
             ? or(ilike(catalogItems.name, pattern), ilike(catalogItems.category, pattern))

@@ -25,6 +25,7 @@ import { formatMoney, ZERO } from "@/lib/money";
 import { formatBusinessDate, formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { errorMessage } from "@/lib/orpc-error";
+import { formatStockQty, stockUnitPlural } from "@/lib/pharmacy-labels";
 
 /**
  * Plain words for the server's `supply`: medicine given as part of the stay is an
@@ -247,7 +248,7 @@ export function IssueMedicinesDialog({
                             {line.expiryDate
                               ? `expires ${formatBusinessDate(line.expiryDate)}`
                               : "no expiry"}{" "}
-                            · {line.shelfQty} on shelf
+                            · {formatStockQty({ ...line, qty: line.shelfQty })} on shelf
                           </p>
                         </div>
                         <Button
@@ -264,23 +265,27 @@ export function IssueMedicinesDialog({
                           <Trash2Icon />
                         </Button>
                       </div>
-                      <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-end gap-2 sm:grid-cols-[4.5rem_minmax(0,1fr)_auto]">
-                        <Input
-                          key={`${line.batchId}:${line.qty}`}
-                          type="number"
-                          min={1}
-                          max={line.shelfQty}
-                          step={1}
-                          defaultValue={line.qty}
-                          aria-label={`${line.productName} quantity`}
-                          className="tabular-nums"
-                          onBlur={(event) => commitQty(line, event.currentTarget)}
-                          onKeyDown={(event) => {
-                            if (event.key !== "Enter") return;
-                            event.preventDefault();
-                            commitQty(line, event.currentTarget);
-                          }}
-                        />
+                      <div className="grid grid-cols-[6rem_minmax(0,1fr)] items-end gap-2 sm:grid-cols-[6rem_minmax(0,1fr)_auto]">
+                        {/* Counted in the smallest unit: 1 is one tablet, not one strip. */}
+                        <label className="grid gap-1 text-muted-foreground">
+                          Qty ({stockUnitPlural(line.stockUnit)})
+                          <Input
+                            key={`${line.batchId}:${line.qty}`}
+                            type="number"
+                            min={1}
+                            max={line.shelfQty}
+                            step={1}
+                            defaultValue={line.qty}
+                            aria-label={`${line.productName} quantity in ${stockUnitPlural(line.stockUnit)}`}
+                            className="tabular-nums"
+                            onBlur={(event) => commitQty(line, event.currentTarget)}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter") return;
+                              event.preventDefault();
+                              commitQty(line, event.currentTarget);
+                            }}
+                          />
+                        </label>
                         <NativeSelect
                           aria-label={`How ${line.productName} is supplied`}
                           value={line.supply}
