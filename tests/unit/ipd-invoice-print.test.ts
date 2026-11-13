@@ -4,6 +4,7 @@ import { expect, test } from "bun:test";
 
 import {
   invoiceDocumentTitle,
+  invoicePrintParticulars,
   invoiceTaxBreakdown,
   linePriceBasis,
 } from "../../apps/web/src/lib/invoice-print";
@@ -87,4 +88,34 @@ test("an exempt line names its basis without a GST claim; taxed lines add or inc
   expect(linePriceBasis(true, independentMedicine)).toEqual({ label: "MRP", suffix: "incl. GST" });
   expect(linePriceBasis(false, service)).toEqual({ label: "Rate", suffix: "" });
   expect(linePriceBasis(false, independentMedicine)).toEqual({ label: "MRP", suffix: "" });
+});
+
+test("an ipd Invoice prints GST columns only when registered and a line carries GST", () => {
+  const registered = { orgGstin: GSTIN, stream: "ipd" as const };
+  const cases = [
+    { invoice: registered, lines: [bundledMedicine], title: "Bill of Supply", taxed: false },
+    {
+      invoice: registered,
+      lines: [service, bundledMedicine],
+      title: "Invoice-cum-Bill of Supply",
+      taxed: true,
+    },
+    {
+      invoice: registered,
+      lines: [service, independentMedicine],
+      title: "Tax Invoice",
+      taxed: true,
+    },
+    {
+      invoice: { orgGstin: "", stream: "ipd" as const },
+      lines: [service, bundledMedicine],
+      title: "Invoice",
+      taxed: false,
+    },
+  ];
+
+  for (const { invoice, lines, title, taxed } of cases) {
+    expect(invoiceDocumentTitle(invoice, lines)).toBe(title);
+    expect(invoicePrintParticulars(invoice, lines).taxed).toBe(taxed);
+  }
 });
