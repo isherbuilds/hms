@@ -1,5 +1,6 @@
 import type { AppPermission } from "@hms/auth/access";
 import {
+  BedDoubleIcon,
   Building2Icon,
   ClipboardListIcon,
   ChartColumnIcon,
@@ -34,6 +35,7 @@ type PrimaryNavItem = NavEntry<
   | "/$orgSlug/dashboard"
   | "/$orgSlug/patients"
   | "/$orgSlug/opd"
+  | "/$orgSlug/ipd"
   | "/$orgSlug/pharmacy"
   | "/$orgSlug/billing"
   | "/$orgSlug/reports"
@@ -58,6 +60,13 @@ export const PRIMARY_NAV: readonly PrimaryNavItem[] = [
     icon: ListOrderedIcon,
     group: "Care",
     permission: { opd: ["read"] },
+  },
+  {
+    to: "/$orgSlug/ipd",
+    label: "IPD",
+    icon: BedDoubleIcon,
+    group: "Care",
+    permission: { ipd: ["read"] },
   },
   {
     to: "/$orgSlug/pharmacy",
@@ -134,6 +143,19 @@ export const PHARMACY_TABS: readonly PharmacyTab[] = [
   { to: "/$orgSlug/pharmacy/items", label: "Products", permission: { pharmacy: ["manageItems"] } },
   // Last: the movement ledger is an audit view, opened rarely.
   { to: "/$orgSlug/pharmacy/movements", label: "Movements", permission: { pharmacy: ["read"] } },
+];
+
+type IpdTab = NavEntry<"/$orgSlug/ipd" | "/$orgSlug/ipd/admissions" | "/$orgSlug/ipd/facility">;
+
+// Admitting is a task opened from a free bed on the board, not a tab.
+export const IPD_TABS: readonly IpdTab[] = [
+  { to: "/$orgSlug/ipd", label: "Beds", permission: { ipd: ["read"] } },
+  { to: "/$orgSlug/ipd/admissions", label: "Admissions", permission: { ipd: ["read"] } },
+  {
+    to: "/$orgSlug/ipd/facility",
+    label: "Wards and beds",
+    permission: { ipd: ["manageFacility"] },
+  },
 ];
 
 type ReportLink = NavEntry<
