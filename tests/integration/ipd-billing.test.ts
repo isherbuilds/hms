@@ -554,7 +554,7 @@ test("an inpatient issue moves shelf stock and posts one pending Admission Charg
     unitPrice: MRP,
     priceUnits: 1,
     taxRatePercent: "0.00",
-    description: `Ceftriaxone 1g · batch ${batchNumber}`,
+    description: `Ceftriaxone 1g · batch ${batchNumber} · exp 12/${EXPIRY_YEAR}`,
     invoiceId: null,
   });
 
@@ -1200,7 +1200,7 @@ test("the bill preview totals the pending Charges and writes nothing", async () 
     batch: null,
   });
   expect(medicineLine).toMatchObject({
-    description: `Ondansetron 4mg · batch ${batchNumber}`,
+    description: `Ondansetron 4mg · batch ${batchNumber} · exp 12/${EXPIRY_YEAR}`,
     qty: 2,
     unitPrice: MRP,
     priceBasis: "inclusive",
