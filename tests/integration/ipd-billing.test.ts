@@ -521,16 +521,17 @@ test("an inpatient issue moves shelf stock and posts one pending Admission Charg
   const movements = await db
     .select()
     .from(stockMovements)
-    .where(and(eq(stockMovements.orgId, orgId), eq(stockMovements.sourceId, issued.issueId)));
+    .where(and(eq(stockMovements.orgId, orgId), eq(stockMovements.sourceId, lines[0]!.id)));
 
+  // One movement per issue line, traced to that line.
   expect(movements).toHaveLength(1);
   expect(movements[0]).toMatchObject({
     batchId,
     bucket: "shelf",
     qty: -3,
     reason: "admission_issue",
-    sourceType: "admission_pharmacy_issue",
-    sourceId: issued.issueId,
+    sourceType: "admission_pharmacy_issue_line",
+    sourceId: lines[0]!.id,
   });
 
   const posted = await admissionCharges(orgId, admission.id);
@@ -1278,6 +1279,7 @@ test("the mixed-basis Invoice: exclusive taxed service, bundled and independent 
     discountAmount: 0n,
     subtotal: 6_336_00n,
     taxTotal: 312_00n,
+    addedTaxTotal: 300_00n,
     roundOff: 0n,
     grandTotal: 6_636_00n,
   });
