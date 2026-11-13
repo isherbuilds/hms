@@ -81,10 +81,13 @@ function AdmissionRoute() {
     setOpened({ kind, admission: { id: admission.id, revision: admission.revision } });
 
   const close = () => setOpened(null);
+  // A dialog belongs to the Admission it opened on: one left open while the page moved
+  // to another Admission is dropped rather than submitted against the old one.
+  const mine = opened?.admission.id === admission.id ? opened : null;
   // Another screen changed the Admission: the open form no longer describes it.
-  const stale = opened !== null && opened.admission.revision !== admission.revision;
-  const dialog = stale ? null : opened?.kind;
-  const ref = opened?.admission;
+  const stale = mine !== null && mine.admission.revision !== admission.revision;
+  const dialog = stale ? null : mine?.kind;
+  const ref = mine?.admission;
 
   return (
     <>
