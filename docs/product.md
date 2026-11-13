@@ -35,6 +35,9 @@ AI reconstruction as the clinical source.
   patient credit, and the billing ledger.
 - Pharmacy products, batch stock, goods receipts, counter sales, returns,
   quarantine, stock adjustments, and movement history.
+- IPD Slices 1–2, on the owner's instruction: wards, beds, the bed board,
+  admission to departure, inpatient medicine issue, posted services and one IPD
+  bill per Admission.
 - Dashboard, billing worklists, and the five [reports](./reports.md).
 - Organization access, member administration, files, audit, security headers,
   production images, and upload cleanup.
@@ -48,8 +51,9 @@ stock reconciliation, and owner walkthroughs remain in the
 ### Evidence-gated
 
 Patient timeline and vitals, purchasing and supplier accounts, lab, radiology,
-IPD/ADT, Emergency, OT, insurance/TPA billing, ABDM, payment gateway, patient
-portal, offline mode, and AI assistance.
+IPD beyond Slices 1–2 (bed-day billing, packages, deposits, final settlement),
+Emergency, OT, insurance/TPA billing, ABDM, payment gateway, patient portal,
+offline mode, and AI assistance.
 
 Evidence-gated work gets no placeholder route, table, permission, or navigation
 entry. It starts only with a paid/observed need, a named operational owner, and
@@ -79,7 +83,9 @@ known.
 | Batch             | `/$orgSlug/pharmacy/stock`        | Stock batch / `stockBatches`        | One received lot with batch number, expiry and printed MRP per `mrpUnits` counted units; stock displays as packs plus loose units where a conversion exists                                                                                 |
 | Stock movement    | `/$orgSlug/pharmacy/movements`    | `stockMovements`                    | One signed, reason-coded change in smallest counted units on a batch and bucket; stock on hand is their sum (D041)                                                                                                                          |
 | Pharmacy return   | Pharmacy sale Sheet               | Pharmacy return / `pharmacyReturns` | Goods coming back against a sale into quarantine, with its Credit Note and any refund                                                                                                                                                       |
-| IPD               | `/$orgSlug/ipd`                   | Admission / `admissions`            | One inpatient stay: bed occupancy history (`admission_bed_stays`) from admission through ready-to-leave to departure or cancellation; billing is not built yet (Slice 2 of the IPD spec)                                                    |
+| IPD               | `/$orgSlug/ipd`                   | Admission / `admissions`            | One inpatient stay: bed occupancy history (`admission_bed_stays`) from admission to departure or cancellation, with its Admission Charges and one IPD bill                                                                                  |
+| Inpatient issue   | Admission page, Pharmacy          | `admissionPharmacyIssues`           | Medicines handed to the ward for one admitted Patient: stock leaves the shelf and each line waits as an Admission Charge. No sale, Invoice or Payment                                                                                       |
+| IPD bill          | Admission page                    | `ipd` Invoice                       | The one Invoice for an Admission's pending Charges, issued after the discharge handoff; services add GST on top, medicines carry MRP                                                                                                        |
 | Emergency         | future `/$orgSlug/emergency`      | Emergency Case                      | A future emergency workflow with its own lifecycle                                                                                                                                                                                          |
 
 There is no universal care wrapper. OPD Appointments, Admissions, and
@@ -124,6 +130,8 @@ Financial vocabulary is precise:
   classification may be a Bill of Supply or Tax Invoice;
 - a **Payment** is money received and a **Receipt** is its proof;
 - a **Credit Note** corrects an issued Invoice and a **Refund** returns money;
+- an **Admission Charge** is a Charge on an inpatient stay: a posted service or
+  an inpatient issue line, pending until the IPD bill;
 - booking money taken before supply is an **Advance Receipt/Credit**, not
   Appointment payment state, and remains a liability until allocation.
 
@@ -135,6 +143,16 @@ One collection may be split across at most four Payment lines. Each non-cash
 line requires its reconciliation reference and produces its own Receipt. After
 an Invoice is issued, a discount is represented by a Credit Note; recording a
 Payment never rewrites the immutable Invoice.
+
+Inpatient money differs from the counter. An inpatient issue moves stock and
+adds pending Admission Charges; nothing is billed or paid until the IPD bill.
+Each issue line is **bundled** (part of treatment, 0% GST) unless the
+pharmacist marks it **independent** (the Product's own GST). Once the Patient is
+ready to leave, billing issues one `ipd` Invoice from every pending Charge and
+may collect against it. Services are priced before GST and medicines at MRP
+with GST inside, so one bill mixes both bases; it never rounds to the rupee.
+An issued IPD bill cannot be edited, and Credit Notes on it wait for inpatient
+returns and final settlement (D063).
 
 Never label a Payment Receipt as the itemized bill. [D052](./decisions.md#d052--gst-registration-determines-document-particulars-and-bounded-numbering)
 fixes the document rules for the current local-supply scope:
@@ -198,7 +216,7 @@ adapter is evidence-gated.
 | Patient timeline and vitals | Live OPD use identifies fields, authors, signing, and correction rules                                                                                                                                |
 | Pharmacy purchasing         | Counter sales and stock are implemented. Supplier accounts and broader purchasing need a separate accepted spec; see [the current boundary](./specs/pharmacy-counter-sale-and-stock.md#out-of-scope). |
 | Lab/radiology               | Named clinical owner, measured demand, approved order/result boundary, templates, units, and signing rules                                                                                            |
-| IPD/ADT                     | Stable OPD, paid scope, facility master, and signed admission-to-discharge, deposit, nursing, and billing flow                                                                                        |
+| IPD/ADT                     | Lifted on 2026-11-13 by the owner for Slices 1–2 only; Slices 3–6 still need paid scope and a signed deposit, nursing and final-billing flow ([registry](./README.md#ipd-admission-to-discharge))     |
 | Emergency                   | Separate safety discovery, medical-owner approval, triage/disposition rules, and downtime ownership                                                                                                   |
 | OT/surgery                  | Live IPD plus approved consent, anesthesia, resources, consumables, recovery, and billing                                                                                                             |
 | Insurance/TPA               | Meaningful insured volume or signed payer requirement with tariffs and claim lifecycle                                                                                                                |

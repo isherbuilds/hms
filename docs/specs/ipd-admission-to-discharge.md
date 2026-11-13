@@ -1,6 +1,6 @@
 # Spec: IPD admission to discharge
 
-Status: staged draft — design accepted in D056; implementation remains market-gated
+Status: active — design accepted in D056; Slices 1 and 2 built on the owner's instruction (2026-11-13); Slices 3–6 remain market-gated
 Authority: Founder request for implementation-ready next-build options, evaluated only on hospital desire and moat; October 2026.
 Supersedes: none
 
@@ -111,12 +111,13 @@ The Module interface is guarded `ipd.*`, the two inpatient pharmacy procedures a
 
 Slices are sequential because finance/schema/route registries overlap. One integration owner controls shared `access.ts`, router/schema indexes, migrations, billing helpers and navigation. Verify commands are for implementation, not run for this draft; one owner runs database-wiping checks after integration.
 
-- [ ] Slice 1: Prove inpatient issue → mixed-basis Invoice (riskiest)
+- [x] Slice 1: Prove inpatient issue → mixed-basis Invoice (built on the owner's instruction, 2026-11-13; see the [work registry](../README.md#ipd-admission-to-discharge))
   - Acceptance: Minimal facility/Admission path, pharmacist issue UI and IPD bill review produce one batch movement and one Admission Charge per issue line; no counter Invoice. One service plus medicine totals, taxes, journals and batch trace agree; stale settlement rolls back. Permissions, denial audit and tenancy are enforced.
   - Verify: `bun run check-types`; `bun run test`; `bunx oxlint`; inspect the issue-to-Invoice path in two Organizations.
   - Depends on: none; real paid-hospital gate must be met before implementation; conditional decision amendments are accepted in D056.
   - Owns/Touches: `packages/db/src/schema/`, `packages/db/src/migrations/`, `packages/api/src/routers/ipd.ts`, `pharmacy.ts`, `lib/stock.ts`, `lib/invoice-math.ts`, `lib/billing-documents.ts`; `apps/web/src/routes/$orgSlug/ipd/`, `pharmacy/`; `tests/integration/`, `tests/unit/`, `docs/architecture.md`, `docs/decisions.md`. Registries/permissions are coordinator-owned.
   - Interfaces: `ipd.admit({orgSlug,patientId,practitionerId,bedId,admittedAt}) → Admission`; `pharmacy.issueToAdmission({orgSlug,admissionId,expectedChargeRevision,lines,prescriberName?}) → {issueId,chargeRevision}`; shared typed `ipd` Invoice parent and per-line `priceBasis`.
+  - Shipped: `pharmacy.issueToAdmission` lines take `supply: bundled | independent` (default bundled: 0% GST; independent keeps the Product's GST; both MRP-inclusive); `pharmacy.listAdmissionIssues({orgSlug,admissionId})`; `ipd.postServices({orgSlug,admissionId,expectedChargeRevision,lines})` posts exclusive-basis service Charges; `ipd.previewInvoice({orgSlug,admissionId}) → {chargeRevision,invoiceId,…}` writes nothing; `ipd.issueInvoice({orgSlug,admissionId,expectedChargeRevision,expectedGrandTotal,payments,outstandingReason?})` issues the one minimal `ipd` Invoice once the Patient is ready or departed. Slice 5's `previewFinalInvoice`/`issueFinalInvoice` supersede the minimal bill (D063).
 
 - [x] Slice 2: Facility, bed board and lifecycle (built first on the owner's instruction, 2026-11-13; see the [work registry](../README.md#ipd-admission-to-discharge))
   - Acceptance: Master UI manages wards/categories/tariffs/beds; transfer history and current board agree. Two simultaneous admissions cannot occupy one Bed or duplicate one active Patient. Ready, departure, blocked-bed release and restricted cancellation/backdating obey defined transitions and audit reasons without payment gating.

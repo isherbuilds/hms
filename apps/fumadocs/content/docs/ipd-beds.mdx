@@ -1,10 +1,11 @@
 ---
 title: IPD beds and admissions
-description: Admit Patients to beds, move them, and record when they leave
+description: Admit Patients to beds, issue their medicines, bill the stay, and record when they leave
 ---
 
-IPD tracks who is in which bed. It does not bill inpatient stays yet: keep the
-inpatient bill on paper until your administrator says IPD billing is live.
+IPD tracks who is in which bed, the medicines and services given during the
+stay, and the one bill for it. Bed days are not billed yet: add them to the
+bill as a service, or keep them on paper, as your administrator decides.
 
 ## Set up wards and beds
 
@@ -47,6 +48,45 @@ Open the admission from the board or from **Admissions**.
 If someone else changed the admission on another screen, HMS refuses your
 change. Refresh and check before trying again.
 
+## Issue medicines to an inpatient
+
+For the pharmacist. Medicines for a Patient in a bed are issued to their
+admission, not sold at the counter.
+
+1. Open the Patient's admission and choose **Issue medicines**.
+2. Pick each medicine and batch, and the quantity in tablets, vials or other
+   smallest units.
+3. For each line choose how it is supplied:
+   - **Part of treatment (no GST)**: the usual choice. The medicine is part of
+     the Patient's care and carries no GST.
+   - **Sold separately (GST as on pack)**: only for something the Patient buys
+     apart from their treatment. It carries the GST printed on the pack.
+4. Enter the prescribing doctor where the medicine needs one, then **Issue**.
+
+The stock leaves the shelf at once. Nothing is paid now: each line waits on the
+admission until the stay is billed. You can issue while the Patient is admitted
+or ready to leave, not after the bill is issued.
+
+## Bill an inpatient stay
+
+For the billing desk.
+
+1. Wait for **Ready to leave**, the signed discharge handoff. The bill cannot
+   be issued before it.
+2. Open the admission. The bill lists every service and medicine not yet
+   billed. Use **Add service** for anything missing, such as a procedure,
+   before you issue.
+3. Check the total. Services show their rate with GST added on top; medicines
+   show their MRP, which already includes any GST.
+4. **Issue invoice**, and take payment now or record why some is left to pay.
+
+An admission has one bill. Once issued, it cannot be edited and nothing more
+can be added to the stay. If something is wrong, ask an administrator before
+the Patient leaves; corrections to inpatient bills are not available yet.
+
+If someone else issued medicines or added a service while you were reviewing,
+HMS refuses the bill. Refresh, check the new lines, and issue again.
+
 ## Corrections
 
 Only an administrator can:
@@ -55,6 +95,7 @@ Only an administrator can:
   minutes ago. Fill **Only if it happened earlier** with the time and a reason.
   HMS refuses a time that clashes with another Patient's stay in that bed.
 - **⋯ → Cancel admission**, for an admission made in error. Once the Patient
-  received care, record their departure instead.
+  received care, or any medicine or service was recorded, record their
+  departure instead.
 
 Both are kept in the audit log with the reason.

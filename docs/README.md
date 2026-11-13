@@ -235,17 +235,32 @@ authorised sample export from an unrelated hospital and its approvers.
 ### [IPD admission to discharge](./specs/ipd-admission-to-discharge.md)
 
 **Verification.** On 2026-11-13 the owner lifted the IPD/ADT gate for Slice 2
-only, ahead of Slice 1: wards, bed types with effective-dated daily rates, beds,
-the bed board, admit, transfer, ready to leave, departure, cancellation, bed
-block and release, and audited backdating under `ipd:correct`. Integration tests
-cover concurrency, tenancy and grants. No Admission Charges, bed-day billing,
-inpatient pharmacy or settlement exist yet; Slices 1 and 3–6 stay gated on a
-paying hospital and named owner. On 2026-11-13 a production build passed on the
-seeded demo org: reception admitted, moved, marked ready and recorded departure
-on desktop light; the board and an admission fit a 390px phone in dark; an
-administrator added a bed, and retiring an occupied bed was refused. Still owed:
-a two-terminal conflict check and a stale **Release bed** in the browser, and
-desktop dark and phone light.
+first, then for Slice 1 the same day. Slice 2 built wards, bed types with
+effective-dated daily rates, beds, the bed board, admit, transfer, ready to
+leave, departure, cancellation, bed block and release, and audited backdating
+under `ipd:correct`. A production build passed on the seeded demo org: reception
+admitted, moved, marked ready and recorded departure on desktop light; the board
+and an admission fit a 390px phone in dark; an administrator added a bed, and
+retiring an occupied bed was refused. Still owed for Slice 2: a two-terminal
+conflict check and a stale **Release bed** in the browser, and desktop dark and
+phone light.
+
+Slice 1 built inpatient medicine issue (`pharmacy.issueToAdmission`, each line
+bundled or independent), posted services (`ipd.postServices`), and one `ipd`
+Invoice per Admission (`ipd.previewInvoice`, `ipd.issueInvoice`) on a
+per-line price basis with stored `addedTaxTotal`; cancellation is refused once a
+Charge or issue exists. 66 spec, tenancy and unit tests pass:
+`tests/integration/ipd-billing.test.ts`, the tenancy guard table,
+`tests/unit/invoice-math-basis.test.ts` and `tests/unit/ipd-invoice-print.test.ts`.
+The demo seed carries an admitted stay with pending issues and a 5% service, a
+ready-to-bill stay, and a departed stay with a paid mixed-basis `ipd` Invoice.
+
+Browser verification: pending.
+
+Still owed: Slices 3–6 (bed-day review, interim bill, packages, inpatient
+returns, deposits and final settlement, IPD reports). Credit Notes on `ipd`
+Invoices are refused until Slice 4/5, and an Admission takes one Invoice until
+supplemental billing in Slice 5 (D063).
 
 ### [Cashless claims](./specs/cashless-claims.md)
 

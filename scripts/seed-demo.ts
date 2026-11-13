@@ -23,6 +23,8 @@ import { invoiceLines } from "@hms/db/schema/invoice-lines";
 import { invoices } from "@hms/db/schema/invoices";
 import {
   admissionBedStays,
+  admissionPharmacyIssueLines,
+  admissionPharmacyIssues,
   admissions,
   bedCategories,
   bedTariffs,
@@ -1762,7 +1764,7 @@ function ipdAdmission(
   const last = stays.at(-1)!;
   const doctor = doctorRows[admissionRows.length % doctorRows.length]!;
 
-  admissionRows.push({
+  const admission = {
     id: admissionId,
     orgId,
     patientId: patient.id,
@@ -1781,7 +1783,9 @@ function ipdAdmission(
       (end.status === "discharged" || end.status === "cancelled" ? 1 : 0),
     createdBy: userId,
     createdAt: stays[0]!.from,
-  });
+  } satisfies typeof admissions.$inferInsert;
+
+  admissionRows.push(admission);
 
   for (const stay of stays) {
     const tariff = tariffOf(stay.bed);
@@ -1798,6 +1802,249 @@ function ipdAdmission(
       createdAt: stay.from,
     });
   }
+
+  return admission;
+}
+
+/* IPD Slice 1: medicines issued to the ward and services posted against a stay, as
+   pending Admission Charges that the stay's single ipd Invoice later bills. Ward
+   medicine keeps its MRP price; bundled supply is exempt, independent keeps its GST. */
+const issueRows: (typeof admissionPharmacyIssues.$inferInsert)[] = [];
+
+const issueLineRows: (typeof admissionPharmacyIssueLines.$inferInsert)[] = [];
+
+const roomSupplementItem = {
+  id: id("item"),
+  orgId,
+  name: "Deluxe room supplement",
+  category: "other" as const,
+  unitPrice: parseDecimal("1200.00"),
+  taxRatePercent: "5.00",
+  taxCode: "996311",
+  active: true,
+};
+
+type SeedAdmission = (typeof admissionRows)[number];
+
+const doctorOf = (admission: SeedAdmission) =>
+  doctorRows.find((doctor) => doctor.id === admission.practitionerId)!;
+
+function wardBatch(name: string, qty: number) {
+  const productIndex = PRODUCT_SPECS.findIndex((spec) => spec.name === name);
+
+  const row = shelf
+    .filter(
+      (batch) =>
+        batch.productIndex === productIndex &&
+        (batch.expiry === null || batch.expiry > today) &&
+        batch.qty >= qty,
+    )
+    .sort((a, b) => (a.expiry ?? "9999").localeCompare(b.expiry ?? "9999"))[0];
+
+  if (!row) throw new Error(`Seed has no ${name} on the shelf for the ward`);
+  row.qty -= qty;
+
+  return {
+    batch: productBatches.find((batch) => batch.id === row.batchId)!,
+    spec: PRODUCT_SPECS[productIndex]!,
+    product: productRows[productIndex]!,
+  };
+}
+
+function issueToWard(
+  admission: SeedAdmission,
+  issuedAt: Date,
+  lines: { name: string; qty: number; supply: "bundled" | "independent" }[],
+) {
+  const issueId = id("issue");
+
+  issueRows.push({
+    id: issueId,
+    orgId,
+    admissionId: admission.id,
+    prescriberName: doctorOf(admission).name,
+    issuedBy: userId,
+    createdAt: issuedAt,
+  });
+
+  for (const line of lines) {
+    const { batch, spec, product } = wardBatch(line.name, line.qty);
+    const lineId = id("issue-line");
+
+    issueLineRows.push({
+      id: lineId,
+      orgId,
+      issueId,
+      admissionId: admission.id,
+      batchId: batch.id!,
+      qty: line.qty,
+      supply: line.supply,
+    });
+    chargeRows.push({
+      id: id("chg"),
+      orgId,
+      admissionId: admission.id,
+      admissionKind: "pharmacy_issue",
+      admissionIssueLineId: lineId,
+      catalogItemId: null,
+      description: `${product.name} · batch ${batch.batchNumber}`,
+      unitPrice: batch.mrp!,
+      priceUnits: batch.mrpUnits,
+      taxRatePercent: line.supply === "independent" ? spec.gst : "0.00",
+      taxCode: spec.hsn ?? null,
+      priceBasis: "inclusive",
+      revenueCategory: "pharmacy",
+      qty: line.qty,
+      sourceType: "admission",
+      sourceId: admission.id,
+      stockBatchId: batch.id!,
+      status: "pending",
+      createdBy: userId,
+      createdAt: issuedAt,
+      updatedAt: issuedAt,
+    });
+    movementRows.push({
+      id: id("movement"),
+      orgId,
+      batchId: batch.id!,
+      bucket: "shelf",
+      qty: -line.qty,
+      reason: "admission_issue",
+      sourceType: "admission_pharmacy_issue_line",
+      sourceId: lineId,
+      createdBy: userId,
+      createdAt: issuedAt,
+    });
+  }
+
+  admission.chargeRevision = (admission.chargeRevision ?? 0) + 1;
+}
+
+function postWardServices(
+  admission: SeedAdmission,
+  postedAt: Date,
+  lines: { item: (typeof procedureItems)[number] | typeof roomSupplementItem; qty: number }[],
+) {
+  for (const { item, qty } of lines) {
+    chargeRows.push({
+      id: id("chg"),
+      orgId,
+      admissionId: admission.id,
+      admissionKind: "service",
+      catalogItemId: item.id,
+      description: item.name,
+      unitPrice: item.unitPrice,
+      taxRatePercent: item.taxRatePercent,
+      taxCode: item.taxCode,
+      priceBasis: "exclusive",
+      revenueCategory: item.category,
+      qty,
+      sourceType: "admission",
+      sourceId: admission.id,
+      status: "pending",
+      createdBy: userId,
+      createdAt: postedAt,
+      updatedAt: postedAt,
+    });
+  }
+
+  admission.chargeRevision = (admission.chargeRevision ?? 0) + 1;
+}
+
+// The stay's one ipd Invoice from its pending Charges, paid in full at the desk.
+function billAdmission(admission: SeedAdmission, issuedAt: Date) {
+  const invoiceId = id("inv");
+  const day = businessDate(issuedAt, ipdTimeZone);
+  const patient = patientRows.find((row) => row.id === admission.patientId)!;
+
+  const pending = chargeRows
+    .filter((charge) => charge.admissionId === admission.id && charge.status === "pending")
+    .sort((a, b) => a.createdAt!.getTime() - b.createdAt!.getTime() || a.id!.localeCompare(b.id!));
+
+  const computed = computeInvoiceLines(
+    pending.map((charge) => ({
+      chargeId: charge.id!,
+      description: charge.description,
+      qty: charge.qty!,
+      unitPrice: charge.unitPrice,
+      priceUnits: charge.priceUnits ?? 1,
+      taxRatePercent: charge.taxRatePercent,
+      taxCode: charge.taxCode ?? null,
+      priceBasis: charge.priceBasis,
+    })),
+    0n,
+    { roundToRupee: roundsToRupee("ipd") },
+  );
+
+  for (const charge of pending) {
+    charge.status = "invoiced";
+    charge.invoiceId = invoiceId;
+    charge.updatedAt = issuedAt;
+  }
+
+  invoiceRows.push({
+    id: invoiceId,
+    orgId,
+    stream: "ipd",
+    admissionId: admission.id,
+    patientId: patient.id,
+    invoiceNumber: "",
+    fiscalYear: fyOf(day),
+    businessDate: day,
+    discountAmount: 0n,
+    note: null,
+    subtotal: computed.subtotal,
+    taxTotal: computed.taxTotal,
+    addedTaxTotal: computed.addedTaxTotal,
+    roundOff: computed.roundOff,
+    grandTotal: computed.grandTotal,
+    orgLegalName: HOSPITAL.legalName,
+    orgAddress: HOSPITAL.address,
+    orgTaxId: HOSPITAL.taxId,
+    currency: "INR",
+    patientName: patient.name,
+    patientMrn: patient.mrn,
+    patientPhone: patient.phone,
+    patientAddress: patient.address,
+    issuedBy: userId,
+    createdAt: issuedAt,
+  });
+  invoiceLineRows.push(
+    ...computed.lines.map((line, index) => ({
+      id: id("line"),
+      orgId,
+      invoiceId,
+      chargeId: line.chargeId,
+      description: line.description,
+      qty: line.qty,
+      unitPrice: line.unitPrice,
+      priceUnits: line.priceUnits,
+      lineSubtotal: line.lineSubtotal,
+      allocatedDiscount: line.allocatedDiscount,
+      taxableValue: line.taxableValue,
+      taxAmount: line.taxAmount,
+      gross: line.gross,
+      taxRatePercent: line.taxRatePercent,
+      taxCode: line.taxCode,
+      priceBasis: line.priceBasis,
+      revenueCategory: pending[index]!.revenueCategory,
+    })),
+  );
+  paymentRows.push({
+    id: id("pay"),
+    orgId,
+    invoiceId,
+    method: "upi",
+    amount: computed.grandTotal,
+    reference: null,
+    receiptNumber: "",
+    fiscalYear: fyOf(day),
+    businessDate: day,
+    receivedBy: userId,
+    createdAt: issuedAt,
+  });
+
+  admission.chargeRevision = (admission.chargeRevision ?? 0) + 1;
 }
 
 {
@@ -1820,10 +2067,11 @@ function ipdAdmission(
   }
 
   // Left a few hours ago; the bed waits for cleaning.
-  ipdAdmission([{ bed: general[2]!, from: hoursAgo(24 * 5), to: hoursAgo(3) }], {
+  const leftToday = ipdAdmission([{ bed: general[2]!, from: hoursAgo(24 * 5), to: hoursAgo(3) }], {
     status: "discharged",
     readyAt: hoursAgo(6),
   });
+
   general[2]!.blockedAt = hoursAgo(3);
   general[2]!.blockedReason = "Awaiting cleaning after discharge";
 
@@ -1847,7 +2095,7 @@ function ipdAdmission(
   ipdAdmission([{ bed: icu[0]!, from: hoursAgo(14), to: null }], { status: "admitted" });
 
   // Stepped down from ICU to a private room two days ago.
-  ipdAdmission(
+  const steppedDown = ipdAdmission(
     [
       { bed: icu[2]!, from: hoursAgo(24 * 6), to: hoursAgo(48) },
       { bed: privateRooms[3]!, from: hoursAgo(48), to: null },
@@ -1858,6 +2106,33 @@ function ipdAdmission(
   ipdAdmission([{ bed: privateRooms[4]!, from: hoursAgo(24 * 10), to: hoursAgo(24 * 10 - 0.3) }], {
     status: "cancelled",
   });
+
+  // Still in the ward: two issues and a taxable service, all waiting for the bill.
+  issueToWard(steppedDown, hoursAgo(100), [
+    { name: "Paracetamol 500 mg", qty: 20, supply: "bundled" },
+  ]);
+  issueToWard(steppedDown, hoursAgo(30), [
+    { name: "Pantoprazole 40 mg", qty: 10, supply: "independent" },
+  ]);
+  postWardServices(steppedDown, hoursAgo(20), [{ item: roomSupplementItem, qty: 2 }]);
+
+  // Ready to leave: one service and one bundled medicine, ready to bill.
+  const readyToBill = admissionRows.find((row) => row.status === "discharge_ready")!;
+  issueToWard(readyToBill, new Date(readyToBill.admittedAt.getTime() + 2 * HOUR_MS), [
+    { name: "Paracetamol 500 mg", qty: 10, supply: "bundled" },
+  ]);
+  postWardServices(readyToBill, new Date(readyToBill.admittedAt.getTime() + 4 * HOUR_MS), [
+    { item: procedureItems[1]!, qty: 2 },
+  ]);
+
+  // Left today with the bill issued and paid: GST-exclusive service, bundled and
+  // independent medicine on one ipd Invoice.
+  issueToWard(leftToday, hoursAgo(100), [
+    { name: "Paracetamol 500 mg", qty: 20, supply: "bundled" },
+    { name: "Pantoprazole 40 mg", qty: 15, supply: "independent" },
+  ]);
+  postWardServices(leftToday, hoursAgo(30), [{ item: roomSupplementItem, qty: 3 }]);
+  billAdmission(leftToday, hoursAgo(4));
 }
 
 const seeding = db.transaction(async (tx) => {
@@ -1893,12 +2168,6 @@ const seeding = db.transaction(async (tx) => {
   await tx.delete(journalEntries).where(journalScope);
 
   for (const table of [
-    admissionBedStays,
-    admissions,
-    bedTariffs,
-    beds,
-    bedCategories,
-    wards,
     refunds,
     advanceAllocations,
     creditNoteLines,
@@ -1908,6 +2177,14 @@ const seeding = db.transaction(async (tx) => {
     invoiceLines,
     charges,
     invoices,
+    admissionPharmacyIssueLines,
+    admissionPharmacyIssues,
+    admissionBedStays,
+    admissions,
+    bedTariffs,
+    beds,
+    bedCategories,
+    wards,
     pharmacySales,
     stockMovements,
     goodsReceiptLines,
@@ -1947,20 +2224,18 @@ const seeding = db.transaction(async (tx) => {
   // Documents are numbered in the order they were issued, as the app would have.
   const issued = (row: { createdAt?: Date | null }) => row.createdAt?.getTime() ?? 0;
 
+  const invoiceSeries = {
+    opd: { counter: "invoice:", prefix: settings.invoicePrefix },
+    pharmacy: { counter: "invoice:pharmacy:", prefix: settings.pharmacyInvoicePrefix },
+    ipd: { counter: "invoice:ipd:", prefix: settings.ipdInvoicePrefix },
+  };
+
   for (const invoice of [...invoiceRows].sort((a, b) => issued(a) - issued(b))) {
     const pharmacy = invoice.stream === "pharmacy";
+    const series = invoiceSeries[invoice.stream ?? "opd"];
+    const sequence = await nextCounter(tx, orgId, `${series.counter}${invoice.fiscalYear}`);
 
-    const sequence = await nextCounter(
-      tx,
-      orgId,
-      pharmacy ? `invoice:pharmacy:${invoice.fiscalYear}` : `invoice:${invoice.fiscalYear}`,
-    );
-
-    invoice.invoiceNumber = documentNumber(
-      pharmacy ? settings.pharmacyInvoicePrefix : settings.invoicePrefix,
-      invoice.fiscalYear,
-      sequence,
-    );
+    invoice.invoiceNumber = documentNumber(series.prefix, invoice.fiscalYear, sequence);
 
     const patient = invoice.patientId ? patientById.get(invoice.patientId) : undefined;
 
@@ -2004,7 +2279,12 @@ const seeding = db.transaction(async (tx) => {
     }
   }
 
-  await insertAll(catalogItems, [...consultItems, ...procedureItems, ...ipdItems]);
+  await insertAll(catalogItems, [
+    ...consultItems,
+    ...procedureItems,
+    ...ipdItems,
+    roomSupplementItem,
+  ]);
   await insertAll(
     departments,
     deptRows.map(({ share: _share, ...row }) => row),
@@ -2020,6 +2300,14 @@ const seeding = db.transaction(async (tx) => {
   await insertAll(products, productRows);
   await insertAll(goodsReceipts, receiptRows);
   await insertAll(stockBatches, productBatches);
+  await insertAll(wards, wardRows);
+  await insertAll(bedCategories, bedCategoryRows);
+  await insertAll(beds, bedRows);
+  await insertAll(bedTariffs, tariffRows);
+  await insertAll(admissions, admissionRows);
+  await insertAll(admissionBedStays, stayRows);
+  await insertAll(admissionPharmacyIssues, issueRows);
+  await insertAll(admissionPharmacyIssueLines, issueLineRows);
   await insertAll(pharmacySales, saleRows);
   await insertAll(invoices, invoiceRows);
   await insertAll(charges, chargeRows);
@@ -2034,12 +2322,6 @@ const seeding = db.transaction(async (tx) => {
   await insertAll(refunds, refundRows);
   await insertAll(goodsReceiptLines, receiptLineRows);
   await insertAll(stockMovements, movementRows);
-  await insertAll(wards, wardRows);
-  await insertAll(bedCategories, bedCategoryRows);
-  await insertAll(beds, bedRows);
-  await insertAll(bedTariffs, tariffRows);
-  await insertAll(admissions, admissionRows);
-  await insertAll(admissionBedStays, stayRows);
 
   // The same balanced entries the billing documents post in the app, so the trial
   // balance and balance sheet agree with the seeded invoices and receipts.
@@ -2181,7 +2463,7 @@ console.info(
     `  ${HISTORY_DAYS + 1} days, ${appointmentRows.length} appointments, ${invoiceRows.length} invoices, ${paymentRows.length} receipts.`,
     `  ${deptRows.length} departments, ${doctorRows.length} doctors, ${patientRows.length} patients.`,
     `  Pharmacy: ${productRows.length} products, ${productBatches.length} batches, ${saleRows.length} counter sales, ${movementRows.length} stock movements.`,
-    `  IPD: ${bedRows.length} beds in ${wardRows.length} wards, ${admissionRows.length} admissions.`,
+    `  IPD: ${bedRows.length} beds in ${wardRows.length} wards, ${admissionRows.length} admissions, ${issueRows.length} ward issues.`,
     `  ${creditNoteRows.length} credit notes, ${refundRows.length} refunds, ${advanceRows.length} advances, ${planRows.length} treatment plans, ${payerRows.length} payers.`,
     `  Today (${today}): ₹${formatDecimal(collectedToday)} collected.`,
     `  Sign in as ${ACTOR_EMAIL} and open /${SLUG}/dashboard`,

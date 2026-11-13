@@ -255,8 +255,18 @@ supplier-line `rate` is paise per `packSize` units. An
 internal supply (`sold = false`) can be stocked and issued but not sold;
 counter selection also requires `active`. Opening stock is a goods receipt
 with `opening` set, not a separate document. `invoices` and `charges`
-carry exactly one typed parent, an OPD Appointment or a Pharmacy sale,
-matched to `invoices.stream` by a check constraint.
+carry exactly one typed parent, an OPD Appointment, a Pharmacy sale or an
+Admission, matched to `invoices.stream` (`opd`, `pharmacy`, `ipd`) by a check
+constraint.
+
+An Admission Charge has `sourceType = admission`, `sourceId = admissionId` and
+`admissionKind`: a `service` keeps its catalog link; a `pharmacy_issue` has a
+null catalog link and names its `admissionIssueLineId` and `stockBatchId`,
+paired with the issue line's Admission and batch by one composite foreign key.
+`admission_pharmacy_issues` and their lines record the ward issue; each line
+writes one shelf movement with reason `admission_issue` and source
+`admission_pharmacy_issue_line`, and its own Charge. Every Charge-set change
+bumps `admissions.chargeRevision`, which the bill compares (D020, D063).
 
 ## Writes and concurrency
 
@@ -368,9 +378,22 @@ lines receive leftover paise by largest remainder, ties in input order.
 Taxable value and tax are extracted from discounted gross per line. The
 pharmacy grand total alone rounds to the nearest rupee, with `roundOff`
 (−49..50 paise) posted to the Round-off account
-and reversed on the credit note completing a full return. OPD invoices stay
-tax-exclusive and round to the paisa (`roundOff = 0`). Stored money remains
-`bigint` paise (D031, D044, D049).
+and reversed on the credit note completing a full return. OPD and IPD invoices
+round to the paisa (`roundOff = 0`). Stored money remains `bigint` paise (D031,
+D044, D049).
+
+Price basis is a per-line snapshot, not a stream rule: every Charge and Invoice
+line stores `priceBasis`. An `exclusive` line adds tax on its taxable value; an
+`inclusive` line (counter and inpatient medicine at MRP) extracts tax from its
+gross. A line CHECK pins `gross = taxableValue + taxAmount` and the basis
+arithmetic. The Invoice stores `addedTaxTotal`, the tax added on top of
+exclusive lines, so its header CHECK is exact for every stream:
+`grandTotal = subtotal − discountAmount + addedTaxTotal + roundOff`. An `ipd`
+Invoice mixes both bases, is numbered from `invoice:ipd:${fy}` with
+`ipdInvoicePrefix`, and posts the same journal shape as the other streams.
+Migrations 0014–0016 introduced the columns nullable, backfilled them
+(Pharmacy inclusive, everything else exclusive) and then made them required
+with the new checks (D063).
 
 Split collection is one tenant-scoped transaction containing up to four
 Payments. Every line gets its own Receipt and journal source; lines

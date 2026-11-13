@@ -278,6 +278,12 @@ separated on paper. Basis is arithmetic, not an exemption decision. IPD round-of
 is zero; D044 exact price units and counter-Pharmacy rounding remain unchanged.
 Evidence and supply-classification rules: [D056](#d056--calendar-checkout-segmented-occupancy-and-an-ipd-financial-desk).
 
+**Shipped 2026-11-13 with IPD Slice 1:** stream `ipd` with a typed Admission
+parent, counter `invoice:ipd:${fy}` and `ipdInvoicePrefix` (default `IP`);
+per-line `priceBasis` on Charges and Invoice lines; stored `addedTaxTotal`, so
+the header check is exactly `grandTotal = subtotal − discount + addedTaxTotal +
+roundOff` for every stream. Scope limits are in [D063](#d063--ipd-slice-1-bills-once-and-bundles-ward-medicine-by-default).
+
 **Rejected:** a universal visit parent or splitting documents by revenue category
 only. A counter Pharmacy sale has no visit; a future Admission uses its own typed
 parent and line-basis snapshots rather than pretending all streams share a tax basis.
@@ -329,6 +335,12 @@ Services retain catalog identity; medicines retain null catalog and a tenant-sco
 batch reference. Counter-sale `pharmacy_batch`/null-source-id rules stay intact.
 The same Invoice/accounting path prices both care settings; this does not copy
 Product GST into exempt composite inpatient care without supply classification.
+
+**Shipped 2026-11-13 with IPD Slice 1:** `sourceType = admission`,
+`sourceId = admissionId`, `admissionKind: service | pharmacy_issue`; a
+`pharmacy_issue` Charge pairs `admissionIssueLineId` with its Admission and
+`stockBatchId` through one composite foreign key. Bed-day and package kinds
+arrive with Slices 3–4.
 
 **Context:** The catalog copy duplicated Product names and tax facts without
 providing a service identity for stock goods. Keeping goods separate from
@@ -586,6 +598,11 @@ issue or a counter Invoice. Unrelated ward/department consumption retains
 `internal_issue` and its department; it is not converted into a patient sale.
 This preserves D042's vocabulary/zod and append-only migration rules.
 
+**Shipped 2026-11-13 with IPD Slice 1:** `admission_pharmacy_issues` and
+`admission_pharmacy_issue_lines`, one negative shelf movement per line with
+reason `admission_issue` and source `admission_pharmacy_issue_line`, and one
+pending Admission Charge per line. Inpatient returns arrive with Slice 4.
+
 **Rejected:** keeping the enum checks as a second guard. A check that repeats a
 zod enum fails later and worse — after the transaction, as a 500 instead of a
 field error — and the pair drifts on the first value someone adds to only one.
@@ -765,6 +782,11 @@ D027, with `sourceType = admission`, `sourceId = admissionId` and the exact issu
 line/batch pair. Counter-sale null-source-id pairing is unchanged. Whole smallest
 stock units, frozen pack conversions and printed price units remain unchanged;
 per-line price basis from D025 does not round medicine unit prices.
+
+**Shipped 2026-11-13 with IPD Slice 1:** the Charge CHECK admits the typed
+Admission source, and the issue line/Admission/batch triple is a composite
+foreign key; issue quantities are whole smallest units at the batch MRP and
+`mrpUnits`, as at the counter.
 
 ### D050 — Edernal Care brand and green accent
 
@@ -1347,3 +1369,29 @@ account, not a verified public identity. Role wording is not claimed to satisfy
 the statutory officer-name requirement. No further crawler/contact design
 decision is pending. The optional production number and production controls
 remain external deployment evidence, not decisions this agent can manufacture.
+
+### D063 — IPD Slice 1 bills once and bundles ward medicine by default
+
+**Accepted 2026-11-13 on the owner's instruction for IPD Slice 1, autonomously;
+to be confirmed by the owner.**
+
+- **Bundled by default.** Each inpatient issue line is `bundled` unless the
+  pharmacist marks it `independent`. A bundled line snapshots 0% GST as part of
+  exempt composite healthcare; an independent line snapshots the Product's own
+  GST. Both price at the batch MRP on an inclusive basis (D025, D056). The
+  choice is made per line at issue time and never reclassified later.
+- **One Invoice per Admission.** A unique index on `(orgId, admissionId)` holds
+  until Slice 5's supplemental billing. Issue and service posting refuse once
+  the bill exists. `ipd.issueInvoice` needs the Patient ready or departed and
+  is superseded by Slice 5's final settlement.
+- **No Credit Notes on `ipd` Invoices yet.** Corrections come from the Admission
+  once inpatient returns (Slice 4) and final settlement (Slice 5) exist.
+- **Three-step basis backfill.** Migrations 0014 (nullable columns), 0015
+  (hand-authored backfill: counter Pharmacy inclusive, everything else
+  exclusive; `addedTaxTotal` 0 for Pharmacy, `taxTotal` otherwise) and 0016
+  (NOT NULL plus the new checks) keep generated and hand-written SQL apart
+  (hard rule 4).
+
+**Rejected:** defaulting medicine to the Product's GST, which would tax exempt
+inpatient care mechanically, and a per-Admission running Invoice before
+supplemental-billing rules exist.
