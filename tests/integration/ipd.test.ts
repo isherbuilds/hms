@@ -1295,3 +1295,18 @@ test("admissions list newest admission time first, even when one was backdated",
   const list = await api.ipd.list({ orgSlug, state: "current" });
   expect(list.items.map((item) => item.id)).toEqual([recent.admission.id, earlier.id]);
 });
+
+test("one bed type cannot have two rates starting at the same instant", async () => {
+  const hospital = await createHospital("ipd-tariff-instant");
+  const { api, orgSlug, category, roomService } = hospital;
+
+  const rate = {
+    orgSlug,
+    categoryId: category.id,
+    catalogItemId: roomService.id,
+    effectiveFrom: new Date(Date.now() + HOUR),
+  };
+
+  await api.ipd.setBedTariff({ ...rate, dailyPrice: 1_200_00n });
+  await expectORPCCode(api.ipd.setBedTariff({ ...rate, dailyPrice: 1_300_00n }), "CONFLICT");
+});
