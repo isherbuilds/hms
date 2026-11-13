@@ -6,6 +6,7 @@ import { FormControl } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { useWatch } from "react-hook-form";
 import { z } from "zod";
 
 import { FormDialog } from "@/components/form-dialog";
@@ -52,6 +53,20 @@ const earlierTime = {
   reason: z.string().trim().max(500),
 };
 
+// The server refuses an earlier time without one, so the form asks first.
+function requireEarlierReason(
+  value: { earlierAt: string; reason: string },
+  context: z.RefinementCtx,
+) {
+  if (value.earlierAt && !value.reason) {
+    context.addIssue({
+      code: "custom",
+      path: ["reason"],
+      message: "Give a reason for the earlier time",
+    });
+  }
+}
+
 function earlierFields(
   value: { earlierAt: string; reason: string },
   timeZone: string,
@@ -65,6 +80,7 @@ function earlierFields(
 function EarlierTimeFields({ orgSlug, label }: { orgSlug: string; label: string }) {
   const canCorrect = useCan(orgSlug, { ipd: ["correct"] });
   const { timeZone } = useOrgDateTime();
+  const earlierAt = useWatch<{ earlierAt: string }, "earlierAt">({ name: "earlierAt" });
 
   if (!canCorrect) return null;
 
@@ -79,18 +95,20 @@ function EarlierTimeFields({ orgSlug, label }: { orgSlug: string; label: string 
         max={localInputValue(new Date(), timeZone)}
         description="Leave blank to record it now."
       />
-      <TextField name="reason" label="Reason for the earlier time" />
+      <TextField name="reason" label="Reason for the earlier time" required={earlierAt !== ""} />
     </fieldset>
   );
 }
 
-const admitSchema = z.object({
-  patient: z
-    .custom<SelectedPatient | null>()
-    .refine((patient): patient is SelectedPatient => patient !== null, "Choose the Patient"),
-  practitionerId: z.string().min(1, "Choose the admitting doctor"),
-  ...earlierTime,
-});
+const admitSchema = z
+  .object({
+    patient: z
+      .custom<SelectedPatient | null>()
+      .refine((patient): patient is SelectedPatient => patient !== null, "Choose the Patient"),
+    practitionerId: z.string().min(1, "Choose the admitting doctor"),
+    ...earlierTime,
+  })
+  .superRefine(requireEarlierReason);
 
 export function AdmitDialog({
   orgSlug,
@@ -156,10 +174,9 @@ export function AdmitDialog({
 
 type AdmissionRef = { id: string; revision: number };
 
-const transferSchema = z.object({
-  bedId: z.string().min(1, "Choose the new bed"),
-  ...earlierTime,
-});
+const transferSchema = z
+  .object({ bedId: z.string().min(1, "Choose the new bed"), ...earlierTime })
+  .superRefine(requireEarlierReason);
 
 export function TransferDialog({
   orgSlug,
@@ -223,7 +240,7 @@ export function TransferDialog({
   );
 }
 
-const timedSchema = z.object(earlierTime);
+const timedSchema = z.object(earlierTime).superRefine(requireEarlierReason);
 
 export function ReadyDialog({
   orgSlug,
