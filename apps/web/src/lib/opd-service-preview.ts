@@ -23,6 +23,11 @@ export type WalkInQuote = {
   subtotal: bigint;
   discountAmount: bigint;
   taxTotal: bigint;
+  /**
+   * Set on a bill that mixes price bases (an Admission): the GST added on top of rates,
+   * so the summary separates it from the GST already inside MRP.
+   */
+  addedTaxTotal?: bigint;
   roundOff: bigint;
   grandTotal: bigint;
 };
@@ -70,6 +75,7 @@ export function applyDiscount(
     subtotal: computed.subtotal,
     discountAmount,
     taxTotal: computed.taxTotal,
+    addedTaxTotal: quote.addedTaxTotal === undefined ? undefined : computed.addedTaxTotal,
     roundOff: computed.roundOff,
     grandTotal: computed.grandTotal,
   };

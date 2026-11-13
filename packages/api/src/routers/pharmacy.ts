@@ -613,31 +613,14 @@ export const pharmacyRouter = {
         asc(admissionPharmacyIssueLines.id),
       );
 
-    const issues = new Map<
-      string,
-      {
-        id: string;
-        createdAt: Date;
-        prescriberName: string | null;
-        issuedByName: string;
-        lines: Array<(typeof rows)[number]["line"]>;
-      }
-    >();
+    return {
+      issues: [...Map.groupBy(rows, (row) => row.issueId)].map(([id, lines]) => {
+        // A group always holds the row that created it.
+        const { createdAt, prescriberName, issuedByName } = lines[0]!;
 
-    for (const row of rows) {
-      const issue = issues.get(row.issueId) ?? {
-        id: row.issueId,
-        createdAt: row.createdAt,
-        prescriberName: row.prescriberName,
-        issuedByName: row.issuedByName,
-        lines: [],
-      };
-
-      issue.lines.push(row.line);
-      issues.set(row.issueId, issue);
-    }
-
-    return { issues: [...issues.values()] };
+        return { id, createdAt, prescriberName, issuedByName, lines: lines.map((row) => row.line) };
+      }),
+    };
   }),
 
   returnSale: orgProcedure(

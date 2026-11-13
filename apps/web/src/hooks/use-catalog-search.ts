@@ -21,23 +21,21 @@ export function useCatalogSearch({
   const search = useSearchTerm();
   const query = search.term || undefined;
 
-  const opd = useQuery({
+  const catalog = useQuery({
     ...orpc.catalog.searchServices.queryOptions({
-      input: { orgSlug, query, includeConsultation: services === "visit" },
+      input: {
+        orgSlug,
+        query,
+        includeConsultation: services !== "procedure",
+        categories: services === "any" ? "all" : "opd",
+      },
     }),
-    enabled: search.searching && services !== "any",
+    enabled: search.searching,
   });
-
-  const any = useQuery({
-    ...orpc.catalog.list.queryOptions({ input: { orgSlug, query, activeOnly: true } }),
-    enabled: search.searching && services === "any",
-  });
-
-  const catalog = services === "any" ? any : opd;
 
   return {
     ...search,
-    items: services === "any" ? (any.data?.items ?? []) : (opd.data ?? []),
+    items: catalog.data ?? [],
     emptyMessage: searchEmptyMessage(search.searching, catalog, {
       noMatch,
       failed: "Could not search the catalog",

@@ -298,7 +298,7 @@ keeps its own locks (D040).
   then locks Products and batches exactly as a sale does; posting services locks
   nothing else; the bill locks the pending Charges, then takes the invoice and
   receipt counters. Cancellation keeps the lifecycle lock and refuses once a
-  Charge or issue exists.
+  live (non-voided) Charge or any issue exists.
 - **Counters are locks.** A counter row stays locked until commit, which keeps a
   series gapless. One transaction takes series in the order token → invoice →
   receipt; every other command takes a single series.

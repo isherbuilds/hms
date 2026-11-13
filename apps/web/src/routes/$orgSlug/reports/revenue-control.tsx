@@ -188,7 +188,7 @@ function RevenueControlRoute() {
         </div>
         <section data-report-print className="flex flex-col gap-4">
           <header className="flex flex-col gap-1 border-b pb-2">
-            <h1 className="text-sm font-medium">Revenue control · OPD and pharmacy</h1>
+            <h1 className="text-sm font-medium">Revenue control</h1>
             <p className="text-muted-foreground">
               {filters.from} to {filters.to}. Billed revenue excludes GST; refunds affect cash, not
               revenue.

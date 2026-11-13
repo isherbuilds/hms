@@ -27,6 +27,7 @@ import { VoidChargeDialog } from "@/components/opd-billing/void-charge-dialog";
 import { ServicePicker, type ServiceLine } from "@/components/opd-service-picker";
 import { DataList, ErrorNote, Panel, PanelEmpty } from "@/components/page";
 import { billingPdfUrl } from "@/lib/billing-document";
+import { linePriceBasis, mixedRateLabel } from "@/lib/invoice-print";
 import { formatMoney, ZERO } from "@/lib/money";
 import type { WalkInQuote } from "@/lib/opd-service-preview";
 import { orpc } from "@/lib/orpc";
@@ -40,21 +41,6 @@ export const admissionBillQuery = (orgSlug: string, admissionId: string) =>
 type Bill = Awaited<ReturnType<typeof orpc.ipd.previewInvoice.call>>;
 
 type BillLine = Bill["lines"][number];
-
-function priceLabel(line: BillLine, currency: string) {
-  const price = `${formatMoney(line.unitPrice, currency)}${line.priceUnits > 1 ? ` / ${line.priceUnits}` : ""}`;
-
-  // MRP already contains its GST; a service rate has GST added on top, when it has any.
-  if (line.priceBasis === "inclusive") return `${price} MRP`;
-
-  return Number(line.taxRatePercent) > 0 ? `${price} + GST` : price;
-}
-
-function taxLabel(line: BillLine, currency: string) {
-  if (Number(line.taxRatePercent) === 0) return "No GST";
-
-  return `${formatMoney(line.taxAmount, currency)} (${line.taxRatePercent}%)`;
-}
 
 export function AdmissionBill({
   orgSlug,
@@ -117,7 +103,15 @@ export function AdmissionBill({
   // The revision the bill was read at: a charge posted since moves it, and the server
   // refuses a settlement against the old figure.
   const stale = data.chargeRevision !== admission.chargeRevision;
-  const addedTax = data.grandTotal - data.subtotal - data.roundOff;
+  const includedTax = data.taxTotal - data.addedTaxTotal;
+
+  // The printed Invoice's words, so the screen and the paper read alike.
+  const priceLabel = (line: BillLine) => {
+    const { label, suffix } = linePriceBasis(data.registered, line);
+    const units = line.priceUnits > 1 ? ` / ${line.priceUnits}` : "";
+
+    return `${label} ${formatMoney(line.unitPrice, currency)}${units}${suffix ? ` ${suffix}` : ""}`;
+  };
 
   const quoteOf = (reviewed: Bill): WalkInQuote => ({
     currency,
@@ -129,6 +123,7 @@ export function AdmissionBill({
     subtotal: reviewed.subtotal,
     discountAmount: ZERO,
     taxTotal: reviewed.taxTotal,
+    addedTaxTotal: reviewed.addedTaxTotal,
     roundOff: reviewed.roundOff,
     grandTotal: reviewed.grandTotal,
   });
@@ -186,14 +181,18 @@ export function AdmissionBill({
             {
               head: "Price",
               cell: (line) => (
-                <span className="whitespace-nowrap tabular-nums">{priceLabel(line, currency)}</span>
+                <span className="whitespace-nowrap tabular-nums">{priceLabel(line)}</span>
               ),
               className: "text-right",
             },
             {
               head: "GST",
               cell: (line) => (
-                <span className="whitespace-nowrap tabular-nums">{taxLabel(line, currency)}</span>
+                <span className="whitespace-nowrap tabular-nums">
+                  {line.taxAmount === ZERO
+                    ? mixedRateLabel(line)
+                    : `${formatMoney(line.taxAmount, currency)} (${mixedRateLabel(line)})`}
+                </span>
               ),
               className: "text-right",
             },
@@ -244,10 +243,10 @@ export function AdmissionBill({
             <dt className="text-muted-foreground">Subtotal</dt>
             <dd className="tabular-nums">{formatMoney(data.subtotal, currency)}</dd>
           </div>
-          {addedTax === ZERO ? null : (
+          {data.addedTaxTotal === ZERO ? null : (
             <div className="flex justify-between gap-3">
               <dt className="text-muted-foreground">GST added</dt>
-              <dd className="tabular-nums">{formatMoney(addedTax, currency)}</dd>
+              <dd className="tabular-nums">{formatMoney(data.addedTaxTotal, currency)}</dd>
             </div>
           )}
           <Separator />
@@ -255,10 +254,10 @@ export function AdmissionBill({
             <dt>Total</dt>
             <dd className="tabular-nums">{formatMoney(data.grandTotal, currency)}</dd>
           </div>
-          {data.taxTotal === ZERO ? null : (
+          {includedTax === ZERO ? null : (
             <div className="flex justify-between gap-3 text-muted-foreground">
-              <dt>GST in total</dt>
-              <dd className="tabular-nums">{formatMoney(data.taxTotal, currency)}</dd>
+              <dt>GST included in MRP</dt>
+              <dd className="tabular-nums">{formatMoney(includedTax, currency)}</dd>
             </div>
           )}
         </dl>

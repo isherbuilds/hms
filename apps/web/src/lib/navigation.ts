@@ -186,7 +186,7 @@ export const REPORT_LINKS: readonly ReportLink[] = [
   {
     to: "/$orgSlug/reports/invoice-register",
     label: "Invoice register",
-    description: "OPD and pharmacy invoice series, full filtered totals, and balances now.",
+    description: "Invoice series, full filtered totals, and balances now.",
     icon: ReceiptTextIcon,
     permission: { report: ["readFinancial"] },
   },

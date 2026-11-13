@@ -1250,8 +1250,15 @@ export const ipdRouter = {
 
         const { chargeRevision, invoiceId } = admission;
 
+        // `registered` decides whether a line's words claim GST (D052): today's GSTIN
+        // before issuance, the Invoice's snapshot after it.
         return invoiceId === null
-          ? { chargeRevision, invoiceId, ...(await pendingBill(tx, orgId, input.admissionId)) }
+          ? {
+              chargeRevision,
+              invoiceId,
+              registered: Boolean((await readOrgSettings(orgId)).gstin),
+              ...(await pendingBill(tx, orgId, input.admissionId)),
+            }
           : { chargeRevision, invoiceId, ...(await issuedBill(tx, orgId, invoiceId)) };
       },
       { isolationLevel: "repeatable read", accessMode: "read only" },
@@ -1479,13 +1486,11 @@ async function pendingBill(tx: Tx, orgId: string, admissionId: string) {
     .orderBy(asc(charges.createdAt), asc(charges.id));
 
   const computed = computeInvoiceLines(rows, 0n, { roundToRupee: false });
-  const rowById = new Map(rows.map((row) => [row.chargeId, row]));
 
+  // computeInvoiceLines keeps the input order, so each line pairs with its row.
   return {
-    lines: computed.lines.map((line) => {
-      const row = rowById.get(line.chargeId);
-
-      if (!row) throw impossible(`computed line for unknown charge ${line.chargeId}`);
+    lines: computed.lines.map((line, index) => {
+      const row = rows[index]!;
 
       return withBatch({
         ...line,
@@ -1497,6 +1502,7 @@ async function pendingBill(tx: Tx, orgId: string, admissionId: string) {
     }),
     subtotal: computed.subtotal,
     taxTotal: computed.taxTotal,
+    addedTaxTotal: computed.addedTaxTotal,
     roundOff: computed.roundOff,
     grandTotal: computed.grandTotal,
   };
@@ -1508,8 +1514,10 @@ async function issuedBill(tx: Tx, orgId: string, invoiceId: string) {
       .select({
         subtotal: invoices.subtotal,
         taxTotal: invoices.taxTotal,
+        addedTaxTotal: invoices.addedTaxTotal,
         roundOff: invoices.roundOff,
         grandTotal: invoices.grandTotal,
+        orgGstin: invoices.orgGstin,
       })
       .from(invoices)
       .where(and(eq(invoices.orgId, orgId), eq(invoices.id, invoiceId))),
@@ -1543,7 +1551,9 @@ async function issuedBill(tx: Tx, orgId: string, invoiceId: string) {
 
   if (!invoice) throw impossible(`admission invoice ${invoiceId} vanished in one snapshot`);
 
-  return { lines: rows.map(withBatch), ...invoice };
+  const { orgGstin, ...totals } = invoice;
+
+  return { lines: rows.map(withBatch), registered: Boolean(orgGstin), ...totals };
 }
 
 async function assertUnoccupied(tx: Tx, orgId: string, bedId: string) {

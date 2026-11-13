@@ -24,7 +24,7 @@ import { useMembership } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
 import { formatBusinessDate, formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { closeOnConflict, errorMessage, hasErrorCode } from "@/lib/orpc-error";
+import { errorMessage } from "@/lib/orpc-error";
 
 /**
  * Plain words for the server's `supply`: medicine given as part of the stay is an
@@ -160,7 +160,6 @@ export function IssueMedicinesDialog({
         toast.success("Medicines issued");
         onClose();
       },
-      onError: closeOnConflict(onClose),
     }),
   );
 
@@ -190,12 +189,11 @@ export function IssueMedicinesDialog({
     });
   };
 
-  // A refusal other than a stale Admission (which closes the form) stays beside the
-  // fields it is about, such as a Schedule H1 medicine without its prescriber.
-  const refusal =
-    issue.error && !hasErrorCode(issue.error, "CONFLICT")
-      ? errorMessage(issue.error, "Could not issue the medicines")
-      : undefined;
+  // A refusal keeps the lines, so a shelf that ran short costs one edit, not the cart.
+  // The page unmounts this form once the refreshed Admission can no longer take issues.
+  const refusal = issue.error
+    ? errorMessage(issue.error, "Could not issue the medicines")
+    : undefined;
 
   const prescriberProblem =
     attempted && scheduleH1 && prescriberName.trim() === ""
