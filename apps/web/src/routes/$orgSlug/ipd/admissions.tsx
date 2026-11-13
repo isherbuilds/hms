@@ -27,7 +27,7 @@ type AdmissionState = (typeof STATES)[number];
 
 const STATE_LABELS: Record<AdmissionState, string> = {
   current: "In hospital",
-  past: "Left",
+  past: "Ended",
   all: "All",
 };
 
