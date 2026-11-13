@@ -1078,14 +1078,14 @@ test("the Admission list pages with the shared page size and filters by state", 
   const past = await api.ipd.list({ orgSlug, state: "past" });
   expect(past.items.map((item) => item.id)).toEqual([two.admission.id]);
 
-  const firstPage = await api.ipd.list({ orgSlug, state: "all", pageLimit: 1 });
+  const firstPage = await api.ipd.list({ orgSlug, state: "all", limit: 1 });
   expect(firstPage.items).toHaveLength(1);
   expect(firstPage.nextCursor).not.toBeNull();
 
   const secondPage = await api.ipd.list({
     orgSlug,
     state: "all",
-    pageLimit: 1,
+    limit: 1,
     cursor: firstPage.nextCursor!,
   });
 
