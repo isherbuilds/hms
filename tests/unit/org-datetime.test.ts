@@ -64,3 +64,13 @@ test("a value that is not a date fails loud", () => {
   expect(() => formatBusinessDate("13 Nov 2026")).toThrow(RangeError);
   expect(() => formatDateTime("not a date", "UTC")).toThrow(RangeError);
 });
+
+test("a business date that is not on the calendar fails loud", () => {
+  for (const day of ["2026-02-31", "2025-02-29", "2026-13-01", "2026-04-00", "2026-04-31"]) {
+    expect(() => formatBusinessDate(day)).toThrow(RangeError);
+  }
+});
+
+test("29 Feb is a business date in a leap year", () => {
+  expect(formatBusinessDate("2028-02-29")).toBe("29 Feb 2028");
+});
