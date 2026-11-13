@@ -190,10 +190,11 @@ mechanism.
 
 Catalog categories are `consultation | procedure | lab | radiology | other`, but
 an OPD attendance may only be charged for `OPD_BILLABLE_CATEGORIES` —
-consultation and procedure (D024). `resolveOpdPricing` and
-`catalog.searchServices` both enforce it, so `opd.book`, `opd.createWalkIn`, and
-`opd.quoteWalkIn` cannot take a lab or radiology line. Those bill where the work
-is ordered, once those domains ship.
+consultation and procedure (D024). `resolveOpdPricing` enforces it, so `opd.book`,
+`opd.createWalkIn`, and `opd.quoteWalkIn` cannot take a lab or radiology line, and
+`catalog.searchServices` offers only that set unless the caller passes
+`categories: "all"`, which an Admission bill does because it accepts every Service
+category.
 
 Any catalog category may opt into an intake rate. The rate applies where the
 operator picks the item as a service; the automatic attendance fee always bills
