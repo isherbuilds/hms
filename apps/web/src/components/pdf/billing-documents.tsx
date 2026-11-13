@@ -8,6 +8,7 @@ import { formatMoney, ZERO } from "@/lib/money";
 import { methodLabel } from "@/lib/settlement";
 import { gstStateLabel } from "@hms/api/lib/gst-state";
 import {
+  gstSummaryRows,
   invoiceDocumentTitle,
   invoicePrintParticulars,
   invoiceTaxBreakdown,
@@ -258,15 +259,6 @@ function TaxSummary({
   mixedLines: boolean;
   thermal?: boolean;
 }) {
-  const groups = new Map<string, { taxable: bigint; tax: bigint }>();
-
-  for (const line of lines) {
-    const amounts = groups.get(line.taxRatePercent) ?? { taxable: ZERO, tax: ZERO };
-    amounts.taxable += line.taxableValue;
-    amounts.tax += line.taxAmount;
-    groups.set(line.taxRatePercent, amounts);
-  }
-
   return (
     <section style={{ breakInside: "avoid", marginTop: 18 }}>
       <SectionTitle>GST summary</SectionTitle>
@@ -280,17 +272,13 @@ function TaxSummary({
           </tr>
         </thead>
         <tbody>
-          {Array.from(groups, ([rate, amounts]) => {
-            const { cgst, sgst } = splitGst(amounts.tax);
+          {gstSummaryRows(lines, mixedLines).map(({ rate, taxable, tax }) => {
+            const { cgst, sgst } = splitGst(tax);
 
             return (
               <tr key={rate}>
-                <td style={cellStyle}>
-                  {mixedLines ? mixedRateLabel({ taxRatePercent: rate }) : `${rate}%`}
-                </td>
-                <td style={{ ...cellStyle, textAlign: "right" }}>
-                  {formatDecimal(amounts.taxable)}
-                </td>
+                <td style={cellStyle}>{`${rate}%`}</td>
+                <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(taxable)}</td>
                 <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(cgst)}</td>
                 <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(sgst)}</td>
               </tr>
