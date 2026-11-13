@@ -415,11 +415,13 @@ export const bedReservations = pgTable(
       columns: [table.orgId, table.bedId],
       foreignColumns: [beds.orgId, beds.id],
     }),
+    // The Admission a hold became is the same Patient's.
     foreignKey({
-      columns: [table.orgId, table.admissionId],
-      foreignColumns: [admissions.orgId, admissions.id],
+      columns: [table.orgId, table.admissionId, table.patientId],
+      foreignColumns: [admissions.orgId, admissions.id, admissions.patientId],
     }),
     index("bed_reservations_org_arrival_idx").on(table.orgId, table.plannedArrivalAt, table.id),
+    index("bed_reservations_org_created_idx").on(table.orgId, table.createdAt, table.id),
     index("bed_reservations_org_bed_status_idx").on(table.orgId, table.bedId, table.status),
   ],
 );

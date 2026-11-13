@@ -695,20 +695,24 @@ test("a refused conversion leaves no Admission, no stay and the reservation unch
 
   const elsewhereBed = await extraBed(hospital, "G-5");
   const walkInBed = await extraBed(hospital, "G-6");
+
   // Admitted first: a Patient with a live reservation cannot be admitted as a walk-in.
-  const admittedPatient = await admitWalkIn(hospital, walkInBed.id, "Already Admitted");
+  const { patient: admittedPatient } = await admitWalkIn(
+    hospital,
+    walkInBed.id,
+    "Already Admitted",
+  );
+
+  const admittedRequest = await api.ipd.requestBed({
+    orgSlug,
+    patientId: admittedPatient.id,
+    categoryId: hospital.category.id,
+    ...dueNow(),
+  });
+
   const admitted = {
-    patient: admittedPatient.patient,
-    reservation: await confirm(
-      hospital,
-      await api.ipd.requestBed({
-        orgSlug,
-        patientId: admittedPatient.patient.id,
-        categoryId: hospital.category.id,
-        ...dueNow(),
-      }),
-      elsewhereBed.id,
-    ),
+    patient: admittedPatient,
+    reservation: await confirm(hospital, admittedRequest, elsewhereBed.id),
   };
 
   const before = await admissionIds(hospital);

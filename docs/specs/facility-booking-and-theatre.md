@@ -28,8 +28,10 @@ Bed, planned arrival/departure, hold expiry, status, revision and attribution.
 Use half-open intervals with end after start; store instants and show the facility
 timezone. A category request is a waitlist request, not guaranteed capacity.
 A confirmed hold requires a specific bed and is distinct from actual occupancy.
-States: requested → confirmed → converted; requested/confirmed → cancelled or
-expired; confirmed → disrupted when a safety block prevents fulfilment. Disrupted
+Stored states: requested → confirmed → converted; requested/confirmed →
+cancelled; confirmed → disrupted when an authorized block or displacement prevents
+fulfilment. Expired is an effective status judged at read time from the hold
+expiry, never stored. Disrupted
 holds make no capacity promise and require explicit re-confirmation on a ready bed
 or cancellation. Effective expiry is derived from time, without requiring a cleanup job.
 Expired holds cannot convert. Extensions and reschedules recheck all conflicts.
@@ -53,8 +55,9 @@ Never acquire a Patient lock after a Bed lock. Ordinary conflicting commands ret
 CONFLICT without writes. Actual open occupancy has no promised end: any later hold
 it could disrupt must be resolved explicitly before that command succeeds; the
 converted hold itself is consumed atomically. Urgent displacement requires
-owner/admin authority, reason and atomic cancellation/reassignment of affected
-holds before occupancy changes. A safety block must still be recorded promptly;
+owner/admin authority and a reason, and marks the affected holds disrupted in the
+same transaction; they stay visible for reassignment or cancellation and are not
+cancelled or reassigned by it. A safety block must still be recorded promptly;
 authorized staff mark affected holds disrupted and put them on the resolution
 worklist in that same transaction rather than suppressing the block or hiding the
 holds. Actual overstay remains authoritative and raises disruption without eviction.

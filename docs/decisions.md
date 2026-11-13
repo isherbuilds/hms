@@ -1457,17 +1457,21 @@ autonomously; to be confirmed by the owner.** Contract:
 - **Displacement is explicit.** Admitting or moving over a hold needs
   `ipd:correct` and a reason, and marks the hold disrupted with that reason; it
   is never deleted.
-- **Blocks.** A safety block always succeeds and disrupts the bed's holds. The
-  routine cleaning block placed at departure does not; a hold on a bed still
-  blocked at arrival cannot convert until the bed is released. Deactivating a
-  held bed is refused.
+- **Blocks.** A block always succeeds. It disrupts the bed's holds only when the
+  caller holds `ipd:correct`; anyone else's block, including the routine
+  cleaning block placed at departure, leaves them confirmed and flagged. A hold
+  on a bed still blocked at arrival cannot convert until the bed is released.
+  Deactivating a held bed is refused.
 - **Conversion on arrival is atomic** and the admitted time must fall inside
   the held window; otherwise reschedule first. Failure leaves the Admission, the
   stay and the reservation unchanged.
-- **Overstay is flagged at read time**, never resolved by evicting the occupant.
+- **No live hold sits on an occupied bed.** Occupancy needs the bed's other holds
+  resolved first, so there is no overstay-at-risk state; the occupant is never
+  evicted.
 - **From review, migration 0022:** one daily rate per bed type per instant
-  (`bed_tariffs_org_category_effective_uq`), and the cancelled check runs both
-  ways (cancelled exactly when a cancel reason exists).
+  (`bed_tariffs_org_category_effective_uq`), and an Admission's cancelled check
+  runs both ways (cancelled exactly when both `cancelled_at` and `cancel_reason`
+  are set).
 
 **Amended after council 2026-11-13.** (A) A block is always recorded, but it
 disrupts the bed's holds only when the caller holds `ipd:correct`; otherwise the
@@ -1478,6 +1482,13 @@ moved or cancelled, unless an `ipd:correct` holder displaces it with a reason.
 (C) Expiry and "hold until is in the future" are judged on the clock read after
 the Patient, Bed and reservation locks are held. A lapsed hold is never judged
 against a backdated admit time; that arrival is a walk-in.
+
+**Amended after PR review 2026-11-13 (migration 0023).** Needs attention lists a
+lapsed request or hold only for seven days after its `holdUntil`; older ones are
+found under all. A walk-in admission is refused while the Patient has a live
+reservation; they are admitted from it, or it is cancelled first. The
+`occupied` at-risk state is removed, because no command can leave a live hold on
+an occupied bed.
 
 **Evidence:**
 [Frappe scheduled admission and ADT](https://frappehealth.com/docs/v13/user/manual/en/healthcare/inpatient_record)

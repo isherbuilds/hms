@@ -7,7 +7,12 @@ import { FormControl, FormField, FormItem, FormLabel } from "@hms/ui/components/
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { useWatch } from "react-hook-form";
+import {
+  useFormContext,
+  useWatch,
+  type ControllerRenderProps,
+  type FieldValues,
+} from "react-hook-form";
 import { z } from "zod";
 
 import { FormDialog } from "@/components/form-dialog";
@@ -123,25 +128,30 @@ function requireDisplaceReason(
   }
 }
 
-/** Keeps the dialog open on the first hold refusal so it can be shown and, if allowed, overridden. */
+type Refusal = { message: string; bedId: string };
+
+/** Keeps the dialog open on the first hold refusal for a bed so it can be shown and, if
+ * allowed, overridden. The server's `bed_held` decides, not the board snapshot. */
 function useHoldRefusal(onClose: () => void) {
-  const [refusal, setRefusal] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<Refusal | null>(null);
 
-  const showsInline = (error: Error, held: boolean, displacing: boolean) =>
+  const showsInline = (error: Error, bedId: string, displacing: boolean) =>
     hasErrorCode(error, "CONFLICT") &&
-    errorReason(error) !== "stale_record" &&
-    held &&
+    errorReason(error) === "bed_held" &&
     !displacing &&
-    refusal === null;
+    refusal?.bedId !== bedId;
 
-  const onError = (error: Error, held: boolean, displacing: boolean) => {
+  const onError = (error: Error, bedId: string, displacing: boolean) => {
     if (!hasErrorCode(error, "CONFLICT")) return;
 
-    if (showsInline(error, held, displacing)) setRefusal(errorMessage(error));
+    if (showsInline(error, bedId, displacing)) setRefusal({ message: errorMessage(error), bedId });
     else onClose();
   };
 
-  return { refusal, onError, showsInline };
+  /** The refusal, only while the form is still on the bed it was about. */
+  const refusalFor = (bedId: string) => (refusal?.bedId === bedId ? refusal.message : null);
+
+  return { refusalFor, onError, showsInline };
 }
 
 type BoardHold = { patientName: string; plannedArrivalAt: Date };
@@ -189,7 +199,9 @@ function HoldRefusal({
                 <FormControl>
                   <Checkbox checked={field.value} onCheckedChange={field.onChange} />
                 </FormControl>
-                <FormLabel>{action} anyway and release the hold</FormLabel>
+                <FormLabel>
+                  {action} anyway and release every reservation held on this bed
+                </FormLabel>
               </FormItem>
             )}
           />
@@ -261,8 +273,8 @@ export function AdmitDialog({
       }}
       success="Patient admitted"
       onClose={onClose}
-      onError={(error, value) => hold.onError(error, bed.holds.length > 0, value.displace)}
-      showsInline={(error, value) => hold.showsInline(error, bed.holds.length > 0, value.displace)}
+      onError={(error, value) => hold.onError(error, bed.id, value.displace)}
+      showsInline={(error, value) => hold.showsInline(error, bed.id, value.displace)}
       run={(value) => {
         const earlier = earlierFields(value, timeZone);
 
@@ -305,7 +317,12 @@ export function AdmitDialog({
         )}
       />
       <EarlierTimeFields orgSlug={orgSlug} label="Admitted at" />
-      <HoldRefusal orgSlug={orgSlug} refusal={hold.refusal} action="Admit" holds={bed.holds} />
+      <HoldRefusal
+        orgSlug={orgSlug}
+        refusal={hold.refusalFor(bed.id)}
+        action="Admit"
+        holds={bed.holds}
+      />
     </FormDialog>
   );
 }
@@ -317,14 +334,14 @@ const transferSchema = z
   .superRefine(requireEarlierReason)
   .superRefine(requireDisplaceReason);
 
-// The refusal belongs to the bed chosen in the form, so its holds are read from there.
+// The refusal belongs to the bed chosen in the form, so it and its holds are read from there.
 function MoveRefusal({
   orgSlug,
-  refusal,
+  refusalFor,
   beds,
 }: {
   orgSlug: string;
-  refusal: string | null;
+  refusalFor: (bedId: string) => string | null;
   beds: ReadonlyArray<{ id: string; holds: readonly BoardHold[] }>;
 }) {
   const bedId = useWatch<{ bedId: string }, "bedId">({ name: "bedId" });
@@ -332,10 +349,47 @@ function MoveRefusal({
   return (
     <HoldRefusal
       orgSlug={orgSlug}
-      refusal={refusal}
+      refusal={refusalFor(bedId)}
       action="Move"
       holds={beds.find((bed) => bed.id === bedId)?.holds ?? []}
     />
+  );
+}
+
+// A new bed has not been refused yet, so an override ticked for the last one is cleared.
+function MoveBedSelect({
+  beds,
+  held,
+  disabled,
+  field,
+}: {
+  beds: ReadonlyArray<{ id: string; wardName: string; label: string; categoryName: string }>;
+  held: ReadonlySet<string>;
+  disabled: boolean;
+  field: ControllerRenderProps<FieldValues, string>;
+}) {
+  const { setValue } = useFormContext<{ displace: boolean; displaceReason: string }>();
+
+  return (
+    <FormControl>
+      <NativeSelect
+        {...field}
+        disabled={disabled}
+        onChange={(event) => {
+          field.onChange(event);
+          setValue("displace", false);
+          setValue("displaceReason", "");
+        }}
+      >
+        <option value="">Choose a free bed</option>
+        {beds.map((bed) => (
+          <option key={bed.id} value={bed.id}>
+            {bed.wardName} {bed.label} · {bed.categoryName}
+            {held.has(bed.id) ? " · held" : ""}
+          </option>
+        ))}
+      </NativeSelect>
+    </FormControl>
   );
 }
 
@@ -369,8 +423,8 @@ export function TransferDialog({
       defaultValues={{ bedId: "", earlierAt: "", reason: "", displace: false, displaceReason: "" }}
       success="Patient moved"
       onClose={onClose}
-      onError={(error, value) => hold.onError(error, held.has(value.bedId), value.displace)}
-      showsInline={(error, value) => hold.showsInline(error, held.has(value.bedId), value.displace)}
+      onError={(error, value) => hold.onError(error, value.bedId, value.displace)}
+      showsInline={(error, value) => hold.showsInline(error, value.bedId, value.displace)}
       run={(value) => {
         const earlier = earlierFields(value, timeZone);
 
@@ -390,21 +444,11 @@ export function TransferDialog({
         label="New bed"
         description={board.isSuccess && free.length === 0 ? "No bed is free right now." : undefined}
         render={(field) => (
-          <FormControl>
-            <NativeSelect {...field} disabled={board.isPending}>
-              <option value="">Choose a free bed</option>
-              {free.map((bed) => (
-                <option key={bed.id} value={bed.id}>
-                  {bed.wardName} {bed.label} · {bed.categoryName}
-                  {held.has(bed.id) ? " · held" : ""}
-                </option>
-              ))}
-            </NativeSelect>
-          </FormControl>
+          <MoveBedSelect beds={free} held={held} disabled={board.isPending} field={field} />
         )}
       />
       <EarlierTimeFields orgSlug={orgSlug} label="Moved at" />
-      <MoveRefusal orgSlug={orgSlug} refusal={hold.refusal} beds={free} />
+      <MoveRefusal orgSlug={orgSlug} refusalFor={hold.refusalFor} beds={free} />
     </FormDialog>
   );
 }

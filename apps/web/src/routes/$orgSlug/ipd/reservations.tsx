@@ -59,7 +59,7 @@ const EMPTY: Record<View, string> = {
 // The worklists come back whole; `all` pages.
 const reservationsQuery = (orgSlug: string, view: View) =>
   orpc.ipd.listBedReservations.infiniteOptions({
-    input: (cursor: { createdAt: Date; id: string } | undefined) => ({ orgSlug, view, cursor }),
+    input: (cursor: { createdAt: string; id: string } | undefined) => ({ orgSlug, view, cursor }),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     ...OPERATIONAL_INFINITE_REFETCH,
@@ -70,10 +70,22 @@ const boardQuery = (orgSlug: string) =>
 
 const MINUTE_MS = 60_000;
 
+// Ticks on the minute boundary, so the clock turns when a wall clock does.
 function subscribeMinutes(tick: () => void) {
-  const timer = setInterval(tick, MINUTE_MS);
+  let timer: ReturnType<typeof setInterval> | undefined;
 
-  return () => clearInterval(timer);
+  const first = setTimeout(
+    () => {
+      tick();
+      timer = setInterval(tick, MINUTE_MS);
+    },
+    MINUTE_MS - (Date.now() % MINUTE_MS),
+  );
+
+  return () => {
+    clearTimeout(first);
+    clearInterval(timer);
+  };
 }
 
 const currentMinute = () => Math.floor(Date.now() / MINUTE_MS) * MINUTE_MS;
@@ -97,8 +109,9 @@ export const Route = createFileRoute("/$orgSlug/ipd/reservations")({
       queryClient.query(boardQuery(orgSlug)).catch(() => {}),
     ]);
 
-    // One clock for server and client render, so "has the window started" agrees.
-    return { now: Date.now() };
+    // One clock for server and client render, so "has the window started" agrees;
+    // rounded like the client's, so it never steps back after hydration.
+    return { now: currentMinute() };
   },
   component: ReservationsRoute,
 });
@@ -114,10 +127,6 @@ const STATUS_LABELS: Record<Reservation["effectiveStatus"], string> = {
 
 function ReservationStatus({ reservation }: { reservation: Reservation }) {
   const status = reservation.effectiveStatus;
-
-  if (reservation.atRiskReason === "occupied") {
-    return <Badge variant="pending">Bed still occupied</Badge>;
-  }
 
   if (reservation.atRiskReason === "blocked") return <Badge variant="pending">Bed blocked</Badge>;
 
@@ -168,6 +177,7 @@ function ReservationsRoute() {
   const [requesting, setRequesting] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const items = reservations.data?.pages.flatMap((page) => page.items) ?? [];
+  const boardBeds = new Map((board.data?.beds ?? []).map((bed) => [bed.id, bed]));
   const close = () => setDialog(null);
 
   return (
@@ -275,6 +285,8 @@ function ReservationsRoute() {
                 <RowActions
                   reservation={item}
                   admittable={canCreate && canAdmitNow(item, now)}
+                  rateSet={item.bedId ? boardBeds.get(item.bedId)?.rateSet : undefined}
+                  holdable={item.plannedDepartureAt.getTime() > now}
                   canUpdate={canUpdate}
                   onOpen={(kind) => setDialog({ kind, reservation: item })}
                 />
@@ -295,9 +307,9 @@ function ReservationsRoute() {
             label: dialog.reservation.bedLabel!,
             wardName: dialog.reservation.wardName!,
             // Another hold on the bed must move first, or be released by an administrator.
-            holds: (
-              board.data?.beds.find((bed) => bed.id === dialog.reservation.bedId)?.holds ?? []
-            ).filter((hold) => hold.reservationId !== dialog.reservation.id),
+            holds: (boardBeds.get(dialog.reservation.bedId!)?.holds ?? []).filter(
+              (hold) => hold.reservationId !== dialog.reservation.id,
+            ),
           }}
           reservation={{
             id: dialog.reservation.id,
@@ -331,11 +343,17 @@ function ReservationsRoute() {
 function RowActions({
   reservation,
   admittable,
+  rateSet,
+  holdable,
   canUpdate,
   onOpen,
 }: {
   reservation: Reservation;
   admittable: boolean;
+  /** The held bed's, from the board; undefined until it loads. */
+  rateSet: boolean | undefined;
+  /** A hold must end by departure, so one whose departure has passed needs new dates first. */
+  holdable: boolean;
   canUpdate: boolean;
   onOpen: (kind: Dialog["kind"]) => void;
 }) {
@@ -348,10 +366,14 @@ function RowActions({
   return (
     <div className="flex items-center justify-end gap-1">
       {admittable ? (
-        <Button aria-label={`Admit ${who}`} onClick={() => onOpen("admit")}>
-          Admit
-        </Button>
-      ) : canUpdate && needsBed ? (
+        rateSet ? (
+          <Button aria-label={`Admit ${who}`} onClick={() => onOpen("admit")}>
+            Admit
+          </Button>
+        ) : rateSet === false ? (
+          <span className="text-muted-foreground">No rate set</span>
+        ) : null
+      ) : canUpdate && needsBed && holdable ? (
         <Button
           variant="outline"
           aria-label={`Hold a bed for ${who}`}

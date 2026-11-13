@@ -1,6 +1,6 @@
 import { db } from "@hms/db";
 import type { DbTransaction } from "@hms/db/counter";
-import { admissionBedStays, bedCategories, bedReservations, beds, wards } from "@hms/db/schema/ipd";
+import { bedCategories, bedReservations, beds, wards } from "@hms/db/schema/ipd";
 import { patients } from "@hms/db/schema/patients";
 import { ORPCError } from "@orpc/server";
 import {
@@ -12,6 +12,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  lt,
   lte,
   or,
   sql,
@@ -35,11 +36,18 @@ import { pageLimit, reason } from "../lib/schemas";
 
 const ARRIVALS_HORIZON_MS = 48 * 60 * 60 * 1_000;
 
+// A lapsed request or hold needs attention for a week; older ones are found under `all`.
+const ATTENTION_LAPSE_MS = 7 * 24 * 60 * 60 * 1_000;
+
 // Half-open `[arrival, departure)`. A kept arrival may already be past: a late
-// Patient's hold is extended without moving it.
+// Patient's hold is extended without moving it. The departure never may.
 function requireWindow(window: Window, now: Date, keptArrival?: Date) {
   if (window.plannedDepartureAt.getTime() <= window.plannedArrivalAt.getTime()) {
     throw new ORPCError("BAD_REQUEST", { message: "Departure must be after arrival." });
+  }
+
+  if (window.plannedDepartureAt.getTime() <= now.getTime()) {
+    throw new ORPCError("BAD_REQUEST", { message: "That departure time has already passed." });
   }
 
   if (
@@ -68,7 +76,7 @@ function requireCategory(bed: { categoryId: string }, categoryId: string) {
   }
 }
 
-// The open stay and the block on the reserved bed say whether a live hold is at risk.
+// The block on the reserved bed says whether a live hold is at risk.
 function reservationRows(executor: typeof db | DbTransaction, orgId: string, where?: SQL) {
   return executor
     .select({
@@ -89,8 +97,7 @@ function reservationRows(executor: typeof db | DbTransaction, orgId: string, whe
       admissionId: bedReservations.admissionId,
       cancelReason: bedReservations.cancelReason,
       disruptedReason: bedReservations.disruptedReason,
-      createdAt: bedReservations.createdAt,
-      occupiedBy: admissionBedStays.admissionId,
+      createdAtCursor: sql<string>`${bedReservations.createdAt}::text`,
       blockedAt: beds.blockedAt,
     })
     .from(bedReservations)
@@ -107,33 +114,19 @@ function reservationRows(executor: typeof db | DbTransaction, orgId: string, whe
     )
     .leftJoin(beds, and(eq(beds.orgId, bedReservations.orgId), eq(beds.id, bedReservations.bedId)))
     .leftJoin(wards, and(eq(wards.orgId, beds.orgId), eq(wards.id, beds.wardId)))
-    .leftJoin(
-      admissionBedStays,
-      and(
-        eq(admissionBedStays.orgId, bedReservations.orgId),
-        eq(admissionBedStays.bedId, bedReservations.bedId),
-        isNull(admissionBedStays.endedAt),
-      ),
-    )
     .where(and(eq(bedReservations.orgId, orgId), where));
 }
 
 function reservationView(selected: Awaited<ReturnType<typeof reservationRows>>[number], now: Date) {
-  const { occupiedBy, blockedAt, createdAt: _, ...row } = selected;
+  const { blockedAt, createdAtCursor: _, ...row } = selected;
   const lapsed = (row.status === "requested" || row.status === "confirmed") && isLapsed(row, now);
 
   const effectiveStatus = lapsed ? ("expired" as const) : row.status;
 
-  // Actual occupancy stays authoritative: a due hold on an occupied bed is flagged, and
-  // so is a hold on a blocked bed, which cannot convert until the bed is released.
+  // A hold on a blocked bed cannot convert until the bed is released. No command
+  // leaves a live hold on an occupied bed (D064).
   const atRiskReason =
-    effectiveStatus !== "confirmed"
-      ? null
-      : occupiedBy !== null && row.plannedArrivalAt.getTime() <= now.getTime()
-        ? ("occupied" as const)
-        : blockedAt !== null
-          ? ("blocked" as const)
-          : null;
+    effectiveStatus === "confirmed" && blockedAt !== null ? ("blocked" as const) : null;
 
   return { ...row, effectiveStatus, atRisk: atRiskReason !== null, atRiskReason };
 }
@@ -165,11 +158,7 @@ function viewFilter(view: "arrivals" | "waitlist" | "attention" | "all", now: Da
         and(
           inArray(bedReservations.status, ["requested", "confirmed"]),
           lte(bedReservations.holdUntil, now),
-        ),
-        and(
-          eq(bedReservations.status, "confirmed"),
-          lte(bedReservations.plannedArrivalAt, now),
-          isNotNull(admissionBedStays.id),
+          gt(bedReservations.holdUntil, new Date(now.getTime() - ATTENTION_LAPSE_MS)),
         ),
         and(
           eq(bedReservations.status, "confirmed"),
@@ -434,7 +423,16 @@ export const ipdReservationsRouter = {
     { ipd: ["read"] },
     orgInput.extend({
       view: z.enum(["arrivals", "waitlist", "attention", "all"]),
-      cursor: z.object({ createdAt: z.date(), id: z.string() }).optional(),
+      // Text, not a Date: `created_at` keeps microseconds a Date would drop (see file.list).
+      cursor: z
+        .object({
+          createdAt: z
+            .string()
+            .max(64)
+            .refine((value) => !Number.isNaN(Date.parse(value)), "Invalid cursor timestamp"),
+          id: z.string(),
+        })
+        .optional(),
       limit: pageLimit,
     }),
   ).handler(async ({ context, input }) => {
@@ -450,11 +448,16 @@ export const ipdReservationsRouter = {
       return { items: rows.map((row) => reservationView(row, now)), nextCursor: null };
     }
 
+    const cursorAt = input.cursor ? sql`${input.cursor.createdAt}::timestamptz` : undefined;
+
     const rows = await reservationRows(
       db,
       orgId,
-      input.cursor
-        ? sql`(${bedReservations.createdAt}, ${bedReservations.id}) < (${input.cursor.createdAt}, ${input.cursor.id})`
+      input.cursor && cursorAt
+        ? or(
+            lt(bedReservations.createdAt, cursorAt),
+            and(eq(bedReservations.createdAt, cursorAt), lt(bedReservations.id, input.cursor.id)),
+          )
         : undefined,
     )
       .orderBy(desc(bedReservations.createdAt), desc(bedReservations.id))
@@ -468,7 +471,7 @@ export const ipdReservationsRouter = {
 
     return {
       items: rows.map((row) => reservationView(row, now)),
-      nextCursor: hasNextPage && last ? { createdAt: last.createdAt, id: last.id } : null,
+      nextCursor: hasNextPage && last ? { createdAt: last.createdAtCursor, id: last.id } : null,
     };
   }),
 

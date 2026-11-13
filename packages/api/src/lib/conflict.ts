@@ -7,11 +7,13 @@ import { ORPCError } from "@orpc/server";
  * - `uid_taken` — that patient UID belongs to someone else (mapped to the UID field).
  * - `stale_record` — the patient row or bed reservation moved after the operator opened
  *   it (a reservation dialog closes instead of showing a capacity refusal).
+ * - `bed_held` — a live hold stands on the bed (the admit and move dialogs show it and,
+ *   for `ipd:correct`, offer to release the bed's holds with a reason).
  *
  * Every other CONFLICT is a plain `ORPCError("CONFLICT")`: the client refetches and
  * shows the server message.
  */
-export type ConflictReason = "duplicate" | "uid_taken" | "stale_record";
+export type ConflictReason = "duplicate" | "uid_taken" | "stale_record" | "bed_held";
 
 /** A clash the operator can act on. Expected, so the server does not log it. */
 export function conflict(reason: ConflictReason, message: string) {
