@@ -1,3 +1,4 @@
+import { authorize } from "@hms/auth/access";
 import { db } from "@hms/db";
 import { catalogItems } from "@hms/db/schema/catalog-items";
 import { charges } from "@hms/db/schema/charges";
@@ -10,6 +11,7 @@ import {
   admissionPharmacyIssues,
   admissions,
   bedCategories,
+  bedReservations,
   bedTariffs,
   beds,
   wards,
@@ -45,8 +47,8 @@ import {
   auditReservation,
   BACKDATE_TOLERANCE_MS,
   clearHoldsForOccupancy,
+  liveHolds,
   lockBeds,
-  lockLiveHolds,
   requireInScope,
 } from "../lib/ipd-beds";
 import { orgInput, orgProcedure, requirePermission, type Scope } from "../lib/procedures/factory";
@@ -549,7 +551,14 @@ export const ipdRouter = {
       if (!input.active) {
         await assertUnoccupied(tx, scope.orgId, input.bedId);
 
-        if ((await lockLiveHolds(tx, scope.orgId, input.bedId, new Date())).length > 0) {
+        // The bed lock already serialises every writer of a hold on it.
+        const [held] = await tx
+          .select({ id: bedReservations.id })
+          .from(bedReservations)
+          .where(liveHolds(scope.orgId, input.bedId, new Date()))
+          .limit(1);
+
+        if (held) {
           throw new ORPCError("CONFLICT", {
             message: "That bed is held for a planned arrival. Move or cancel the hold first.",
           });
@@ -590,14 +599,17 @@ export const ipdRouter = {
 
       await assertUnoccupied(tx, scope.orgId, input.bedId);
 
-      // A safety block is never suppressed: the bed's holds move to the worklist.
-      const disrupted = await clearHoldsForOccupancy(
-        tx,
-        scope.orgId,
-        input.bedId,
-        { reason: input.reason },
-        new Date(),
-      );
+      // A safety block is never suppressed. Only owner/admin authority releases the
+      // bed's holds; otherwise they stay confirmed and the worklist flags them.
+      const disrupted = authorize(scope.roles, { ipd: ["correct"] })
+        ? await clearHoldsForOccupancy(
+            tx,
+            scope.orgId,
+            input.bedId,
+            { reason: input.reason },
+            new Date(),
+          )
+        : [];
 
       const [updated] = await tx
         .update(beds)
@@ -935,7 +947,6 @@ export const ipdRouter = {
       ),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
-    const now = new Date();
     const effective = effectiveTime(scope, input.admittedAt, input.reason);
     requireDisplaceGrant(scope, input.displace);
     const { timeZone } = await readOrgSettings(scope.orgId);
@@ -1009,18 +1020,21 @@ export const ipdRouter = {
               bedId: bed.id,
             },
             effective.at,
-            now,
           );
         }
 
         await assertBedFree(tx, scope.orgId, bed, effective.at);
 
-        // A conversion's own window cannot overlap another live hold, so only a walk-in
-        // can collide with one.
-        const disrupted =
-          reservationId === undefined
-            ? await clearHoldsForOccupancy(tx, scope.orgId, bed.id, input.displace, now)
-            : [];
+        // Every other live hold on the bed stands in the way, for a conversion too; the
+        // clock is read after the locks, so a hold that lapsed meanwhile no longer counts.
+        const disrupted = await clearHoldsForOccupancy(
+          tx,
+          scope.orgId,
+          bed.id,
+          input.displace,
+          new Date(),
+          reservationId,
+        );
 
         const tariff = await tariffAt(tx, scope.orgId, bed.categoryId, effective.at);
 

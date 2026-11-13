@@ -17,7 +17,7 @@ import { ErrorNote } from "@/components/page";
 import { useCan } from "@/lib/membership";
 import { localInputValue, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
+import { errorMessage, errorReason, hasErrorCode } from "@/lib/orpc-error";
 
 type AdmissionStatus = "admitted" | "discharge_ready" | "discharged" | "cancelled";
 
@@ -127,14 +127,21 @@ function requireDisplaceReason(
 function useHoldRefusal(onClose: () => void) {
   const [refusal, setRefusal] = useState<string | null>(null);
 
+  const showsInline = (error: Error, held: boolean, displacing: boolean) =>
+    hasErrorCode(error, "CONFLICT") &&
+    errorReason(error) !== "stale_record" &&
+    held &&
+    !displacing &&
+    refusal === null;
+
   const onError = (error: Error, held: boolean, displacing: boolean) => {
     if (!hasErrorCode(error, "CONFLICT")) return;
 
-    if (held && !displacing && refusal === null) setRefusal(errorMessage(error));
+    if (showsInline(error, held, displacing)) setRefusal(errorMessage(error));
     else onClose();
   };
 
-  return { refusal, onError };
+  return { refusal, onError, showsInline };
 }
 
 function HoldRefusal({
@@ -202,6 +209,7 @@ export function AdmitDialog({
   onClose,
 }: {
   orgSlug: string;
+  /** `holds` are the bed's live holds, apart from the one this admission converts. */
   bed: { id: string; label: string; wardName: string; holds: readonly unknown[] };
   /** The hold being turned into this admission, captured when the dialog opened. */
   reservation?: { id: string; revision: number; patient: SelectedPatient };
@@ -237,9 +245,8 @@ export function AdmitDialog({
       }}
       success="Patient admitted"
       onClose={onClose}
-      onError={(error, value) =>
-        hold.onError(error, bed.holds.length > 0 && !reservation, value.displace)
-      }
+      onError={(error, value) => hold.onError(error, bed.holds.length > 0, value.displace)}
+      showsInline={(error, value) => hold.showsInline(error, bed.holds.length > 0, value.displace)}
       run={(value) => {
         const earlier = earlierFields(value, timeZone);
 
@@ -325,6 +332,7 @@ export function TransferDialog({
       success="Patient moved"
       onClose={onClose}
       onError={(error, value) => hold.onError(error, held.has(value.bedId), value.displace)}
+      showsInline={(error, value) => hold.showsInline(error, held.has(value.bedId), value.displace)}
       run={(value) => {
         const earlier = earlierFields(value, timeZone);
 
@@ -517,6 +525,9 @@ export function BlockBedDialog({
   onClose: () => void;
 }) {
   const { length } = bed.holds;
+  // Only owner/admin authority releases holds; anyone else's block leaves them held.
+  const canCorrect = useCan(orgSlug, { ipd: ["correct"] });
+  const held = `${length} ${length === 1 ? "reservation" : "reservations"} held on it`;
 
   return (
     <FormDialog
@@ -524,7 +535,9 @@ export function BlockBedDialog({
       description={`A blocked bed takes no admissions until it is released.${
         length === 0
           ? ""
-          : ` The ${length} ${length === 1 ? "reservation" : "reservations"} held on it will need a bed again.`
+          : canCorrect
+            ? ` The ${held} will need a bed again.`
+            : ` The ${held} stay held and will need attention.`
       }`}
       submitLabel="Block bed"
       schema={reasonSchema}

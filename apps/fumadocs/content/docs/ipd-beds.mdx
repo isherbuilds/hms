@@ -58,12 +58,20 @@ The views:
 
 When the Patient arrives, choose **Admit** on their reservation. The admission
 uses the held bed. If they come outside the planned dates, **Change dates**
-first. **Cancel reservation** needs a reason.
+first. If someone else also has a reservation on that bed, even for later dates,
+move it to another bed or cancel it before admitting: a Patient in a bed has no
+fixed leaving time. **Cancel reservation** needs a reason.
+
+For a late Patient, **Change dates** can keep the planned arrival and set a later
+**Hold until**. Clearing **Hold until** on a waiting-list request removes its
+deadline.
 
 Under **Needs attention**:
 
-- **Needs a bed again**: the held bed was blocked or someone was admitted to it.
-  Hold another bed or cancel the reservation.
+- **Needs a bed again**: an owner or administrator blocked the held bed or
+  admitted someone to it. Hold another bed or cancel the reservation.
+- **Bed blocked**: the held bed was blocked by someone else. The bed stays held;
+  release the bed before the Patient arrives, or move the reservation.
 - **Hold lapsed**: **Hold until** passed before the Patient arrived. The bed is
   no longer kept. **Change dates** with a new **Hold until** to keep it again,
   or cancel.
@@ -72,10 +80,11 @@ A held bed whose current Patient has not left by the planned arrival also shows
 here. Nobody is moved out: find the arriving Patient another bed or change the
 dates.
 
-Blocking a bed, for example for repairs, always works. Any holds on it move to
-**Needs attention** so you can give those Patients another bed. A bed blocked
-only for cleaning after a departure keeps its later holds; release it before the
-next Patient arrives. A held bed cannot be retired.
+Blocking a bed, for example for repairs, always works. When an owner or
+administrator blocks it, its holds are released and show **Needs a bed again**.
+When anyone else blocks it, the holds stay and show **Bed blocked** under
+**Needs attention**; releasing the bed does not let a walk-in take it. A held bed
+cannot be retired.
 
 Only an owner or administrator can admit or move a Patient into a bed held for
 someone else, and they must give a reason. That reservation then shows **Needs a

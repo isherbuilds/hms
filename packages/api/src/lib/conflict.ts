@@ -5,7 +5,8 @@ import { ORPCError } from "@orpc/server";
  *
  * - `duplicate` — that payer name is already in use (mapped to the name field).
  * - `uid_taken` — that patient UID belongs to someone else (mapped to the UID field).
- * - `stale_record` — the patient row moved after the operator opened it (offers Refresh).
+ * - `stale_record` — the patient row or bed reservation moved after the operator opened
+ *   it (a reservation dialog closes instead of showing a capacity refusal).
  *
  * Every other CONFLICT is a plain `ORPCError("CONFLICT")`: the client refetches and
  * shows the server message.

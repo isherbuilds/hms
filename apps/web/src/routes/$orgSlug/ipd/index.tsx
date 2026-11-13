@@ -20,13 +20,16 @@ import {
 } from "@/components/ipd-dialogs";
 import { ListState, PageBody, PageHeader, Panel } from "@/components/page";
 import { useCan } from "@/lib/membership";
+import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 import { IpdTabs } from "./route";
 
-const boardQuery = (orgSlug: string) => orpc.ipd.bedBoard.queryOptions({ input: { orgSlug } });
+// Holds lapse and arrivals come due while the board is open.
+const boardQuery = (orgSlug: string) =>
+  orpc.ipd.bedBoard.queryOptions({ input: { orgSlug }, ...OPERATIONAL_REFETCH });
 
 export const Route = createFileRoute("/$orgSlug/ipd/")({
   head: () => appHead("Beds"),

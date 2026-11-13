@@ -19,8 +19,20 @@ export async function requireInScope<T>(promise: Promise<T[]>, message: string):
   return row;
 }
 
+export type LockedBed = {
+  id: string;
+  categoryId: string;
+  active: boolean;
+  blockedAt: Date | null;
+  blockedReason: string | null;
+};
+
 // Locks beds in id order so two transfers touching the same pair cannot deadlock.
-export async function lockBeds(tx: DbTransaction, orgId: string, bedIds: string[]) {
+export async function lockBeds(
+  tx: DbTransaction,
+  orgId: string,
+  bedIds: string[],
+): Promise<Map<string, LockedBed>> {
   const ordered = [...new Set(bedIds)].sort();
 
   const rows = await tx
@@ -57,11 +69,17 @@ export async function assertUnoccupied(tx: DbTransaction, orgId: string, bedId: 
   }
 }
 
-type Window = { plannedArrivalAt: Date; plannedDepartureAt: Date };
+export type Window = { plannedArrivalAt: Date; plannedDepartureAt: Date };
 
 // A confirmed hold promises its bed until it lapses; `window` narrows to holds that
 // overlap it, half-open, so back-to-back stays never clash.
-function liveHolds(orgId: string, bedId: string, now: Date, window?: Window, exceptId?: string) {
+export function liveHolds(
+  orgId: string,
+  bedId: string,
+  now: Date,
+  window?: Window,
+  exceptId?: string,
+) {
   return and(
     eq(bedReservations.orgId, orgId),
     eq(bedReservations.bedId, bedId),
@@ -93,16 +111,6 @@ export async function assertNoOverlappingHold(
   }
 }
 
-// Reservation rows lock after the bed, by id (D040).
-export async function lockLiveHolds(tx: DbTransaction, orgId: string, bedId: string, now: Date) {
-  return tx
-    .select({ id: bedReservations.id })
-    .from(bedReservations)
-    .where(liveHolds(orgId, bedId, now))
-    .orderBy(asc(bedReservations.id))
-    .for("update");
-}
-
 export function auditReservation(
   scope: Scope,
   action: string,
@@ -129,6 +137,7 @@ export function auditDisruptions(
 
 // Open occupancy has no promised end, so any live hold on the bed stands in its way
 // unless an authorized caller displaces it, with a reason, in the same transaction.
+// A conversion passes its own hold as `exceptId`: only that one is consumed.
 // A displaced hold stays visible on the worklist until staff confirm it elsewhere or cancel it.
 export async function clearHoldsForOccupancy(
   tx: DbTransaction,
@@ -136,15 +145,26 @@ export async function clearHoldsForOccupancy(
   bedId: string,
   displace: { reason: string } | undefined,
   now: Date,
+  exceptId?: string,
 ) {
-  const holds = await lockLiveHolds(tx, orgId, bedId, now);
+  // Reservation rows lock after the bed, by id (D040).
+  const holds = await tx
+    .select({ id: bedReservations.id })
+    .from(bedReservations)
+    .where(liveHolds(orgId, bedId, now, undefined, exceptId))
+    .orderBy(asc(bedReservations.id))
+    .for("update");
 
   const ids = holds.map((hold) => hold.id);
 
   if (ids.length === 0) return [];
 
   if (!displace) {
-    throw new ORPCError("CONFLICT", { message: "That bed is held for a planned arrival." });
+    throw new ORPCError("CONFLICT", {
+      message: exceptId
+        ? "Another reservation is held on this bed. Move or cancel it first."
+        : "That bed is held for a planned arrival.",
+    });
   }
 
   return tx

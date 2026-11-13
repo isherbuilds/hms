@@ -1469,6 +1469,16 @@ autonomously; to be confirmed by the owner.** Contract:
   (`bed_tariffs_org_category_effective_uq`), and the cancelled check runs both
   ways (cancelled exactly when a cancel reason exists).
 
+**Amended after council 2026-11-13.** (A) A block is always recorded, but it
+disrupts the bed's holds only when the caller holds `ipd:correct`; otherwise the
+holds stay confirmed and are listed under attention as at risk (bed blocked), so
+blocking and releasing cannot displace a hold. (B) A conversion consumes only its
+own hold: any other confirmed hold on the bed, in any window, refuses it until
+moved or cancelled, unless an `ipd:correct` holder displaces it with a reason.
+(C) Expiry and "hold until is in the future" are judged on the clock read after
+the Patient, Bed and reservation locks are held. A lapsed hold is never judged
+against a backdated admit time; that arrival is a walk-in.
+
 **Evidence:**
 [Frappe scheduled admission and ADT](https://frappehealth.com/docs/v13/user/manual/en/healthcare/inpatient_record)
 schedules an admission first and allots a vacant bed only at arrival. We depart

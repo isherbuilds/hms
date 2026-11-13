@@ -3,9 +3,23 @@ import type { DbTransaction } from "@hms/db/counter";
 import { admissionBedStays, bedCategories, bedReservations, beds, wards } from "@hms/db/schema/ipd";
 import { patients } from "@hms/db/schema/patients";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { z } from "zod";
 
+import { conflict } from "../lib/conflict";
 import {
   assertNoOverlappingHold,
   assertUnoccupied,
@@ -13,25 +27,27 @@ import {
   BACKDATE_TOLERANCE_MS,
   lockBeds,
   requireInScope,
+  type LockedBed,
+  type Window,
 } from "../lib/ipd-beds";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
-import { reason } from "../lib/schemas";
+import { pageLimit, reason } from "../lib/schemas";
 
 const ARRIVALS_HORIZON_MS = 48 * 60 * 60 * 1_000;
 
-type Window = { plannedArrivalAt: Date; plannedDepartureAt: Date };
-
-// Half-open `[arrival, departure)`; a hold lapses inside it, after arrival.
-function requireWindow(window: Window, holdUntil: Date | null | undefined, now: Date) {
+// Half-open `[arrival, departure)`. A kept arrival may already be past: a late
+// Patient's hold is extended without moving it.
+function requireWindow(window: Window, now: Date, keptArrival?: Date) {
   if (window.plannedDepartureAt.getTime() <= window.plannedArrivalAt.getTime()) {
     throw new ORPCError("BAD_REQUEST", { message: "Departure must be after arrival." });
   }
 
-  if (now.getTime() - window.plannedArrivalAt.getTime() > BACKDATE_TOLERANCE_MS) {
+  if (
+    window.plannedArrivalAt.getTime() !== keptArrival?.getTime() &&
+    now.getTime() - window.plannedArrivalAt.getTime() > BACKDATE_TOLERANCE_MS
+  ) {
     throw new ORPCError("BAD_REQUEST", { message: "That arrival time has already passed." });
   }
-
-  if (holdUntil) requireHoldTime(window, holdUntil, now);
 }
 
 function requireHoldTime(window: Window, holdUntil: Date, now: Date) {
@@ -52,7 +68,7 @@ function requireCategory(bed: { categoryId: string }, categoryId: string) {
   }
 }
 
-// The open stay on the reserved bed, if any, says whether a due hold is overstayed.
+// The open stay and the block on the reserved bed say whether a live hold is at risk.
 function reservationRows(executor: typeof db | DbTransaction, orgId: string, where?: SQL) {
   return executor
     .select({
@@ -73,7 +89,9 @@ function reservationRows(executor: typeof db | DbTransaction, orgId: string, whe
       admissionId: bedReservations.admissionId,
       cancelReason: bedReservations.cancelReason,
       disruptedReason: bedReservations.disruptedReason,
+      createdAt: bedReservations.createdAt,
       occupiedBy: admissionBedStays.admissionId,
+      blockedAt: beds.blockedAt,
     })
     .from(bedReservations)
     .innerJoin(
@@ -97,27 +115,27 @@ function reservationRows(executor: typeof db | DbTransaction, orgId: string, whe
         isNull(admissionBedStays.endedAt),
       ),
     )
-    .where(and(eq(bedReservations.orgId, orgId), where))
-    .orderBy(asc(bedReservations.plannedArrivalAt), asc(bedReservations.id));
+    .where(and(eq(bedReservations.orgId, orgId), where));
 }
 
-function reservationView(
-  { occupiedBy, ...row }: Awaited<ReturnType<typeof reservationRows>>[number],
-  now: Date,
-) {
+function reservationView(selected: Awaited<ReturnType<typeof reservationRows>>[number], now: Date) {
+  const { occupiedBy, blockedAt, createdAt: _, ...row } = selected;
   const lapsed = (row.status === "requested" || row.status === "confirmed") && isLapsed(row, now);
 
   const effectiveStatus = lapsed ? ("expired" as const) : row.status;
 
-  return {
-    ...row,
-    effectiveStatus,
-    // Actual occupancy stays authoritative: a due hold on an occupied bed is flagged.
-    atRisk:
-      effectiveStatus === "confirmed" &&
-      occupiedBy !== null &&
-      row.plannedArrivalAt.getTime() <= now.getTime(),
-  };
+  // Actual occupancy stays authoritative: a due hold on an occupied bed is flagged, and
+  // so is a hold on a blocked bed, which cannot convert until the bed is released.
+  const atRiskReason =
+    effectiveStatus !== "confirmed"
+      ? null
+      : occupiedBy !== null && row.plannedArrivalAt.getTime() <= now.getTime()
+        ? ("occupied" as const)
+        : blockedAt !== null
+          ? ("blocked" as const)
+          : null;
+
+  return { ...row, effectiveStatus, atRisk: atRiskReason !== null, atRiskReason };
 }
 
 async function readReservation(executor: typeof db | DbTransaction, orgId: string, id: string) {
@@ -153,13 +171,16 @@ function viewFilter(view: "arrivals" | "waitlist" | "attention" | "all", now: Da
           lte(bedReservations.plannedArrivalAt, now),
           isNotNull(admissionBedStays.id),
         ),
+        and(
+          eq(bedReservations.status, "confirmed"),
+          gt(bedReservations.holdUntil, now),
+          isNotNull(beds.blockedAt),
+        ),
       );
     case "all":
       return undefined;
   }
 }
-
-type LockedBed = Awaited<ReturnType<typeof lockBeds>> extends Map<string, infer B> ? B : never;
 
 // Lock order (D040) puts the Patient before the Bed and the reservation, so it is
 // found through the reservation in the same statement; a reservation's Patient never
@@ -183,9 +204,10 @@ async function lockReservationPatient(tx: DbTransaction, orgId: string, reservat
 }
 
 function staleReservation() {
-  return new ORPCError("CONFLICT", {
-    message: "This reservation changed on another screen. Refresh and try again.",
-  });
+  return conflict(
+    "stale_record",
+    "This reservation changed on another screen. Refresh and try again.",
+  );
 }
 
 async function lockReservation(
@@ -242,15 +264,16 @@ async function assertHoldable(
   await assertNoOverlappingHold(tx, orgId, bed.id, reservation, reservation.id, now);
 }
 
-// Arrival consumes a live hold for exactly this Patient, bed and window.
+// Arrival consumes a live hold for exactly this Patient, bed and window. Expiry is
+// judged after the locks, so a command that waited past `holdUntil` cannot convert.
 export async function lockHoldForArrival(
   tx: DbTransaction,
   orgId: string,
   claim: { reservationId: string; expectedRevision: number; patientId: string; bedId: string },
   at: Date,
-  now: Date,
 ) {
   const row = await lockReservation(tx, orgId, claim.reservationId, claim.expectedRevision);
+  const now = new Date();
 
   if (
     row.status !== "confirmed" ||
@@ -352,7 +375,10 @@ export const ipdReservationsRouter = {
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
-    requireWindow(input, input.holdUntil, new Date());
+    const now = new Date();
+    requireWindow(input, now);
+
+    if (input.holdUntil) requireHoldTime(input, input.holdUntil, now);
 
     const [, , bed] = await Promise.all([
       requireInScope(
@@ -403,14 +429,47 @@ export const ipdReservationsRouter = {
     return readReservation(db, scope.orgId, id);
   }),
 
+  // The three worklists are short and unpaged; `all` pages newest first.
   listBedReservations: orgProcedure(
     { ipd: ["read"] },
-    orgInput.extend({ view: z.enum(["arrivals", "waitlist", "attention", "all"]) }),
+    orgInput.extend({
+      view: z.enum(["arrivals", "waitlist", "attention", "all"]),
+      cursor: z.object({ createdAt: z.date(), id: z.string() }).optional(),
+      limit: pageLimit,
+    }),
   ).handler(async ({ context, input }) => {
     const now = new Date();
-    const rows = await reservationRows(db, context.scope.orgId, viewFilter(input.view, now));
+    const { orgId } = context.scope;
 
-    return { items: rows.map((row) => reservationView(row, now)) };
+    if (input.view !== "all") {
+      const rows = await reservationRows(db, orgId, viewFilter(input.view, now)).orderBy(
+        asc(bedReservations.plannedArrivalAt),
+        asc(bedReservations.id),
+      );
+
+      return { items: rows.map((row) => reservationView(row, now)), nextCursor: null };
+    }
+
+    const rows = await reservationRows(
+      db,
+      orgId,
+      input.cursor
+        ? sql`(${bedReservations.createdAt}, ${bedReservations.id}) < (${input.cursor.createdAt}, ${input.cursor.id})`
+        : undefined,
+    )
+      .orderBy(desc(bedReservations.createdAt), desc(bedReservations.id))
+      .limit(input.limit + 1);
+
+    const hasNextPage = rows.length > input.limit;
+
+    if (hasNextPage) rows.pop();
+
+    const last = rows.at(-1);
+
+    return {
+      items: rows.map((row) => reservationView(row, now)),
+      nextCursor: hasNextPage && last ? { createdAt: last.createdAt, id: last.id } : null,
+    };
   }),
 
   confirmBedReservation: orgProcedure(
@@ -419,12 +478,13 @@ export const ipdReservationsRouter = {
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const { orgId } = scope;
-    const now = new Date();
 
     const reservation = await db.transaction(async (tx) => {
       await lockReservationPatient(tx, orgId, input.reservationId);
       const bed = (await lockBeds(tx, orgId, [input.bedId])).get(input.bedId);
       const row = await lockReservation(tx, orgId, input.reservationId, input.expectedRevision);
+      // Judged after the locks: a command that waited on them may have outlived a hold.
+      const now = new Date();
 
       // A live hold is changed by rescheduling; a lapsed or disrupted one is confirmed again.
       if (
@@ -464,18 +524,24 @@ export const ipdReservationsRouter = {
   // A hold stays a hold only if every confirmation check passes for the new window and bed.
   rescheduleBedReservation: orgProcedure(
     { ipd: ["update"] },
-    orgInput.extend({ ...revisionInput, ...windowInput, bedId: z.string().optional() }),
+    orgInput.extend({
+      ...revisionInput,
+      ...windowInput,
+      // Null clears a request's deadline; left out, the stored one is kept.
+      holdUntil: z.date().nullable().optional(),
+      bedId: z.string().optional(),
+    }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const { orgId } = scope;
-    const now = new Date();
-    requireWindow(input, undefined, now);
 
     const reservation = await db.transaction(async (tx) => {
       const current = await lockReservationPatient(tx, orgId, input.reservationId);
       const bedId = input.bedId ?? current.bedId;
       const bed = bedId ? (await lockBeds(tx, orgId, [bedId])).get(bedId) : undefined;
       const row = await lockReservation(tx, orgId, input.reservationId, input.expectedRevision);
+      // Judged after the locks: a command that waited on them may have outlived a hold.
+      const now = new Date();
 
       if (row.status !== "requested" && row.status !== "confirmed") {
         throw new ORPCError("CONFLICT", {
@@ -483,10 +549,18 @@ export const ipdReservationsRouter = {
         });
       }
 
-      // A lapsed hold time must be replaced, never carried into the new window.
-      const holdUntil = input.holdUntil ?? row.holdUntil;
+      requireWindow(input, now, row.plannedArrivalAt);
 
-      if (holdUntil) requireHoldTime(input, holdUntil, now);
+      // A lapsed hold time must be replaced, never carried into the new window.
+      const holdUntil = input.holdUntil === undefined ? row.holdUntil : input.holdUntil;
+
+      if (holdUntil) {
+        requireHoldTime(input, holdUntil, now);
+      } else if (row.status === "confirmed") {
+        throw new ORPCError("BAD_REQUEST", {
+          message: "A held bed needs a time to hold it until.",
+        });
+      }
 
       const next = { ...input, id: row.id, categoryId: row.categoryId };
 

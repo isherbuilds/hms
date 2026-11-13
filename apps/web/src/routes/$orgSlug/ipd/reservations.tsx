@@ -6,10 +6,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@hms/ui/components/dropdown-menu";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ClientOnly, Link, createFileRoute } from "@tanstack/react-router";
 import { MoreHorizontalIcon } from "lucide-react";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { z } from "zod";
 
 import { appHead } from "@/config/site";
@@ -21,8 +21,17 @@ import {
   type Reservation,
 } from "@/components/bed-reservation-dialogs";
 import { AdmitDialog } from "@/components/ipd-dialogs";
-import { DataList, ListState, ListToolbar, PageBody, PageHeader, Panel } from "@/components/page";
+import {
+  DataList,
+  ListState,
+  ListToolbar,
+  LoadMore,
+  PageBody,
+  PageHeader,
+  Panel,
+} from "@/components/page";
 import { useCan } from "@/lib/membership";
+import { OPERATIONAL_INFINITE_REFETCH, OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
@@ -47,8 +56,32 @@ const EMPTY: Record<View, string> = {
   all: "No reservations",
 };
 
+// The worklists come back whole; `all` pages.
 const reservationsQuery = (orgSlug: string, view: View) =>
-  orpc.ipd.listBedReservations.queryOptions({ input: { orgSlug, view } });
+  orpc.ipd.listBedReservations.infiniteOptions({
+    input: (cursor: { createdAt: Date; id: string } | undefined) => ({ orgSlug, view, cursor }),
+    initialPageParam: undefined,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+    ...OPERATIONAL_INFINITE_REFETCH,
+  });
+
+const boardQuery = (orgSlug: string) =>
+  orpc.ipd.bedBoard.queryOptions({ input: { orgSlug }, ...OPERATIONAL_REFETCH });
+
+const MINUTE_MS = 60_000;
+
+function subscribeMinutes(tick: () => void) {
+  const timer = setInterval(tick, MINUTE_MS);
+
+  return () => clearInterval(timer);
+}
+
+const currentMinute = () => Math.floor(Date.now() / MINUTE_MS) * MINUTE_MS;
+
+/** Wall-clock time to the minute; the first render uses the loader's clock so hydration matches. */
+function useMinuteClock(initial: number) {
+  return useSyncExternalStore(subscribeMinutes, currentMinute, () => initial);
+}
 
 export const Route = createFileRoute("/$orgSlug/ipd/reservations")({
   head: () => appHead("Reservations"),
@@ -59,9 +92,9 @@ export const Route = createFileRoute("/$orgSlug/ipd/reservations")({
   loader: async ({ context: { queryClient }, deps, params: { orgSlug } }) => {
     await requireOrgPermission(queryClient, orgSlug, { ipd: ["read"] }, "/$orgSlug/dashboard");
     await Promise.all([
-      queryClient.query(reservationsQuery(orgSlug, deps.view)).catch(() => {}),
+      queryClient.infiniteQuery(reservationsQuery(orgSlug, deps.view)).catch(() => {}),
       // The hold dialogs choose among the beds free now.
-      queryClient.query(orpc.ipd.bedBoard.queryOptions({ input: { orgSlug } })).catch(() => {}),
+      queryClient.query(boardQuery(orgSlug)).catch(() => {}),
     ]);
 
     // One clock for server and client render, so "has the window started" agrees.
@@ -82,7 +115,11 @@ const STATUS_LABELS: Record<Reservation["effectiveStatus"], string> = {
 function ReservationStatus({ reservation }: { reservation: Reservation }) {
   const status = reservation.effectiveStatus;
 
-  if (reservation.atRisk) return <Badge variant="pending">Bed still occupied</Badge>;
+  if (reservation.atRiskReason === "occupied") {
+    return <Badge variant="pending">Bed still occupied</Badge>;
+  }
+
+  if (reservation.atRiskReason === "blocked") return <Badge variant="pending">Bed blocked</Badge>;
 
   const variant =
     status === "disrupted" || status === "expired"
@@ -122,14 +159,15 @@ function note(reservation: Reservation, now: number) {
 function ReservationsRoute() {
   const { orgSlug } = Route.useParams();
   const { view } = Route.useSearch();
-  const { now } = Route.useLoaderData();
+  const now = useMinuteClock(Route.useLoaderData().now);
   const { timeZone } = useOrgDateTime();
-  const reservations = useQuery(reservationsQuery(orgSlug, view));
+  const reservations = useInfiniteQuery(reservationsQuery(orgSlug, view));
+  const board = useQuery(boardQuery(orgSlug));
   const canCreate = useCan(orgSlug, { ipd: ["create"] });
   const canUpdate = useCan(orgSlug, { ipd: ["update"] });
   const [requesting, setRequesting] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  const items = reservations.data?.items ?? [];
+  const items = reservations.data?.pages.flatMap((page) => page.items) ?? [];
   const close = () => setDialog(null);
 
   return (
@@ -160,7 +198,7 @@ function ReservationsRoute() {
           </nav>
         </ListToolbar>
 
-        <Panel grow>
+        <Panel grow footer={<LoadMore query={reservations} shown={items.length} />}>
           <ListState
             query={reservations}
             errorTitle="Could not load reservations"
@@ -256,7 +294,10 @@ function ReservationsRoute() {
             id: dialog.reservation.bedId!,
             label: dialog.reservation.bedLabel!,
             wardName: dialog.reservation.wardName!,
-            holds: [],
+            // Another hold on the bed must move first, or be released by an administrator.
+            holds: (
+              board.data?.beds.find((bed) => bed.id === dialog.reservation.bedId)?.holds ?? []
+            ).filter((hold) => hold.reservationId !== dialog.reservation.id),
           }}
           reservation={{
             id: dialog.reservation.id,

@@ -13,7 +13,7 @@ import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient
 import { ErrorNote } from "@/components/page";
 import { formatDateTime, localInputValue, nextHalfHour, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
+import { errorMessage, errorReason, hasErrorCode } from "@/lib/orpc-error";
 
 export type Reservation = Awaited<
   ReturnType<typeof orpc.ipd.listBedReservations.call>
@@ -80,15 +80,20 @@ function WindowFields({ holdDescription }: { holdDescription: string }) {
   );
 }
 
-/** Capacity refusals (occupied, blocked, overlapping hold) stay in the dialog to be fixed there. */
-function useRefusal() {
+/** Capacity refusals (occupied, blocked, overlapping hold) stay in the dialog to be fixed
+ * there; a reservation changed on another screen closes it, since its revision is stale. */
+function useRefusal(onClose: () => void) {
   const [refusal, setRefusal] = useState<string | null>(null);
 
+  const showsInline = (error: Error) =>
+    hasErrorCode(error, "CONFLICT") && errorReason(error) !== "stale_record";
+
   const onError = (error: Error) => {
-    if (hasErrorCode(error, "CONFLICT")) setRefusal(errorMessage(error));
+    if (showsInline(error)) setRefusal(errorMessage(error));
+    else if (hasErrorCode(error, "CONFLICT")) onClose();
   };
 
-  return { refusal, onError };
+  return { refusal, onError, showsInline };
 }
 
 function Refusal({ refusal }: { refusal: string | null }) {
@@ -249,7 +254,7 @@ export function HoldBedDialog({
 }) {
   const { timeZone } = useOrgDateTime();
   const holdable = useHoldableBeds(orgSlug, reservation.categoryName);
-  const refusal = useRefusal();
+  const refusal = useRefusal(onClose);
 
   const preferred = holdable.beds.some((bed) => bed.id === reservation.bedId)
     ? reservation.bedId!
@@ -257,6 +262,8 @@ export function HoldBedDialog({
 
   return (
     <FormDialog
+      // The form reads its defaults once: remount when the beds arrive to preselect the preferred one.
+      key={holdable.isSuccess ? "beds" : "loading"}
       title="Hold a bed"
       description={
         <>
@@ -274,6 +281,7 @@ export function HoldBedDialog({
       success="Bed held"
       onClose={onClose}
       onError={refusal.onError}
+      showsInline={refusal.showsInline}
       run={(value) =>
         orpc.ipd.confirmBedReservation.call({
           orgSlug,
@@ -332,8 +340,9 @@ export function ChangeDatesDialog({
 }) {
   const { timeZone } = useOrgDateTime();
   const holdable = useHoldableBeds(orgSlug, reservation.categoryName);
-  const refusal = useRefusal();
+  const refusal = useRefusal(onClose);
   const held = reservation.status === "confirmed";
+  const arrival = localInputValue(reservation.plannedArrivalAt, timeZone);
   const others = holdable.beds.filter((bed) => bed.id !== reservation.bedId);
 
   const liveHold =
@@ -352,7 +361,7 @@ export function ChangeDatesDialog({
       submitLabel="Save dates"
       schema={rescheduleSchema}
       defaultValues={{
-        plannedArrivalAt: localInputValue(reservation.plannedArrivalAt, timeZone),
+        plannedArrivalAt: arrival,
         plannedDepartureAt: localInputValue(reservation.plannedDepartureAt, timeZone),
         holdUntil: liveHold,
         bedId: "",
@@ -360,14 +369,24 @@ export function ChangeDatesDialog({
       success="Dates changed"
       onClose={onClose}
       onError={refusal.onError}
+      showsInline={refusal.showsInline}
       run={(value) =>
         orpc.ipd.rescheduleBedReservation.call({
           orgSlug,
           reservationId: reservation.id,
           expectedRevision: reservation.revision,
-          plannedArrivalAt: localDateTime(value.plannedArrivalAt, timeZone),
+          // An untouched arrival is sent exactly, so a late Patient's hold can be extended.
+          plannedArrivalAt:
+            value.plannedArrivalAt === arrival
+              ? reservation.plannedArrivalAt
+              : localDateTime(value.plannedArrivalAt, timeZone),
           plannedDepartureAt: localDateTime(value.plannedDepartureAt, timeZone),
-          holdUntil: value.holdUntil ? localDateTime(value.holdUntil, timeZone) : undefined,
+          // A blank hold time clears a request's deadline; a held bed keeps its own.
+          holdUntil: value.holdUntil
+            ? localDateTime(value.holdUntil, timeZone)
+            : held
+              ? undefined
+              : null,
           bedId: value.bedId || undefined,
         })
       }
