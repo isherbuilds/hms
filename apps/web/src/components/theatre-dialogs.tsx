@@ -286,6 +286,7 @@ export function BookCaseDialog({
       onClose={onClose}
       onError={refusal.onError}
       showsInline={refusal.showsInline}
+      onSubmit={refusal.clear}
       run={(value) =>
         orpc.theatre.draftCase.call({
           orgSlug,
@@ -350,6 +351,7 @@ export function ChangeCaseDialog({
       onClose={onClose}
       onError={refusal.onError}
       showsInline={refusal.showsInline}
+      onSubmit={refusal.clear}
       run={(value) =>
         orpc.theatre.updateCase.call({
           orgSlug,
@@ -394,6 +396,7 @@ export function ConfirmCaseDialog({
       onClose={onClose}
       onError={refusal.onError}
       showsInline={refusal.showsInline}
+      onSubmit={refusal.clear}
       run={() =>
         orpc.theatre.confirmCase.call({
           orgSlug,
@@ -428,10 +431,11 @@ export function LinkAdmissionDialog({
   );
 
   const own = admissions.data?.items ?? [];
+  const title = theatreCase.admissionId ? "Change admission" : "Link admission";
 
   return (
     <FormDialog
-      title="Link admission"
+      title={title}
       description={
         <>
           The stay <span className="capitalize">{theatreCase.patientName}</span> (
@@ -447,6 +451,7 @@ export function LinkAdmissionDialog({
       onClose={onClose}
       onError={refusal.onError}
       showsInline={refusal.showsInline}
+      onSubmit={refusal.clear}
       run={({ admissionId }) =>
         orpc.theatre.attachCaseAdmission.call({
           orgSlug,
@@ -513,6 +518,7 @@ export function CancelCaseDialog({
       onClose={onClose}
       onError={refusal.onError}
       showsInline={refusal.showsInline}
+      onSubmit={refusal.clear}
       run={({ reason }) =>
         orpc.theatre.cancelCase.call({
           orgSlug,
@@ -696,6 +702,7 @@ export function BlockDialog({
       onClose={onClose}
       onError={refusal.onError}
       showsInline={refusal.showsInline}
+      onSubmit={refusal.clear}
       run={(value) =>
         orpc.theatre.blockResource.call({
           orgSlug,

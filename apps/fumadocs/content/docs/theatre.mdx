@@ -48,7 +48,9 @@ If HMS refuses, the message says what is in the way:
 - **the consultant has another case at that time**;
 - **blocked for maintenance** or **not in use**: the room or machine cannot be
   booked then;
-- **choose a theatre room** or **that start time has already passed**.
+- **choose a theatre room** or **that start time has already passed**;
+- **this procedure is no longer offered**: **Change** the case to another
+  procedure.
 
 Change the time, room or machine and confirm again. Once the planned start has
 passed, **Confirm** is no longer offered: change the case to a later time first.
@@ -61,8 +63,10 @@ checked: confirm the anaesthetist, nurses and the consultant's clinic yourself.
 
 - **Change** edits a case. On a confirmed case, the new time, room and machines
   are checked again. If anything clashes, nothing changes and the case keeps
-  its old booking. Once a confirmed case has started, only its procedure and
-  notes can be changed. A room or machine no longer in use stays on the case
+  its old booking. Changing what a confirmed case holds (its time, room,
+  machines or consultant) needs a planned start that is still ahead. When those
+  stay as they are, the procedure and notes can be corrected after the start.
+  A room or machine no longer in use stays on the case
   it was booked for, marked **(no longer in use)**.
 - **Cancel case** needs a reason and frees everything the case held.
 
@@ -73,13 +77,16 @@ schedule shows the latest version. Check it before trying again.
 
 A case can be booked before the Patient is admitted. Once they are in a bed,
 open the case and choose **Link admission**. Only the same Patient's current
-admission can be linked.
+admission can be linked. The case then shows **Linked admission**, which opens
+the stay. If the Patient leaves and is admitted again before a postponed case,
+choose **Change admission** to link the new stay.
 
 ## Block a room or machine for maintenance
 
 Open **Rooms and equipment** and choose **Block** on the room or machine, with
 the dates and a reason, such as a service visit. Nobody can confirm a case on it
-while the block lasts. **Remove block** lifts the block only: it does not put a room or machine you
+while the block lasts. **Remove block**, in the block's **⋯** menu, asks you to
+confirm, then lifts the block only: it does not put a room or machine you
 stopped using back in use.
 
 A block that overlaps a confirmed case that has not finished is refused. An owner or administrator can

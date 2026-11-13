@@ -78,6 +78,39 @@ export function requireInterval(fields: CaseFields, now: Date, keptStart?: Date)
   }
 }
 
+function selectProcedure(executor: Executor, orgId: string, procedureItemId: string) {
+  return executor
+    .select({
+      name: catalogItems.name,
+      category: catalogItems.category,
+      active: catalogItems.active,
+    })
+    .from(catalogItems)
+    .where(and(eq(catalogItems.orgId, orgId), eq(catalogItems.id, procedureItemId)))
+    .limit(1);
+}
+
+// An active Service of the procedure category. A case may keep one that retired, but
+// never newly take it or be confirmed with it.
+function offered(procedure: { category: string; active: boolean }) {
+  return procedure.category === "procedure" && procedure.active;
+}
+
+// Confirmation rechecks the procedure inside its transaction, like the room and units.
+export async function requireOfferedProcedure(
+  tx: DbTransaction,
+  orgId: string,
+  procedureItemId: string,
+) {
+  const [procedure] = await selectProcedure(tx, orgId, procedureItemId);
+
+  if (!procedure || !offered(procedure)) {
+    throw new ORPCError("CONFLICT", {
+      message: "This procedure is no longer offered. Choose another before confirming.",
+    });
+  }
+}
+
 async function requireUnits(orgId: string, ids: string[], kept: string[]) {
   if (ids.length === 0) return;
 
@@ -131,15 +164,7 @@ export async function resolveCaseReferences(
       "That consultant does not exist.",
     ),
     requireInScope(
-      db
-        .select({
-          name: catalogItems.name,
-          category: catalogItems.category,
-          active: catalogItems.active,
-        })
-        .from(catalogItems)
-        .where(and(eq(catalogItems.orgId, orgId), eq(catalogItems.id, fields.procedureItemId)))
-        .limit(1),
+      selectProcedure(db, orgId, fields.procedureItemId),
       "That procedure does not exist.",
     ),
     fields.roomId
@@ -172,7 +197,7 @@ export async function resolveCaseReferences(
 
   const keepsProcedure = fields.procedureItemId === kept?.procedureItemId;
 
-  if (procedure.category !== "procedure" || (!procedure.active && !keepsProcedure)) {
+  if (procedure.category !== "procedure" || (!keepsProcedure && !offered(procedure))) {
     throw badRequest("Choose an active procedure from the catalog.");
   }
 

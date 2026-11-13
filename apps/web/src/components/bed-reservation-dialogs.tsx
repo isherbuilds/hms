@@ -260,6 +260,7 @@ export function HoldBedDialog({
       onClose={onClose}
       onError={refusal.onError}
       showsInline={refusal.showsInline}
+      onSubmit={refusal.clear}
       run={(value) =>
         orpc.ipd.confirmBedReservation.call({
           orgSlug,
@@ -364,6 +365,7 @@ export function ChangeDatesDialog({
       onClose={onClose}
       onError={refusal.onError}
       showsInline={refusal.showsInline}
+      onSubmit={refusal.clear}
       run={(value) =>
         orpc.ipd.rescheduleBedReservation.call({
           orgSlug,

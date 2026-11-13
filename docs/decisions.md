@@ -1549,6 +1549,13 @@ case still takes a notes or procedure fix. An edit keeps a room, unit or
 procedure the case already has even after it retired; only newly chosen ones
 must be in use, and confirmation still needs every resource in use.
 
+**Amended after the second review 2026-11-13.** Confirmation rechecks inside its
+transaction that the case's procedure is still an active `procedure` Service, and
+`attachCaseAdmission` needs `ipd: read` as well as `theatre: schedule`, may replace
+a link with another current Admission of the same Patient (re-sending the linked
+one changes nothing), and audits `theatre.case.linkAdmission` with the previous and
+new ids.
+
 **Evidence:**
 [Bahmni surgical blocks](https://bahmni.atlassian.net/wiki/spaces/BAH/pages/703660044/Surgical%2BBlock)
 refuse overlapping blocks for one theatre and one principal surgeon, and its

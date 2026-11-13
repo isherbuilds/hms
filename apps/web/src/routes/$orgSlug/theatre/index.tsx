@@ -397,10 +397,10 @@ function CaseRow({
                 params={{ orgSlug, admissionId: item.admissionId }}
                 className="self-start underline underline-offset-4"
               >
-                Admitted — open stay
+                Linked admission
               </Link>
             ) : (
-              <p>Admitted</p>
+              <p>Linked admission</p>
             )
           ) : (
             <p className="text-muted-foreground">Not admitted yet</p>
@@ -439,8 +439,10 @@ function CaseRow({
                 <MoreHorizontalIcon />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-40">
-                {item.admissionId === null && canReadIpd ? (
-                  <DropdownMenuItem onClick={() => onOpen("link")}>Link admission</DropdownMenuItem>
+                {canReadIpd ? (
+                  <DropdownMenuItem onClick={() => onOpen("link")}>
+                    {item.admissionId ? "Change admission" : "Link admission"}
+                  </DropdownMenuItem>
                 ) : null}
                 <DropdownMenuItem onClick={() => onOpen("cancel")}>Cancel case</DropdownMenuItem>
               </DropdownMenuContent>

@@ -27,6 +27,7 @@ import {
   readCases,
   replaceCaseEquipment,
   requireInterval,
+  requireOfferedProcedure,
   resolveCaseReferences,
 } from "../lib/theatre-cases";
 import {
@@ -494,6 +495,7 @@ export const theatreRouter = {
           });
         }
 
+        await requireOfferedProcedure(tx, orgId, current.procedureItemId);
         await assertHoldable(tx, orgId, plan, locked);
 
         await tx
@@ -554,14 +556,16 @@ export const theatreRouter = {
     return readCase(db, scope.orgId, row.id);
   }),
 
-  // The link actual use will require (slice 2); booking itself never needs it.
+  // The link actual use will require (slice 2); booking itself never needs it. A
+  // postponed case may move to the Patient's next stay; the Admission is IPD's fact.
   attachCaseAdmission: orgProcedure(
-    { theatre: ["schedule"] },
+    { theatre: ["schedule"], ipd: ["read"] },
     orgInput.extend({ ...revisionInput, admissionId: z.string() }),
   ).handler(async ({ context, input }) => {
-    const { orgId } = context.scope;
+    const { scope } = context;
+    const { orgId } = scope;
 
-    return db.transaction(async (tx) => {
+    const { linked, previousAdmissionId } = await db.transaction(async (tx) => {
       // The Admission locks before the case (D040).
       const [admission] = await tx
         .select({ patientId: admissions.patientId, status: admissions.status })
@@ -577,6 +581,12 @@ export const theatreRouter = {
 
       if (row.status === "cancelled") {
         throw new ORPCError("CONFLICT", { message: "A cancelled case cannot be changed." });
+      }
+
+      const previousAdmissionId = row.admissionId;
+
+      if (previousAdmissionId === input.admissionId) {
+        return { linked: await readCase(tx, orgId, row.id), previousAdmissionId };
       }
 
       if (admission.patientId !== row.patientId) {
@@ -596,7 +606,16 @@ export const theatreRouter = {
         })
         .where(and(eq(surgicalCases.orgId, orgId), eq(surgicalCases.id, row.id)));
 
-      return readCase(tx, orgId, row.id);
+      return { linked: await readCase(tx, orgId, row.id), previousAdmissionId };
     });
+
+    if (previousAdmissionId !== linked.admissionId) {
+      auditTheatre(scope, "theatre.case.linkAdmission", `surgical_case:${linked.id}`, {
+        previousAdmissionId,
+        admissionId: linked.admissionId,
+      });
+    }
+
+    return linked;
   }),
 };

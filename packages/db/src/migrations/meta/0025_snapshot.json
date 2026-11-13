@@ -1,6 +1,6 @@
 {
-  "id": "8829a57f-6711-4f96-850e-1fbd70b47cd9",
-  "prevId": "3e93345f-87b0-405a-a149-cd99a9b495a6",
+  "id": "c4262295-a1d6-433a-a068-2b692ae55e9b",
+  "prevId": "88957981-8210-4298-af21-4e53afefbd9c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -10098,17 +10098,19 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "surgical_cases_org_id_bed_reservation_id_bed_reservations_org_id_id_fk": {
-          "name": "surgical_cases_org_id_bed_reservation_id_bed_reservations_org_id_id_fk",
+        "surgical_cases_org_id_bed_reservation_id_patient_id_bed_reservations_org_id_id_patient_id_fk": {
+          "name": "surgical_cases_org_id_bed_reservation_id_patient_id_bed_reservations_org_id_id_patient_id_fk",
           "tableFrom": "surgical_cases",
           "tableTo": "bed_reservations",
           "columnsFrom": [
             "org_id",
-            "bed_reservation_id"
+            "bed_reservation_id",
+            "patient_id"
           ],
           "columnsTo": [
             "org_id",
-            "id"
+            "id",
+            "patient_id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -10130,6 +10132,10 @@
         "surgical_cases_interval_check": {
           "name": "surgical_cases_interval_check",
           "value": "\"surgical_cases\".\"planned_end_at\" > \"surgical_cases\".\"planned_start_at\""
+        },
+        "surgical_cases_duration_check": {
+          "name": "surgical_cases_duration_check",
+          "value": "\"surgical_cases\".\"planned_end_at\" - \"surgical_cases\".\"planned_start_at\" <= interval '24 hours'"
         },
         "surgical_cases_buffers_check": {
           "name": "surgical_cases_buffers_check",

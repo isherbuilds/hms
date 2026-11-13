@@ -136,6 +136,11 @@ export const surgicalCases = pgTable(
   },
   (table) => [
     check("surgical_cases_interval_check", sql`${table.plannedEndAt} > ${table.plannedStartAt}`),
+    // The schedule's lower bound on a stored start relies on this limit.
+    check(
+      "surgical_cases_duration_check",
+      sql`${table.plannedEndAt} - ${table.plannedStartAt} <= interval '24 hours'`,
+    ),
     check(
       "surgical_cases_buffers_check",
       sql`${table.prepMinutes} between 0 and ${sql.raw(String(MAX_CASE_BUFFER_MINUTES))} and ${table.cleanupMinutes} between 0 and ${sql.raw(String(MAX_CASE_BUFFER_MINUTES))}`,

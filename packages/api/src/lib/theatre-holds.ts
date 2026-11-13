@@ -64,6 +64,7 @@ export async function lockCase(
     .select({
       id: surgicalCases.id,
       patientId: surgicalCases.patientId,
+      admissionId: surgicalCases.admissionId,
       status: surgicalCases.status,
       revision: surgicalCases.revision,
     })

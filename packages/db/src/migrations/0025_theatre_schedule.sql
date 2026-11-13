@@ -56,6 +56,7 @@ CREATE TABLE "surgical_cases" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "surgical_cases_org_id_id_unique" UNIQUE("org_id","id"),
 	CONSTRAINT "surgical_cases_interval_check" CHECK ("surgical_cases"."planned_end_at" > "surgical_cases"."planned_start_at"),
+	CONSTRAINT "surgical_cases_duration_check" CHECK ("surgical_cases"."planned_end_at" - "surgical_cases"."planned_start_at" <= interval '24 hours'),
 	CONSTRAINT "surgical_cases_buffers_check" CHECK ("surgical_cases"."prep_minutes" between 0 and 240 and "surgical_cases"."cleanup_minutes" between 0 and 240),
 	CONSTRAINT "surgical_cases_confirmed_room_check" CHECK ("surgical_cases"."status" <> 'confirmed' or "surgical_cases"."room_id" is not null),
 	CONSTRAINT "surgical_cases_cancelled_check" CHECK (("surgical_cases"."status" = 'cancelled') = ("surgical_cases"."cancel_reason" is not null)),
@@ -88,7 +89,7 @@ ALTER TABLE "surgical_cases" ADD CONSTRAINT "surgical_cases_org_id_practitioner_
 ALTER TABLE "surgical_cases" ADD CONSTRAINT "surgical_cases_org_id_procedure_item_id_catalog_items_org_id_id_fk" FOREIGN KEY ("org_id","procedure_item_id") REFERENCES "public"."catalog_items"("org_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "surgical_cases" ADD CONSTRAINT "surgical_cases_org_id_room_id_theatre_rooms_org_id_id_fk" FOREIGN KEY ("org_id","room_id") REFERENCES "public"."theatre_rooms"("org_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "surgical_cases" ADD CONSTRAINT "surgical_cases_org_id_admission_id_patient_id_admissions_org_id_id_patient_id_fk" FOREIGN KEY ("org_id","admission_id","patient_id") REFERENCES "public"."admissions"("org_id","id","patient_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "surgical_cases" ADD CONSTRAINT "surgical_cases_org_id_bed_reservation_id_bed_reservations_org_id_id_fk" FOREIGN KEY ("org_id","bed_reservation_id") REFERENCES "public"."bed_reservations"("org_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "surgical_cases" ADD CONSTRAINT "surgical_cases_org_id_bed_reservation_id_patient_id_bed_reservations_org_id_id_patient_id_fk" FOREIGN KEY ("org_id","bed_reservation_id","patient_id") REFERENCES "public"."bed_reservations"("org_id","id","patient_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "theatre_rooms" ADD CONSTRAINT "theatre_rooms_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "equipment_units_org_name_uq" ON "equipment_units" USING btree ("org_id",lower("name"));--> statement-breakpoint
 CREATE INDEX "resource_blocks_org_room_starts_idx" ON "resource_blocks" USING btree ("org_id","room_id","starts_at");--> statement-breakpoint

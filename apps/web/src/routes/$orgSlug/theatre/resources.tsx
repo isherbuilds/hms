@@ -221,16 +221,38 @@ function ResourcesRoute() {
                 ]}
                 rows={blocks}
                 rowKey={(block) => block.id}
-                action={(block) => (
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    disabled={removeBlock.isPending}
-                    onClick={() => removeBlock.mutate({ orgSlug, blockId: block.id })}
-                  >
-                    Remove block
-                  </Button>
-                )}
+                action={(block) => {
+                  const name = names.get(block.roomId ?? block.equipmentId!) ?? "this room or unit";
+
+                  return (
+                    <ClientOnly fallback={null}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={<Button variant="ghost" size="icon-xs" />}
+                          aria-label={`More for the block on ${name}`}
+                        >
+                          <MoreHorizontalIcon />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="min-w-40">
+                          <DropdownMenuItem
+                            disabled={removeBlock.isPending}
+                            onClick={() =>
+                              confirm({
+                                title: `Remove the block on ${name}?`,
+                                description:
+                                  "Cases can then be confirmed on it at that time. Remove it only once the work is cancelled or done.",
+                                confirmLabel: "Remove block",
+                                run: () => removeBlock.mutate({ orgSlug, blockId: block.id }),
+                              })
+                            }
+                          >
+                            Remove block
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </ClientOnly>
+                  );
+                }}
               />
             ) : (
               <p className="p-3 text-muted-foreground">Nothing is blocked.</p>

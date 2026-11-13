@@ -423,7 +423,7 @@ function AddServiceDialog({
   return (
     <ClientOnly fallback={null}>
       <Dialog open onOpenChange={(open) => (open || post.isPending ? undefined : onClose())}>
-        <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-xl">
+        <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Add service</DialogTitle>
             <DialogDescription>

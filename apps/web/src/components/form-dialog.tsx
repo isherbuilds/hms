@@ -9,7 +9,6 @@ import {
 } from "@hms/ui/components/dialog";
 import { Form } from "@hms/ui/components/form";
 import { SubmitButton } from "@hms/ui/components/submit-button";
-import { cn } from "@hms/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 import { ClientOnly } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
@@ -35,6 +34,7 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   onClose,
   onError,
   showsInline,
+  onSubmit,
   contentClassName,
   children,
 }: {
@@ -52,6 +52,8 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   onError?: (error: Error, value: z.output<T>) => void;
   /** True for an error `onError` renders in the dialog; it then raises no toast. */
   showsInline?: (error: Error, value: z.output<T>) => boolean;
+  /** Runs as the form is submitted, before the call: a dialog clears its last refusal. */
+  onSubmit?: () => void;
   contentClassName?: string;
   children: ReactNode;
 }) {
@@ -76,10 +78,7 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   return (
     <ClientOnly fallback={null}>
       <Dialog open onOpenChange={(open) => (open || submit.isPending ? undefined : onClose())}>
-        {/* A tall form scrolls inside the screen, so Close and Save stay reachable on a phone. */}
-        <DialogContent
-          className={cn("max-h-[calc(100svh-2rem)] overflow-y-auto", contentClassName)}
-        >
+        <DialogContent className={contentClassName}>
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription>{description}</DialogDescription>
@@ -98,7 +97,10 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
             <Form {...form}>
               <form
                 className="flex flex-col gap-3"
-                onSubmit={form.handleSubmit((value) => submit.mutate(value))}
+                onSubmit={form.handleSubmit((value) => {
+                  onSubmit?.();
+                  submit.mutate(value);
+                })}
               >
                 <fieldset disabled={submit.isPending} className="contents">
                   {children}
