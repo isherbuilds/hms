@@ -181,7 +181,7 @@ test("a bed label is unique within its ward but may repeat in another ward", asy
 
 test("only owner and admin manage the facility; reception, cashier and pharmacist read the board", async () => {
   const hospital = await createHospital("ipd-facility-grants");
-  const { orgSlug, ward, category } = hospital;
+  const { orgSlug, ward, category, roomService, beds } = hospital;
 
   for (const role of ["reception", "cashier", "pharmacist", "accountant"] as const) {
     const api = await member(hospital, `ipd-facility-${role}`, role);
@@ -189,6 +189,22 @@ test("only owner and admin manage the facility; reception, cashier and pharmacis
     await expectORPCCode(api.ipd.createWard({ orgSlug, name: `${role} ward` }), "FORBIDDEN", role);
     await expectORPCCode(
       api.ipd.createBed({ orgSlug, wardId: ward.id, categoryId: category.id, label: role }),
+      "FORBIDDEN",
+      role,
+    );
+    await expectORPCCode(
+      api.ipd.setBedTariff({
+        orgSlug,
+        categoryId: category.id,
+        catalogItemId: roomService.id,
+        dailyPrice: 1n,
+        effectiveFrom: new Date(),
+      }),
+      "FORBIDDEN",
+      role,
+    );
+    await expectORPCCode(
+      api.ipd.setBedActive({ orgSlug, bedId: beds[0].id, active: false }),
       "FORBIDDEN",
       role,
     );
