@@ -147,6 +147,7 @@ async function lockBeds(tx: Tx, orgId: string, bedIds: string[]) {
       categoryId: beds.categoryId,
       active: beds.active,
       blockedAt: beds.blockedAt,
+      blockedReason: beds.blockedReason,
     })
     .from(beds)
     .where(and(eq(beds.orgId, orgId), inArray(beds.id, ordered)))
@@ -190,6 +191,8 @@ async function assertBedFree(
         or(isNull(admissionBedStays.endedAt), gt(admissionBedStays.endedAt, from)),
       ),
     )
+    // An open stay wins, so a bed that is occupied now always says so.
+    .orderBy(sql`${admissionBedStays.endedAt} asc nulls first`, asc(admissionBedStays.startedAt))
     .limit(1);
 
   if (clash?.endedAt === null) {
@@ -278,6 +281,26 @@ function auditBackdate(
   });
 }
 
+// Each category's rate in force now: one row per category that can price a bed.
+function currentTariffs(orgId: string) {
+  return db
+    .selectDistinctOn([bedTariffs.categoryId], {
+      id: bedTariffs.id,
+      categoryId: bedTariffs.categoryId,
+      catalogItemId: bedTariffs.catalogItemId,
+      serviceName: catalogItems.name,
+      dailyPrice: bedTariffs.dailyPrice,
+      effectiveFrom: bedTariffs.effectiveFrom,
+    })
+    .from(bedTariffs)
+    .innerJoin(
+      catalogItems,
+      and(eq(catalogItems.orgId, bedTariffs.orgId), eq(catalogItems.id, bedTariffs.catalogItemId)),
+    )
+    .where(and(eq(bedTariffs.orgId, orgId), lte(bedTariffs.effectiveFrom, new Date())))
+    .orderBy(bedTariffs.categoryId, desc(bedTariffs.effectiveFrom), desc(bedTariffs.id));
+}
+
 const transitionInput = orgInput.extend({
   admissionId: z.string(),
   expectedRevision: z.number().int().nonnegative(),
@@ -316,25 +339,7 @@ export const ipdRouter = {
         .from(beds)
         .where(eq(beds.orgId, orgId))
         .orderBy(asc(beds.label)),
-      db
-        .selectDistinctOn([bedTariffs.categoryId], {
-          id: bedTariffs.id,
-          categoryId: bedTariffs.categoryId,
-          catalogItemId: bedTariffs.catalogItemId,
-          serviceName: catalogItems.name,
-          dailyPrice: bedTariffs.dailyPrice,
-          effectiveFrom: bedTariffs.effectiveFrom,
-        })
-        .from(bedTariffs)
-        .innerJoin(
-          catalogItems,
-          and(
-            eq(catalogItems.orgId, bedTariffs.orgId),
-            eq(catalogItems.id, bedTariffs.catalogItemId),
-          ),
-        )
-        .where(and(eq(bedTariffs.orgId, orgId), lte(bedTariffs.effectiveFrom, new Date())))
-        .orderBy(bedTariffs.categoryId, desc(bedTariffs.effectiveFrom), desc(bedTariffs.id)),
+      currentTariffs(orgId),
     ]);
 
     const currentTariff = new Map(tariffRows.map((tariff) => [tariff.categoryId, tariff]));
@@ -353,32 +358,48 @@ export const ipdRouter = {
     { ipd: ["manageFacility"] },
     orgInput.extend({ name: shortName }),
   ).handler(async ({ context, input }) => {
-    try {
-      const [ward] = await db
-        .insert(wards)
-        .values({ id: Bun.randomUUIDv7(), orgId: context.scope.orgId, name: input.name })
-        .returning({ id: wards.id, name: wards.name });
+    const { scope } = context;
 
-      return ward!;
-    } catch (error) {
-      nameConflict(error, "A ward with this name");
-    }
+    const ward = await db
+      .insert(wards)
+      .values({ id: Bun.randomUUIDv7(), orgId: scope.orgId, name: input.name })
+      .returning({ id: wards.id, name: wards.name })
+      .then(([row]) => row!)
+      .catch((error: unknown) => nameConflict(error, "A ward with this name"));
+
+    audit({
+      action: "ipd.ward.create",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `ward:${ward.id}`,
+      meta: { name: ward.name },
+    });
+
+    return ward;
   }),
 
   createBedCategory: orgProcedure(
     { ipd: ["manageFacility"] },
     orgInput.extend({ name: shortName }),
   ).handler(async ({ context, input }) => {
-    try {
-      const [category] = await db
-        .insert(bedCategories)
-        .values({ id: Bun.randomUUIDv7(), orgId: context.scope.orgId, name: input.name })
-        .returning({ id: bedCategories.id, name: bedCategories.name });
+    const { scope } = context;
 
-      return category!;
-    } catch (error) {
-      nameConflict(error, "A bed category with this name");
-    }
+    const category = await db
+      .insert(bedCategories)
+      .values({ id: Bun.randomUUIDv7(), orgId: scope.orgId, name: input.name })
+      .returning({ id: bedCategories.id, name: bedCategories.name })
+      .then(([row]) => row!)
+      .catch((error: unknown) => nameConflict(error, "A bed category with this name"));
+
+    audit({
+      action: "ipd.bedCategory.create",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `bed_category:${category.id}`,
+      meta: { name: category.name },
+    });
+
+    return category;
   }),
 
   setBedTariff: orgProcedure(
@@ -452,7 +473,8 @@ export const ipdRouter = {
     { ipd: ["manageFacility"] },
     orgInput.extend({ wardId: z.string(), categoryId: z.string(), label: shortName }),
   ).handler(async ({ context, input }) => {
-    const { orgId } = context.scope;
+    const { scope } = context;
+    const { orgId } = scope;
 
     await Promise.all([
       requireInScope(
@@ -473,22 +495,28 @@ export const ipdRouter = {
       ),
     ]);
 
-    try {
-      const [bed] = await db
-        .insert(beds)
-        .values({
-          id: Bun.randomUUIDv7(),
-          orgId,
-          wardId: input.wardId,
-          categoryId: input.categoryId,
-          label: input.label,
-        })
-        .returning();
+    const bed = await db
+      .insert(beds)
+      .values({
+        id: Bun.randomUUIDv7(),
+        orgId,
+        wardId: input.wardId,
+        categoryId: input.categoryId,
+        label: input.label,
+      })
+      .returning()
+      .then(([row]) => row!)
+      .catch((error: unknown) => nameConflict(error, "A bed with this label in that ward"));
 
-      return bed!;
-    } catch (error) {
-      nameConflict(error, "A bed with this label in that ward");
-    }
+    audit({
+      action: "ipd.bed.create",
+      actorId: scope.userId,
+      orgId,
+      target: `bed:${bed.id}`,
+      meta: { label: bed.label, wardId: bed.wardId, categoryId: bed.categoryId },
+    });
+
+    return bed;
   }),
 
   setBedActive: orgProcedure(
@@ -569,7 +597,7 @@ export const ipdRouter = {
   ).handler(async ({ context, input }) => {
     const { scope } = context;
 
-    return db.transaction(async (tx) => {
+    const { bed, released } = await db.transaction(async (tx) => {
       const locked = (await lockBeds(tx, scope.orgId, [input.bedId])).get(input.bedId);
 
       if (!locked) {
@@ -590,19 +618,30 @@ export const ipdRouter = {
         .where(and(eq(beds.orgId, scope.orgId), eq(beds.id, input.bedId)))
         .returning();
 
-      return updated!;
+      return { bed: updated!, released: locked };
     });
+
+    audit({
+      action: "ipd.bed.release",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `bed:${input.bedId}`,
+      meta: { blockedAt: released.blockedAt!.toISOString(), blockedReason: released.blockedReason },
+    });
+
+    return bed;
   }),
 
   bedBoard: orgProcedure({ ipd: ["read"] }, orgInput).handler(async ({ context }) => {
     const { orgId } = context.scope;
 
-    const rows = await db
+    const boardRows = db
       .select({
         id: beds.id,
         label: beds.label,
         wardId: wards.id,
         wardName: wards.name,
+        categoryId: beds.categoryId,
         categoryName: bedCategories.name,
         blockedAt: beds.blockedAt,
         blockedReason: beds.blockedReason,
@@ -649,6 +688,9 @@ export const ipdRouter = {
       .where(and(eq(beds.orgId, orgId), eq(beds.active, true)))
       .orderBy(asc(wards.name), asc(beds.label));
 
+    const [rows, tariffRows] = await Promise.all([boardRows, currentTariffs(orgId)]);
+    const priced = new Set(tariffRows.map((tariff) => tariff.categoryId));
+
     return {
       beds: rows.map((row) => {
         // Foreign keys guarantee the rest of the chain once a stay is open.
@@ -670,6 +712,8 @@ export const ipdRouter = {
           wardId: row.wardId,
           wardName: row.wardName,
           categoryName: row.categoryName,
+          // Admission refuses a bed whose category has no rate in force.
+          rateSet: priced.has(row.categoryId),
           status: admission
             ? ("occupied" as const)
             : row.blockedAt
