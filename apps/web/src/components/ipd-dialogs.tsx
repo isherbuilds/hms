@@ -15,7 +15,7 @@ import { ControlledField, TextField } from "@/components/form-fields";
 import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
 import { ErrorNote } from "@/components/page";
 import { useCan } from "@/lib/membership";
-import { localInputValue, useOrgDateTime } from "@/lib/org-datetime";
+import { formatDateTime, localInputValue, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { errorMessage, errorReason, hasErrorCode } from "@/lib/orpc-error";
 
@@ -144,25 +144,41 @@ function useHoldRefusal(onClose: () => void) {
   return { refusal, onError, showsInline };
 }
 
+type BoardHold = { patientName: string; plannedArrivalAt: Date };
+
 function HoldRefusal({
   orgSlug,
   refusal,
   action,
+  holds,
 }: {
   orgSlug: string;
   refusal: string | null;
   action: string;
+  /** The refused bed's holds, so the desk sees whose arrival the bed is kept for. */
+  holds: readonly BoardHold[];
 }) {
+  const { timeZone } = useOrgDateTime();
   const canCorrect = useCan(orgSlug, { ipd: ["correct"] });
   const displace = useWatch<{ displace: boolean }, "displace">({ name: "displace" });
 
   if (refusal === null) return null;
 
+  const [first, ...others] = holds;
+
+  const heldFor = first
+    ? `Held for ${first.patientName} from ${formatDateTime(first.plannedArrivalAt, timeZone)}${
+        others.length > 0 ? `, and ${others.length} more` : ""
+      }.`
+    : undefined;
+
   return (
     <>
       <ErrorNote
         title={refusal}
-        detail={canCorrect ? undefined : "Choose another bed, or ask an administrator."}
+        detail={[heldFor, canCorrect ? undefined : "Choose another bed, or ask an administrator."]
+          .filter(Boolean)
+          .join(" ")}
       />
       {canCorrect ? (
         <>
@@ -210,7 +226,7 @@ export function AdmitDialog({
 }: {
   orgSlug: string;
   /** `holds` are the bed's live holds, apart from the one this admission converts. */
-  bed: { id: string; label: string; wardName: string; holds: readonly unknown[] };
+  bed: { id: string; label: string; wardName: string; holds: readonly BoardHold[] };
   /** The hold being turned into this admission, captured when the dialog opened. */
   reservation?: { id: string; revision: number; patient: SelectedPatient };
   onClose: () => void;
@@ -289,7 +305,7 @@ export function AdmitDialog({
         )}
       />
       <EarlierTimeFields orgSlug={orgSlug} label="Admitted at" />
-      <HoldRefusal orgSlug={orgSlug} refusal={hold.refusal} action="Admit" />
+      <HoldRefusal orgSlug={orgSlug} refusal={hold.refusal} action="Admit" holds={bed.holds} />
     </FormDialog>
   );
 }
@@ -300,6 +316,28 @@ const transferSchema = z
   .object({ bedId: z.string().min(1, "Choose the new bed"), ...earlierTime, ...displaceFields })
   .superRefine(requireEarlierReason)
   .superRefine(requireDisplaceReason);
+
+// The refusal belongs to the bed chosen in the form, so its holds are read from there.
+function MoveRefusal({
+  orgSlug,
+  refusal,
+  beds,
+}: {
+  orgSlug: string;
+  refusal: string | null;
+  beds: ReadonlyArray<{ id: string; holds: readonly BoardHold[] }>;
+}) {
+  const bedId = useWatch<{ bedId: string }, "bedId">({ name: "bedId" });
+
+  return (
+    <HoldRefusal
+      orgSlug={orgSlug}
+      refusal={refusal}
+      action="Move"
+      holds={beds.find((bed) => bed.id === bedId)?.holds ?? []}
+    />
+  );
+}
 
 export function TransferDialog({
   orgSlug,
@@ -366,7 +404,7 @@ export function TransferDialog({
         )}
       />
       <EarlierTimeFields orgSlug={orgSlug} label="Moved at" />
-      <HoldRefusal orgSlug={orgSlug} refusal={hold.refusal} action="Move" />
+      <MoveRefusal orgSlug={orgSlug} refusal={hold.refusal} beds={free} />
     </FormDialog>
   );
 }
