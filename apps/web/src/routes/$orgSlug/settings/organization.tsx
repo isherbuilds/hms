@@ -12,7 +12,7 @@ import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { ClientOnly, createFileRoute, useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useFormContext, useFormState } from "react-hook-form";
 import type { z } from "zod";
@@ -179,15 +179,21 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                 render={(field) => (
                   <FormControl>
                     <NativeSelect {...field}>
-                      {/* Keep a stored zone selectable even when this browser's canonical list omits it. */}
-                      {defaults.timeZone && !supportedTimeZones.includes(defaults.timeZone) ? (
-                        <option value={defaults.timeZone}>{defaults.timeZone}</option>
-                      ) : null}
-                      {supportedTimeZones.map((zone) => (
-                        <option key={zone} value={zone}>
-                          {zone}
-                        </option>
-                      ))}
+                      {/* The zone list is the runtime's own, and the server's differs from
+                          the browser's, so the full list renders after hydration. */}
+                      <ClientOnly
+                        fallback={<option value={defaults.timeZone}>{defaults.timeZone}</option>}
+                      >
+                        {/* Keep a stored zone selectable even when this browser's canonical list omits it. */}
+                        {defaults.timeZone && !supportedTimeZones.includes(defaults.timeZone) ? (
+                          <option value={defaults.timeZone}>{defaults.timeZone}</option>
+                        ) : null}
+                        {supportedTimeZones.map((zone) => (
+                          <option key={zone} value={zone}>
+                            {zone}
+                          </option>
+                        ))}
+                      </ClientOnly>
                     </NativeSelect>
                   </FormControl>
                 )}
