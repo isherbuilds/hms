@@ -3,6 +3,7 @@
 import { expect, test } from "bun:test";
 
 import {
+  gstSummaryRows,
   invoiceDocumentTitle,
   invoicePrintParticulars,
   invoiceTaxBreakdown,
@@ -119,4 +120,20 @@ test("an ipd Invoice prints GST columns only when registered and a line carries 
     expect(invoiceDocumentTitle(invoice, lines)).toBe(title);
     expect(invoicePrintParticulars(invoice, lines).taxed).toBe(taxed);
   }
+});
+
+test("the rate-wise GST summary of a mixed bill leaves out exempt lines; a counter bill keeps every rate", () => {
+  const exemptService = { ...service, taxRatePercent: "0.00", taxAmount: 0n };
+
+  expect(
+    gstSummaryRows([service, bundledMedicine, independentMedicine, exemptService], true),
+  ).toEqual([
+    { rate: "5.00", taxable: 6_000_00n, tax: 300_00n },
+    { rate: "12.00", taxable: 100_00n, tax: 12_00n },
+  ]);
+
+  expect(gstSummaryRows([bundledMedicine, independentMedicine, bundledMedicine], false)).toEqual([
+    { rate: "0.00", taxable: 448_00n, tax: 0n },
+    { rate: "12.00", taxable: 100_00n, tax: 12_00n },
+  ]);
 });
