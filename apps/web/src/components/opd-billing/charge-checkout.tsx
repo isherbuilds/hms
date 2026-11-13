@@ -1,3 +1,4 @@
+import type { PriceBasis } from "@hms/api/lib/invoice-math";
 import { Button } from "@hms/ui/components/button";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import {
@@ -28,6 +29,7 @@ type PendingCharge = {
   qty: number;
   unitPrice: bigint;
   taxRatePercent: string;
+  priceBasis: PriceBasis;
   revenueCategory: string;
 };
 
@@ -89,6 +91,7 @@ export function ChargeCheckout({
       qty: charge.qty,
       unitPrice: charge.unitPrice,
       taxRatePercent: charge.taxRatePercent,
+      priceBasis: charge.priceBasis,
     })),
     currency,
   );

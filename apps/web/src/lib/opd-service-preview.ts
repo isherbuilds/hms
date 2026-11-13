@@ -1,4 +1,9 @@
-import { computeInvoiceLines, type InvoiceStream } from "@hms/api/lib/invoice-math";
+import {
+  computeInvoiceLines,
+  roundsToRupee,
+  type InvoiceStream,
+  type PriceBasis,
+} from "@hms/api/lib/invoice-math";
 
 export type WalkInQuote = {
   currency: string;
@@ -12,6 +17,7 @@ export type WalkInQuote = {
     priceUnits: number;
     taxRatePercent: string;
     taxCode: string | null;
+    priceBasis: PriceBasis;
     gross: bigint;
   }>;
   subtotal: bigint;
@@ -37,7 +43,7 @@ function attachLineMetadata<T extends object>(
   });
 }
 
-/** `stream` sets the quote's tax treatment and total rounding. */
+/** `stream` sets whether the total rounds to whole rupees; each line carries its own basis. */
 export function applyDiscount(
   quote: WalkInQuote,
   discountAmount: bigint,
@@ -52,9 +58,10 @@ export function applyDiscount(
       priceUnits: line.priceUnits,
       taxRatePercent: line.taxRatePercent,
       taxCode: line.taxCode,
+      priceBasis: line.priceBasis,
     })),
     discountAmount,
-    stream,
+    { roundToRupee: roundsToRupee(stream) },
   );
 
   return {
@@ -74,6 +81,7 @@ type PreviewService = {
   category: string;
   unitPrice: bigint;
   taxRatePercent: string;
+  priceBasis: PriceBasis;
   qty: number;
 };
 
@@ -88,9 +96,10 @@ export function servicePreview(services: PreviewService[], currency: string): Wa
     priceUnits: 1,
     taxRatePercent: service.taxRatePercent,
     taxCode: null,
+    priceBasis: service.priceBasis,
   }));
 
-  const computed = computeInvoiceLines(previewLines, 0n, "opd");
+  const computed = computeInvoiceLines(previewLines, 0n, { roundToRupee: false });
 
   return {
     currency,

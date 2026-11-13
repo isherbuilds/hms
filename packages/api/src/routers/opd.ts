@@ -288,9 +288,10 @@ export const opdRouter = {
         priceUnits: 1,
         taxRatePercent: item.taxRatePercent,
         taxCode: item.taxCode,
+        priceBasis: "exclusive" as const,
       })),
       input.discountAmount,
-      "opd",
+      { roundToRupee: false },
     );
 
     return {

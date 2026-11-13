@@ -17,6 +17,7 @@ import { REVENUE_CATEGORIES, catalogItems } from "./catalog-items";
 import { invoices } from "./invoices";
 import { opdAppointments } from "./opd-appointments";
 import { pharmacySales } from "./pharmacy-sales";
+import { PRICE_BASES } from "./price-basis";
 import { stockBatches } from "./stock-batches";
 
 const CHARGE_SOURCE_TYPES = ["consult_fee", "catalog", "treatment_plan", "pharmacy_batch"] as const;
@@ -38,6 +39,7 @@ export const charges = pgTable(
     priceUnits: integer("price_units").notNull().default(1),
     taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull(),
     taxCode: text("tax_code"),
+    priceBasis: text("price_basis", { enum: PRICE_BASES }).notNull(),
     revenueCategory: text("revenue_category", { enum: REVENUE_CATEGORIES }).notNull(),
     qty: integer("qty").notNull().default(1),
     sourceType: text("source_type", { enum: CHARGE_SOURCE_TYPES }).notNull(),

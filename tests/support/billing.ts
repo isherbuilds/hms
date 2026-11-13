@@ -1,4 +1,4 @@
-import { computeInvoiceLines } from "@hms/api/lib/invoice-math";
+import { computeInvoiceLines, roundsToRupee } from "@hms/api/lib/invoice-math";
 import type { AppRouterClient } from "@hms/api/routers/index";
 import { db } from "@hms/db";
 import { catalogItems } from "@hms/db/schema/catalog-items";
@@ -51,6 +51,7 @@ export async function addPendingCatalogCharge({
         unitPrice: item.unitPrice,
         taxRatePercent: item.taxRatePercent,
         taxCode: item.taxCode,
+        priceBasis: "exclusive",
         revenueCategory: item.category,
         sourceType: "catalog",
         sourceId: null,
@@ -102,9 +103,10 @@ export async function settlePendingCharges(
       priceUnits: charge.priceUnits,
       taxRatePercent: charge.taxRatePercent,
       taxCode: charge.taxCode,
+      priceBasis: charge.priceBasis,
     })),
     discountAmount,
-    "opd",
+    { roundToRupee: roundsToRupee("opd") },
   );
 
   return api.billing.settleCharges({

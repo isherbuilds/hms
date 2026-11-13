@@ -493,6 +493,7 @@ export const treatmentRouter = {
           unitPrice: price,
           taxRatePercent: row.item.taxRatePercent,
           taxCode: row.item.taxCode,
+          priceBasis: "exclusive",
           revenueCategory: row.item.revenueCategory,
           qty: 1,
           sourceType: "treatment_plan",

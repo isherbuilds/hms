@@ -22,6 +22,7 @@ import {
   documentNumber,
   InvoiceDiscountExceededError,
   fiscalYearLabel,
+  roundsToRupee,
 } from "./invoice-math";
 import {
   postJournalEntries,
@@ -275,6 +276,7 @@ export async function issueInvoiceTx(
       priceUnits: charges.priceUnits,
       taxRatePercent: charges.taxRatePercent,
       taxCode: charges.taxCode,
+      priceBasis: charges.priceBasis,
     })
     .from(charges)
     .where(and(eq(charges.orgId, scope.orgId), parentCharges, eq(charges.status, "pending")))
@@ -290,7 +292,9 @@ export async function issueInvoiceTx(
   let computed: ReturnType<typeof computeInvoiceLines>;
 
   try {
-    computed = computeInvoiceLines(pendingCharges, args.discountAmount, parent.stream);
+    computed = computeInvoiceLines(pendingCharges, args.discountAmount, {
+      roundToRupee: roundsToRupee(parent.stream),
+    });
   } catch (error) {
     if (!(error instanceof InvoiceDiscountExceededError)) throw error;
     throw new ORPCError("BAD_REQUEST", {
@@ -355,6 +359,7 @@ export async function issueInvoiceTx(
       note: args.note ?? null,
       subtotal: computed.subtotal,
       taxTotal: computed.taxTotal,
+      addedTaxTotal: computed.addedTaxTotal,
       roundOff: computed.roundOff,
       grandTotal: computed.grandTotal,
       orgLegalName: settings.legalName,

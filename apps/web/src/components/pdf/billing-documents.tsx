@@ -314,10 +314,7 @@ export function InvoiceDocument({
   const totals = [
     {
       label: taxed ? "Subtotal (incl. GST)" : "Subtotal",
-      value: formatMoney(
-        invoice.stream === "opd" ? invoice.subtotal + invoice.taxTotal : invoice.subtotal,
-        currency,
-      ),
+      value: formatMoney(invoice.subtotal + invoice.addedTaxTotal, currency),
     },
     { label: "Discount", value: formatMoney(invoice.discountAmount, currency) },
     ...(taxed ? [{ label: "GST included", value: formatMoney(invoice.taxTotal, currency) }] : []),

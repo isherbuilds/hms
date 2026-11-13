@@ -172,6 +172,7 @@ export function chargeRow(args: {
     unitPrice: args.unitPrice,
     taxRatePercent: args.item.taxRatePercent,
     taxCode: args.item.taxCode,
+    priceBasis: "exclusive",
     revenueCategory: args.item.category,
     sourceType: args.sourceType,
     sourceId: null,

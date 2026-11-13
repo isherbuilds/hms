@@ -262,6 +262,7 @@ export const pharmacyRouter = {
             priceUnits: batch.mrpUnits,
             taxRatePercent: batch.taxRatePercent,
             taxCode: batch.taxCode,
+            priceBasis: "inclusive" as const,
             revenueCategory: "pharmacy" as const,
             qty: line.qty,
             sourceType: "pharmacy_batch" as const,

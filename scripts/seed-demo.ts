@@ -1,6 +1,11 @@
 import { formatDecimal, parseDecimal } from "@hms/api/core/money";
 import { businessDate } from "@hms/api/lib/business-date";
-import { computeInvoiceLines, documentNumber, fiscalYearLabel } from "@hms/api/lib/invoice-math";
+import {
+  computeInvoiceLines,
+  documentNumber,
+  fiscalYearLabel,
+  roundsToRupee,
+} from "@hms/api/lib/invoice-math";
 import { postJournalEntries, revenueAccountFor, settlementAccountFor } from "@hms/api/lib/ledger";
 import { db } from "@hms/db";
 import { nextCounter } from "@hms/db/counter";
@@ -987,6 +992,7 @@ function visit(
     unitPrice: item.unitPrice,
     taxRatePercent: "0",
     taxCode: null,
+    priceBasis: "exclusive" as const,
     revenueCategory: item.category,
     qty: 1,
     sourceType: source,
@@ -1015,6 +1021,7 @@ function visit(
     note: null,
     subtotal,
     taxTotal: 0n,
+    addedTaxTotal: 0n,
     grandTotal: subtotal,
     orgLegalName: HOSPITAL.legalName,
     orgAddress: HOSPITAL.address,
@@ -1043,6 +1050,7 @@ function visit(
       gross: row.unitPrice,
       taxRatePercent: "0",
       taxCode: null,
+      priceBasis: row.priceBasis,
       revenueCategory: row.revenueCategory,
     })),
   );
@@ -1266,6 +1274,7 @@ for (let offset = HISTORY_DAYS; offset >= 0; offset--) {
         priceUnits: batch.mrpUnits,
         taxRatePercent: spec.gst,
         taxCode: spec.hsn ?? null,
+        priceBasis: "inclusive",
         revenueCategory: "pharmacy",
         qty,
         sourceType: "pharmacy_batch",
@@ -1300,9 +1309,10 @@ for (let offset = HISTORY_DAYS; offset >= 0; offset--) {
         priceUnits: batch.mrpUnits,
         taxRatePercent: spec.gst,
         taxCode: spec.hsn ?? null,
+        priceBasis: "inclusive" as const,
       })),
       0n,
-      "pharmacy",
+      { roundToRupee: roundsToRupee("pharmacy") },
     );
 
     invoiceRows.push({
@@ -1319,6 +1329,7 @@ for (let offset = HISTORY_DAYS; offset >= 0; offset--) {
       note: null,
       subtotal: computed.subtotal,
       taxTotal: computed.taxTotal,
+      addedTaxTotal: computed.addedTaxTotal,
       roundOff: computed.roundOff,
       grandTotal: computed.grandTotal,
       orgLegalName: HOSPITAL.legalName,
@@ -1349,6 +1360,7 @@ for (let offset = HISTORY_DAYS; offset >= 0; offset--) {
         gross: line.gross,
         taxRatePercent: line.taxRatePercent,
         taxCode: line.taxCode,
+        priceBasis: line.priceBasis,
         revenueCategory: "pharmacy" as const,
       })),
     );

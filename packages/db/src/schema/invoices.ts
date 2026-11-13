@@ -41,6 +41,8 @@ export const invoices = pgTable(
     note: text("note"),
     subtotal: bigint("subtotal", { mode: "bigint" }).notNull(),
     taxTotal: bigint("tax_total", { mode: "bigint" }).notNull(),
+    // The GST added on top of tax-exclusive lines; inclusive lines carry theirs in the price.
+    addedTaxTotal: bigint("added_tax_total", { mode: "bigint" }).notNull(),
     roundOff: bigint("round_off", { mode: "bigint" })
       .notNull()
       .default(sql`0`),
@@ -85,10 +87,13 @@ export const invoices = pgTable(
       "invoices_parent_check",
       sql`(${table.stream} = 'opd' and ${table.opdAppointmentId} is not null and ${table.patientId} is not null and ${table.pharmacySaleId} is null) or (${table.stream} = 'pharmacy' and ${table.pharmacySaleId} is not null and ${table.opdAppointmentId} is null)`,
     ),
-    // Pharmacy prices are MRP inclusive of GST, so its tax is already inside the gross.
     check(
       "invoices_total_math_check",
-      sql`${table.grandTotal} = ${table.subtotal} - ${table.discountAmount} + (case ${table.stream} when 'opd' then ${table.taxTotal} else 0 end) + ${table.roundOff}`,
+      sql`${table.grandTotal} = ${table.subtotal} - ${table.discountAmount} + ${table.addedTaxTotal} + ${table.roundOff}`,
+    ),
+    check(
+      "invoices_added_tax_total_check",
+      sql`${table.addedTaxTotal} >= 0 and ${table.addedTaxTotal} <= ${table.taxTotal}`,
     ),
     unique("invoices_org_id_id_unique").on(table.orgId, table.id),
     uniqueIndex("invoices_org_number_idx").on(table.orgId, table.invoiceNumber),
