@@ -1,3 +1,4 @@
+import { INVOICE_STREAM_LABELS } from "@hms/api/lib/invoice-math";
 import { practitionerDisplayName } from "@hms/api/lib/labels";
 import { authorize } from "@hms/auth/access";
 import { useQuery } from "@tanstack/react-query";
@@ -167,7 +168,7 @@ function Mix({ parts, link }: { parts: Part[]; link?: (part: Part) => LinkOption
   );
 }
 
-const SOURCE_LABELS = { opd: "OPD", pharmacy: "Pharmacy", advance: "Advances" } as const;
+const SOURCE_LABELS = { ...INVOICE_STREAM_LABELS, advance: "Advances" } as const;
 
 const weekdayName = (day: string) =>
   new Intl.DateTimeFormat("en-IN", { weekday: "long", timeZone: "UTC" }).format(
@@ -515,7 +516,9 @@ function DashboardRoute() {
                       ? { to: "/$orgSlug/pharmacy", params: { orgSlug } }
                       : part.key === "advance"
                         ? { to: "/$orgSlug/billing/advances", params: { orgSlug } }
-                        : { to: "/$orgSlug/billing", params: { orgSlug } }
+                        : part.key === "ipd"
+                          ? { to: "/$orgSlug/ipd/admissions", params: { orgSlug } }
+                          : { to: "/$orgSlug/billing", params: { orgSlug } }
                   }
                 />
               )}

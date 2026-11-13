@@ -22,6 +22,7 @@ export const REASON_LABELS: Record<MovementReason, string> = {
   breakage: "Breakage",
   count_correction: "Count correction",
   internal_issue: "Internal issue",
+  admission_issue: "Issued to admission",
 };
 
 // Kept local so no @hms/db server module reaches the client bundle (hard rule 6).

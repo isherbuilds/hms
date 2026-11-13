@@ -1,3 +1,4 @@
+import type { InvoiceStream } from "@hms/db/schema/invoice-streams";
 import type { PriceBasis } from "@hms/db/schema/price-basis";
 import { z } from "zod";
 
@@ -56,9 +57,10 @@ type InvoiceLine = {
   priceBasis: PriceBasis;
 };
 
-export type { PriceBasis };
+export type { InvoiceStream, PriceBasis };
 
-export type InvoiceStream = "opd" | "pharmacy";
+// Re-exported so the client reads stream names without importing @hms/db.
+export { INVOICE_STREAMS, INVOICE_STREAM_LABELS } from "@hms/db/schema/invoice-streams";
 
 /** Only the counter Pharmacy document total rounds to whole rupees (D044). */
 export function roundsToRupee(stream: InvoiceStream) {

@@ -30,6 +30,7 @@ import {
   lockInvoice,
   postCreditNoteTx,
   recordPaymentsTx,
+  settleIssuedInvoiceTx,
 } from "../lib/billing-documents";
 import { impossible } from "../lib/conflict";
 import { invoiceBalanceFor, invoiceBalancesFor } from "../lib/invoice-balance";
@@ -145,45 +146,17 @@ export async function settleInvoiceTx(
     invoiceId: args.invoiceId,
   });
 
-  if (issued.invoice.grandTotal !== args.expectedGrandTotal) {
-    throw new ORPCError("CONFLICT", {
-      message: "The charges changed. Review the invoice and try again",
-    });
-  }
-
-  const collected = args.payments.reduce((sum, payment) => sum + payment.amount, 0n);
-  const due = issued.invoice.grandTotal;
-
-  if (args.applyCredit > due) {
-    throw new ORPCError("CONFLICT", {
-      message: "That credit is more than the invoice still owes.",
-    });
-  }
-
-  if (collected > due - args.applyCredit) {
-    throw new ORPCError("BAD_REQUEST", {
-      message: "Collected amount cannot exceed the invoice total",
-    });
-  }
-
-  if (collected + args.applyCredit < due && !args.note) {
-    throw new ORPCError("BAD_REQUEST", {
-      message: "Add a reason for the outstanding balance",
-    });
-  }
-
-  const recorded =
-    args.payments.length === 0 && args.applyCredit === 0n
-      ? []
-      : await recordPaymentsTx(tx, {
-          scope,
-          invoiceId: args.invoiceId,
-          payments: args.payments,
-          applyCredit: args.applyCredit,
-          settings: args.settings,
-          now: args.now,
-          fiscalYear: args.fiscalYear,
-        });
+  const recorded = await settleIssuedInvoiceTx(tx, {
+    scope,
+    invoice: issued.invoice,
+    expectedGrandTotal: args.expectedGrandTotal,
+    payments: args.payments,
+    applyCredit: args.applyCredit,
+    outstandingReason: args.note,
+    settings: args.settings,
+    now: args.now,
+    fiscalYear: args.fiscalYear,
+  });
 
   const [versionedAppointment] = await tx
     .update(opdAppointments)
@@ -635,10 +608,17 @@ export const billingRouter = {
       // Checked before any write: a pharmacy correction has to bring the goods back.
       const invoice = await lockInvoice(tx, scope.orgId, input.invoiceId);
 
-      if (invoice.stream !== "opd") {
-        throw new ORPCError("CONFLICT", {
-          message: "Pharmacy invoices are corrected by a return.",
-        });
+      switch (invoice.stream) {
+        case "opd":
+          break;
+        case "pharmacy":
+          throw new ORPCError("CONFLICT", {
+            message: "Pharmacy invoices are corrected by a return.",
+          });
+        case "ipd":
+          throw new ORPCError("CONFLICT", {
+            message: "Inpatient bills are corrected from the admission",
+          });
       }
 
       const posted = await postCreditNoteTx(tx, {

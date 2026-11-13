@@ -17,6 +17,7 @@ import { orgIdColumn, user } from "./auth";
 import { catalogItems } from "./catalog-items";
 import { patients } from "./patients";
 import { practitioners } from "./practitioners";
+import { stockBatches } from "./stock-batches";
 
 // Facility masters deactivate rather than disappear: stays keep pointing at them.
 export const wards = pgTable(
@@ -182,6 +183,8 @@ export const admissions = pgTable(
       sql`(${table.readyAt} is null or ${table.readyAt} >= ${table.admittedAt}) and (${table.dischargedAt} is null or ${table.dischargedAt} >= coalesce(${table.readyAt}, ${table.admittedAt}))`,
     ),
     unique("admissions_org_id_id_unique").on(table.orgId, table.id),
+    // Lets an ipd Invoice prove its patient is the Admission's patient.
+    unique("admissions_org_id_patient_unique").on(table.orgId, table.id, table.patientId),
     foreignKey({
       columns: [table.orgId, table.patientId],
       foreignColumns: [patients.orgId, patients.id],
@@ -251,5 +254,84 @@ export const admissionBedStays = pgTable(
       table.admissionId,
       table.startedAt,
     ),
+  ],
+);
+
+// What an Admission Charge records; later kinds are a constant change (D042).
+export const ADMISSION_CHARGE_KINDS = ["service", "pharmacy_issue"] as const;
+
+export type AdmissionChargeKind = (typeof ADMISSION_CHARGE_KINDS)[number];
+
+// `bundled` medicine is part of the exempt composite healthcare supply; `independent`
+// medicine carries the product's own GST rate.
+export const ADMISSION_ISSUE_SUPPLIES = ["bundled", "independent"] as const;
+
+export type AdmissionIssueSupply = (typeof ADMISSION_ISSUE_SUPPLIES)[number];
+
+// One ward issue from the pharmacy to an Admission. Price and tax live on the Charge
+// each line creates (D027), never here.
+export const admissionPharmacyIssues = pgTable(
+  "admission_pharmacy_issues",
+  {
+    id: text("id").primaryKey(),
+    orgId: orgIdColumn(),
+    admissionId: text("admission_id").notNull(),
+    prescriberName: text("prescriber_name"),
+    issuedBy: text("issued_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique("admission_pharmacy_issues_org_id_id_unique").on(table.orgId, table.id),
+    unique("admission_pharmacy_issues_org_id_admission_unique").on(
+      table.orgId,
+      table.id,
+      table.admissionId,
+    ),
+    foreignKey({
+      columns: [table.orgId, table.admissionId],
+      foreignColumns: [admissions.orgId, admissions.id],
+    }),
+    index("admission_pharmacy_issues_org_admission_created_idx").on(
+      table.orgId,
+      table.admissionId,
+      table.createdAt,
+      table.id,
+    ),
+  ],
+);
+
+export const admissionPharmacyIssueLines = pgTable(
+  "admission_pharmacy_issue_lines",
+  {
+    id: text("id").primaryKey(),
+    orgId: orgIdColumn(),
+    issueId: text("issue_id").notNull(),
+    admissionId: text("admission_id").notNull(),
+    batchId: text("batch_id").notNull(),
+    qty: integer("qty").notNull(),
+    supply: text("supply", { enum: ADMISSION_ISSUE_SUPPLIES }).notNull(),
+  },
+  (table) => [
+    check("admission_pharmacy_issue_lines_qty_check", sql`${table.qty} > 0`),
+    unique("admission_pharmacy_issue_lines_org_id_admission_batch_unique").on(
+      table.orgId,
+      table.id,
+      table.admissionId,
+      table.batchId,
+    ),
+    foreignKey({
+      columns: [table.orgId, table.issueId, table.admissionId],
+      foreignColumns: [
+        admissionPharmacyIssues.orgId,
+        admissionPharmacyIssues.id,
+        admissionPharmacyIssues.admissionId,
+      ],
+    }),
+    foreignKey({
+      columns: [table.orgId, table.batchId],
+      foreignColumns: [stockBatches.orgId, stockBatches.id],
+    }),
   ],
 );

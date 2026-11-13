@@ -229,8 +229,9 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                 Document numbering
               </h2>
               <p className="max-w-xs leading-relaxed text-muted-foreground">
-                Financial prefixes use at most three letters, digits, / or -. Keep OPD and pharmacy
-                prefixes different. New financial document numbers never exceed 16 characters.
+                Financial prefixes use at most three letters, digits, / or -. Keep the OPD, pharmacy
+                and IPD invoice prefixes different. New financial document numbers never exceed 16
+                characters.
               </p>
             </div>
             <div className="flex min-w-0 flex-col gap-3 md:col-span-2">
@@ -238,6 +239,7 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                 <TextField name="mrnPrefix" label="MRN prefix" />
                 <TextField name="invoicePrefix" label="Invoice prefix" />
                 <TextField name="pharmacyInvoicePrefix" label="Pharmacy invoice prefix" />
+                <TextField name="ipdInvoicePrefix" label="IPD invoice prefix" />
                 <TextField name="receiptPrefix" label="Receipt prefix" />
                 <TextField name="creditNotePrefix" label="Credit note prefix" />
                 <TextField name="advanceReceiptPrefix" label="Advance receipt prefix" />

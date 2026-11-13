@@ -5,6 +5,7 @@ import { charges } from "@hms/db/schema/charges";
 import { creditNoteLines } from "@hms/db/schema/credit-note-lines";
 import { creditNotes } from "@hms/db/schema/credit-notes";
 import { invoiceLines } from "@hms/db/schema/invoice-lines";
+import type { InvoiceStream } from "@hms/db/schema/invoice-streams";
 import { invoices } from "@hms/db/schema/invoices";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { payments } from "@hms/db/schema/payments";
@@ -57,7 +58,7 @@ export type LockedInvoice = {
   grandTotal: bigint;
   roundOff: bigint;
   patientId: string | null;
-  stream: "opd" | "pharmacy";
+  stream: InvoiceStream;
   treatmentPlanId: string | null;
 };
 
@@ -208,23 +209,22 @@ async function applyPatientCreditTx(
   );
 }
 
+type RegisteredPatient = {
+  id: string;
+  name: string;
+  mrn: string;
+  phone: string;
+  address: string | null;
+  guardian: string | null;
+};
+
 /**
  * Which care record the invoice and its charges hang off, plus the buyer printed on it.
  * A pharmacy counter sale has no Patient record unless the pharmacist named one.
  */
 export type InvoiceParent =
-  | {
-      stream: "opd";
-      opdAppointmentId: string;
-      patient: {
-        id: string;
-        name: string;
-        mrn: string;
-        phone: string;
-        address: string | null;
-        guardian: string | null;
-      };
-    }
+  | { stream: "opd"; opdAppointmentId: string; patient: RegisteredPatient }
+  | { stream: "ipd"; admissionId: string; patient: RegisteredPatient }
   | {
       stream: "pharmacy";
       pharmacySaleId: string;
@@ -237,6 +237,30 @@ export type InvoiceParent =
         guardian: null;
       };
     };
+
+/** Each stream bills its own parent's Charges on its own counter and prefix. */
+function invoiceSeries(parent: InvoiceParent, settings: OrgSettings, fiscalYear: string) {
+  switch (parent.stream) {
+    case "opd":
+      return {
+        chargeFilter: eq(charges.opdAppointmentId, parent.opdAppointmentId),
+        counterKey: `invoice:${fiscalYear}`,
+        prefix: settings.invoicePrefix,
+      };
+    case "pharmacy":
+      return {
+        chargeFilter: eq(charges.pharmacySaleId, parent.pharmacySaleId),
+        counterKey: `invoice:pharmacy:${fiscalYear}`,
+        prefix: settings.pharmacyInvoicePrefix,
+      };
+    case "ipd":
+      return {
+        chargeFilter: eq(charges.admissionId, parent.admissionId),
+        counterKey: `invoice:ipd:${fiscalYear}`,
+        prefix: settings.ipdInvoicePrefix,
+      };
+  }
+}
 
 /**
  * Numbers, stores, and posts one Invoice from its parent's pending Charges. It owns
@@ -261,10 +285,8 @@ export async function issueInvoiceTx(
     throw new ORPCError("BAD_REQUEST", { message: "Add a reason for the discount" });
   }
 
-  const parentCharges =
-    parent.stream === "opd"
-      ? eq(charges.opdAppointmentId, parent.opdAppointmentId)
-      : eq(charges.pharmacySaleId, parent.pharmacySaleId);
+  const series = invoiceSeries(parent, settings, fiscalYear);
+  const parentCharges = series.chargeFilter;
 
   const pendingCharges = await tx
     .select({
@@ -302,14 +324,14 @@ export async function issueInvoiceTx(
     });
   }
 
-  if (settings.gstin && parent.stream === "opd") {
+  if (settings.gstin && parent.stream !== "pharmacy") {
     if (!parent.patient.address?.trim()) {
       throw new ORPCError("BAD_REQUEST", {
         message: "Add the patient's address before issuing a Bill of Supply",
       });
     }
 
-    if (computed.taxTotal !== 0n) {
+    if (parent.stream === "opd" && computed.taxTotal !== 0n) {
       throw new ORPCError("BAD_REQUEST", {
         message:
           "Exempt healthcare cannot carry GST. Set the service to 0% GST, then void and add the charge again",
@@ -331,17 +353,8 @@ export async function issueInvoiceTx(
     return { ...line, revenueCategory };
   });
 
-  const sequence = await nextCounter(
-    tx,
-    scope.orgId,
-    parent.stream === "opd" ? `invoice:${fiscalYear}` : `invoice:pharmacy:${fiscalYear}`,
-  );
-
-  const invoiceNumber = documentNumber(
-    parent.stream === "opd" ? settings.invoicePrefix : settings.pharmacyInvoicePrefix,
-    fiscalYear,
-    sequence,
-  );
+  const sequence = await nextCounter(tx, scope.orgId, series.counterKey);
+  const invoiceNumber = documentNumber(series.prefix, fiscalYear, sequence);
 
   const [invoice] = await tx
     .insert(invoices)
@@ -351,6 +364,7 @@ export async function issueInvoiceTx(
       stream: parent.stream,
       opdAppointmentId: parent.stream === "opd" ? parent.opdAppointmentId : null,
       pharmacySaleId: parent.stream === "pharmacy" ? parent.pharmacySaleId : null,
+      admissionId: parent.stream === "ipd" ? parent.admissionId : null,
       patientId: parent.patient.id,
       invoiceNumber,
       fiscalYear,
@@ -450,6 +464,65 @@ export async function issueInvoiceTx(
   }
 
   return { invoice, lines: insertedLines };
+}
+
+/**
+ * Settles a just-issued Invoice: the desk's expected total must still hold, nothing may
+ * be overcollected, and any balance left owing needs a reason.
+ */
+export async function settleIssuedInvoiceTx(
+  tx: DbTransaction,
+  args: {
+    scope: { orgId: string; userId: string };
+    invoice: { id: string; grandTotal: bigint };
+    expectedGrandTotal: bigint;
+    payments: Array<{ method: PaymentMethod; amount: bigint; reference?: string }>;
+    applyCredit: bigint;
+    outstandingReason?: string;
+    settings: OrgSettings;
+    now: Date;
+    fiscalYear: string;
+  },
+) {
+  const due = args.invoice.grandTotal;
+
+  if (due !== args.expectedGrandTotal) {
+    throw new ORPCError("CONFLICT", {
+      message: "The charges changed. Review the invoice and try again",
+    });
+  }
+
+  const collected = args.payments.reduce((sum, payment) => sum + payment.amount, 0n);
+
+  if (args.applyCredit > due) {
+    throw new ORPCError("CONFLICT", {
+      message: "That credit is more than the invoice still owes.",
+    });
+  }
+
+  if (collected > due - args.applyCredit) {
+    throw new ORPCError("BAD_REQUEST", {
+      message: "Collected amount cannot exceed the invoice total",
+    });
+  }
+
+  if (collected + args.applyCredit < due && !args.outstandingReason) {
+    throw new ORPCError("BAD_REQUEST", {
+      message: "Add a reason for the outstanding balance",
+    });
+  }
+
+  if (args.payments.length === 0 && args.applyCredit === 0n) return [];
+
+  return recordPaymentsTx(tx, {
+    scope: args.scope,
+    invoiceId: args.invoice.id,
+    payments: args.payments,
+    applyCredit: args.applyCredit,
+    settings: args.settings,
+    now: args.now,
+    fiscalYear: args.fiscalYear,
+  });
 }
 
 export async function recordPaymentsTx(
