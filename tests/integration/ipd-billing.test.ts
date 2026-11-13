@@ -2133,26 +2133,23 @@ test("a registered organization's ipd Invoice needs the patient's address, and m
 
 test("a hospital without a GSTIN cannot add GST to an inpatient bill", async () => {
   const hospital = await createHospital("ipd-no-gstin-tax", { gstin: "" });
-  const { orgId, orgSlug, api } = hospital;
-  const { admission } = await readyAdmissionWithService(hospital);
-  const journalsBefore = await journalEntryCount(orgId);
+  const { orgId } = hospital;
+  const { admission } = await hospital.admit(0);
+  const taxed = await hospital.createService();
+  const revisionBefore = await hospital.chargeRevision(admission.id);
 
   await expectORPCCode(
-    hospital.issueInvoice(admission.id),
+    hospital.postServices(admission.id, [{ catalogItemId: taxed.id, qty: 1 }]),
     "BAD_REQUEST",
-    "GST added without a GSTIN",
+    "a service that charges GST without a GSTIN",
   );
 
-  expect(await db.select().from(invoices).where(eq(invoices.orgId, orgId))).toEqual([]);
-  expect(await counterValue(orgId, `invoice:ipd:${fiscalYearNow()}`)).toBeUndefined();
-  expect(await journalEntryCount(orgId)).toBe(journalsBefore);
+  expect(await admissionCharges(orgId, admission.id)).toEqual([]);
+  expect(await hospital.chargeRevision(admission.id)).toBe(revisionBefore);
 
-  const [taxed] = await admissionCharges(orgId, admission.id);
-  expect(taxed).toMatchObject({ status: "pending", taxRatePercent: "5.00" });
-
-  await api.billing.voidCharge({ orgSlug, chargeId: taxed!.id, reason: "Posted with GST" });
   const exempt = await hospital.createService({ taxRatePercent: "0" });
   await hospital.postServices(admission.id, [{ catalogItemId: exempt.id, qty: 1 }]);
+  await hospital.markReady(admission.id);
 
   const issued = await hospital.issueInvoice(admission.id);
 
@@ -2178,7 +2175,10 @@ test("a hospital that gives up its GSTIN cannot bill GST already on the stay", a
   const { batchId } = await hospital.receive(medicine.productId, { qty: 5 });
   const { admission } = await hospital.admit(0);
 
-  // Issued as a separately taxed supply while the hospital was registered.
+  const service = await hospital.createService();
+
+  // Posted with GST and issued as a separately taxed supply while the hospital was registered.
+  await hospital.postServices(admission.id, [{ catalogItemId: service.id, qty: 1 }]);
   await hospital.issue(admission.id, [{ batchId, qty: 1, supply: "independent" }]);
   await api.settings.update(settingsInput(orgSlug, seed, { gstin: "" }));
   await hospital.markReady(admission.id);
@@ -2201,7 +2201,12 @@ test("a hospital that gives up its GSTIN cannot bill GST already on the stay", a
     .from(invoices)
     .where(and(eq(invoices.orgId, orgId), eq(invoices.id, issued.invoiceId)));
 
-  expect(invoice).toMatchObject({ taxTotal: 12_00n, addedTaxTotal: 0n, grandTotal: 112_00n });
+  // ₹6,000.00 service + 5% added (₹300.00), and one ₹112.00 MRP medicine with 12% inside (₹12.00).
+  expect(invoice).toMatchObject({
+    taxTotal: 312_00n,
+    addedTaxTotal: 300_00n,
+    grandTotal: 6_412_00n,
+  });
 });
 
 test("a hospital without a GSTIN issues medicines only as part of treatment", async () => {
