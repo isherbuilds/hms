@@ -283,6 +283,12 @@ keeps its own locks (D040).
   Invoice. Goods receipts likewise lock batches before inserting priced lines.
   An admission locks the Patient before checking for an overlapping stay, then
   the bed; a transfer locks the Admission, then both beds by `id`.
+  Every change to an Admission's Charge set locks the Admission first
+  (`lockAdmissionCharges`) and compares its `chargeRevision`. An inpatient issue
+  then locks Products and batches exactly as a sale does; posting services locks
+  nothing else; the bill locks the pending Charges, then takes the invoice and
+  receipt counters. Cancellation keeps the lifecycle lock and refuses once a
+  Charge or issue exists.
 - **Counters are locks.** A counter row stays locked until commit, which keeps a
   series gapless. One transaction takes series in the order token → invoice →
   receipt; every other command takes a single series.

@@ -1,9 +1,13 @@
 import { db } from "@hms/db";
 import { catalogItems } from "@hms/db/schema/catalog-items";
+import { charges } from "@hms/db/schema/charges";
+import { invoiceLines } from "@hms/db/schema/invoice-lines";
+import { invoices } from "@hms/db/schema/invoices";
 import {
   ACTIVE_ADMISSION_STATUSES,
   ENDED_ADMISSION_STATUSES,
   admissionBedStays,
+  admissionPharmacyIssues,
   admissions,
   bedCategories,
   bedTariffs,
@@ -11,17 +15,32 @@ import {
   wards,
   type AdmissionStatus,
 } from "@hms/db/schema/ipd";
+import { guardianLabel } from "@hms/db/schema/patient-relations";
 import { patients } from "@hms/db/schema/patients";
 import { practitioners } from "@hms/db/schema/practitioners";
+import { stockBatches } from "@hms/db/schema/stock-batches";
 import { ORPCError } from "@orpc/server";
 import { and, asc, desc, eq, gt, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { formatDecimal } from "../core/money";
+import {
+  bumpChargeRevision,
+  expectedChargeRevision,
+  lockAdmissionCharges,
+  requireChargeable,
+} from "../lib/admission-charges";
+import {
+  billingDocumentContext,
+  issueInvoiceTx,
+  settleIssuedInvoiceTx,
+} from "../lib/billing-documents";
 import { impossible } from "../lib/conflict";
 import { uniqueViolationConstraint } from "../lib/db-errors";
 import { orgInput, orgProcedure, requirePermission, type Scope } from "../lib/procedures/factory";
-import { money, pageLimit, reason, shortName } from "../lib/schemas";
+import { computeInvoiceLines } from "../lib/invoice-math";
+import { money, pageLimit, paymentLine, reason, shortName } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -71,6 +90,7 @@ const admissionSelection = {
   cancelledAt: admissions.cancelledAt,
   cancelReason: admissions.cancelReason,
   revision: admissions.revision,
+  chargeRevision: admissions.chargeRevision,
 };
 
 type AdmissionRow = {
@@ -1120,6 +1140,222 @@ export const ipdRouter = {
     },
   ),
 
+  postServices: orgProcedure(
+    { ipd: ["read"], billing: ["write"] },
+    orgInput.extend({
+      admissionId: z.string(),
+      expectedChargeRevision,
+      lines: z
+        .array(z.object({ catalogItemId: z.string(), qty: z.number().int().positive() }))
+        .min(1),
+    }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+    const now = new Date();
+
+    // Read unlocked, as OPD does: the Charge snapshots price and tax at posting.
+    const items = await db
+      .select({
+        id: catalogItems.id,
+        name: catalogItems.name,
+        category: catalogItems.category,
+        unitPrice: catalogItems.unitPrice,
+        taxRatePercent: catalogItems.taxRatePercent,
+        taxCode: catalogItems.taxCode,
+      })
+      .from(catalogItems)
+      .where(
+        and(
+          eq(catalogItems.orgId, scope.orgId),
+          eq(catalogItems.active, true),
+          inArray(
+            catalogItems.id,
+            input.lines.map((line) => line.catalogItemId),
+          ),
+        ),
+      );
+
+    const itemById = new Map(items.map((item) => [item.id, item]));
+
+    const rows = input.lines.map((line) => {
+      const item = itemById.get(line.catalogItemId);
+
+      if (!item) {
+        throw new ORPCError("NOT_FOUND", { message: "That service is no longer available." });
+      }
+
+      return {
+        id: Bun.randomUUIDv7(),
+        orgId: scope.orgId,
+        admissionId: input.admissionId,
+        admissionKind: "service" as const,
+        catalogItemId: item.id,
+        description: item.name,
+        unitPrice: item.unitPrice,
+        taxRatePercent: item.taxRatePercent,
+        taxCode: item.taxCode,
+        priceBasis: "exclusive" as const,
+        revenueCategory: item.category,
+        qty: line.qty,
+        sourceType: "admission" as const,
+        sourceId: input.admissionId,
+        status: "pending" as const,
+        createdBy: scope.userId,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+
+    return db.transaction(async (tx) => {
+      const admission = await lockAdmissionCharges(tx, scope.orgId, input.admissionId);
+
+      await requireChargeable(tx, scope.orgId, admission, {
+        allowed: ["admitted", "discharge_ready", "discharged"],
+        message: "Services cannot be posted to a cancelled admission.",
+        expectedChargeRevision: input.expectedChargeRevision,
+      });
+
+      await tx.insert(charges).values(rows);
+
+      return { chargeRevision: await bumpChargeRevision(tx, scope.orgId, admission.id) };
+    });
+  }),
+
+  // The Admission bill as it stands: the pending Charges before issuance, the issued
+  // Invoice's stored lines after it.
+  previewInvoice: orgProcedure(
+    { ipd: ["read"], billing: ["read"] },
+    orgInput.extend({ admissionId: z.string() }),
+  ).handler(async ({ context, input }) => {
+    const { orgId } = context.scope;
+
+    return db.transaction(
+      async (tx) => {
+        const [admission] = await tx
+          .select({ chargeRevision: admissions.chargeRevision, invoiceId: invoices.id })
+          .from(admissions)
+          .leftJoin(
+            invoices,
+            and(eq(invoices.orgId, orgId), eq(invoices.admissionId, admissions.id)),
+          )
+          .where(and(eq(admissions.orgId, orgId), eq(admissions.id, input.admissionId)))
+          .limit(1);
+
+        if (!admission) {
+          throw new ORPCError("NOT_FOUND", { message: "That admission does not exist." });
+        }
+
+        const { chargeRevision, invoiceId } = admission;
+
+        return invoiceId === null
+          ? { chargeRevision, invoiceId, ...(await pendingBill(tx, orgId, input.admissionId)) }
+          : { chargeRevision, invoiceId, ...(await issuedBill(tx, orgId, invoiceId)) };
+      },
+      { isolationLevel: "repeatable read", accessMode: "read only" },
+    );
+  }),
+
+  issueInvoice: orgProcedure(
+    { ipd: ["read"], billing: ["write"] },
+    orgInput.extend({
+      admissionId: z.string(),
+      expectedChargeRevision,
+      expectedGrandTotal: money,
+      payments: z.array(paymentLine).max(4).default([]),
+      outstandingReason: reason.optional(),
+    }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+    const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
+    const invoiceId = Bun.randomUUIDv7();
+
+    const result = await db
+      .transaction(async (tx) => {
+        const admission = await lockAdmissionCharges(tx, scope.orgId, input.admissionId);
+
+        await requireChargeable(tx, scope.orgId, admission, {
+          allowed: ["discharge_ready", "discharged"],
+          message: "Mark the Patient ready for discharge before issuing the bill.",
+          expectedChargeRevision: input.expectedChargeRevision,
+        });
+
+        const guardian = guardianLabel(admission.patient);
+
+        const issued = await issueInvoiceTx(tx, {
+          scope,
+          parent: {
+            stream: "ipd",
+            admissionId: admission.id,
+            patient: {
+              id: admission.patient.id,
+              name: admission.patient.name,
+              mrn: admission.patient.mrn,
+              phone: admission.patient.phone,
+              address: admission.patient.address,
+              guardian: guardian ? `${guardian.relation} ${guardian.name}` : null,
+            },
+          },
+          discountAmount: 0n,
+          note: input.outstandingReason,
+          settings,
+          now,
+          fiscalYear,
+          invoiceId,
+        });
+
+        const payments = await settleIssuedInvoiceTx(tx, {
+          scope,
+          invoice: issued.invoice,
+          expectedGrandTotal: input.expectedGrandTotal,
+          payments: input.payments,
+          applyCredit: 0n,
+          outstandingReason: input.outstandingReason,
+          settings,
+          now,
+          fiscalYear,
+        });
+
+        const chargeRevision = await bumpChargeRevision(tx, scope.orgId, admission.id);
+
+        return { invoice: issued.invoice, payments, chargeRevision };
+      })
+      .catch((error: unknown) => {
+        if (uniqueViolationConstraint(error) === "invoices_org_admission_idx") {
+          throw new ORPCError("CONFLICT", { message: "This admission has already been billed." });
+        }
+
+        throw error;
+      });
+
+    audit({
+      action: "ipd.issueInvoice",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `invoice:${invoiceId}`,
+      meta: {
+        admissionId: input.admissionId,
+        invoiceNumber: result.invoice.invoiceNumber,
+        grandTotal: formatDecimal(result.invoice.grandTotal),
+      },
+    });
+
+    for (const payment of result.payments) {
+      audit({
+        action: "payment.record",
+        actorId: scope.userId,
+        orgId: scope.orgId,
+        target: `payment:${payment.id}`,
+        meta: { receiptNumber: payment.receiptNumber, amount: formatDecimal(payment.amount) },
+      });
+    }
+
+    return {
+      invoiceId,
+      receiptIds: result.payments.map((payment) => payment.id),
+      chargeRevision: result.chargeRevision,
+    };
+  }),
+
   // Reverses an erroneous Admission. Once care was delivered, discharge instead.
   cancel: orgProcedure({ ipd: ["correct"] }, transitionInput.extend({ reason })).handler(
     async ({ context, input }) => {
@@ -1129,6 +1365,7 @@ export const ipdRouter = {
       const admission = await db.transaction(async (tx) => {
         const row = await lockAdmission(tx, scope.orgId, input.admissionId, input.expectedRevision);
         requireStatus(row, ACTIVE_ADMISSION_STATUSES, "This admission has already ended.");
+        await requireNoCare(tx, scope.orgId, row.id);
 
         const stay = await openStay(tx, scope.orgId, row.id);
         await lockBeds(tx, scope.orgId, [stay.bedId]);
@@ -1165,6 +1402,154 @@ export const ipdRouter = {
     },
   ),
 };
+
+// Cancellation erases a stay; once care was charged or medicine issued, discharge it.
+async function requireNoCare(tx: Tx, orgId: string, admissionId: string) {
+  const [charged] = await tx
+    .select({ id: charges.id })
+    .from(charges)
+    .where(
+      and(
+        eq(charges.orgId, orgId),
+        eq(charges.admissionId, admissionId),
+        ne(charges.status, "voided"),
+      ),
+    )
+    .limit(1);
+
+  const [issued] = await tx
+    .select({ id: admissionPharmacyIssues.id })
+    .from(admissionPharmacyIssues)
+    .where(
+      and(
+        eq(admissionPharmacyIssues.orgId, orgId),
+        eq(admissionPharmacyIssues.admissionId, admissionId),
+      ),
+    )
+    .limit(1);
+
+  if (charged || issued) {
+    throw new ORPCError("CONFLICT", {
+      message: "Care was already charged to this admission. Discharge it instead.",
+    });
+  }
+}
+
+const billBatch = {
+  batchId: stockBatches.id,
+  batchNumber: stockBatches.batchNumber,
+  expiryDate: stockBatches.expiryDate,
+};
+
+// Medicine lines carry their batch to the bill; a left join leaves services without one.
+function withBatch<
+  T extends { batchId: string | null; batchNumber: string | null; expiryDate: string | null },
+>(row: T) {
+  const { batchId, batchNumber, expiryDate, ...line } = row;
+
+  return {
+    ...line,
+    batch: batchId === null || batchNumber === null ? null : { batchId, batchNumber, expiryDate },
+  };
+}
+
+// Ordered by (createdAt, id): the leftover subtotal paisa must land on the same line
+// in the preview and the Invoice, since on an exclusive line it attracts tax.
+async function pendingBill(tx: Tx, orgId: string, admissionId: string) {
+  const rows = await tx
+    .select({
+      chargeId: charges.id,
+      admissionKind: charges.admissionKind,
+      description: charges.description,
+      qty: charges.qty,
+      unitPrice: charges.unitPrice,
+      priceUnits: charges.priceUnits,
+      taxRatePercent: charges.taxRatePercent,
+      taxCode: charges.taxCode,
+      priceBasis: charges.priceBasis,
+      ...billBatch,
+    })
+    .from(charges)
+    .leftJoin(
+      stockBatches,
+      and(eq(stockBatches.orgId, orgId), eq(stockBatches.id, charges.stockBatchId)),
+    )
+    .where(
+      and(
+        eq(charges.orgId, orgId),
+        eq(charges.admissionId, admissionId),
+        eq(charges.status, "pending"),
+      ),
+    )
+    .orderBy(asc(charges.createdAt), asc(charges.id));
+
+  const computed = computeInvoiceLines(rows, 0n, { roundToRupee: false });
+  const rowById = new Map(rows.map((row) => [row.chargeId, row]));
+
+  return {
+    lines: computed.lines.map((line) => {
+      const row = rowById.get(line.chargeId);
+
+      if (!row) throw impossible(`computed line for unknown charge ${line.chargeId}`);
+
+      return withBatch({
+        ...line,
+        admissionKind: row.admissionKind,
+        batchId: row.batchId,
+        batchNumber: row.batchNumber,
+        expiryDate: row.expiryDate,
+      });
+    }),
+    subtotal: computed.subtotal,
+    taxTotal: computed.taxTotal,
+    roundOff: computed.roundOff,
+    grandTotal: computed.grandTotal,
+  };
+}
+
+async function issuedBill(tx: Tx, orgId: string, invoiceId: string) {
+  const [[invoice], rows] = await Promise.all([
+    tx
+      .select({
+        subtotal: invoices.subtotal,
+        taxTotal: invoices.taxTotal,
+        roundOff: invoices.roundOff,
+        grandTotal: invoices.grandTotal,
+      })
+      .from(invoices)
+      .where(and(eq(invoices.orgId, orgId), eq(invoices.id, invoiceId))),
+    tx
+      .select({
+        chargeId: invoiceLines.chargeId,
+        description: invoiceLines.description,
+        qty: invoiceLines.qty,
+        unitPrice: invoiceLines.unitPrice,
+        priceUnits: invoiceLines.priceUnits,
+        lineSubtotal: invoiceLines.lineSubtotal,
+        allocatedDiscount: invoiceLines.allocatedDiscount,
+        taxableValue: invoiceLines.taxableValue,
+        taxRatePercent: invoiceLines.taxRatePercent,
+        taxAmount: invoiceLines.taxAmount,
+        gross: invoiceLines.gross,
+        taxCode: invoiceLines.taxCode,
+        priceBasis: invoiceLines.priceBasis,
+        admissionKind: charges.admissionKind,
+        ...billBatch,
+      })
+      .from(invoiceLines)
+      .innerJoin(charges, and(eq(charges.orgId, orgId), eq(charges.id, invoiceLines.chargeId)))
+      .leftJoin(
+        stockBatches,
+        and(eq(stockBatches.orgId, orgId), eq(stockBatches.id, charges.stockBatchId)),
+      )
+      .where(and(eq(invoiceLines.orgId, orgId), eq(invoiceLines.invoiceId, invoiceId)))
+      .orderBy(asc(charges.createdAt), asc(charges.id)),
+  ]);
+
+  if (!invoice) throw impossible(`admission invoice ${invoiceId} vanished in one snapshot`);
+
+  return { lines: rows.map(withBatch), ...invoice };
+}
 
 async function assertUnoccupied(tx: Tx, orgId: string, bedId: string) {
   const [stay] = await tx
