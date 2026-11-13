@@ -353,8 +353,6 @@ export const BED_RESERVATION_STATUSES = [
   "disrupted",
 ] as const;
 
-export type BedReservationStatus = (typeof BED_RESERVATION_STATUSES)[number];
-
 // A future bed booking. A request promises nothing; a confirmed hold promises one bed
 // for a half-open window and is distinct from actual occupancy.
 export const bedReservations = pgTable(

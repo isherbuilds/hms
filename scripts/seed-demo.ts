@@ -2163,9 +2163,8 @@ const reservationRows: (typeof bedReservations.$inferInsert)[] = [];
     bed: (typeof bedRows)[number] | null,
     categoryKey: (typeof ipdServices)[number]["key"],
     window: { from: Date; to: Date; holdUntil: Date | null },
-    state: Omit<Partial<typeof bedReservations.$inferInsert>, "status"> & {
-      status: (typeof bedReservations.$inferInsert)["status"];
-    },
+    state: Partial<typeof bedReservations.$inferInsert> &
+      Pick<typeof bedReservations.$inferInsert, "status">,
   ) => {
     if (!patient) throw new Error("Seed ran out of patients for reservations");
     reservationRows.push({

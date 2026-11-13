@@ -42,9 +42,9 @@ import { uniqueViolationConstraint } from "../lib/db-errors";
 import {
   assertUnoccupied,
   auditDisruptions,
+  auditReservation,
   BACKDATE_TOLERANCE_MS,
   clearHoldsForOccupancy,
-  disruptHolds,
   lockBeds,
   lockLiveHolds,
   requireInScope,
@@ -591,13 +591,12 @@ export const ipdRouter = {
       await assertUnoccupied(tx, scope.orgId, input.bedId);
 
       // A safety block is never suppressed: the bed's holds move to the worklist.
-      const holds = await lockLiveHolds(tx, scope.orgId, input.bedId, new Date());
-
-      const disrupted = await disruptHolds(
+      const disrupted = await clearHoldsForOccupancy(
         tx,
         scope.orgId,
-        holds.map((hold) => hold.id),
-        input.reason,
+        input.bedId,
+        { reason: input.reason },
+        new Date(),
       );
 
       const [updated] = await tx
@@ -1070,12 +1069,9 @@ export const ipdRouter = {
     );
 
     if (input.reservationId !== undefined) {
-      audit({
-        action: "ipd.reservation.convert",
-        actorId: scope.userId,
-        orgId: scope.orgId,
-        target: `bed_reservation:${input.reservationId}`,
-        meta: { admissionId: admission.id, bedId: input.bedId },
+      auditReservation(scope, "ipd.reservation.convert", input.reservationId, {
+        admissionId: admission.id,
+        bedId: input.bedId,
       });
     }
 

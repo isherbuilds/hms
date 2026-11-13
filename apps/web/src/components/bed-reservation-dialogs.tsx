@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
+import { reasonSchema } from "@/components/ipd-dialogs";
 import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
 import { ErrorNote } from "@/components/page";
 import { formatDateTime, localInputValue, nextHalfHour, useOrgDateTime } from "@/lib/org-datetime";
@@ -103,7 +104,6 @@ function useHoldableBeds(orgSlug: string, categoryName: string) {
     .filter((bed) => bed.status === "available" && bed.categoryName === categoryName)
     .map((bed) => ({
       id: bed.id,
-      name: `${bed.wardName} ${bed.label}`,
       // Another hold may overlap these dates; the server decides, but staff see it first.
       label:
         bed.holds.length > 0
@@ -250,8 +250,6 @@ export function HoldBedDialog({
   const { timeZone } = useOrgDateTime();
   const holdable = useHoldableBeds(orgSlug, reservation.categoryName);
   const refusal = useRefusal();
-  // Captured at open: a change elsewhere makes the server refuse this hold.
-  const [revision] = useState(reservation.revision);
 
   const preferred = holdable.beds.some((bed) => bed.id === reservation.bedId)
     ? reservation.bedId!
@@ -280,7 +278,7 @@ export function HoldBedDialog({
         orpc.ipd.confirmBedReservation.call({
           orgSlug,
           reservationId: reservation.id,
-          expectedRevision: revision,
+          expectedRevision: reservation.revision,
           bedId: value.bedId,
           holdUntil: localDateTime(value.holdUntil, timeZone),
         })
@@ -335,7 +333,6 @@ export function ChangeDatesDialog({
   const { timeZone } = useOrgDateTime();
   const holdable = useHoldableBeds(orgSlug, reservation.categoryName);
   const refusal = useRefusal();
-  const [revision] = useState(reservation.revision);
   const held = reservation.status === "confirmed";
   const others = holdable.beds.filter((bed) => bed.id !== reservation.bedId);
 
@@ -367,7 +364,7 @@ export function ChangeDatesDialog({
         orpc.ipd.rescheduleBedReservation.call({
           orgSlug,
           reservationId: reservation.id,
-          expectedRevision: revision,
+          expectedRevision: reservation.revision,
           plannedArrivalAt: localDateTime(value.plannedArrivalAt, timeZone),
           plannedDepartureAt: localDateTime(value.plannedDepartureAt, timeZone),
           holdUntil: value.holdUntil ? localDateTime(value.holdUntil, timeZone) : undefined,
@@ -407,10 +404,6 @@ export function ChangeDatesDialog({
   );
 }
 
-const cancelSchema = z.object({
-  reason: z.string().trim().min(1, "Give a reason").max(500, "Keep it under 500 characters"),
-});
-
 export function CancelReservationDialog({
   orgSlug,
   reservation,
@@ -420,8 +413,6 @@ export function CancelReservationDialog({
   reservation: Reservation;
   onClose: () => void;
 }) {
-  const [revision] = useState(reservation.revision);
-
   return (
     <FormDialog
       title="Cancel reservation"
@@ -431,7 +422,7 @@ export function CancelReservationDialog({
           : "The Patient leaves the waiting list."
       }
       submitLabel="Cancel reservation"
-      schema={cancelSchema}
+      schema={reasonSchema}
       defaultValues={{ reason: "" }}
       success="Reservation cancelled"
       onClose={onClose}
@@ -439,7 +430,7 @@ export function CancelReservationDialog({
         orpc.ipd.cancelBedReservation.call({
           orgSlug,
           reservationId: reservation.id,
-          expectedRevision: revision,
+          expectedRevision: reservation.revision,
           reason,
         })
       }

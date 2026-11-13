@@ -70,9 +70,7 @@ export const Route = createFileRoute("/$orgSlug/ipd/reservations")({
   component: ReservationsRoute,
 });
 
-type Status = Reservation["effectiveStatus"];
-
-const STATUS_LABELS: Record<Status, string> = {
+const STATUS_LABELS: Record<Reservation["effectiveStatus"], string> = {
   requested: "Requested",
   confirmed: "Held",
   converted: "Arrived",
@@ -258,7 +256,7 @@ function ReservationsRoute() {
             id: dialog.reservation.bedId!,
             label: dialog.reservation.bedLabel!,
             wardName: dialog.reservation.wardName!,
-            held: true,
+            holds: [],
           }}
           reservation={{
             id: dialog.reservation.id,
@@ -304,7 +302,6 @@ function RowActions({
   const needsBed = status === "requested" || status === "expired" || status === "disrupted";
   // The server reschedules only a request or a hold, lapsed or not.
   const movable = status === "requested" || status === "confirmed" || status === "expired";
-  const open = needsBed || movable;
   const who = reservation.patientName;
 
   return (
@@ -322,7 +319,7 @@ function RowActions({
           Hold a bed
         </Button>
       ) : null}
-      {canUpdate && open ? (
+      {canUpdate && (needsBed || movable) ? (
         <ClientOnly fallback={null}>
           <DropdownMenu>
             <DropdownMenuTrigger

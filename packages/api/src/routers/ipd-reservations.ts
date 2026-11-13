@@ -6,16 +6,15 @@ import { ORPCError } from "@orpc/server";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
-import { audit } from "../audit";
-
 import {
   assertNoOverlappingHold,
   assertUnoccupied,
+  auditReservation,
   BACKDATE_TOLERANCE_MS,
   lockBeds,
   requireInScope,
 } from "../lib/ipd-beds";
-import { orgInput, orgProcedure, type Scope } from "../lib/procedures/factory";
+import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { reason } from "../lib/schemas";
 
 const ARRIVALS_HORIZON_MS = 48 * 60 * 60 * 1_000;
@@ -102,9 +101,10 @@ function reservationRows(executor: typeof db | DbTransaction, orgId: string, whe
     .orderBy(asc(bedReservations.plannedArrivalAt), asc(bedReservations.id));
 }
 
-type ReservationRow = Awaited<ReturnType<typeof reservationRows>>[number];
-
-function reservationView({ occupiedBy, ...row }: ReservationRow, now: Date) {
+function reservationView(
+  { occupiedBy, ...row }: Awaited<ReturnType<typeof reservationRows>>[number],
+  now: Date,
+) {
   const lapsed = (row.status === "requested" || row.status === "confirmed") && isLapsed(row, now);
 
   const effectiveStatus = lapsed ? ("expired" as const) : row.status;
@@ -159,14 +159,12 @@ function viewFilter(view: "arrivals" | "waitlist" | "attention" | "all", now: Da
   }
 }
 
-type Tx = DbTransaction;
-
 type LockedBed = Awaited<ReturnType<typeof lockBeds>> extends Map<string, infer B> ? B : never;
 
 // Lock order (D040) puts the Patient before the Bed and the reservation, so it is
 // found through the reservation in the same statement; a reservation's Patient never
 // changes. The unlocked bed id names the bed to lock next; the revision check catches a move.
-async function lockReservationPatient(tx: Tx, orgId: string, reservationId: string) {
+async function lockReservationPatient(tx: DbTransaction, orgId: string, reservationId: string) {
   const [row] = await tx
     .select({ bedId: bedReservations.bedId })
     .from(patients)
@@ -190,8 +188,8 @@ function staleReservation() {
   });
 }
 
-export async function lockReservation(
-  tx: Tx,
+async function lockReservation(
+  tx: DbTransaction,
   orgId: string,
   reservationId: string,
   expectedRevision: number,
@@ -218,13 +216,13 @@ export async function lockReservation(
   return row;
 }
 
-export function isLapsed(row: { holdUntil: Date | null }, now: Date) {
+function isLapsed(row: { holdUntil: Date | null }, now: Date) {
   return row.holdUntil !== null && row.holdUntil.getTime() <= now.getTime();
 }
 
 // Conservative first release: only a ready, empty bed can be promised, even for later dates.
 async function assertHoldable(
-  tx: Tx,
+  tx: DbTransaction,
   orgId: string,
   bed: LockedBed | undefined,
   reservation: Window & { id: string; categoryId: string },
@@ -246,7 +244,7 @@ async function assertHoldable(
 
 // Arrival consumes a live hold for exactly this Patient, bed and window.
 export async function lockHoldForArrival(
-  tx: Tx,
+  tx: DbTransaction,
   orgId: string,
   claim: { reservationId: string; expectedRevision: number; patientId: string; bedId: string },
   at: Date,
@@ -278,7 +276,7 @@ export async function lockHoldForArrival(
 }
 
 export async function markConverted(
-  tx: Tx,
+  tx: DbTransaction,
   orgId: string,
   reservationId: string,
   admissionId: string,
@@ -329,21 +327,6 @@ export async function boardHolds(orgId: string, now: Date) {
   }
 
   return byBed;
-}
-
-function auditReservation(
-  scope: Scope,
-  action: string,
-  reservationId: string,
-  meta: Record<string, string | null>,
-) {
-  audit({
-    action,
-    actorId: scope.userId,
-    orgId: scope.orgId,
-    target: `bed_reservation:${reservationId}`,
-    meta,
-  });
 }
 
 const revisionInput = {

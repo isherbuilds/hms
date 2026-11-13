@@ -195,9 +195,6 @@ const admitSchema = z
   .superRefine(requireEarlierReason)
   .superRefine(requireDisplaceReason);
 
-/** The hold being turned into this admission, captured when the dialog opened. */
-export type ArrivingReservation = { id: string; revision: number; patient: SelectedPatient };
-
 export function AdmitDialog({
   orgSlug,
   bed,
@@ -205,8 +202,9 @@ export function AdmitDialog({
   onClose,
 }: {
   orgSlug: string;
-  bed: { id: string; label: string; wardName: string; held: boolean };
-  reservation?: ArrivingReservation;
+  bed: { id: string; label: string; wardName: string; holds: readonly unknown[] };
+  /** The hold being turned into this admission, captured when the dialog opened. */
+  reservation?: { id: string; revision: number; patient: SelectedPatient };
   onClose: () => void;
 }) {
   const { timeZone } = useOrgDateTime();
@@ -239,7 +237,9 @@ export function AdmitDialog({
       }}
       success="Patient admitted"
       onClose={onClose}
-      onError={(error, value) => hold.onError(error, bed.held && !reservation, value.displace)}
+      onError={(error, value) =>
+        hold.onError(error, bed.holds.length > 0 && !reservation, value.displace)
+      }
       run={(value) => {
         const earlier = earlierFields(value, timeZone);
 
@@ -439,7 +439,7 @@ export function DischargeDialog({
   );
 }
 
-const reasonSchema = z.object({
+export const reasonSchema = z.object({
   reason: z.string().trim().min(1, "Give a reason").max(500, "Keep it under 500 characters"),
 });
 
@@ -513,21 +513,19 @@ export function BlockBedDialog({
   onClose,
 }: {
   orgSlug: string;
-  bed: { id: string; label: string; holds: number };
+  bed: { id: string; label: string; holds: readonly unknown[] };
   onClose: () => void;
 }) {
+  const { length } = bed.holds;
+
   return (
     <FormDialog
       title={`Block bed ${bed.label}`}
-      description={
-        bed.holds === 0
-          ? "A blocked bed takes no admissions until it is released."
-          : `A blocked bed takes no admissions until it is released. ${
-              bed.holds === 1
-                ? "The 1 reservation held on it will need a bed again."
-                : `The ${bed.holds} reservations held on it will need a bed again.`
-            }`
-      }
+      description={`A blocked bed takes no admissions until it is released.${
+        length === 0
+          ? ""
+          : ` The ${length} ${length === 1 ? "reservation" : "reservations"} held on it will need a bed again.`
+      }`}
       submitLabel="Block bed"
       schema={reasonSchema}
       defaultValues={{ reason: "" }}

@@ -120,18 +120,10 @@ function BedBoardRoute() {
       </PageBody>
 
       {admitting ? (
-        <AdmitDialog
-          orgSlug={orgSlug}
-          bed={{ ...admitting, held: admitting.holds.length > 0 }}
-          onClose={() => setAdmitting(null)}
-        />
+        <AdmitDialog orgSlug={orgSlug} bed={admitting} onClose={() => setAdmitting(null)} />
       ) : null}
       {blocking ? (
-        <BlockBedDialog
-          orgSlug={orgSlug}
-          bed={{ ...blocking, holds: blocking.holds.length }}
-          onClose={() => setBlocking(null)}
-        />
+        <BlockBedDialog orgSlug={orgSlug} bed={blocking} onClose={() => setBlocking(null)} />
       ) : null}
     </>
   );

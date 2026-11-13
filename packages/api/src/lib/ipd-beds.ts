@@ -6,8 +6,6 @@ import { and, asc, eq, gt, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { audit } from "../audit";
 import type { Scope } from "./procedures/factory";
 
-type Tx = DbTransaction;
-
 // A desk entry a few minutes late is ordinary; anything older is a correction.
 export const BACKDATE_TOLERANCE_MS = 10 * 60 * 1_000;
 
@@ -22,7 +20,7 @@ export async function requireInScope<T>(promise: Promise<T[]>, message: string):
 }
 
 // Locks beds in id order so two transfers touching the same pair cannot deadlock.
-export async function lockBeds(tx: Tx, orgId: string, bedIds: string[]) {
+export async function lockBeds(tx: DbTransaction, orgId: string, bedIds: string[]) {
   const ordered = [...new Set(bedIds)].sort();
 
   const rows = await tx
@@ -41,7 +39,7 @@ export async function lockBeds(tx: Tx, orgId: string, bedIds: string[]) {
   return new Map(rows.map((row) => [row.id, row]));
 }
 
-export async function assertUnoccupied(tx: Tx, orgId: string, bedId: string) {
+export async function assertUnoccupied(tx: DbTransaction, orgId: string, bedId: string) {
   const [stay] = await tx
     .select({ id: admissionBedStays.id })
     .from(admissionBedStays)
@@ -77,7 +75,7 @@ function liveHolds(orgId: string, bedId: string, now: Date, window?: Window, exc
 
 // Callers hold the bed lock, which every writer of a hold on that bed takes first.
 export async function assertNoOverlappingHold(
-  tx: Tx,
+  tx: DbTransaction,
   orgId: string,
   bedId: string,
   window: Window,
@@ -96,7 +94,7 @@ export async function assertNoOverlappingHold(
 }
 
 // Reservation rows lock after the bed, by id (D040).
-export async function lockLiveHolds(tx: Tx, orgId: string, bedId: string, now: Date) {
+export async function lockLiveHolds(tx: DbTransaction, orgId: string, bedId: string, now: Date) {
   return tx
     .select({ id: bedReservations.id })
     .from(bedReservations)
@@ -105,20 +103,19 @@ export async function lockLiveHolds(tx: Tx, orgId: string, bedId: string, now: D
     .for("update");
 }
 
-// The hold stays visible on the worklist until staff confirm it elsewhere or cancel it.
-export async function disruptHolds(tx: Tx, orgId: string, ids: string[], reason: string) {
-  if (ids.length === 0) return [];
-
-  return tx
-    .update(bedReservations)
-    .set({
-      status: "disrupted",
-      disruptedReason: reason,
-      revision: sql`${bedReservations.revision} + 1`,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(bedReservations.orgId, orgId), inArray(bedReservations.id, ids)))
-    .returning({ id: bedReservations.id });
+export function auditReservation(
+  scope: Scope,
+  action: string,
+  reservationId: string,
+  meta: Record<string, string | null | undefined>,
+) {
+  audit({
+    action,
+    actorId: scope.userId,
+    orgId: scope.orgId,
+    target: `bed_reservation:${reservationId}`,
+    meta,
+  });
 }
 
 // One entry per disrupted hold, after commit, naming the command that caused it.
@@ -127,21 +124,14 @@ export function auditDisruptions(
   disrupted: { id: string }[],
   meta: { reason: string; cause: string; bedId: string; admissionId?: string },
 ) {
-  for (const hold of disrupted) {
-    audit({
-      action: "ipd.reservation.disrupt",
-      actorId: scope.userId,
-      orgId: scope.orgId,
-      target: `bed_reservation:${hold.id}`,
-      meta,
-    });
-  }
+  for (const hold of disrupted) auditReservation(scope, "ipd.reservation.disrupt", hold.id, meta);
 }
 
 // Open occupancy has no promised end, so any live hold on the bed stands in its way
 // unless an authorized caller displaces it, with a reason, in the same transaction.
+// A displaced hold stays visible on the worklist until staff confirm it elsewhere or cancel it.
 export async function clearHoldsForOccupancy(
-  tx: Tx,
+  tx: DbTransaction,
   orgId: string,
   bedId: string,
   displace: { reason: string } | undefined,
@@ -149,18 +139,22 @@ export async function clearHoldsForOccupancy(
 ) {
   const holds = await lockLiveHolds(tx, orgId, bedId, now);
 
-  if (!displace) {
-    if (holds.length > 0) {
-      throw new ORPCError("CONFLICT", { message: "That bed is held for a planned arrival." });
-    }
+  const ids = holds.map((hold) => hold.id);
 
-    return [];
+  if (ids.length === 0) return [];
+
+  if (!displace) {
+    throw new ORPCError("CONFLICT", { message: "That bed is held for a planned arrival." });
   }
 
-  return disruptHolds(
-    tx,
-    orgId,
-    holds.map((hold) => hold.id),
-    displace.reason,
-  );
+  return tx
+    .update(bedReservations)
+    .set({
+      status: "disrupted",
+      disruptedReason: displace.reason,
+      revision: sql`${bedReservations.revision} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(bedReservations.orgId, orgId), inArray(bedReservations.id, ids)))
+    .returning({ id: bedReservations.id });
 }
