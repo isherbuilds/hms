@@ -958,6 +958,13 @@ No consultation is required to decide this policy; citations cannot create deman
 
 **Accepted 2026-10-04 on the owner's instruction (autonomous decision, no CA/owner consultation); evidence: [ERPNext Inpatient Record](https://frappehealth.com/docs/v13/user/manual/en/healthcare/inpatient_record), [billable Service Unit Type](https://frappehealth.com/docs/v13/user/manual/en/healthcare/healthcare_service_unit_type), [Inpatient ADT](https://frappehealth.com/docs/v13/user/manual/en/healthcare/inpatient_adt), [Bahmni/OpenMRS-backed ADT](https://bahmni.atlassian.net/wiki/spaces/BAH/pages/114923665/Admit,+Discharge+and+Transfer+Patients), [Odoo third-party hospital module](https://apps.odoo.com/apps/modules/17.0/cerevantix_health_care_management), [NHA package inclusions/special cases](https://nha.gov.in/strapi/uploads/User_guidelines_for_HBP_2_2_6d2bc0412a.pdf), [ICAI AS 9 delivery recognition](https://resource.cdn.icai.org/27275asb-as-9.pdf), [CBIC inpatient healthcare clarification](https://cbic-gst.gov.in/pdf/circularno-32-cgst.pdf), [taxable-room exception](https://gstcouncil.gov.in/sites/default/files/2024-05/03_2022-ctr-eng_1.pdf), and [NMC paper-record duties](https://nmc.org.in/storage/cms/Ethics-Regulations-2002.pdf).**
 
+**Scope extension 2026-11-13:** future bed reservations belong to IPD slice 2,
+with hold expiry and atomic arrival conversion, separate from physical occupancy.
+[Facility booking and theatre](./specs/facility-booking-and-theatre.md) owns the
+separate theatre/team/equipment schedule and Emergency/day-care handoff boundaries.
+Booking posts no delivered revenue; this does not expand slice 1 or remove the
+clinical/market release gates.
+
 The [IPD contract](./specs/ipd-admission-to-discharge.md) and its Admission/public
 command seams are accepted. Retail bed billing uses calendar checkout,
 configurable prospectively by owner/admin, default noon and minimum one day:

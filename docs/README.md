@@ -281,6 +281,18 @@ bill, packages, inpatient returns, deposits and final settlement, IPD reports).
 An Admission takes one Invoice until supplemental billing in Slice 5 (D063).
 The same no-GSTIN rule is not yet applied to OPD or counter Pharmacy.
 
+### [Facility booking and theatre](./specs/facility-booking-and-theatre.md)
+
+**Active.** Planning and reference research completed on 2026-11-13 for future
+bed reservations in IPD slice 2 and separate theatre/room/equipment scheduling.
+Sol's council review (7/10) produced five findings, addressed in the contract:
+all-writer hold protection, pre-admission case scheduling, conservative capacity
+promises, source-owned financial handoffs and an inpatient-only first OT release.
+Claude failed authentication (Cloudflare 403); Gemini hit its monthly quota, so
+there is no three-provider council sign-off. On 2026-11-13 the owner asked for
+bed reservations and the theatre resource schedule to be built ahead of the
+product and clinical gates; operational release still waits for those gates.
+
 ### [Cashless claims](./specs/cashless-claims.md)
 
 **Blocked.** D055 settles TDS, payer Credit Notes, patient liability, the
