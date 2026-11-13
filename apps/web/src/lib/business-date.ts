@@ -38,7 +38,15 @@ export function dayParts(day: string): { year: number; month: number; day: numbe
 
   if (!match) throw new RangeError(`Not a YYYY-MM-DD date: ${day}`);
 
-  return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+  const parts = { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+  // Day 0 of the next month is the last day of this one, leap years included.
+  const monthLength = new Date(Date.UTC(parts.year, parts.month, 0)).getUTCDate();
+
+  if (parts.month < 1 || parts.month > 12 || parts.day < 1 || parts.day > monthLength) {
+    throw new RangeError(`Not a calendar date: ${day}`);
+  }
+
+  return parts;
 }
 
 /** Format a calendar day without shifting it across time zones. */
