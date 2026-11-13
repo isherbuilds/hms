@@ -38,7 +38,8 @@ const SUPPLIES = [
 
 type Supply = (typeof SUPPLIES)[number][0];
 
-type IssueLine = SaleLine & { supply: Supply };
+// `capped`: the desk asked for more than the shelf holds, so the form says what it did.
+type IssueLine = SaleLine & { supply: Supply; capped?: boolean };
 
 export const admissionIssuesQuery = (orgSlug: string, admissionId: string) =>
   orpc.pharmacy.listAdmissionIssues.queryOptions({ input: { orgSlug, admissionId } });
@@ -109,6 +110,7 @@ export function AdmissionMedicines({
           ]}
           rows={rows}
           rowKey={(row) => row.id}
+          wrap
         />
       </ListState>
     </Panel>
@@ -171,9 +173,10 @@ export function IssueMedicinesDialog({
 
   const commitQty = (line: IssueLine, input: HTMLInputElement) => {
     // Whole units, and never more than the shelf holds: the server refuses more.
-    const qty = Math.min(line.shelfQty, Math.max(1, Math.trunc(input.valueAsNumber) || 1));
+    const wanted = Math.max(1, Math.trunc(input.valueAsNumber) || 1);
+    const qty = Math.min(line.shelfQty, wanted);
     input.value = String(qty);
-    update(line.batchId, { qty });
+    update(line.batchId, { qty, capped: wanted > line.shelfQty });
   };
 
   const submit = () => {
@@ -304,6 +307,12 @@ export function IssueMedicinesDialog({
                         <p className="col-span-2 text-right tabular-nums sm:col-span-1 sm:self-center">
                           {formatMoney(priced.lines[index]?.gross ?? ZERO, currency)}
                         </p>
+                        {line.capped ? (
+                          <p role="status" className="col-span-full text-destructive">
+                            Only {formatStockQty({ ...line, qty: line.shelfQty })} on the shelf, so
+                            the quantity is now {line.shelfQty}.
+                          </p>
+                        ) : null}
                       </div>
                     </li>
                   ))}

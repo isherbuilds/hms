@@ -255,7 +255,18 @@ Charge or issue exists. 66 spec, tenancy and unit tests pass:
 The demo seed carries an admitted stay with pending issues and a 5% service, a
 ready-to-bill stay, and a departed stay with a paid mixed-basis `ipd` Invoice.
 
-Browser verification: pending.
+On 2026-11-13 a production build passed a browser pass (GPT 6.1 Sol) on the
+seeded demo org: the pharmacist issued two medicines on different supply bases
+(stock fell, no counter sale); the cashier added and removed a service, was held
+until **Ready to leave**, and issued and collected an `ipd` Invoice; a second
+terminal's added service made the open collection refuse; both A4 Invoices
+printed with batch, expiry and matching totals; reception, cashier and
+pharmacist saw only their own actions; both forms completed by keyboard; and
+the issue tab, admission, issue form and collection fit desktop and a 390px
+phone in light and dark with no page overflow. Changed after that pass and not yet seen in a browser: a quantity above shelf stock now says it was capped, and medicine facts wrap on a phone. Still owed: a thermal `ipd` Invoice
+(the admission offers A4 only), the collection overlay's 24–32px phone targets
+(shared with OPD), a hydration error on **Settings → Organization** from the
+time-zone list (predates IPD), and a Gemini council seat (quota).
 
 Still owed: Slices 3–6 (bed-day review, interim bill, packages, inpatient
 returns, deposits and final settlement, IPD reports). Credit Notes on `ipd`

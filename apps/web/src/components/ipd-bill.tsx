@@ -209,6 +209,7 @@ export function AdmissionBill({
           ]}
           rows={data.lines}
           rowKey={(line) => line.chargeId}
+          wrap
           action={
             data.lines.some(removable)
               ? (line) =>
