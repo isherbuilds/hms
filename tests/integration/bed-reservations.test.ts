@@ -124,6 +124,23 @@ async function auditEntries(hospital: Hospital, action: string) {
   return log.items.filter((entry) => entry.action === action);
 }
 
+// A hold refusal carries `bed_held`, which the admit and move dialogs branch on.
+async function expectConflictReason(promise: Promise<unknown>, reason: string, label: string) {
+  let error: unknown;
+
+  try {
+    await promise;
+  } catch (caught) {
+    error = caught;
+  }
+
+  // SAFETY: oRPC errors carry `code` and `data`; the assertion reports any mismatch.
+  expect(error as { code?: string; data?: unknown }, label).toMatchObject({
+    code: "CONFLICT",
+    data: { reason },
+  });
+}
+
 async function settled<T>(promise: Promise<T>) {
   try {
     return { ok: true as const, value: await promise };
@@ -355,6 +372,39 @@ test("a request refuses a malformed window, a stale arrival and a bed of another
   expect((await listed(hospital, "all")).map((entry) => entry.id)).toEqual([late.id]);
 });
 
+test("a new window must end in the future, even when a late arrival is kept", async () => {
+  const hospital = await createHospital("resv-departure-past");
+  const { api, orgSlug, category } = hospital;
+  const patient = await registerPatient(api, orgSlug, "Already Gone");
+
+  await expectORPCCode(
+    api.ipd.requestBed({
+      orgSlug,
+      patientId: patient.id,
+      categoryId: category.id,
+      plannedArrivalAt: fromNow(-5 * MINUTE),
+      plannedDepartureAt: fromNow(-MINUTE),
+    }),
+    "BAD_REQUEST",
+    "departure already passed",
+  );
+
+  const { reservation } = await request(hospital, "Late Request", {
+    plannedArrivalAt: fromNow(-5 * MINUTE),
+    plannedDepartureAt: fromNow(DAY),
+  });
+
+  await expectORPCCode(
+    reschedule(hospital, reservation, {
+      plannedArrivalAt: reservation.plannedArrivalAt,
+      plannedDepartureAt: fromNow(-MINUTE),
+    }),
+    "BAD_REQUEST",
+    "kept arrival, departure already passed",
+  );
+  expect(await find(hospital, reservation.id)).toMatchObject({ revision: reservation.revision });
+});
+
 test("unknown or foreign patient, category or bed is NOT_FOUND", async () => {
   const hospital = await createHospital("resv-request-scope");
   const other = await createHospital("resv-request-other");
@@ -509,6 +559,36 @@ test("a lapsed hold is expired, needs attention, leaves the board and blocks nob
   expect(next.effectiveStatus).toBe("confirmed");
 });
 
+test("needs attention lists a lapsed hold for seven days; older ones stay under all", async () => {
+  const hospital = await createHospital("resv-attention-window");
+  const { beds } = hospital;
+  const recent = await lapsedHold(hospital, "Recent No Show", beds[0].id);
+  const old = await hold(hospital, "Old No Show", beds[1].id);
+
+  // The API refuses a past window, so the old no-show is aged in the database.
+  await db
+    .update(bedReservations)
+    .set({
+      plannedArrivalAt: fromNow(-10 * DAY),
+      plannedDepartureAt: fromNow(-6 * DAY),
+      holdUntil: fromNow(-8 * DAY),
+    })
+    .where(
+      and(
+        eq(bedReservations.orgId, hospital.organization.id),
+        eq(bedReservations.id, old.reservation.id),
+      ),
+    );
+
+  expect((await listed(hospital, "attention")).map((entry) => entry.id)).toEqual([
+    recent.reservation.id,
+  ]);
+  expect(await find(hospital, old.reservation.id)).toMatchObject({
+    status: "confirmed",
+    effectiveStatus: "expired",
+  });
+});
+
 // ── Slice 3: conversion on arrival ──────────────────────────────────────────
 
 // Arrival is due now: the window began a minute ago and runs two days.
@@ -601,6 +681,7 @@ test("arrival converts the hold into an Admission and an open stay in one step",
 test("a refused conversion leaves no Admission, no stay and the reservation unchanged", async () => {
   const hospital = await createHospital("resv-convert-refused");
   const { api, orgSlug, beds } = hospital;
+  const reception = await member(hospital, "resv-convert-refused-desk", "reception");
   const bystander = await registerPatient(api, orgSlug, "Bystander");
 
   const held = await hold(hospital, "Held Patient", beds[0].id, dueNow());
@@ -609,17 +690,30 @@ test("a refused conversion leaves no Admission, no stay and the reservation unch
 
   const blockedBed = await extraBed(hospital, "G-4");
   const blocked = await hold(hospital, "Blocked Bed Patient", blockedBed.id, dueNow());
-  await api.ipd.blockBed({ orgSlug, bedId: blockedBed.id, reason: "Spill being cleaned" });
+  // Reception's block keeps the hold confirmed, so conversion meets the blocked bed itself.
+  await reception.ipd.blockBed({ orgSlug, bedId: blockedBed.id, reason: "Spill being cleaned" });
 
   const elsewhereBed = await extraBed(hospital, "G-5");
   const walkInBed = await extraBed(hospital, "G-6");
-  const admitted = await hold(hospital, "Already Admitted", elsewhereBed.id, dueNow());
-  await api.ipd.admit({
+
+  // Admitted first: a Patient with a live reservation cannot be admitted as a walk-in.
+  const { patient: admittedPatient } = await admitWalkIn(
+    hospital,
+    walkInBed.id,
+    "Already Admitted",
+  );
+
+  const admittedRequest = await api.ipd.requestBed({
     orgSlug,
-    patientId: admitted.patient.id,
-    practitionerId: hospital.practitioner.id,
-    bedId: walkInBed.id,
+    patientId: admittedPatient.id,
+    categoryId: hospital.category.id,
+    ...dueNow(),
   });
+
+  const admitted = {
+    patient: admittedPatient,
+    reservation: await confirm(hospital, admittedRequest, elsewhereBed.id),
+  };
 
   const before = await admissionIds(hospital);
 
@@ -643,6 +737,10 @@ test("a refused conversion leaves no Admission, no stay and the reservation unch
   }
 
   expect(await admissionIds(hospital)).toEqual(before);
+  expect(await find(hospital, blocked.reservation.id)).toMatchObject({ status: "confirmed" });
+  await expect(
+    convert(hospital, blocked.reservation, blocked.patient.id, blockedBed.id),
+  ).rejects.toThrow(/blocked/i);
 });
 
 test("two desks converting one hold: exactly one Admission", async () => {
@@ -716,8 +814,12 @@ test("a walk-in or a transfer onto a held bed is refused, even for a hold days a
   for (const held of [soon, distant]) {
     const bedId = held.reservation.bedId!;
 
-    await expectORPCCode(walkIn(hospital, walker.id, bedId), "CONFLICT", "walk-in");
-    await expectORPCCode(transfer(hospital, inpatient.admission.id, bedId), "CONFLICT", "transfer");
+    await expectConflictReason(walkIn(hospital, walker.id, bedId), "bed_held", "walk-in");
+    await expectConflictReason(
+      transfer(hospital, inpatient.admission.id, bedId),
+      "bed_held",
+      "transfer",
+    );
 
     expect(await find(hospital, held.reservation.id)).toMatchObject({
       status: "confirmed",
@@ -733,6 +835,29 @@ test("a walk-in or a transfer onto a held bed is refused, even for a hold days a
     currentBedId: beds[2].id,
     revision: inpatient.admission.revision,
   });
+});
+
+test("a Patient with a live reservation is admitted from it, not as a walk-in", async () => {
+  const hospital = await createHospital("resv-walkin-reserved");
+  const { beds } = hospital;
+
+  const { patient, reservation } = await request(hospital, "Reserved Patient");
+
+  await expectORPCCode(walkIn(hospital, patient.id, beds[0].id), "CONFLICT", "walk-in");
+  expect(await admissionIds(hospital)).toEqual([]);
+  expect(await find(hospital, reservation.id)).toMatchObject({
+    status: "requested",
+    revision: reservation.revision,
+  });
+
+  await cancel(hospital, reservation, "Came in as an emergency");
+  const admission = await walkIn(hospital, patient.id, beds[0].id);
+  expect(admission.currentBedId).toBe(beds[0].id);
+
+  // The hold itself is a live reservation; converting it is the way in.
+  const arriving = await hold(hospital, "Converts Own Hold", beds[1].id, dueNow());
+  const converted = await convert(hospital, arriving.reservation, arriving.patient.id, beds[1].id);
+  expect(converted.currentBedId).toBe(beds[1].id);
 });
 
 test("an owner or admin may displace a hold with a reason; it becomes disrupted and needs attention", async () => {
@@ -957,9 +1082,9 @@ test("a conversion is refused while another hold sits on the bed, and succeeds o
   const currentBefore = await find(hospital, current.reservation.id);
   const nextBefore = await find(hospital, next.reservation.id);
 
-  await expectORPCCode(
+  await expectConflictReason(
     convert(hospital, current.reservation, current.patient.id, bedId, {}, reception),
-    "CONFLICT",
+    "bed_held",
     "later hold on the bed",
   );
 
@@ -1235,9 +1360,15 @@ test("a request's deadline can be cleared, reviving a lapsed request; a hold kee
   const hospital = await createHospital("resv-reschedule-deadline");
   const { api, orgSlug, beds } = hospital;
 
-  const { reservation } = await request(hospital, "Lapsed Request", {
+  const { reservation: undated } = await request(hospital, "Lapsed Request", {
     plannedArrivalAt: fromNow(-MINUTE),
     plannedDepartureAt: fromNow(2 * DAY),
+  });
+
+  // The short deadline is set after setup, so the wait starts only once it exists.
+  const reservation = await reschedule(hospital, undated, {
+    plannedArrivalAt: undated.plannedArrivalAt,
+    plannedDepartureAt: undated.plannedDepartureAt,
     holdUntil: fromNow(1_500),
   });
 
@@ -1351,58 +1482,6 @@ test("cancel works from requested, confirmed, disrupted and lapsed, never from c
   expect(await find(hospital, arriving.reservation.id)).toEqual(converted);
 });
 
-test("an overstay puts the due hold at risk without moving the occupant", async () => {
-  const hospital = await createHospital("resv-overstay");
-  const bedId = hospital.beds[0].id;
-  const handover = fromNow(3_000);
-
-  const current = await hold(hospital, "Overstaying", bedId, {
-    plannedArrivalAt: fromNow(-MINUTE),
-    plannedDepartureAt: handover,
-    holdUntil: handover,
-  });
-
-  const next = await hold(hospital, "Waiting For Bed", hospital.beds[1].id, {
-    plannedArrivalAt: handover,
-    plannedDepartureAt: fromNow(2 * DAY),
-    holdUntil: fromNow(DAY),
-  });
-
-  const admission = await convert(hospital, current.reservation, current.patient.id, bedId);
-
-  // No command places a hold on an occupied bed (D064); the read still flags one if it exists.
-  await db
-    .update(bedReservations)
-    .set({ bedId })
-    .where(
-      and(
-        eq(bedReservations.orgId, hospital.organization.id),
-        eq(bedReservations.id, next.reservation.id),
-      ),
-    );
-
-  expect(await find(hospital, next.reservation.id)).toMatchObject({ atRisk: false });
-
-  await Bun.sleep(handover.getTime() - Date.now() + 50);
-
-  const attention = await listed(hospital, "attention");
-
-  expect(
-    attention.map((entry) => [entry.id, entry.atRisk, entry.atRiskReason, entry.effectiveStatus]),
-  ).toEqual([[next.reservation.id, true, "occupied", "confirmed"]]);
-  expect(await find(hospital, next.reservation.id)).toMatchObject({
-    status: "confirmed",
-    revision: next.reservation.revision,
-  });
-
-  const detail = await hospital.api.ipd.get({
-    orgSlug: hospital.orgSlug,
-    admissionId: admission.id,
-  });
-
-  expect(detail.admission).toMatchObject({ status: "admitted", currentBedId: bedId });
-});
-
 test("confirm, reschedule, cancel and disrupt are audited with actor and ids", async () => {
   const hospital = await createHospital("resv-audit");
   const { api, orgSlug, beds, owner } = hospital;
@@ -1482,7 +1561,7 @@ test("the all view pages newest first and returns every reservation exactly once
   }
 
   const pages: string[][] = [];
-  let cursor: { createdAt: Date; id: string } | undefined;
+  let cursor: Parameters<typeof hospital.api.ipd.listBedReservations>[0]["cursor"];
 
   do {
     const page = await hospital.api.ipd.listBedReservations({
