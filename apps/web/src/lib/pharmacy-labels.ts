@@ -54,12 +54,12 @@ export const SCHEDULE_LABELS: Record<(typeof SCHEDULES)[number], string> = {
   x: "Schedule X · not sold here",
 };
 
-/** Render stock in whole packs and remaining counted units, without rounding a price. */
 /** The unit a stock quantity counts, as a field names it: "tablets", "ml", "pieces". */
 export function stockUnitPlural(stockUnit: string): string {
   return stockUnit === "ml" ? stockUnit : `${stockUnit}s`;
 }
 
+/** Render stock in whole packs and remaining counted units, without rounding a price. */
 export function formatStockQty({
   qty,
   unitsPerPack,
