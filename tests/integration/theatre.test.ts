@@ -2068,3 +2068,111 @@ test("the database ties a case's bed reservation to the case's own Patient", asy
   await link(own.id);
   expect(await getCase(theatre, surgicalCase.id)).toMatchObject({ bedReservationId: own.id });
 });
+
+// ── Second review: retired procedure, admission links, the 24-hour limit ────
+
+test("a draft whose procedure alone retired cannot be confirmed, and holds nothing", async () => {
+  const theatre = await createTheatre("ot-retired-procedure");
+  const { api, orgSlug } = theatre;
+
+  const hernia = await api.catalog.create({
+    orgSlug,
+    name: "Hernia repair",
+    category: "procedure",
+    unitPrice: 1_000_00n,
+    taxRatePercent: "0",
+    taxCode: "",
+    customRate: false,
+  });
+
+  const { surgicalCase } = await draft(theatre, "Retired Procedure", {
+    procedureItemId: hernia.id,
+  });
+
+  await api.catalog.setActive({ orgSlug, itemId: hernia.id, active: false });
+
+  const refused = await refusal(confirm(theatre, surgicalCase));
+
+  expect(refused).toMatchObject({
+    code: "CONFLICT",
+    message: "This procedure is no longer offered. Choose another before confirming.",
+  });
+  await expectRefused(theatre, surgicalCase, "retired procedure only");
+  expect(await getCase(theatre, surgicalCase.id)).toMatchObject({
+    status: "draft",
+    revision: surgicalCase.revision,
+  });
+});
+
+test("a linked case is re-linked to the Patient's next Admission, audited with both ids; the same link is a no-op", async () => {
+  const theatre = await createTheatre("ot-relink");
+  const { api, orgSlug } = theatre;
+  const beds = await createWard(theatre);
+  const { patient, surgicalCase } = await booked(theatre, "Relinked Patient");
+
+  const first = await admit(theatre, patient.id, beds[0].id);
+  const linked = await attach(theatre, surgicalCase, first.id);
+
+  const ready = await api.ipd.markDischargeReady({
+    orgSlug,
+    admissionId: first.id,
+    expectedRevision: first.revision,
+  });
+
+  await api.ipd.discharge({ orgSlug, admissionId: first.id, expectedRevision: ready.revision });
+
+  const second = await admit(theatre, patient.id, beds[1].id);
+  const relinked = await attach(theatre, linked, second.id);
+
+  expect(relinked).toMatchObject({ admissionId: second.id, revision: linked.revision + 1 });
+
+  const unchanged = await attach(theatre, relinked, second.id);
+
+  expect(unchanged).toEqual(relinked);
+  expect(await getCase(theatre, surgicalCase.id)).toEqual(relinked);
+
+  const entries = await auditEntries(theatre, "theatre.case.linkAdmission");
+
+  expect(entries.map((entry) => [entry.target, entry.meta])).toEqual([
+    [`surgical_case:${surgicalCase.id}`, { previousAdmissionId: first.id, admissionId: second.id }],
+    [`surgical_case:${surgicalCase.id}`, { previousAdmissionId: null, admissionId: first.id }],
+  ]);
+});
+
+test("linking an Admission needs ipd:read as well as theatre:schedule; the denial records both", async () => {
+  const theatre = await createTheatre("ot-link-guard");
+  const beds = await createWard(theatre);
+  const cashier = await member(theatre, "ot-link-guard-cashier", "cashier");
+  const { patient, surgicalCase } = await booked(theatre, "Guarded Link");
+  const admission = await admit(theatre, patient.id, beds[0].id);
+
+  await expectORPCCode(attach(theatre, surgicalCase, admission.id, cashier), "FORBIDDEN");
+
+  const [denial] = await auditEntries(theatre, "rbac.permission");
+
+  expect(denial?.meta).toMatchObject({ permission: { theatre: ["schedule"], ipd: ["read"] } });
+  expect(await getCase(theatre, surgicalCase.id)).toEqual(surgicalCase);
+});
+
+test("the database refuses a case planned for more than 24 hours", async () => {
+  const theatre = await createTheatre("ot-db-24h");
+  const { surgicalCase } = await draft(theatre, "Long Case");
+
+  const lasting = (ms: number) =>
+    db
+      .update(surgicalCases)
+      .set({ plannedEndAt: new Date(surgicalCase.plannedStartAt.getTime() + ms) })
+      .where(
+        and(
+          eq(surgicalCases.orgId, theatre.organization.id),
+          eq(surgicalCases.id, surgicalCase.id),
+        ),
+      )
+      .execute();
+
+  await expect(lasting(DAY + MINUTE)).rejects.toThrow();
+  await lasting(DAY);
+  expect((await getCase(theatre, surgicalCase.id)).plannedEndAt).toEqual(
+    new Date(surgicalCase.plannedStartAt.getTime() + DAY),
+  );
+});
