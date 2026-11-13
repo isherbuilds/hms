@@ -517,7 +517,11 @@ function DashboardRoute() {
                       : part.key === "advance"
                         ? { to: "/$orgSlug/billing/advances", params: { orgSlug } }
                         : part.key === "ipd"
-                          ? { to: "/$orgSlug/ipd/admissions", params: { orgSlug } }
+                          ? {
+                              to: "/$orgSlug/ipd/admissions",
+                              params: { orgSlug },
+                              search: { state: "all" as const },
+                            }
                           : { to: "/$orgSlug/billing", params: { orgSlug } }
                   }
                 />

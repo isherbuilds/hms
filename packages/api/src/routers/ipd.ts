@@ -1253,6 +1253,18 @@ export const ipdRouter = {
       };
     });
 
+    // No GSTIN, no GST (D063): refuse here rather than at the Invoice. Issuance still
+    // checks, since a GSTIN can be cleared after posting.
+    if (
+      rows.some((row) => Number(row.taxRatePercent) > 0) &&
+      !(await readOrgSettings(scope.orgId)).gstin
+    ) {
+      throw new ORPCError("BAD_REQUEST", {
+        message:
+          "This hospital has no GSTIN, so a service that charges GST cannot go on an inpatient bill. Set the service to 0% GST first.",
+      });
+    }
+
     return db.transaction(async (tx) => {
       const admission = await lockAdmissionCharges(tx, scope.orgId, input.admissionId);
 

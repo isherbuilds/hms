@@ -31,7 +31,7 @@ import { linePriceBasis, mixedRateLabel } from "@/lib/invoice-print";
 import { formatMoney, ZERO } from "@/lib/money";
 import type { WalkInQuote } from "@/lib/opd-service-preview";
 import { orpc } from "@/lib/orpc";
-import { closeOnConflict } from "@/lib/orpc-error";
+import { closeOnConflict, errorMessage } from "@/lib/orpc-error";
 
 type AdmissionStatus = "admitted" | "discharge_ready" | "discharged" | "cancelled";
 
@@ -288,6 +288,7 @@ export function AdmissionBill({
           orgSlug={orgSlug}
           admission={admission}
           currency={currency}
+          registered={data.registered}
           onClose={close}
         />
       ) : null}
@@ -390,11 +391,13 @@ function AddServiceDialog({
   orgSlug,
   admission,
   currency,
+  registered,
   onClose,
 }: {
   orgSlug: string;
   admission: { id: string; chargeRevision: number };
   currency: string;
+  registered: boolean;
   onClose: () => void;
 }) {
   const [lines, setLines] = useState<ServiceLine[]>([]);
@@ -424,7 +427,9 @@ function AddServiceDialog({
           <DialogHeader>
             <DialogTitle>Add service</DialogTitle>
             <DialogDescription>
-              Charged at today&apos;s catalog price, with GST added where the service carries it.
+              {registered
+                ? "Charged at today's catalog price, with GST added where the service carries it."
+                : "Charged at today's catalog price."}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -448,6 +453,7 @@ function AddServiceDialog({
                 orgSlug={orgSlug}
                 chosen={new Set(lines.map((line) => line.catalogItemId))}
                 services="any"
+                taxedBillable={registered}
                 onAdd={(line) => setLines((current) => [...current, line])}
               />
               {lines.length > 0 ? (
@@ -461,7 +467,7 @@ function AddServiceDialog({
                         <span className="block truncate">{line.name}</span>
                         <span className="text-muted-foreground tabular-nums">
                           {formatMoney(line.unitPrice, currency)}
-                          {Number(line.taxRatePercent) > 0 ? " + GST" : ""}
+                          {registered && Number(line.taxRatePercent) > 0 ? " + GST" : ""}
                         </span>
                       </span>
                       <Input
@@ -495,6 +501,11 @@ function AddServiceDialog({
                     </li>
                   ))}
                 </ul>
+              ) : null}
+              {post.error ? (
+                <p role="alert" className="border-l-2 border-destructive pl-3 text-destructive">
+                  {errorMessage(post.error, "Could not add the services")}
+                </p>
               ) : null}
               <DialogFooter>
                 <SubmitButton

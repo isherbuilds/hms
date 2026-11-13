@@ -84,8 +84,13 @@ For the billing desk.
    on services and **GST included in MRP** for medicines.
 4. **Issue invoice**, and take payment now or record why some is left to pay.
 
-A hospital without a GSTIN cannot bill GST. If a service on the bill is set to
-charge GST, the invoice is refused: remove that line and add the service at 0%.
+A GST-registered hospital needs the Patient's address on file before the
+invoice can be issued. If it is missing, add it to the Patient's record first.
+
+A hospital without a GSTIN cannot bill GST. **Add service** will not take a
+service set to charge GST: set it to 0% in the catalog first. If a service with
+GST is already on the bill (the GSTIN was removed later), the invoice is
+refused: remove that line and add the service at 0%.
 
 A service added by mistake can be taken off before the bill is issued: on its
 line, **⋯ → Remove**, and give the reason. Issued medicines cannot be taken

@@ -56,6 +56,30 @@ export function invoiceTaxBreakdown(lines: TaxedLine[]) {
 }
 
 /**
+ * Rate-wise rows of the CGST/SGST summary, in line order. A mixed (ipd) bill leaves its
+ * exempt lines out: the totals already print them as "Exempt value".
+ */
+export function gstSummaryRows(lines: TaxedLine[], mixedLines: boolean) {
+  const groups = new Map<string, { rate: string; taxable: bigint; tax: bigint }>();
+
+  for (const line of lines) {
+    if (mixedLines && isExempt(line)) continue;
+
+    const row = groups.get(line.taxRatePercent) ?? {
+      rate: line.taxRatePercent,
+      taxable: 0n,
+      tax: 0n,
+    };
+
+    row.taxable += line.taxableValue;
+    row.tax += line.taxAmount;
+    groups.set(line.taxRatePercent, row);
+  }
+
+  return Array.from(groups.values());
+}
+
+/**
  * `licences`: print the drug licences, which an ipd document carries only with a
  * medicine (MRP) line; a document without lines at hand (a receipt) passes none.
  * `taxed`: print taxable value, rate and tax per line and the CGST/SGST summary; an ipd
