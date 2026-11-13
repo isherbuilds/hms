@@ -555,7 +555,7 @@ export const pharmacyRouter = {
       target: `admissionPharmacyIssue:${issueId}`,
       meta: {
         admissionId: input.admissionId,
-        lines: input.lines.map((line) => ({ batchId: line.batchId, qty: line.qty })),
+        lines: input.lines.map(({ batchId, qty, supply }) => ({ batchId, qty, supply })),
       },
     });
 
