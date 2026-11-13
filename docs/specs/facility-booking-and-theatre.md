@@ -1,10 +1,11 @@
 # Facility booking, theatre and care-setting handoffs
 
 Owner: facility scheduling. Planning contract requested 2026-11-13. Bed reservations shipped on 2026-11-13
-([D064](../decisions.md#d064--bed-reservations-holds-expire-by-time-occupied-beds-are-never-promised-and-displacement-is-explicit)),
-and so did theatre delivery slice 1, the resource schedule
-([D065](../decisions.md#d065--theatre-bookings-hold-a-room-named-units-and-the-consultant-atomically-booking-is-never-care-or-revenue));
-slices 2 and 3 have not.
+([D064](../decisions.md#d064--bed-reservations-holds-expire-by-time-occupied-beds-are-never-promised-and-displacement-is-explicit)).
+Theatre delivery slice 1, the resource schedule, is built; pending owner confirmation
+and browser verification
+([D065](../decisions.md#d065--theatre-bookings-hold-a-room-named-units-and-the-consultant-atomically-booking-is-never-care-or-revenue)).
+Slices 2 and 3 have not shipped.
 Work status lives in the [registry](../README.md#work-lifecycle).
 
 ## Boundaries

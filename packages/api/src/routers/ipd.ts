@@ -805,6 +805,8 @@ export const ipdRouter = {
     { ipd: ["read"] },
     orgInput.extend({
       state: z.enum(["current", "past", "all"]).default("current"),
+      // One Patient's stays, for a picker that links one of them.
+      patientId: z.string().optional(),
       // Newest admission time first; backdated entries sort by when care began.
       cursor: z.object({ admittedAt: z.date(), id: z.string() }).optional(),
       limit: pageLimit,
@@ -854,6 +856,7 @@ export const ipdRouter = {
       .where(
         and(
           eq(admissions.orgId, orgId),
+          input.patientId ? eq(admissions.patientId, input.patientId) : undefined,
           input.state === "all"
             ? undefined
             : inArray(admissions.status, ADMISSION_STATES[input.state]),

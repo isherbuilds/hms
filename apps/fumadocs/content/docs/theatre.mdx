@@ -50,19 +50,24 @@ If HMS refuses, the message says what is in the way:
   booked then;
 - **choose a theatre room** or **that start time has already passed**.
 
-Change the time, room or machine and confirm again. A case can start exactly
-when the previous one finishes cleaning. Clinics and other staff are not
+Change the time, room or machine and confirm again. Once the planned start has
+passed, **Confirm** is no longer offered: change the case to a later time first.
+A case's preparation can
+begin once the previous case in that room finishes cleaning, so its start comes
+after its own preparation. Clinics and other staff are not
 checked: confirm the anaesthetist, nurses and the consultant's clinic yourself.
 
 ## Change or cancel
 
 - **Change** edits a case. On a confirmed case, the new time, room and machines
   are checked again. If anything clashes, nothing changes and the case keeps
-  its old booking.
+  its old booking. Once a confirmed case has started, only its procedure and
+  notes can be changed. A room or machine no longer in use stays on the case
+  it was booked for, marked **(no longer in use)**.
 - **Cancel case** needs a reason and frees everything the case held.
 
-If someone else changed the case on another screen, HMS refuses your change.
-Refresh and check before trying again.
+If someone else changed the case on another screen, the form closes and the
+schedule shows the latest version. Check it before trying again.
 
 ## Link the admission
 
@@ -74,9 +79,10 @@ admission can be linked.
 
 Open **Rooms and equipment** and choose **Block** on the room or machine, with
 the dates and a reason, such as a service visit. Nobody can confirm a case on it
-while the block lasts. **Remove block** puts it back in use.
+while the block lasts. **Remove block** lifts the block only: it does not put a room or machine you
+stopped using back in use.
 
-A block that overlaps a confirmed case is refused. An owner or administrator can
+A block that overlaps a confirmed case that has not finished is refused. An owner or administrator can
 block anyway by giving a reason. Those cases then show **Needs rescheduling**:
 they hold nothing any more. **Change** them to another room, machine or time and
 **Confirm** again, or **Cancel case**.

@@ -174,9 +174,10 @@ export const surgicalCases = pgTable(
       columns: [table.orgId, table.admissionId, table.patientId],
       foreignColumns: [admissions.orgId, admissions.id, admissions.patientId],
     }),
+    // Includes the Patient, so a case can only name its own Patient's bed reservation.
     foreignKey({
-      columns: [table.orgId, table.bedReservationId],
-      foreignColumns: [bedReservations.orgId, bedReservations.id],
+      columns: [table.orgId, table.bedReservationId, table.patientId],
+      foreignColumns: [bedReservations.orgId, bedReservations.id, bedReservations.patientId],
     }),
     index("surgical_cases_org_start_idx").on(table.orgId, table.plannedStartAt, table.id),
     index("surgical_cases_org_room_status_idx").on(table.orgId, table.roomId, table.status),

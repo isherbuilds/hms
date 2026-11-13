@@ -2312,6 +2312,9 @@ const caseEquipmentRows: (typeof surgicalCaseEquipment.$inferInsert)[] = [];
 
   const tomorrowsHold = reservationRows[1]!;
 
+  // The cast follows the patient's arrival on the hold, whatever the hour of seeding.
+  const afterArrival = new Date(tomorrowsHold.plannedArrivalAt.getTime() + 2 * HOUR_MS);
+
   resourceBlockRows.push(
     {
       id: id("block"),
@@ -2368,7 +2371,7 @@ const caseEquipmentRows: (typeof surgicalCaseEquipment.$inferInsert)[] = [];
     for (const equipmentId of unitIds) caseEquipmentRows.push({ orgId, caseId, equipmentId });
   };
 
-  // Confirmed: three rooms, three consultants, no unit shared.
+  // Confirmed: three rooms, three consultants, and no unit booked twice at once.
   book(
     inWard.patientId,
     "Dr. Suresh Iyer",
@@ -2407,7 +2410,13 @@ const caseEquipmentRows: (typeof surgicalCaseEquipment.$inferInsert)[] = [];
     tomorrowsHold.patientId,
     "Dr. Suresh Iyer",
     "Plaster cast, forearm",
-    { roomId: null, from: at(tomorrow, 12, 0), to: at(tomorrow, 13, 0), prep: 15, cleanup: 15 },
+    {
+      roomId: null,
+      from: afterArrival,
+      to: new Date(afterArrival.getTime() + HOUR_MS),
+      prep: 15,
+      cleanup: 15,
+    },
     [cArm],
     {
       status: "draft",

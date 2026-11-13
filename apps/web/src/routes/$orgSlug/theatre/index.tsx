@@ -13,7 +13,7 @@ import { Input } from "@hms/ui/components/input";
 import { useQuery } from "@tanstack/react-query";
 import { ClientOnly, Link, createFileRoute } from "@tanstack/react-router";
 import { ChevronLeftIcon, ChevronRightIcon, MoreHorizontalIcon } from "lucide-react";
-import { createElement, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { z } from "zod";
 
 import { appHead } from "@/config/site";
@@ -29,6 +29,8 @@ import {
 } from "@/components/theatre-dialogs";
 import { shift as shiftDay } from "@/lib/date-presets";
 import { useCan } from "@/lib/membership";
+import { currentMinute, useMinuteClock } from "@/lib/minute-clock";
+import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import {
   formatBusinessDate,
   formatDateTime,
@@ -52,6 +54,7 @@ const scheduleQuery = (orgSlug: string, day: string, timeZone: string, cancelled
       to: localDateTime(`${shiftDay(day, 1)}T00:00`, timeZone),
       includeCancelled: cancelled,
     },
+    ...OPERATIONAL_REFETCH,
   });
 
 export const Route = createFileRoute("/$orgSlug/theatre/")({
@@ -75,6 +78,9 @@ export const Route = createFileRoute("/$orgSlug/theatre/")({
       queryClient.query(scheduleQuery(orgSlug, day, timeZone, deps.cancelled)).catch(() => {}),
       queryClient.query(resourcesQuery(orgSlug)).catch(() => {}),
     ]);
+
+    // One clock for server and client render, so "has the case started" agrees.
+    return { now: currentMinute() };
   },
   component: ScheduleRoute,
 });
@@ -83,14 +89,7 @@ type Schedule = Awaited<ReturnType<typeof orpc.theatre.schedule.call>>;
 
 type Block = Schedule["blocks"][number];
 
-const CASE_DIALOGS = {
-  change: ChangeCaseDialog,
-  confirm: ConfirmCaseDialog,
-  link: LinkAdmissionDialog,
-  cancel: CancelCaseDialog,
-};
-
-type DialogKind = keyof typeof CASE_DIALOGS;
+type DialogKind = "change" | "confirm" | "link" | "cancel";
 
 type Open = "book" | { kind: DialogKind; theatreCase: TheatreCase } | null;
 
@@ -104,6 +103,7 @@ function ScheduleRoute() {
   const canSchedule = useCan(orgSlug, { theatre: ["schedule"] });
   const canManage = useCan(orgSlug, { theatre: ["manageResources"] });
   const [open, setOpen] = useState<Open>(null);
+  const now = useMinuteClock(Route.useLoaderData().now);
 
   const schedule = useQuery(scheduleQuery(orgSlug, day, timeZone, cancelled));
   const resources = useQuery(resourcesQuery(orgSlug));
@@ -119,9 +119,11 @@ function ScheduleRoute() {
       blocks.some((block) => block.roomId === room.id),
   );
 
+  const anyRoom = (resources.data?.rooms.length ?? 0) > 0;
   const unplaced = cases.filter((item) => item.roomId === null);
   const unitBlocks = blocks.filter((block) => block.equipmentId !== null);
   const close = () => setOpen(null);
+  const caseDialog = open === "book" ? null : open;
   const span = (start: Date, end: Date) => <TimeSpan start={start} end={end} day={day} />;
 
   const caseRow = (item: TheatreCase) => (
@@ -130,6 +132,7 @@ function ScheduleRoute() {
       orgSlug={orgSlug}
       theatreCase={item}
       time={span(item.plannedStartAt, item.plannedEndAt)}
+      started={item.plannedStartAt.getTime() < now}
       canSchedule={canSchedule}
       onOpen={(kind) => setOpen({ kind, theatreCase: item })}
     />
@@ -216,74 +219,90 @@ function ScheduleRoute() {
           isEmpty={false}
           empty={null}
         >
-          {resources.isSuccess && rooms.length === 0 ? (
-            <Panel label="Rooms" minHeight="">
-              <p className="p-3 text-muted-foreground">
-                No theatre rooms yet.{" "}
-                {canManage ? (
-                  <Link
-                    to="/$orgSlug/theatre/resources"
-                    params={{ orgSlug }}
-                    className="text-foreground underline underline-offset-4"
-                  >
-                    Add a room
-                  </Link>
-                ) : (
-                  "An administrator adds them."
-                )}
-              </p>
-            </Panel>
-          ) : null}
-
-          {rooms.map((room) => {
-            const roomCases = cases.filter((item) => item.roomId === room.id);
-            const roomBlocks = blocks.filter((block) => block.roomId === room.id);
-
-            const rows = [
-              ...roomBlocks.map((block) => ({
-                at: block.startsAt,
-                row: blockRow(block, "Blocked"),
-              })),
-              ...roomCases.map((item) => ({ at: item.bufferedStartAt, row: caseRow(item) })),
-            ].sort((a, b) => a.at.getTime() - b.at.getTime());
-
-            return (
-              <Panel key={room.id} label={room.name} minHeight="">
-                {rows.length ? (
-                  <ul className="divide-y divide-border">{rows.map(({ row }) => row)}</ul>
-                ) : (
-                  <p className="p-3 text-muted-foreground">Nothing booked</p>
-                )}
+          <ListState
+            query={resources}
+            errorTitle="Could not load the theatre rooms"
+            isEmpty={false}
+            empty={null}
+          >
+            {rooms.length === 0 ? (
+              <Panel label="Rooms" minHeight="">
+                <p className="p-3 text-muted-foreground">
+                  {anyRoom ? "No theatre room is in use." : "No theatre rooms yet. "}
+                  {anyRoom ? null : canManage ? (
+                    <Link
+                      to="/$orgSlug/theatre/resources"
+                      params={{ orgSlug }}
+                      className="text-foreground underline underline-offset-4"
+                    >
+                      Add a room
+                    </Link>
+                  ) : (
+                    "An administrator adds them."
+                  )}
+                </p>
               </Panel>
-            );
-          })}
+            ) : null}
 
-          {unplaced.length ? (
-            <Panel label="No room yet" minHeight="">
-              <ul className="divide-y divide-border">{unplaced.map(caseRow)}</ul>
-            </Panel>
-          ) : null}
+            {rooms.map((room) => {
+              const roomCases = cases.filter((item) => item.roomId === room.id);
+              const roomBlocks = blocks.filter((block) => block.roomId === room.id);
 
-          {unitBlocks.length ? (
-            <Panel label="Equipment out of use" minHeight="">
-              <ul className="divide-y divide-border">
-                {unitBlocks.map((block) =>
-                  blockRow(block, units.get(block.equipmentId!) ?? "Equipment"),
-                )}
-              </ul>
-            </Panel>
-          ) : null}
+              const rows = [
+                ...roomBlocks.map((block) => ({
+                  at: block.startsAt,
+                  row: blockRow(block, "Blocked"),
+                })),
+                ...roomCases.map((item) => ({ at: item.bufferedStartAt, row: caseRow(item) })),
+              ].sort((a, b) => a.at.getTime() - b.at.getTime());
+
+              return (
+                <Panel key={room.id} label={room.name} minHeight="">
+                  {rows.length ? (
+                    <ul className="divide-y divide-border">{rows.map(({ row }) => row)}</ul>
+                  ) : (
+                    <p className="p-3 text-muted-foreground">Nothing booked</p>
+                  )}
+                </Panel>
+              );
+            })}
+
+            {unplaced.length ? (
+              <Panel label="No room yet" minHeight="">
+                <ul className="divide-y divide-border">{unplaced.map(caseRow)}</ul>
+              </Panel>
+            ) : null}
+
+            {unitBlocks.length ? (
+              <Panel label="Equipment out of use" minHeight="">
+                <ul className="divide-y divide-border">
+                  {unitBlocks.map((block) =>
+                    blockRow(block, units.get(block.equipmentId!) ?? "Equipment"),
+                  )}
+                </ul>
+              </Panel>
+            ) : null}
+          </ListState>
         </ListState>
       </PageBody>
 
       {open === "book" ? <BookCaseDialog orgSlug={orgSlug} day={day} onClose={close} /> : null}
-      {open !== null && open !== "book"
-        ? createElement(CASE_DIALOGS[open.kind], {
-            orgSlug,
-            theatreCase: open.theatreCase,
-            onClose: close,
-          })
-        : null}
+      {caseDialog?.kind === "change" ? (
+        <ChangeCaseDialog orgSlug={orgSlug} theatreCase={caseDialog.theatreCase} onClose={close} />
+      ) : null}
+      {caseDialog?.kind === "confirm" ? (
+        <ConfirmCaseDialog orgSlug={orgSlug} theatreCase={caseDialog.theatreCase} onClose={close} />
+      ) : null}
+      {caseDialog?.kind === "link" ? (
+        <LinkAdmissionDialog
+          orgSlug={orgSlug}
+          theatreCase={caseDialog.theatreCase}
+          onClose={close}
+        />
+      ) : null}
+      {caseDialog?.kind === "cancel" ? (
+        <CancelCaseDialog orgSlug={orgSlug} theatreCase={caseDialog.theatreCase} onClose={close} />
+      ) : null}
     </>
   );
 }
@@ -318,12 +337,15 @@ function CaseRow({
   orgSlug,
   theatreCase: item,
   time,
+  started,
   canSchedule,
   onOpen,
 }: {
   orgSlug: string;
   theatreCase: TheatreCase;
   time: ReactNode;
+  /** A case whose start has passed is changed to a future time before it is confirmed. */
+  started: boolean;
   canSchedule: boolean;
   onOpen: (kind: DialogKind) => void;
 }) {
@@ -338,7 +360,9 @@ function CaseRow({
         : null;
 
   const live = item.status !== "cancelled";
-  const confirmable = (item.status === "draft" || item.status === "disrupted") && item.roomId;
+
+  const confirmable =
+    (item.status === "draft" || item.status === "disrupted") && item.roomId && !started;
 
   const buffers = [
     item.prepMinutes ? `${item.prepMinutes} min prep` : null,

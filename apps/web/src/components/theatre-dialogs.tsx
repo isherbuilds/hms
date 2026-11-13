@@ -1,12 +1,10 @@
 import { localDateTime } from "@hms/api/lib/business-date";
 import { practitionerDisplayName } from "@hms/api/lib/labels";
 import type { ResourceTarget } from "@hms/api/lib/theatre-holds";
-import { Button } from "@hms/ui/components/button";
 import { Checkbox } from "@hms/ui/components/checkbox";
 import { FormControl, FormField, FormItem, FormLabel } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 import { useWatch } from "react-hook-form";
 import { z } from "zod";
 
@@ -16,10 +14,12 @@ import { nameSchema, reasonSchema } from "@/components/ipd-dialogs";
 import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
 import { OptionCombobox } from "@/components/option-combobox";
 import { ErrorNote, LoadMore } from "@/components/page";
+import { Refusal, useRefusal } from "@/components/refusal";
+import { numberText } from "@/lib/form-schema";
 import { useCan } from "@/lib/membership";
+import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { formatDateTime, localInputValue, nextHalfHour, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
 
 export type TheatreCase = Awaited<ReturnType<typeof orpc.theatre.schedule.call>>["cases"][number];
 
@@ -36,42 +36,30 @@ export const ROOM_KIND_LABELS: Record<RoomKind, string> = {
 
 const MINUTE_MS = 60_000;
 
-/** Refusals (a clash, a stale case, a past start) stay in the dialog, which keeps its inputs. */
-function useRefusal() {
-  const [refusal, setRefusal] = useState<string | null>(null);
-
-  const showsInline = (error: Error) =>
-    hasErrorCode(error, "CONFLICT") || hasErrorCode(error, "BAD_REQUEST");
-
-  const onError = (error: Error) => {
-    if (showsInline(error)) setRefusal(errorMessage(error));
-  };
-
-  return { refusal, onError, showsInline };
-}
-
-function Refusal({ title, refusal }: { title: string; refusal: string | null }) {
-  return refusal === null ? null : <ErrorNote title={title} detail={refusal} />;
-}
-
-function minutes(label: string, max: number) {
-  return z
-    .string()
-    .trim()
-    .regex(/^\d+$/, `Enter ${label} in whole minutes`)
-    .refine((value) => Number(value) <= max, `Keep ${label} to ${max} minutes or less`);
-}
+const RETIRED = " (no longer in use)";
 
 const caseFields = {
   practitionerId: z.string().min(1, "Choose the consultant"),
   procedureItemId: z.string().min(1, "Choose the procedure"),
   date: z.string().min(1, "Choose the day"),
   startTime: z.string().min(1, "Choose the start time"),
-  duration: minutes("the duration", 24 * 60).refine((value) => Number(value) > 0, {
-    message: "Enter how long the case takes",
-  }),
-  prepMinutes: minutes("preparation", 240),
-  cleanupMinutes: minutes("clean-up", 240),
+  duration: numberText(
+    z
+      .number()
+      .int("Enter whole minutes")
+      .min(1, "Enter how long the case takes")
+      .max(24 * 60, "Keep the case to 1440 minutes or less"),
+  ),
+  prepMinutes: numberText(
+    z
+      .number()
+      .int("Enter whole minutes")
+      .min(0)
+      .max(240, "Keep preparation to 240 minutes or less"),
+  ),
+  cleanupMinutes: numberText(
+    z.number().int("Enter whole minutes").min(0).max(240, "Keep clean-up to 240 minutes or less"),
+  ),
   roomId: z.string(),
   equipmentIds: z.array(z.string()),
   notes: z.string().trim().max(500, "Keep notes under 500 characters"),
@@ -95,9 +83,9 @@ function casePayload(value: CaseValues, timeZone: string) {
     practitionerId: value.practitionerId,
     procedureItemId: value.procedureItemId,
     plannedStartAt,
-    plannedEndAt: new Date(plannedStartAt.getTime() + Number(value.duration) * MINUTE_MS),
-    prepMinutes: Number(value.prepMinutes),
-    cleanupMinutes: Number(value.cleanupMinutes),
+    plannedEndAt: new Date(plannedStartAt.getTime() + value.duration * MINUTE_MS),
+    prepMinutes: value.prepMinutes,
+    cleanupMinutes: value.cleanupMinutes,
     roomId: value.roomId || undefined,
     equipmentIds: value.equipmentIds,
     notes: value.notes || undefined,
@@ -105,7 +93,7 @@ function casePayload(value: CaseValues, timeZone: string) {
 }
 
 export const resourcesQuery = (orgSlug: string) =>
-  orpc.theatre.resources.queryOptions({ input: { orgSlug } });
+  orpc.theatre.resources.queryOptions({ input: { orgSlug }, ...OPERATIONAL_REFETCH });
 
 const proceduresQuery = (orgSlug: string) =>
   orpc.catalog.list.infiniteOptions({
@@ -125,7 +113,7 @@ function CaseFields({
   current,
 }: {
   orgSlug: string;
-  /** The case being changed: its own room, units and procedure stay choosable. */
+  /** The case being changed: its own room, units and procedure stay choosable, even retired. */
   current?: TheatreCase;
 }) {
   const practitioners = useQuery(orpc.staff.listPractitioners.queryOptions({ input: { orgSlug } }));
@@ -135,8 +123,14 @@ function CaseFields({
 
   const procedureOptions = loaded.map((item) => ({ value: item.id, label: item.name }));
 
+  // Every active procedure is loaded once the last page is, so one missing then is retired.
   if (current && !loaded.some((item) => item.id === current.procedureItemId)) {
-    procedureOptions.unshift({ value: current.procedureItemId, label: current.procedureName });
+    const retired = procedures.isSuccess && !procedures.hasNextPage;
+
+    procedureOptions.unshift({
+      value: current.procedureItemId,
+      label: retired ? `${current.procedureName}${RETIRED}` : current.procedureName,
+    });
   }
 
   const rooms = (resources.data?.rooms ?? []).filter(
@@ -211,7 +205,7 @@ function CaseFields({
               <option value="">No room yet</option>
               {rooms.map((room) => (
                 <option key={room.id} value={room.id}>
-                  {room.name}
+                  {room.active ? room.name : `${room.name}${RETIRED}`}
                 </option>
               ))}
             </NativeSelect>
@@ -239,7 +233,8 @@ function CaseFields({
                         }
                       />
                       <span className="min-w-0 break-words">
-                        {unit.name} <span className="text-muted-foreground">{unit.kind}</span>
+                        {unit.active ? unit.name : `${unit.name}${RETIRED}`}{" "}
+                        <span className="text-muted-foreground">{unit.kind}</span>
                       </span>
                     </label>
                   ))}
@@ -265,7 +260,7 @@ export function BookCaseDialog({
   onClose: () => void;
 }) {
   const { timeZone, today } = useOrgDateTime();
-  const refusal = useRefusal();
+  const refusal = useRefusal(onClose);
   const soon = nextHalfHour(timeZone);
 
   return (
@@ -323,7 +318,7 @@ export function ChangeCaseDialog({
   onClose: () => void;
 }) {
   const { timeZone } = useOrgDateTime();
-  const refusal = useRefusal();
+  const refusal = useRefusal(onClose);
   const start = localInputValue(theatreCase.plannedStartAt, timeZone);
   const confirmed = theatreCase.status === "confirmed";
 
@@ -384,7 +379,7 @@ export function ConfirmCaseDialog({
   onClose: () => void;
 }) {
   const { timeZone } = useOrgDateTime();
-  const refusal = useRefusal();
+  const refusal = useRefusal(onClose);
   // Offered only once the case has a room.
   const held = [theatreCase.roomName, ...theatreCase.equipment.map((unit) => unit.name)].join(", ");
 
@@ -414,17 +409,6 @@ export function ConfirmCaseDialog({
 
 const linkSchema = z.object({ admissionId: z.string().min(1, "Choose the Admission") });
 
-const currentAdmissionsQuery = (orgSlug: string) =>
-  orpc.ipd.list.infiniteOptions({
-    input: (cursor: { admittedAt: Date; id: string } | undefined) => ({
-      orgSlug,
-      state: "current" as const,
-      cursor,
-    }),
-    initialPageParam: undefined,
-    getNextPageParam: (page) => page.nextCursor ?? undefined,
-  });
-
 export function LinkAdmissionDialog({
   orgSlug,
   theatreCase,
@@ -435,14 +419,15 @@ export function LinkAdmissionDialog({
   onClose: () => void;
 }) {
   const { timeZone } = useOrgDateTime();
-  const refusal = useRefusal();
-  const admissions = useInfiniteQuery(currentAdmissionsQuery(orgSlug));
+  const refusal = useRefusal(onClose);
 
-  const own = (admissions.data?.pages.flatMap((page) => page.items) ?? []).filter(
-    (admission) => admission.patientId === theatreCase.patientId,
+  const admissions = useQuery(
+    orpc.ipd.list.queryOptions({
+      input: { orgSlug, state: "current", patientId: theatreCase.patientId },
+    }),
   );
 
-  const searching = admissions.isPending || (own.length === 0 && admissions.hasNextPage);
+  const own = admissions.data?.items ?? [];
 
   return (
     <FormDialog
@@ -475,14 +460,16 @@ export function LinkAdmissionDialog({
         name="admissionId"
         label="Admission"
         description={
-          !searching && own.length === 0
+          admissions.isSuccess && own.length === 0
             ? "The Patient is not admitted yet. Admit them from IPD, then link the stay here."
             : undefined
         }
         render={(field) => (
           <FormControl>
             <NativeSelect {...field} disabled={own.length === 0}>
-              <option value="">{searching ? "Looking for the stay…" : "No current stay"}</option>
+              <option value="">
+                {admissions.isPending ? "Looking for the stay…" : "No current stay"}
+              </option>
               {own.map((admission) => (
                 <option key={admission.id} value={admission.id}>
                   {admission.wardName && admission.bedLabel
@@ -495,18 +482,6 @@ export function LinkAdmissionDialog({
           </FormControl>
         )}
       />
-      {own.length === 0 && admissions.hasNextPage ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          className="self-start"
-          disabled={admissions.isFetchingNextPage}
-          onClick={() => void admissions.fetchNextPage()}
-        >
-          Look through more admissions
-        </Button>
-      ) : null}
       <Refusal title="The admission was not linked" refusal={refusal.refusal} />
     </FormDialog>
   );
@@ -521,6 +496,8 @@ export function CancelCaseDialog({
   theatreCase: TheatreCase;
   onClose: () => void;
 }) {
+  const refusal = useRefusal(onClose);
+
   return (
     <FormDialog
       title="Cancel case"
@@ -534,6 +511,8 @@ export function CancelCaseDialog({
       defaultValues={{ reason: "" }}
       success="Case cancelled"
       onClose={onClose}
+      onError={refusal.onError}
+      showsInline={refusal.showsInline}
       run={({ reason }) =>
         orpc.theatre.cancelCase.call({
           orgSlug,
@@ -544,6 +523,7 @@ export function CancelCaseDialog({
       }
     >
       <TextField name="reason" label="Reason" autoFocus />
+      <Refusal title="The case was not cancelled" refusal={refusal.refusal} />
     </FormDialog>
   );
 }
@@ -629,19 +609,34 @@ const blockSchema = z
     }
   });
 
-function DisruptOption({ orgSlug, refusal }: { orgSlug: string; refusal: string | null }) {
+function DisruptOption({
+  orgSlug,
+  refusal,
+  reason,
+}: {
+  orgSlug: string;
+  refusal: string | null;
+  reason: string | undefined;
+}) {
   const canOverride = useCan(orgSlug, { theatre: ["override"] });
   const disrupt = useWatch<{ disrupt: boolean }, "disrupt">({ name: "disrupt" });
 
   if (refusal === null) return null;
 
+  // Only a confirmed case in the way can be overridden; any other refusal is fixed here.
+  const overridable = canOverride && reason === "case_held";
+
   return (
     <>
       <ErrorNote
         title={refusal}
-        detail={canOverride ? undefined : "Choose another time, or ask an administrator."}
+        detail={
+          reason === "case_held" && !canOverride
+            ? "Choose another time, or ask an administrator."
+            : undefined
+        }
       />
-      {canOverride ? (
+      {overridable ? (
         <>
           <FormField
             name="disrupt"
@@ -678,7 +673,7 @@ export function BlockDialog({
   onClose: () => void;
 }) {
   const { timeZone } = useOrgDateTime();
-  const refusal = useRefusal();
+  const refusal = useRefusal(onClose);
   const start = nextHalfHour(timeZone);
 
   return (
@@ -717,7 +712,7 @@ export function BlockDialog({
         <TextField name="endsAt" label="Until" type="datetime-local" className="tabular-nums" />
       </div>
       <TextField name="reason" label="Reason" description="For example Servicing" />
-      <DisruptOption orgSlug={orgSlug} refusal={refusal.refusal} />
+      <DisruptOption orgSlug={orgSlug} refusal={refusal.refusal} reason={refusal.reason} />
     </FormDialog>
   );
 }

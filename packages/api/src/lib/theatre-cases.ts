@@ -18,7 +18,7 @@ import { z } from "zod";
 import { BACKDATE_TOLERANCE_MS, requireInScope } from "./ipd-beds";
 import { note } from "./schemas";
 
-const MAX_CASE_MS = 24 * 60 * 60 * 1_000;
+export const MAX_CASE_MS = 24 * 60 * 60 * 1_000;
 
 type Executor = typeof db | DbTransaction;
 
@@ -32,13 +32,13 @@ export const caseFields = z.object({
   plannedEndAt: z.date(),
   prepMinutes: bufferMinutes,
   cleanupMinutes: bufferMinutes,
-  roomId: z.string().optional(),
+  roomId: z.string().min(1).optional(),
   equipmentIds: z
-    .array(z.string())
+    .array(z.string().min(1))
     .max(20)
     .default([])
     .transform((ids) => [...new Set(ids)].sort()),
-  bedReservationId: z.string().optional(),
+  bedReservationId: z.string().min(1).optional(),
   notes: note,
 });
 
@@ -63,7 +63,9 @@ function badRequest(message: string) {
   return new ORPCError("BAD_REQUEST", { message });
 }
 
-export function requireInterval(fields: CaseFields, now: Date) {
+// `keptStart` is the stored start of the case being edited: leaving it as it is, even
+// once it has passed, lets a started case take a notes fix.
+export function requireInterval(fields: CaseFields, now: Date, keptStart?: Date) {
   const start = fields.plannedStartAt.getTime();
   const end = fields.plannedEndAt.getTime();
 
@@ -71,16 +73,16 @@ export function requireInterval(fields: CaseFields, now: Date) {
 
   if (end - start > MAX_CASE_MS) throw badRequest("A case can be planned for at most 24 hours.");
 
-  if (now.getTime() - start > BACKDATE_TOLERANCE_MS) {
+  if (keptStart?.getTime() !== start && now.getTime() - start > BACKDATE_TOLERANCE_MS) {
     throw badRequest("That start time has already passed.");
   }
 }
 
-async function requireUnits(orgId: string, ids: string[]) {
+async function requireUnits(orgId: string, ids: string[], kept: string[]) {
   if (ids.length === 0) return;
 
   const units = await db
-    .select({ active: equipmentUnits.active })
+    .select({ id: equipmentUnits.id, active: equipmentUnits.active })
     .from(equipmentUnits)
     .where(and(eq(equipmentUnits.orgId, orgId), inArray(equipmentUnits.id, ids)));
 
@@ -88,28 +90,38 @@ async function requireUnits(orgId: string, ids: string[]) {
     throw new ORPCError("NOT_FOUND", { message: "That equipment unit does not exist." });
   }
 
-  if (units.some((unit) => !unit.active)) throw badRequest("That equipment unit is not in use.");
+  if (units.some((unit) => !unit.active && !kept.includes(unit.id))) {
+    throw badRequest("That equipment unit is not in use.");
+  }
 }
 
-// Every reference must exist under scope (NOT_FOUND) and be usable (BAD_REQUEST).
-// Returns the procedure name the case snapshots.
+// What an edited case already references; each may stay as it is after it retires.
+export type KeptReferences = {
+  procedureItemId: string;
+  roomId: string | null;
+  equipmentIds: string[];
+};
+
+// Every reference must exist under scope (NOT_FOUND) and be usable (BAD_REQUEST); on an
+// edit, one the case already has is accepted as it is. Confirmation still needs every
+// resource in use. Returns the procedure name the case snapshots.
 export async function resolveCaseReferences(
   orgId: string,
   patientId: string,
   fields: CaseFields,
-  options: { checkPatient: boolean },
+  kept?: KeptReferences,
 ) {
   const [, , procedure, room, , reservation] = await Promise.all([
-    options.checkPatient
-      ? requireInScope(
+    kept
+      ? null
+      : requireInScope(
           db
             .select({ id: patients.id })
             .from(patients)
             .where(and(eq(patients.orgId, orgId), eq(patients.id, patientId)))
             .limit(1),
           "That Patient does not exist.",
-        )
-      : null,
+        ),
     requireInScope(
       db
         .select({ id: practitioners.id })
@@ -140,7 +152,7 @@ export async function resolveCaseReferences(
           "That theatre room does not exist.",
         )
       : null,
-    requireUnits(orgId, fields.equipmentIds),
+    requireUnits(orgId, fields.equipmentIds, kept?.equipmentIds ?? []),
     fields.bedReservationId
       ? requireInScope(
           db
@@ -158,11 +170,15 @@ export async function resolveCaseReferences(
       : null,
   ]);
 
-  if (procedure.category !== "procedure" || !procedure.active) {
+  const keepsProcedure = fields.procedureItemId === kept?.procedureItemId;
+
+  if (procedure.category !== "procedure" || (!procedure.active && !keepsProcedure)) {
     throw badRequest("Choose an active procedure from the catalog.");
   }
 
-  if (room && !room.active) throw badRequest("That theatre room is not in use.");
+  if (room && !room.active && fields.roomId !== kept?.roomId) {
+    throw badRequest("That theatre room is not in use.");
+  }
 
   if (reservation && reservation.patientId !== patientId) {
     throw badRequest("That bed reservation is for another Patient.");

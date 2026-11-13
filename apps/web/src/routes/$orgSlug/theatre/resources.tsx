@@ -82,7 +82,8 @@ function ResourcesRoute() {
   const stopUsing = (name: string, run: () => void) =>
     confirm({
       title: `Stop using ${name}?`,
-      description: "No new case can be booked on it. Its past cases are kept.",
+      description:
+        "No new case can be booked on it. Its past cases are kept. It cannot be stopped while a confirmed case still needs it.",
       confirmLabel: "Stop using",
       run,
     });

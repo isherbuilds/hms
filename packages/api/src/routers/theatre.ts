@@ -2,16 +2,18 @@ import { db } from "@hms/db";
 import { ACTIVE_ADMISSION_STATUSES, admissions } from "@hms/db/schema/ipd";
 import {
   equipmentUnits,
+  MAX_CASE_BUFFER_MINUTES,
   resourceBlocks,
   surgicalCases,
   THEATRE_ROOM_KINDS,
   theatreRooms,
 } from "@hms/db/schema/theatre";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
+import { conflict } from "../lib/conflict";
 import { nameConflict } from "../lib/db-errors";
 import { orgInput, orgProcedure, requirePermission, type Scope } from "../lib/procedures/factory";
 import { reason, shortName } from "../lib/schemas";
@@ -20,6 +22,7 @@ import {
   bufferedStartAt,
   caseFields,
   caseValues,
+  MAX_CASE_MS,
   readCase,
   readCases,
   replaceCaseEquipment,
@@ -39,6 +42,8 @@ import {
 } from "../lib/theatre-holds";
 
 const MAX_SCHEDULE_WINDOW_MS = 31 * 24 * 60 * 60 * 1_000;
+
+const MAX_BUFFER_MS = MAX_CASE_BUFFER_MINUTES * 60 * 1_000;
 
 const revisionInput = { caseId: z.string(), expectedRevision: z.number().int().nonnegative() };
 
@@ -187,8 +192,8 @@ export const theatreRouter = {
     return unit;
   }),
 
-  // A block over a confirmed case is refused unless the caller holds `override`
-  // and gives a reason: then the cases it overlaps become disrupted with it.
+  // A block over a confirmed case that is not over yet is refused unless the caller
+  // holds `override` and gives a reason: then those cases become disrupted with it.
   blockResource: orgProcedure(
     { theatre: ["manageResources"] },
     orgInput
@@ -219,17 +224,16 @@ export const theatreRouter = {
 
     const { created, disrupted } = await db.transaction(async (tx) => {
       const resource = await lockResource(tx, orgId, target);
+      // A case already over is history, whatever the block's dates say.
+      const from = new Date(Math.max(input.startsAt.getTime(), Date.now()));
 
       // Case rows lock after the resource, by id (D040).
-      const held = await casesHolding(tx, orgId, target, input.startsAt, input.endsAt).for(
-        "update",
-        { of: surgicalCases },
-      );
+      const held = await casesHolding(tx, orgId, target, from, input.endsAt).for("update", {
+        of: surgicalCases,
+      });
 
       if (held.length > 0 && !input.disrupt) {
-        throw new ORPCError("CONFLICT", {
-          message: `${resource.name} has a confirmed case at that time.`,
-        });
+        throw conflict("case_held", `${resource.name} has a confirmed case at that time.`);
       }
 
       const [created] = await tx
@@ -332,6 +336,13 @@ export const theatreRouter = {
         db,
         orgId,
         and(
+          // Bounds on the stored start let the (org, start) index narrow the scan; the
+          // buffered overlap below is the exact rule.
+          lt(surgicalCases.plannedStartAt, new Date(input.to.getTime() + MAX_BUFFER_MS)),
+          gt(
+            surgicalCases.plannedStartAt,
+            new Date(input.from.getTime() - MAX_CASE_MS - MAX_BUFFER_MS),
+          ),
           sql`${bufferedStartAt} < ${input.to}`,
           sql`${bufferedEndAt} > ${input.from}`,
           input.includeCancelled ? undefined : ne(surgicalCases.status, "cancelled"),
@@ -355,9 +366,7 @@ export const theatreRouter = {
     const { scope } = context;
     requireInterval(input, new Date());
 
-    const procedureName = await resolveCaseReferences(scope.orgId, input.patientId, input, {
-      checkPatient: true,
-    });
+    const procedureName = await resolveCaseReferences(scope.orgId, input.patientId, input);
 
     const id = Bun.randomUUIDv7();
 
@@ -377,7 +386,9 @@ export const theatreRouter = {
   }),
 
   // A draft or disrupted case is a plain edit; a confirmed one is a reschedule that
-  // keeps its holds only if every confirmation check passes for the new values.
+  // keeps its holds only if every confirmation check passes for the new values. A
+  // confirmed case whose time, room, units and consultant stay as they are (a notes
+  // or procedure fix) keeps its holds unchecked, so it can be fixed once started.
   updateCase: orgProcedure(
     { theatre: ["schedule"] },
     orgInput.extend({ ...revisionInput, ...caseFields.shape }),
@@ -385,29 +396,52 @@ export const theatreRouter = {
     const { scope } = context;
     const { orgId } = scope;
     const now = new Date();
-    requireInterval(input, now);
 
     // A case never changes Patient; matching revisions prove the read is current.
     const current = await readCase(db, orgId, input.caseId);
 
     if (current.revision !== input.expectedRevision) throw staleCase();
 
+    requireInterval(input, now, current.plannedStartAt);
+
+    const equipmentIds = current.equipment.map((unit) => unit.id).sort();
+    const roomId = input.roomId ?? null;
+    const reschedule = current.status === "confirmed";
+
+    if (reschedule && !roomId) {
+      throw new ORPCError("CONFLICT", {
+        message: "A confirmed case needs a room. Cancel it or choose another room.",
+      });
+    }
+
     const procedureName = await resolveCaseReferences(orgId, current.patientId, input, {
-      checkPatient: false,
+      procedureItemId: current.procedureItemId,
+      roomId: current.roomId,
+      equipmentIds,
     });
 
-    const reschedule = current.status === "confirmed";
-    const plan = { ...input, caseId: current.id, roomId: input.roomId ?? null };
+    const moves =
+      reschedule &&
+      (roomId !== current.roomId ||
+        input.practitionerId !== current.practitionerId ||
+        input.plannedStartAt.getTime() !== current.plannedStartAt.getTime() ||
+        input.plannedEndAt.getTime() !== current.plannedEndAt.getTime() ||
+        input.prepMinutes !== current.prepMinutes ||
+        input.cleanupMinutes !== current.cleanupMinutes ||
+        input.equipmentIds.join() !== equipmentIds.join());
+
+    const plan = { ...input, caseId: current.id, roomId };
 
     const updated = await db.transaction(async (tx) => {
-      const locked = reschedule ? await lockPlan(tx, orgId, plan) : undefined;
+      // The resources the case holds now and those it will hold, before the case row.
+      const locked = await lockPlan(tx, orgId, plan, { roomId: current.roomId, equipmentIds });
       const row = await lockCase(tx, orgId, input.caseId, input.expectedRevision);
 
       if (row.status === "cancelled") {
         throw new ORPCError("CONFLICT", { message: "A cancelled case cannot be changed." });
       }
 
-      if (locked) await assertHoldable(tx, orgId, plan, locked, now);
+      if (moves) await assertHoldable(tx, orgId, plan, locked);
 
       await tx
         .update(surgicalCases)
@@ -422,7 +456,7 @@ export const theatreRouter = {
       return readCase(tx, orgId, row.id);
     });
 
-    if (reschedule) {
+    if (moves) {
       auditTheatre(scope, "theatre.case.reschedule", `surgical_case:${updated.id}`, {
         roomId: updated.roomId,
         plannedStartAt: updated.plannedStartAt.toISOString(),
@@ -438,7 +472,6 @@ export const theatreRouter = {
     async ({ context, input }) => {
       const { scope } = context;
       const { orgId } = scope;
-      const now = new Date();
 
       // The unlocked read names what to lock; matching revisions prove it is current.
       const current = await readCase(db, orgId, input.caseId);
@@ -461,7 +494,7 @@ export const theatreRouter = {
           });
         }
 
-        await assertHoldable(tx, orgId, plan, locked, now);
+        await assertHoldable(tx, orgId, plan, locked);
 
         await tx
           .update(surgicalCases)
@@ -469,7 +502,7 @@ export const theatreRouter = {
             status: "confirmed",
             disruptedReason: null,
             revision: sql`${surgicalCases.revision} + 1`,
-            updatedAt: now,
+            updatedAt: new Date(),
           })
           .where(and(eq(surgicalCases.orgId, orgId), eq(surgicalCases.id, row.id)));
 

@@ -403,6 +403,8 @@ export const bedReservations = pgTable(
       sql`${table.status} <> 'disrupted' or ${table.disruptedReason} is not null`,
     ),
     unique("bed_reservations_org_id_id_unique").on(table.orgId, table.id),
+    // Lets a surgical case's link name the reservation's Patient as well.
+    unique("bed_reservations_org_id_patient_unique").on(table.orgId, table.id, table.patientId),
     foreignKey({
       columns: [table.orgId, table.patientId],
       foreignColumns: [patients.orgId, patients.id],

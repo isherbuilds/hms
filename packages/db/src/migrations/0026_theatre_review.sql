@@ -1,0 +1,3 @@
+ALTER TABLE "surgical_cases" DROP CONSTRAINT "surgical_cases_org_id_bed_reservation_id_bed_reservations_org_id_id_fk";
+--> statement-breakpoint
+ALTER TABLE "surgical_cases" ADD CONSTRAINT "surgical_cases_org_id_bed_reservation_id_patient_id_bed_reservations_org_id_id_patient_id_fk" FOREIGN KEY ("org_id","bed_reservation_id","patient_id") REFERENCES "public"."bed_reservations"("org_id","id","patient_id") ON DELETE no action ON UPDATE no action;

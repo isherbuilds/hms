@@ -309,15 +309,18 @@ keeps its own locks (D040).
   conditional update. Expiry is derived from `holdUntil` at read, so no job locks
   anything; a Patient lock is never taken after a Bed lock.
   The theatre schedule (facility booking slice 1) serializes on the room and unit
-  rows: confirming or rescheduling a surgical case locks its room, its units by
-  `id` and the consultant's Practitioner row, then the case row with its
-  `revision`, and only then runs every clash check (inactive resource, live block,
-  another confirmed case holding the room or a unit for an overlapping buffered
-  interval, the consultant's overlapping planned interval). A block locks the one
+  rows, locked `FOR NO KEY UPDATE` (as is the Practitioner) so that the `KEY SHARE`
+  of a case's foreign-key writes never waits on them: confirming or editing a
+  surgical case locks its rooms by `id` (on an edit, the one it holds now and the
+  one it moves to), its units by `id` (likewise both sets) and the consultant's
+  Practitioner row, then the case row with its `revision`, and only then runs every
+  clash check (inactive resource, live block, another confirmed case holding the
+  room or a unit for an overlapping buffered interval, the consultant's overlapping
+  planned interval), reading the clock after the locks. A block locks the one
   room or unit, then the confirmed cases holding it by `id`; deactivation locks the
-  resource and refuses while a confirmed case still holds it. Attaching an Admission locks the Admission before the case. Drafts and
-  cancellation take no resource lock: a draft promises nothing, and cancelling
-  only frees.
+  resource and refuses while a confirmed case still holds it. Attaching an Admission
+  locks the Admission before the case. Creating a draft and cancelling take no
+  resource lock: a draft promises nothing, and cancelling only frees.
   Every change to an Admission's Charge set locks the Admission first
   (`lockAdmissionCharges`) and bumps its `chargeRevision`. An inpatient issue,
   posting services and issuing the bill also compare the caller's expected

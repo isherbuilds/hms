@@ -10,21 +10,24 @@ import {
 import { ORPCError } from "@orpc/server";
 import { and, asc, eq, gt, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 
-import { impossible } from "./conflict";
+import { conflict, impossible } from "./conflict";
 import { buffered, bufferedEndAt, bufferedStartAt } from "./theatre-cases";
 
 // Lock order (D040): theatre rooms by id → equipment units by id → Practitioner →
 // surgical case rows by id. Every writer that could hold a room or a unit locks it
-// first, so the clash checks below need no further lock.
+// first, so the clash checks below need no further lock. `no key update` serialises
+// those writers but never waits on, or blocks, the `key share` a foreign-key insert
+// takes on the same row.
 
-async function lockRoom(tx: DbTransaction, orgId: string, roomId: string) {
-  const [room] = await tx
+async function lockRooms(tx: DbTransaction, orgId: string, roomIds: string[]) {
+  if (roomIds.length === 0) return [];
+
+  return tx
     .select({ id: theatreRooms.id, name: theatreRooms.name, active: theatreRooms.active })
     .from(theatreRooms)
-    .where(and(eq(theatreRooms.orgId, orgId), eq(theatreRooms.id, roomId)))
-    .for("update");
-
-  return room;
+    .where(and(eq(theatreRooms.orgId, orgId), inArray(theatreRooms.id, roomIds)))
+    .orderBy(asc(theatreRooms.id))
+    .for("no key update");
 }
 
 async function lockUnits(tx: DbTransaction, orgId: string, equipmentIds: string[]) {
@@ -35,7 +38,7 @@ async function lockUnits(tx: DbTransaction, orgId: string, equipmentIds: string[
     .from(equipmentUnits)
     .where(and(eq(equipmentUnits.orgId, orgId), inArray(equipmentUnits.id, equipmentIds)))
     .orderBy(asc(equipmentUnits.id))
-    .for("update");
+    .for("no key update");
 }
 
 async function lockPractitioner(tx: DbTransaction, orgId: string, practitionerId: string) {
@@ -43,13 +46,11 @@ async function lockPractitioner(tx: DbTransaction, orgId: string, practitionerId
     .select({ id: practitioners.id })
     .from(practitioners)
     .where(and(eq(practitioners.orgId, orgId), eq(practitioners.id, practitionerId)))
-    .for("update");
+    .for("no key update");
 }
 
 export function staleCase() {
-  return new ORPCError("CONFLICT", {
-    message: "This case changed on another screen. Refresh and try again.",
-  });
+  return conflict("stale_record", "This case changed on another screen. Refresh and try again.");
 }
 
 export async function lockCase(
@@ -85,13 +86,25 @@ export type HoldPlan = {
   cleanupMinutes: number;
 };
 
-// Locks everything a confirmed case would hold, in order, before its own row.
-export async function lockPlan(tx: DbTransaction, orgId: string, plan: HoldPlan) {
-  const room = plan.roomId ? await lockRoom(tx, orgId, plan.roomId) : undefined;
-  const units = await lockUnits(tx, orgId, plan.equipmentIds);
+// Locks everything a confirmed case would hold, in order, before its own row. An edit
+// also passes what the case holds now, so a writer racing on a resource the edit
+// gives up waits for it as well.
+export async function lockPlan(
+  tx: DbTransaction,
+  orgId: string,
+  plan: HoldPlan,
+  current?: { roomId: string | null; equipmentIds: string[] },
+) {
+  const roomIds = [plan.roomId, current?.roomId].filter((id): id is string => !!id);
+  const rooms = await lockRooms(tx, orgId, [...new Set(roomIds)]);
+  const unitIds = new Set([...plan.equipmentIds, ...(current?.equipmentIds ?? [])]);
+  const units = await lockUnits(tx, orgId, [...unitIds]);
   await lockPractitioner(tx, orgId, plan.practitionerId);
 
-  return { room, units };
+  return {
+    room: rooms.find((room) => room.id === plan.roomId),
+    units: units.filter((unit) => plan.equipmentIds.includes(unit.id)),
+  };
 }
 
 function clash(message: string) {
@@ -156,17 +169,17 @@ export function casesHolding(
 }
 
 // Every confirmation check, under the locks `lockPlan` took. The first clash wins and
-// names the resource in plain words; nothing has been written yet.
+// names the resource in plain words; nothing has been written yet. The clock is read
+// here, after the locks, so time spent waiting on them counts.
 export async function assertHoldable(
   tx: DbTransaction,
   orgId: string,
   plan: HoldPlan,
   locked: Awaited<ReturnType<typeof lockPlan>>,
-  now: Date,
 ) {
   if (!plan.roomId) throw clash("Choose a theatre room before confirming.");
 
-  if (plan.plannedStartAt.getTime() < now.getTime()) {
+  if (plan.plannedStartAt.getTime() < Date.now()) {
     throw clash("That start time has already passed.");
   }
 
@@ -267,7 +280,7 @@ export async function assertHoldable(
 // One room or unit, locked in its place in the order; NOT_FOUND outside scope.
 export async function lockResource(tx: DbTransaction, orgId: string, target: ResourceTarget) {
   if ("roomId" in target) {
-    const room = await lockRoom(tx, orgId, target.roomId);
+    const [room] = await lockRooms(tx, orgId, [target.roomId]);
 
     if (!room) throw new ORPCError("NOT_FOUND", { message: "That theatre room does not exist." });
 
@@ -281,7 +294,7 @@ export async function lockResource(tx: DbTransaction, orgId: string, target: Res
   return unit;
 }
 
-// A resource promised to a case that has not finished cannot be retired.
+// A resource a confirmed case still needs, upcoming or under way, cannot be retired.
 export async function assertNoFutureHold(
   tx: DbTransaction,
   orgId: string,
@@ -291,7 +304,5 @@ export async function assertNoFutureHold(
 ) {
   const [held] = await casesHolding(tx, orgId, target, now).limit(1);
 
-  if (held) {
-    throw clash(`${resource.name} has a confirmed case coming up. Move or cancel it first.`);
-  }
+  if (held) throw clash(`A confirmed case still needs ${resource.name}. Move or cancel it first.`);
 }

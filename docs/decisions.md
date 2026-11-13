@@ -1513,7 +1513,9 @@ slice 1, autonomously; to be confirmed by the owner.** Contract:
   `access.ts`. Owner and admin hold all four; reception holds `read` and
   `schedule` as the coordinator desk; cashier, accountant and pharmacist hold
   none. `schedule` never implies `override`.
-- **States.** A draft holds nothing and is checked only for valid references.
+- **States.** A draft holds nothing and skips the availability-conflict checks,
+  but its inputs are still validated: interval, duration, buffers and active
+  references.
   A confirmed case holds its room, units and consultant. A disrupted case
   ("Needs rescheduling") lost a resource to a block, holds nothing and must be
   confirmed again or cancelled. A cancelled case has a reason and frees every hold.
@@ -1529,9 +1531,23 @@ slice 1, autonomously; to be confirmed by the owner.** Contract:
   disrupted in the same transaction. Deactivating a room or unit that a
   confirmed future case holds is refused.
 - **Admission comes later.** A case can be booked before the Patient is
-  admitted; the Patient's current Admission is linked when they are. That link
-  is the precondition for recording actual use in the next slice.
+  admitted. Nothing links it automatically: the coordinator links the Patient's
+  current Admission to the case with `attachCaseAdmission`. That link is
+  required before actual use is recorded in the next slice.
 - **No money.** Booking writes no Charge, stock movement, Invoice or journal.
+
+**Amended after council 2026-11-13.** The room, unit and Practitioner locks are
+`FOR NO KEY UPDATE`, so they serialise schedulers without colliding with the
+`KEY SHARE` a foreign-key insert takes; every edit of a case (draft, disrupted or
+confirmed) locks the union of the rooms and units it holds now and will hold,
+then the case, so an edit racing a confirmation or a block gets a revision
+conflict, never a deadlock. A block counts only confirmed cases whose held
+interval ends after now: one entered after the fact never refuses over, or
+disrupts, a case that is already over. A confirmed case whose time, buffers,
+room, units and consultant stay as they are skips the hold checks, so a started
+case still takes a notes or procedure fix. An edit keeps a room, unit or
+procedure the case already has even after it retired; only newly chosen ones
+must be in use, and confirmation still needs every resource in use.
 
 **Evidence:**
 [Bahmni surgical blocks](https://bahmni.atlassian.net/wiki/spaces/BAH/pages/703660044/Surgical%2BBlock)
