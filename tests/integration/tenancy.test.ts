@@ -677,7 +677,8 @@ const GUARDED_CALLS = {
   "ipd.setBedActive": (api, claim) =>
     api.ipd.setBedActive({ ...claim, bedId: "missing", active: false }),
   "ipd.blockBed": (api, claim) => api.ipd.blockBed({ ...claim, bedId: "missing", reason: "x" }),
-  "ipd.releaseBed": (api, claim) => api.ipd.releaseBed({ ...claim, bedId: "missing" }),
+  "ipd.releaseBed": (api, claim) =>
+    api.ipd.releaseBed({ ...claim, bedId: "missing", expectedBlockedAt: new Date() }),
   "ipd.bedBoard": (api, claim) => api.ipd.bedBoard({ ...claim }),
   "ipd.list": (api, claim) => api.ipd.list({ ...claim }),
   "ipd.get": (api, claim) => api.ipd.get({ ...claim, admissionId: "missing" }),

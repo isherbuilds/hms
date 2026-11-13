@@ -621,7 +621,8 @@ test("backdated occupancy cannot overlap a bed's historical occupant", async () 
       admittedAt: hoursAgo(2),
       reason: "Paper register entry",
     }),
-    "CONFLICT",
+    // The typed time is wrong, not the screen: the dialog stays open to correct it.
+    "BAD_REQUEST",
   );
 });
 
@@ -786,7 +787,12 @@ test("ready keeps the bed occupied; discharge closes the stay and blocks the bed
   const current = await reception.ipd.list({ orgSlug });
   expect(current.items.map((item) => item.id)).not.toContain(admission.id);
 
-  await reception.ipd.releaseBed({ orgSlug, bedId: beds[0].id });
+  const blocked = await boardBed(hospital, beds[0].id);
+  await reception.ipd.releaseBed({
+    orgSlug,
+    bedId: beds[0].id,
+    expectedBlockedAt: blocked.blockedAt!,
+  });
   expect((await boardBed(hospital, beds[0].id)).status).toBe("available");
 
   // The Patient may be admitted again once the earlier stay has ended.
@@ -1044,7 +1050,11 @@ test("releasing an occupied bed is refused", async () => {
   await admit(hospital, hospital.beds[0].id, "Still Here");
 
   await expectORPCCode(
-    hospital.api.ipd.releaseBed({ orgSlug: hospital.orgSlug, bedId: hospital.beds[0].id }),
+    hospital.api.ipd.releaseBed({
+      orgSlug: hospital.orgSlug,
+      bedId: hospital.beds[0].id,
+      expectedBlockedAt: new Date(),
+    }),
     "CONFLICT",
   );
 });
@@ -1091,4 +1101,135 @@ test("the Admission list pages with the shared page size and filters by state", 
 
   expect(secondPage.items).toHaveLength(1);
   expect(secondPage.items[0]!.id).not.toBe(firstPage.items[0]!.id);
+});
+
+// ── Council review findings ─────────────────────────────────────────────────
+
+test("a backdated admission cannot overlap the same Patient's earlier stay", async () => {
+  const hospital = await createHospital("ipd-patient-overlap");
+  const { api, orgSlug, beds, practitioner } = hospital;
+  const { patient, admission } = await admit(hospital, beds[0].id, "Overlap Patient");
+
+  const ready = await api.ipd.markDischargeReady({
+    orgSlug,
+    admissionId: admission.id,
+    expectedRevision: admission.revision,
+  });
+
+  await api.ipd.discharge({ orgSlug, admissionId: admission.id, expectedRevision: ready.revision });
+
+  await expectORPCCode(
+    api.ipd.admit({
+      orgSlug,
+      patientId: patient.id,
+      practitionerId: practitioner.id,
+      bedId: beds[1].id,
+      admittedAt: hoursAgo(2),
+      reason: "Paper register entry",
+    }),
+    "BAD_REQUEST",
+  );
+});
+
+test("departure cannot be dated before the ready handoff", async () => {
+  const hospital = await createHospital("ipd-before-ready");
+  const { api, orgSlug, beds } = hospital;
+  const patient = await registerPatient(api, orgSlug, "Before Ready");
+
+  const admission = await api.ipd.admit({
+    orgSlug,
+    patientId: patient.id,
+    practitionerId: hospital.practitioner.id,
+    bedId: beds[0].id,
+    admittedAt: hoursAgo(6),
+    reason: "Night entry",
+  });
+
+  const ready = await api.ipd.markDischargeReady({
+    orgSlug,
+    admissionId: admission.id,
+    expectedRevision: admission.revision,
+    effectiveAt: hoursAgo(2),
+    reason: "Handoff recorded late",
+  });
+
+  await expectORPCCode(
+    api.ipd.discharge({
+      orgSlug,
+      admissionId: admission.id,
+      expectedRevision: ready.revision,
+      effectiveAt: hoursAgo(4),
+      reason: "Left earlier",
+    }),
+    "BAD_REQUEST",
+  );
+});
+
+test("the ready handoff cannot be dated before the current bed", async () => {
+  const hospital = await createHospital("ipd-ready-before-bed");
+  const { api, orgSlug, beds } = hospital;
+  const patient = await registerPatient(api, orgSlug, "Ready Before Bed");
+
+  const admission = await api.ipd.admit({
+    orgSlug,
+    patientId: patient.id,
+    practitionerId: hospital.practitioner.id,
+    bedId: beds[0].id,
+    admittedAt: hoursAgo(6),
+    reason: "Night entry",
+  });
+
+  const moved = await api.ipd.transferBed({
+    orgSlug,
+    admissionId: admission.id,
+    expectedRevision: admission.revision,
+    bedId: beds[1].id,
+    effectiveAt: hoursAgo(2),
+    reason: "Moved overnight",
+  });
+
+  await expectORPCCode(
+    api.ipd.markDischargeReady({
+      orgSlug,
+      admissionId: admission.id,
+      expectedRevision: moved.revision,
+      effectiveAt: hoursAgo(4),
+      reason: "Handoff recorded late",
+    }),
+    "BAD_REQUEST",
+  );
+});
+
+test("a stale release cannot clear a newer block on the same bed", async () => {
+  const hospital = await createHospital("ipd-stale-release");
+  const { api, orgSlug, beds } = hospital;
+  await api.ipd.blockBed({ orgSlug, bedId: beds[0].id, reason: "Repairs" });
+  const stale = await boardBed(hospital, beds[0].id);
+  await api.ipd.releaseBed({ orgSlug, bedId: beds[0].id, expectedBlockedAt: stale.blockedAt! });
+  await api.ipd.blockBed({ orgSlug, bedId: beds[0].id, reason: "Deep clean" });
+
+  await expectORPCCode(
+    api.ipd.releaseBed({ orgSlug, bedId: beds[0].id, expectedBlockedAt: stale.blockedAt! }),
+    "CONFLICT",
+  );
+  expect((await boardBed(hospital, beds[0].id)).blockedReason).toBe("Deep clean");
+});
+
+test("admissions list newest admission time first, even when one was backdated", async () => {
+  const hospital = await createHospital("ipd-list-order");
+  const { api, orgSlug, beds, practitioner } = hospital;
+  const recent = await admit(hospital, beds[0].id, "Recent Arrival");
+  const patient = await registerPatient(api, orgSlug, "Earlier Arrival");
+
+  const earlier = await api.ipd.admit({
+    orgSlug,
+    patientId: patient.id,
+    practitionerId: practitioner.id,
+    bedId: beds[1].id,
+    admittedAt: hoursAgo(5),
+    reason: "Paper register entry",
+  });
+
+  const list = await api.ipd.list({ orgSlug, state: "current" });
+  expect(list.items.map((item) => item.id)).toEqual([recent.admission.id, earlier.id]);
 });
