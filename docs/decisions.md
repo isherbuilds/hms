@@ -973,6 +973,9 @@ volume. Design/accounting approval is not a remaining CA/owner question.
 Reference features and autonomous acceptance do not replace a paying hospital
 or real pilot observations.
 
+2026-11-13: the owner lifted the IPD/ADT build gate for Slice 2; operational
+release to a hospital still needs the gate's evidence.
+
 ### D054 — Revenue control separates posting-period sales, cash and current balances
 
 **Accepted 2026-10-04 on the owner's instruction (autonomous decision, no CA/owner consultation); evidence: [ERPNext Sales Register and ledger reports](https://docs.frappe.io/erpnext/accounting-reports), [Accounts Receivable](https://docs.frappe.io/erpnext/accounts-receivable-and-payable), [Credit Note](https://docs.frappe.io/erpnext/credit-note), [Gross Profit](https://docs.frappe.io/erpnext/sales-analytics), [Tally correction-period Credit Notes](https://help.tallysolutions.com/sales-return-using-credit-note/), [voucher numbering methods](https://help.tallysolutions.com/use-voucher-numbering-methods/), [Sales Register](https://help.tallysolutions.com/how-to-work-with-sales-register-in-tallyprime/), [Marg expiry report](https://care.margcompusoft.com/margerp/expiry-stock/109499/1/how-to-view-expiry-stock-report-in-marg-erp-software), [MRP versus purchase-rate screen](https://care.margcompusoft.com/userfiles/CareImg070620190101479.png), [Bahmni billing and accounting](https://bahmni.atlassian.net/wiki/spaces/BAH/pages/32604217/Patient+Billing+and+Accounting), and [ICAI AS 2](https://resource.cdn.icai.org/27269asb-as-2.pdf).**

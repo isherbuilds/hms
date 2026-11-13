@@ -234,8 +234,9 @@ authorised sample export from an unrelated hospital and its approvers.
 
 ### [IPD admission to discharge](./specs/ipd-admission-to-discharge.md)
 
-**Verification.** On 2026-11-13 the owner lifted the IPD/ADT gate for Slice 2
-only, ahead of Slice 1: wards, bed types with effective-dated daily rates, beds,
+**Verification.** On 2026-11-13 the owner lifted the IPD/ADT build gate for
+Slice 2 only, ahead of Slice 1
+([D056](./decisions.md#d056--calendar-checkout-segmented-occupancy-and-an-ipd-financial-desk)): wards, bed types with effective-dated daily rates, beds,
 the bed board, admit, transfer, ready to leave, departure, cancellation, bed
 block and release, and audited backdating under `ipd:correct`. Integration tests
 cover concurrency, tenancy and grants. No Admission Charges, bed-day billing,

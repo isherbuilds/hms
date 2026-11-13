@@ -1,6 +1,6 @@
 # Spec: IPD admission to discharge
 
-Status: staged draft — design accepted in D056; implementation remains market-gated
+Status: staged draft — design accepted in D056. The owner lifted the build gate for Slice 2 on 2026-11-13 (D056); other slices and release to a hospital remain market-gated
 Authority: Founder request for implementation-ready next-build options, evaluated only on hospital desire and moat; October 2026.
 Supersedes: none
 
