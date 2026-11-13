@@ -70,6 +70,7 @@ export function gstSummaryRows(lines: TaxedLine[], mixedLines: boolean) {
       taxable: 0n,
       tax: 0n,
     };
+
     row.taxable += line.taxableValue;
     row.tax += line.taxAmount;
     groups.set(line.taxRatePercent, row);
