@@ -56,7 +56,7 @@ administrators, and owners.
 reuse `report:readFinancial`: owner, admin and accountant can read the pages,
 procedures and exports; reception, cashier or pharmacist alone cannot. Every
 request carries `orgSlug`, queries are organization-keyed, and source links
-retain their own billing, OPD or pharmacy permission checks. These reports add
+retain their own billing, OPD, pharmacy or IPD (`ipd:read`) permission checks. These reports add
 no grants, domain tables, source writes, no-show reconciliation, read-audit events
 or alert-resolution workflow. Clinical notes, phone numbers and scans are excluded.
 They cover every Invoice stream (OPD, pharmacy and IPD), not other hospital systems.

@@ -85,7 +85,7 @@ known.
 | Pharmacy return   | Pharmacy sale Sheet               | Pharmacy return / `pharmacyReturns` | Goods coming back against a sale into quarantine, with its Credit Note and any refund                                                                                                                                                       |
 | IPD               | `/$orgSlug/ipd`                   | Admission / `admissions`            | One inpatient stay: bed occupancy history (`admission_bed_stays`) from admission to departure or cancellation, with its Admission Charges and one IPD bill                                                                                  |
 | Inpatient issue   | Admission page, Pharmacy          | `admissionPharmacyIssues`           | Medicines handed to the ward for one admitted Patient: stock leaves the shelf and each line waits as an Admission Charge. No sale, Invoice or Payment                                                                                       |
-| IPD bill          | Admission page                    | `ipd` Invoice                       | The one Invoice for an Admission's pending Charges, issued after the discharge handoff; services add GST on top, medicines carry MRP                                                                                                        |
+| IPD bill          | Admission page                    | `ipd` Invoice                       | The one Invoice for an Admission's pending Charges, issued after the discharge handoff; services carrying GST add it on top only when the hospital has a GSTIN, medicines carry MRP                                                         |
 | Emergency         | future `/$orgSlug/emergency`      | Emergency Case                      | A future emergency workflow with its own lifecycle                                                                                                                                                                                          |
 
 There is no universal care wrapper. OPD Appointments, Admissions, and
@@ -147,10 +147,13 @@ Payment never rewrites the immutable Invoice.
 Inpatient money differs from the counter. An inpatient issue moves stock and
 adds pending Admission Charges; nothing is billed or paid until the IPD bill.
 Each issue line is **bundled** (part of treatment, 0% GST) unless the
-pharmacist marks it **independent** (the Product's own GST). Once the Patient is
+pharmacist of a GST-registered hospital marks it **independent** (sold
+separately, at the Product's own GST); a hospital without a GSTIN has no such choice. Once the Patient is
 ready to leave, billing issues one `ipd` Invoice from every pending Charge and
 may collect against it. Services are priced before GST and medicines at MRP
-with GST inside, so one bill mixes both bases; it never rounds to the rupee.
+with any GST inside, so one bill mixes both bases; it never rounds to the rupee.
+GST is added to a service only when the Service carries a rate and the hospital
+has a GSTIN; without one, the bill carries no GST (D063).
 An issued IPD bill cannot be edited, and Credit Notes on it wait for inpatient
 returns and final settlement (D063).
 
