@@ -1,6 +1,8 @@
 # Facility booking, theatre and care-setting handoffs
 
-Owner: facility scheduling. Planning contract requested 2026-11-13; not shipped.
+Owner: facility scheduling. Planning contract requested 2026-11-13. Bed reservations shipped on 2026-11-13
+([D064](../decisions.md#d064--bed-reservations-holds-expire-by-time-occupied-beds-are-never-promised-and-displacement-is-explicit));
+the theatre slices have not.
 Work status lives in the [registry](../README.md#work-lifecycle).
 
 ## Boundaries

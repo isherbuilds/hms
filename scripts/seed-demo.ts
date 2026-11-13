@@ -28,6 +28,7 @@ import {
   admissionPharmacyIssues,
   admissions,
   bedCategories,
+  bedReservations,
   bedTariffs,
   beds,
   wards,
@@ -2142,6 +2143,112 @@ function billAdmission(admission: SeedAdmission, issuedAt: Date) {
   billAdmission(leftToday, hoursAgo(4));
 }
 
+/* Future bed reservations: two holds arriving soon, two waiting-list requests, one hold
+   whose bed went for maintenance, one lapsed hold, one cancelled and one already
+   admitted. Holds sit on beds that are free and unblocked now, as the app requires. */
+const reservationRows: (typeof bedReservations.$inferInsert)[] = [];
+
+{
+  const general = bedsOf("general");
+  const privateRooms = bedsOf("private");
+  const icu = bedsOf("icu");
+  const hoursAhead = (hours: number) => hoursAgo(-hours);
+
+  // Patients past the IPD block, so no reservation collides with a seeded stay.
+  const [arriving, arrivingTomorrow, waiting, waitingIcu, disrupted, lapsed, cancelled] =
+    patientRows.slice(40, 47);
+
+  const reserve = (
+    patient: (typeof patientRows)[number] | undefined,
+    bed: (typeof bedRows)[number] | null,
+    categoryKey: (typeof ipdServices)[number]["key"],
+    window: { from: Date; to: Date; holdUntil: Date | null },
+    state: Omit<Partial<typeof bedReservations.$inferInsert>, "status"> & {
+      status: (typeof bedReservations.$inferInsert)["status"];
+    },
+  ) => {
+    if (!patient) throw new Error("Seed ran out of patients for reservations");
+    reservationRows.push({
+      id: id("resv"),
+      orgId,
+      patientId: patient.id,
+      categoryId: bedCategoryRows[ipdServices.findIndex((s) => s.key === categoryKey)]!.id,
+      bedId: bed?.id ?? null,
+      plannedArrivalAt: window.from,
+      plannedDepartureAt: window.to,
+      holdUntil: window.holdUntil,
+      createdBy: userId,
+      createdAt: hoursAgo(48),
+      ...state,
+    });
+  };
+
+  reserve(
+    arriving,
+    general[0]!,
+    "general",
+    { from: hoursAhead(3), to: hoursAhead(3 + 24 * 3), holdUntil: hoursAhead(7) },
+    { status: "confirmed", revision: 1 },
+  );
+  reserve(
+    arrivingTomorrow,
+    privateRooms[5]!,
+    "private",
+    { from: hoursAhead(26), to: hoursAhead(26 + 24 * 4), holdUntil: hoursAhead(30) },
+    { status: "confirmed", revision: 1 },
+  );
+  reserve(
+    waiting,
+    null,
+    "general",
+    { from: hoursAhead(24 * 2), to: hoursAhead(24 * 5), holdUntil: null },
+    { status: "requested" },
+  );
+  reserve(
+    waitingIcu,
+    null,
+    "icu",
+    { from: hoursAhead(24 * 3), to: hoursAhead(24 * 6), holdUntil: null },
+    { status: "requested" },
+  );
+  reserve(
+    disrupted,
+    icu[3]!,
+    "icu",
+    { from: hoursAhead(20), to: hoursAhead(20 + 24 * 2), holdUntil: hoursAhead(24) },
+    { status: "disrupted", revision: 2, disruptedReason: "Ventilator under service" },
+  );
+  reserve(
+    lapsed,
+    general[1]!,
+    "general",
+    { from: hoursAgo(10), to: hoursAhead(24 * 2), holdUntil: hoursAgo(4) },
+    { status: "confirmed", revision: 1 },
+  );
+  reserve(
+    cancelled,
+    null,
+    "private",
+    { from: hoursAhead(24 * 4), to: hoursAhead(24 * 7), holdUntil: null },
+    { status: "cancelled", revision: 1, cancelReason: "Surgery postponed by the Patient" },
+  );
+
+  // The ICU Patient admitted 14 hours ago came in on a hold for that bed.
+  const icuStay = stayRows.find((stay) => stay.bedId === icu[0]!.id && stay.endedAt === null)!;
+  const icuAdmission = admissionRows.find((row) => row.id === icuStay.admissionId)!;
+  reserve(
+    patientRows.find((row) => row.id === icuAdmission.patientId),
+    icu[0]!,
+    "icu",
+    {
+      from: new Date(icuAdmission.admittedAt.getTime() - 2 * HOUR_MS),
+      to: new Date(icuAdmission.admittedAt.getTime() + 24 * 3 * HOUR_MS),
+      holdUntil: new Date(icuAdmission.admittedAt.getTime() + 2 * HOUR_MS),
+    },
+    { status: "converted", revision: 2, admissionId: icuAdmission.id },
+  );
+}
+
 const seeding = db.transaction(async (tx) => {
   // Bulk inserts to a remote server can outlast the app's 15s statement timeout.
   await tx.execute(sql`set local statement_timeout = 0`);
@@ -2184,6 +2291,7 @@ const seeding = db.transaction(async (tx) => {
     invoiceLines,
     charges,
     invoices,
+    bedReservations,
     admissionPharmacyIssueLines,
     admissionPharmacyIssues,
     admissionBedStays,
@@ -2313,6 +2421,7 @@ const seeding = db.transaction(async (tx) => {
   await insertAll(bedTariffs, tariffRows);
   await insertAll(admissions, admissionRows);
   await insertAll(admissionBedStays, stayRows);
+  await insertAll(bedReservations, reservationRows);
   await insertAll(admissionPharmacyIssues, issueRows);
   await insertAll(admissionPharmacyIssueLines, issueLineRows);
   await insertAll(pharmacySales, saleRows);
@@ -2470,7 +2579,7 @@ console.info(
     `  ${HISTORY_DAYS + 1} days, ${appointmentRows.length} appointments, ${invoiceRows.length} invoices, ${paymentRows.length} receipts.`,
     `  ${deptRows.length} departments, ${doctorRows.length} doctors, ${patientRows.length} patients.`,
     `  Pharmacy: ${productRows.length} products, ${productBatches.length} batches, ${saleRows.length} counter sales, ${movementRows.length} stock movements.`,
-    `  IPD: ${bedRows.length} beds in ${wardRows.length} wards, ${admissionRows.length} admissions, ${issueRows.length} ward issues.`,
+    `  IPD: ${bedRows.length} beds in ${wardRows.length} wards, ${admissionRows.length} admissions, ${reservationRows.length} reservations, ${issueRows.length} ward issues.`,
     `  ${creditNoteRows.length} credit notes, ${refundRows.length} refunds, ${advanceRows.length} advances, ${planRows.length} treatment plans, ${payerRows.length} payers.`,
     `  Today (${today}): ₹${formatDecimal(collectedToday)} collected.`,
     `  Sign in as ${ACTOR_EMAIL} and open /${SLUG}/dashboard`,

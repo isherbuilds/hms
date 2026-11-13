@@ -1439,3 +1439,45 @@ and [OpenMRS billing improvements 2026](https://openmrs.atlassian.net/wiki/space
   correction path exists. Credit Notes for service lines on `ipd` Invoices are
   built before medicine returns. OpenMRS plans refunds as an approved
   cancel-paid-bill flow; the decision rests mainly on our own gap.
+
+### D064 — Bed reservations: holds expire by time, occupied beds are never promised, and displacement is explicit
+
+**Accepted 2026-11-13 on the owner's instruction for IPD Slice 2 reservations,
+autonomously; to be confirmed by the owner.** Contract:
+[Bed reservations](./specs/facility-booking-and-theatre.md#bed-reservations-ipd-slice-2).
+
+- **Expiry is derived from `holdUntil`.** A requested or confirmed reservation
+  whose `holdUntil` has passed reads as expired. There is no stored `expired`
+  state and no cleanup job; an expired hold promises nothing and cannot convert.
+- **A confirmed hold needs a specific bed that is free, active and unblocked
+  now.** An occupied bed takes a request only, even for later dates. This is
+  the conservative first release the spec asks for.
+- **Any confirmed, unexpired hold blocks a walk-in admission or a transfer onto
+  that bed**, even one days away, because open occupancy has no promised end.
+- **Displacement is explicit.** Admitting or moving over a hold needs
+  `ipd:correct` and a reason, and marks the hold disrupted with that reason; it
+  is never deleted.
+- **Blocks.** A safety block always succeeds and disrupts the bed's holds. The
+  routine cleaning block placed at departure does not; a hold on a bed still
+  blocked at arrival cannot convert until the bed is released. Deactivating a
+  held bed is refused.
+- **Conversion on arrival is atomic** and the admitted time must fall inside
+  the held window; otherwise reschedule first. Failure leaves the Admission, the
+  stay and the reservation unchanged.
+- **Overstay is flagged at read time**, never resolved by evicting the occupant.
+- **From review, migration 0022:** one daily rate per bed type per instant
+  (`bed_tariffs_org_category_effective_uq`), and the cancelled check runs both
+  ways (cancelled exactly when a cancel reason exists).
+
+**Evidence:**
+[Frappe scheduled admission and ADT](https://frappehealth.com/docs/v13/user/manual/en/healthcare/inpatient_record)
+schedules an admission first and allots a vacant bed only at arrival. We depart
+by adding dated holds on a specific bed with an explicit conflict contract.
+[Bahmni surgical blocks](https://bahmni.atlassian.net/wiki/spaces/BAH/pages/703660044/Surgical%2BBlock)
+refuse overlapping blocks for one theatre and surgeon; we apply the same
+no-overlap rule to bed holds, which Bahmni does not document for beds.
+
+**Rejected:** forecast capacity from estimated departures, which would promise
+beds that may not empty; automatic expiry jobs, which add a moving part for a
+state time already gives; and silently overriding holds, which would break a
+promise without a record or a reason.

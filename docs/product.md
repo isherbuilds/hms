@@ -36,8 +36,8 @@ AI reconstruction as the clinical source.
 - Pharmacy products, batch stock, goods receipts, counter sales, returns,
   quarantine, stock adjustments, and movement history.
 - IPD Slices 1–2, on the owner's instruction: wards, beds, the bed board,
-  admission to departure, inpatient medicine issue, posted services and one IPD
-  bill per Admission.
+  admission to departure, future bed reservations, inpatient medicine issue,
+  posted services and one IPD bill per Admission.
 - Dashboard, billing worklists, and the five [reports](./reports.md).
 - Organization access, member administration, files, audit, security headers,
   production images, and upload cleanup.
@@ -86,7 +86,22 @@ known.
 | IPD               | `/$orgSlug/ipd`                   | Admission / `admissions`            | One inpatient stay: bed occupancy history (`admission_bed_stays`) from admission to departure or cancellation, with its Admission Charges and one IPD bill                                                                                  |
 | Inpatient issue   | Admission page, Pharmacy          | `admissionPharmacyIssues`           | Medicines handed to the ward for one admitted Patient: stock leaves the shelf and each line waits as an Admission Charge. No sale, Invoice or Payment                                                                                       |
 | IPD bill          | Admission page                    | `ipd` Invoice                       | The one Invoice for an Admission's pending Charges, issued after the discharge handoff; services carrying GST add it on top only when the hospital has a GSTIN, medicines carry MRP                                                         |
+| Reservation       | IPD → Reservations                | Bed reservation / `bedReservations` | A planned admission's future claim on a bed type or one bed, for a dated window                                                                                                                                                             |
 | Emergency         | future `/$orgSlug/emergency`      | Emergency Case                      | A future emergency workflow with its own lifecycle                                                                                                                                                                                          |
+
+Bed reservation terms:
+
+- **Reservation:** a planned admission for one Patient: a bed type, an optional
+  bed and a planned arrival and departure. It is neither occupancy nor a Charge;
+  only an Admission occupies a bed, and nothing is billed or paid for a
+  reservation.
+- **Waiting list:** a requested reservation with no bed held. It promises no
+  capacity.
+- **Hold:** a confirmed reservation on one free bed until **Hold until**. Other
+  holds cannot overlap it, and a walk-in cannot take that bed. After **Hold
+  until** the hold has lapsed and promises nothing.
+- **Disrupted:** a hold whose bed was blocked or taken over with a reason. It
+  promises nothing until it is held on a ready bed again or cancelled.
 
 There is no universal care wrapper. OPD Appointments, Admissions, and
 future Emergency Cases own separate tables and state machines. Typed child

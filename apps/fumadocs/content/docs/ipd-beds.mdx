@@ -34,6 +34,53 @@ or **Blocked**. An occupied bed shows the Patient and opens their admission.
   repairs.
 - **Release bed** puts a blocked bed back in use once it is clean.
 
+## Reserve a bed for a planned admission
+
+For reception. Open **IPD**, then **Reservations**. Choose **Reserve a bed**,
+find the Patient, choose the bed type and the planned arrival and departure.
+
+- A **request** asks for a bed type and goes on the **Waiting list**. It does
+  not keep any bed free.
+- A **held bed** keeps one bed for that Patient. Choose **Hold a bed**, pick a
+  free bed and set **Hold until**: the latest time you will keep the bed if the
+  Patient has not arrived. Nobody else can be admitted or moved into a held bed.
+
+Only a free bed can be held. A bed with a Patient in it cannot be held, even for
+next week: nobody knows for certain when that Patient will leave. Put the
+Patient on the waiting list and hold a bed once one is free.
+
+The views:
+
+- **Arrivals**: held beds with Patients due in the next two days.
+- **Waiting list**: requests that still need a bed.
+- **Needs attention**: reservations that need a decision now.
+- **All**: every reservation.
+
+When the Patient arrives, choose **Admit** on their reservation. The admission
+uses the held bed. If they come outside the planned dates, **Change dates**
+first. **Cancel reservation** needs a reason.
+
+Under **Needs attention**:
+
+- **Needs a bed again**: the held bed was blocked or someone was admitted to it.
+  Hold another bed or cancel the reservation.
+- **Hold lapsed**: **Hold until** passed before the Patient arrived. The bed is
+  no longer kept. **Change dates** with a new **Hold until** to keep it again,
+  or cancel.
+
+A held bed whose current Patient has not left by the planned arrival also shows
+here. Nobody is moved out: find the arriving Patient another bed or change the
+dates.
+
+Blocking a bed, for example for repairs, always works. Any holds on it move to
+**Needs attention** so you can give those Patients another bed. A bed blocked
+only for cleaning after a departure keeps its later holds; release it before the
+next Patient arrives. A held bed cannot be retired.
+
+Only an owner or administrator can admit or move a Patient into a bed held for
+someone else, and they must give a reason. That reservation then shows **Needs a
+bed again**.
+
 ## During the stay
 
 Open the admission from the board or from **Admissions**.

@@ -250,6 +250,21 @@ open. Still owed for Slice 2: screenshots of every Slice 2 screen at desktop
 dark and phone light (frame capture failed; no overflow was measured), and
 choosing the doctor and submitting Admit by keyboard alone.
 
+Slice 2 reservations are built
+([D064](./decisions.md#d064--bed-reservations-holds-expire-by-time-occupied-beds-are-never-promised-and-displacement-is-explicit)):
+waiting-list requests, dated holds on a free bed, expiry by time, conversion on
+arrival, holds respected by admit, transfer, block and retire, and explicit
+displacement under `ipd:correct`. Procedures `requestBed`,
+`confirmBedReservation`, `rescheduleBedReservation`, `cancelBedReservation` and
+`listBedReservations`, plus `reservationId` and `displace` on `admit` and
+`displace` on `transferBed`. Spec and tenancy tests pass:
+`tests/integration/bed-reservations.test.ts` and the tenancy guard table. The
+demo seed carries two holds arriving today and tomorrow, two waiting-list
+requests, a disrupted hold, a lapsed hold, a cancelled reservation and one
+converted on arrival.
+
+**Reservations browser verification: pending.**
+
 Slice 1 built inpatient medicine issue (`pharmacy.issueToAdmission`, each line
 bundled or independent), posted services (`ipd.postServices`), and one `ipd`
 Invoice per Admission (`ipd.previewInvoice`, `ipd.issueInvoice`) on a
@@ -294,6 +309,9 @@ Claude failed authentication (Cloudflare 403); Gemini hit its monthly quota, so
 there is no three-provider council sign-off. On 2026-11-13 the owner asked for
 bed reservations and the theatre resource schedule to be built ahead of the
 product and clinical gates; operational release still waits for those gates.
+Bed reservations are built (D064; see
+[IPD admission to discharge](#ipd-admission-to-discharge)). The theatre resource
+schedule is in progress.
 
 ### [Cashless claims](./specs/cashless-claims.md)
 
