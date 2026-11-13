@@ -241,19 +241,22 @@ leave, departure, cancellation, bed block and release, and audited backdating
 under `ipd:correct`. A production build passed on the seeded demo org: reception
 admitted, moved, marked ready and recorded departure on desktop light; the board
 and an admission fit a 390px phone in dark; an administrator added a bed, and
-retiring an occupied bed was refused. Still owed for Slice 2: a two-terminal
-conflict check and a stale **Release bed** in the browser, and desktop dark and
-phone light.
+retiring an occupied bed was refused. A second pass (GPT 6.1 Sol) confirmed
+two-terminal refusals for move, ready and departure, a stale **Release bed**
+refused with the newer block kept, and an earlier-time clash keeping the dialog
+open. Still owed for Slice 2: screenshots of every Slice 2 screen at desktop
+dark and phone light (frame capture failed; no overflow was measured), and
+choosing the doctor and submitting Admit by keyboard alone.
 
 Slice 1 built inpatient medicine issue (`pharmacy.issueToAdmission`, each line
 bundled or independent), posted services (`ipd.postServices`), and one `ipd`
 Invoice per Admission (`ipd.previewInvoice`, `ipd.issueInvoice`) on a
 per-line price basis with stored `addedTaxTotal`; cancellation is refused once a
-Charge or issue exists. 66 spec, tenancy and unit tests pass:
+Charge or issue exists. Its spec, tenancy and unit tests pass:
 `tests/integration/ipd-billing.test.ts`, the tenancy guard table,
 `tests/unit/invoice-math-basis.test.ts` and `tests/unit/ipd-invoice-print.test.ts`.
-The demo seed carries an admitted stay with pending issues and a 5% service, a
-ready-to-bill stay, and a departed stay with a paid mixed-basis `ipd` Invoice.
+The demo seed carries an admitted stay with pending issues and a service, a
+ready-to-bill stay, and a departed stay with a paid `ipd` Invoice.
 
 On 2026-11-13 a production build passed a browser pass (GPT 6.1 Sol) on the
 seeded demo org: the pharmacist issued two medicines on different supply bases
