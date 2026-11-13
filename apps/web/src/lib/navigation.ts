@@ -151,12 +151,18 @@ export const PHARMACY_TABS: readonly PharmacyTab[] = [
   { to: "/$orgSlug/pharmacy/movements", label: "Movements", permission: { pharmacy: ["read"] } },
 ];
 
-type IpdTab = NavEntry<"/$orgSlug/ipd" | "/$orgSlug/ipd/admissions" | "/$orgSlug/ipd/facility">;
+type IpdTab = NavEntry<
+  | "/$orgSlug/ipd"
+  | "/$orgSlug/ipd/admissions"
+  | "/$orgSlug/ipd/reservations"
+  | "/$orgSlug/ipd/facility"
+>;
 
 // Admitting is a task opened from a free bed on the board, not a tab.
 export const IPD_TABS: readonly IpdTab[] = [
   { to: "/$orgSlug/ipd", label: "Beds", permission: { ipd: ["read"] } },
   { to: "/$orgSlug/ipd/admissions", label: "Admissions", permission: { ipd: ["read"] } },
+  { to: "/$orgSlug/ipd/reservations", label: "Reservations", permission: { ipd: ["read"] } },
   {
     to: "/$orgSlug/ipd/facility",
     label: "Wards and beds",

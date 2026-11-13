@@ -32,6 +32,7 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   run,
   done,
   onClose,
+  onError,
   contentClassName,
   children,
 }: {
@@ -45,6 +46,8 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   /** Keeps the dialog open on success, showing the document the call produced. */
   done?: (result: R) => Printed;
   onClose: () => void;
+  /** Replaces closing on CONFLICT, for a dialog that shows a refusal and offers a way on. */
+  onError?: (error: Error, value: z.output<T>) => void;
   contentClassName?: string;
   children: ReactNode;
 }) {
@@ -59,7 +62,7 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
       else onClose();
       toast.success(success);
     },
-    onError: closeOnConflict(onClose),
+    onError: onError ?? closeOnConflict(onClose),
   });
 
   return (

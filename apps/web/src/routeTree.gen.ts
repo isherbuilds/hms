@@ -40,6 +40,7 @@ import { Route as OrgSlugIpdIndexRouteImport } from './routes/$orgSlug/ipd/index
 import { Route as OrgSlugIpdAdmissionIdRouteImport } from './routes/$orgSlug/ipd/$admissionId'
 import { Route as OrgSlugIpdAdmissionsRouteImport } from './routes/$orgSlug/ipd/admissions'
 import { Route as OrgSlugIpdFacilityRouteImport } from './routes/$orgSlug/ipd/facility'
+import { Route as OrgSlugIpdReservationsRouteImport } from './routes/$orgSlug/ipd/reservations'
 import { Route as OrgSlugOpdIndexRouteImport } from './routes/$orgSlug/opd/index'
 import { Route as OrgSlugOpdAppointmentIdRouteRouteImport } from './routes/$orgSlug/opd/$appointmentId/route'
 import { Route as OrgSlugOpdNewRouteImport } from './routes/$orgSlug/opd/new'
@@ -233,6 +234,11 @@ const OrgSlugIpdAdmissionsRoute = OrgSlugIpdAdmissionsRouteImport.update({
 const OrgSlugIpdFacilityRoute = OrgSlugIpdFacilityRouteImport.update({
   id: '/facility',
   path: '/facility',
+  getParentRoute: () => OrgSlugIpdRouteRoute,
+} as any)
+const OrgSlugIpdReservationsRoute = OrgSlugIpdReservationsRouteImport.update({
+  id: '/reservations',
+  path: '/reservations',
   getParentRoute: () => OrgSlugIpdRouteRoute,
 } as any)
 const OrgSlugOpdIndexRoute = OrgSlugOpdIndexRouteImport.update({
@@ -486,6 +492,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/ipd/$admissionId': typeof OrgSlugIpdAdmissionIdRoute
   '/$orgSlug/ipd/admissions': typeof OrgSlugIpdAdmissionsRoute
   '/$orgSlug/ipd/facility': typeof OrgSlugIpdFacilityRoute
+  '/$orgSlug/ipd/reservations': typeof OrgSlugIpdReservationsRoute
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
   '/$orgSlug/pharmacy/inpatient': typeof OrgSlugPharmacyInpatientRoute
   '/$orgSlug/pharmacy/items': typeof OrgSlugPharmacyItemsRoute
@@ -552,6 +559,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/ipd/$admissionId': typeof OrgSlugIpdAdmissionIdRoute
   '/$orgSlug/ipd/admissions': typeof OrgSlugIpdAdmissionsRoute
   '/$orgSlug/ipd/facility': typeof OrgSlugIpdFacilityRoute
+  '/$orgSlug/ipd/reservations': typeof OrgSlugIpdReservationsRoute
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
   '/$orgSlug/pharmacy/inpatient': typeof OrgSlugPharmacyInpatientRoute
   '/$orgSlug/pharmacy/items': typeof OrgSlugPharmacyItemsRoute
@@ -625,6 +633,7 @@ export interface FileRoutesById {
   '/$orgSlug/ipd/$admissionId': typeof OrgSlugIpdAdmissionIdRoute
   '/$orgSlug/ipd/admissions': typeof OrgSlugIpdAdmissionsRoute
   '/$orgSlug/ipd/facility': typeof OrgSlugIpdFacilityRoute
+  '/$orgSlug/ipd/reservations': typeof OrgSlugIpdReservationsRoute
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
   '/$orgSlug/pharmacy/inpatient': typeof OrgSlugPharmacyInpatientRoute
   '/$orgSlug/pharmacy/items': typeof OrgSlugPharmacyItemsRoute
@@ -699,6 +708,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/ipd/$admissionId'
     | '/$orgSlug/ipd/admissions'
     | '/$orgSlug/ipd/facility'
+    | '/$orgSlug/ipd/reservations'
     | '/$orgSlug/opd/new'
     | '/$orgSlug/pharmacy/inpatient'
     | '/$orgSlug/pharmacy/items'
@@ -765,6 +775,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/ipd/$admissionId'
     | '/$orgSlug/ipd/admissions'
     | '/$orgSlug/ipd/facility'
+    | '/$orgSlug/ipd/reservations'
     | '/$orgSlug/opd/new'
     | '/$orgSlug/pharmacy/inpatient'
     | '/$orgSlug/pharmacy/items'
@@ -837,6 +848,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/ipd/$admissionId'
     | '/$orgSlug/ipd/admissions'
     | '/$orgSlug/ipd/facility'
+    | '/$orgSlug/ipd/reservations'
     | '/$orgSlug/opd/new'
     | '/$orgSlug/pharmacy/inpatient'
     | '/$orgSlug/pharmacy/items'
@@ -1119,6 +1131,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugIpdFacilityRouteImport
       parentRoute: typeof OrgSlugIpdRouteRoute
     }
+    '/$orgSlug/ipd/reservations': {
+      id: '/$orgSlug/ipd/reservations'
+      path: '/reservations'
+      fullPath: '/$orgSlug/ipd/reservations'
+      preLoaderRoute: typeof OrgSlugIpdReservationsRouteImport
+      parentRoute: typeof OrgSlugIpdRouteRoute
+    }
     '/$orgSlug/opd/': {
       id: '/$orgSlug/opd/'
       path: '/opd'
@@ -1399,6 +1418,7 @@ interface OrgSlugIpdRouteRouteChildren {
   OrgSlugIpdAdmissionIdRoute: typeof OrgSlugIpdAdmissionIdRoute
   OrgSlugIpdAdmissionsRoute: typeof OrgSlugIpdAdmissionsRoute
   OrgSlugIpdFacilityRoute: typeof OrgSlugIpdFacilityRoute
+  OrgSlugIpdReservationsRoute: typeof OrgSlugIpdReservationsRoute
   OrgSlugIpdIndexRoute: typeof OrgSlugIpdIndexRoute
 }
 
@@ -1406,6 +1426,7 @@ const OrgSlugIpdRouteRouteChildren: OrgSlugIpdRouteRouteChildren = {
   OrgSlugIpdAdmissionIdRoute: OrgSlugIpdAdmissionIdRoute,
   OrgSlugIpdAdmissionsRoute: OrgSlugIpdAdmissionsRoute,
   OrgSlugIpdFacilityRoute: OrgSlugIpdFacilityRoute,
+  OrgSlugIpdReservationsRoute: OrgSlugIpdReservationsRoute,
   OrgSlugIpdIndexRoute: OrgSlugIpdIndexRoute,
 }
 

@@ -120,12 +120,41 @@ function BedBoardRoute() {
       </PageBody>
 
       {admitting ? (
-        <AdmitDialog orgSlug={orgSlug} bed={admitting} onClose={() => setAdmitting(null)} />
+        <AdmitDialog
+          orgSlug={orgSlug}
+          bed={{ ...admitting, held: admitting.holds.length > 0 }}
+          onClose={() => setAdmitting(null)}
+        />
       ) : null}
       {blocking ? (
-        <BlockBedDialog orgSlug={orgSlug} bed={blocking} onClose={() => setBlocking(null)} />
+        <BlockBedDialog
+          orgSlug={orgSlug}
+          bed={{ ...blocking, holds: blocking.holds.length }}
+          onClose={() => setBlocking(null)}
+        />
       ) : null}
     </>
+  );
+}
+
+const SHOWN_HOLDS = 2;
+
+// Holds are promises for later, not occupancy: listed apart from the occupant and the block.
+function BedHolds({ holds }: { holds: BoardBed["holds"] }) {
+  const { timeZone } = useOrgDateTime();
+
+  if (holds.length === 0) return null;
+
+  return (
+    <ul className="flex flex-col text-muted-foreground">
+      {holds.slice(0, SHOWN_HOLDS).map((hold) => (
+        <li key={hold.reservationId} className="truncate">
+          Held for <span className="capitalize">{hold.patientName}</span> ·{" "}
+          <span className="tabular-nums">{formatDateTime(hold.plannedArrivalAt, timeZone)}</span>
+        </li>
+      ))}
+      {holds.length > SHOWN_HOLDS ? <li>+{holds.length - SHOWN_HOLDS} more</li> : null}
+    </ul>
   );
 }
 
@@ -179,6 +208,7 @@ function BedTile({
             <span className="font-mono">{admission.mrn}</span> · since{" "}
             {formatDateTime(admission.admittedAt, timeZone)}
           </span>
+          <BedHolds holds={bed.holds} />
         </Link>
       </li>
     );
@@ -189,30 +219,36 @@ function BedTile({
       {heading}
       <span className="text-muted-foreground">{bed.categoryName}</span>
       {bed.status === "blocked" ? (
-        <>
-          <span className="truncate text-muted-foreground" title={bed.blockedReason ?? undefined}>
-            {bed.blockedReason}
-          </span>
-          {canUpdate ? (
-            <Button
-              className="mt-auto self-start"
-              variant="outline"
-              aria-label={`Release bed ${bed.label}`}
-              disabled={release.isPending}
-              onClick={() =>
-                release.mutate({ orgSlug, bedId: bed.id, expectedBlockedAt: bed.blockedAt! })
-              }
-            >
-              Release bed
-            </Button>
-          ) : null}
-        </>
+        <span className="truncate text-muted-foreground" title={bed.blockedReason ?? undefined}>
+          {bed.blockedReason}
+        </span>
+      ) : null}
+      <BedHolds holds={bed.holds} />
+      {bed.status === "blocked" ? (
+        canUpdate ? (
+          <Button
+            className="mt-auto self-start"
+            variant="outline"
+            aria-label={`Release bed ${bed.label}`}
+            disabled={release.isPending}
+            onClick={() =>
+              release.mutate({ orgSlug, bedId: bed.id, expectedBlockedAt: bed.blockedAt! })
+            }
+          >
+            Release bed
+          </Button>
+        ) : null
       ) : (
         <div className="mt-auto flex items-center justify-between gap-2">
           {!bed.rateSet ? (
             <span className="text-muted-foreground">No rate set</span>
           ) : canAdmit ? (
-            <Button aria-label={`Admit to bed ${bed.label}`} onClick={onAdmit}>
+            // A held bed is not free for a walk-in: the dialog shows the server's refusal.
+            <Button
+              variant={bed.holds.length > 0 ? "outline" : "default"}
+              aria-label={`Admit to bed ${bed.label}`}
+              onClick={onAdmit}
+            >
               Admit
             </Button>
           ) : (

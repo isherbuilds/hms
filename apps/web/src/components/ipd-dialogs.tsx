@@ -2,19 +2,22 @@ import { DECIMAL_PATTERN, parseDecimal } from "@hms/api/core/money";
 import { localDateTime } from "@hms/api/lib/business-date";
 import { practitionerDisplayName } from "@hms/api/lib/labels";
 import { Badge } from "@hms/ui/components/badge";
-import { FormControl } from "@hms/ui/components/form";
+import { Checkbox } from "@hms/ui/components/checkbox";
+import { FormControl, FormField, FormItem, FormLabel } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useWatch } from "react-hook-form";
 import { z } from "zod";
 
 import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
 import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
+import { ErrorNote } from "@/components/page";
 import { useCan } from "@/lib/membership";
 import { localInputValue, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
+import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
 
 type AdmissionStatus = "admitted" | "discharge_ready" | "discharged" | "cancelled";
 
@@ -100,6 +103,86 @@ function EarlierTimeFields({ orgSlug, label }: { orgSlug: string; label: string 
   );
 }
 
+// A walk-in onto a held bed is refused; `ipd:correct` may override it with a reason,
+// which turns the bed's holds into reservations that need a bed again.
+const displaceFields = {
+  displace: z.boolean(),
+  displaceReason: z.string().trim().max(500),
+};
+
+function requireDisplaceReason(
+  value: { displace: boolean; displaceReason: string },
+  context: z.RefinementCtx,
+) {
+  if (value.displace && !value.displaceReason) {
+    context.addIssue({
+      code: "custom",
+      path: ["displaceReason"],
+      message: "Give a reason to release the hold",
+    });
+  }
+}
+
+/** Keeps the dialog open on the first hold refusal so it can be shown and, if allowed, overridden. */
+function useHoldRefusal(onClose: () => void) {
+  const [refusal, setRefusal] = useState<string | null>(null);
+
+  const onError = (error: Error, held: boolean, displacing: boolean) => {
+    if (!hasErrorCode(error, "CONFLICT")) return;
+
+    if (held && !displacing && refusal === null) setRefusal(errorMessage(error));
+    else onClose();
+  };
+
+  return { refusal, onError };
+}
+
+function HoldRefusal({
+  orgSlug,
+  refusal,
+  action,
+}: {
+  orgSlug: string;
+  refusal: string | null;
+  action: string;
+}) {
+  const canCorrect = useCan(orgSlug, { ipd: ["correct"] });
+  const displace = useWatch<{ displace: boolean }, "displace">({ name: "displace" });
+
+  if (refusal === null) return null;
+
+  return (
+    <>
+      <ErrorNote
+        title={refusal}
+        detail={canCorrect ? undefined : "Choose another bed, or ask an administrator."}
+      />
+      {canCorrect ? (
+        <>
+          <FormField
+            name="displace"
+            render={({ field }) => (
+              <FormItem className="flex items-center gap-2">
+                <FormControl>
+                  <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+                <FormLabel>{action} anyway and release the hold</FormLabel>
+              </FormItem>
+            )}
+          />
+          {displace ? (
+            <TextField name="displaceReason" label="Reason to release the hold" autoFocus />
+          ) : null}
+        </>
+      ) : null}
+    </>
+  );
+}
+
+function displaceInput(value: { displace: boolean; displaceReason: string }) {
+  return value.displace ? { reason: value.displaceReason } : undefined;
+}
+
 const admitSchema = z
   .object({
     patient: z
@@ -107,30 +190,56 @@ const admitSchema = z
       .refine((patient): patient is SelectedPatient => patient !== null, "Choose the Patient"),
     practitionerId: z.string().min(1, "Choose the admitting doctor"),
     ...earlierTime,
+    ...displaceFields,
   })
-  .superRefine(requireEarlierReason);
+  .superRefine(requireEarlierReason)
+  .superRefine(requireDisplaceReason);
+
+/** The hold being turned into this admission, captured when the dialog opened. */
+export type ArrivingReservation = { id: string; revision: number; patient: SelectedPatient };
 
 export function AdmitDialog({
   orgSlug,
   bed,
+  reservation,
   onClose,
 }: {
   orgSlug: string;
-  bed: { id: string; label: string; wardName: string };
+  bed: { id: string; label: string; wardName: string; held: boolean };
+  reservation?: ArrivingReservation;
   onClose: () => void;
 }) {
   const { timeZone } = useOrgDateTime();
   const practitioners = useQuery(orpc.staff.listPractitioners.queryOptions({ input: { orgSlug } }));
+  const hold = useHoldRefusal(onClose);
 
   return (
     <FormDialog
       title={`Admit to ${bed.wardName} ${bed.label}`}
-      description="The bed shows as occupied from the time of admission."
+      description={
+        reservation ? (
+          <>
+            <span className="capitalize">{reservation.patient.name}</span> (
+            <span className="font-mono">{reservation.patient.mrn}</span>) arrives on their
+            reservation. The bed shows as occupied from the time of admission.
+          </>
+        ) : (
+          "The bed shows as occupied from the time of admission."
+        )
+      }
       submitLabel="Admit"
       schema={admitSchema}
-      defaultValues={{ patient: null, practitionerId: "", earlierAt: "", reason: "" }}
+      defaultValues={{
+        patient: reservation?.patient ?? null,
+        practitionerId: "",
+        earlierAt: "",
+        reason: "",
+        displace: false,
+        displaceReason: "",
+      }}
       success="Patient admitted"
       onClose={onClose}
+      onError={(error, value) => hold.onError(error, bed.held && !reservation, value.displace)}
       run={(value) => {
         const earlier = earlierFields(value, timeZone);
 
@@ -141,16 +250,21 @@ export function AdmitDialog({
           practitionerId: value.practitionerId,
           admittedAt: earlier.at,
           reason: earlier.reason,
+          reservationId: reservation?.id,
+          expectedReservationRevision: reservation?.revision,
+          displace: displaceInput(value),
         });
       }}
     >
-      <ControlledField
-        name="patient"
-        label="Patient"
-        render={(field) => (
-          <OpdPatientSearch orgSlug={orgSlug} selected={field.value} onChange={field.onChange} />
-        )}
-      />
+      {reservation ? null : (
+        <ControlledField
+          name="patient"
+          label="Patient"
+          render={(field) => (
+            <OpdPatientSearch orgSlug={orgSlug} selected={field.value} onChange={field.onChange} />
+          )}
+        />
+      )}
       <ControlledField
         name="practitionerId"
         label="Admitting doctor"
@@ -168,6 +282,7 @@ export function AdmitDialog({
         )}
       />
       <EarlierTimeFields orgSlug={orgSlug} label="Admitted at" />
+      <HoldRefusal orgSlug={orgSlug} refusal={hold.refusal} action="Admit" />
     </FormDialog>
   );
 }
@@ -175,8 +290,9 @@ export function AdmitDialog({
 type AdmissionRef = { id: string; revision: number };
 
 const transferSchema = z
-  .object({ bedId: z.string().min(1, "Choose the new bed"), ...earlierTime })
-  .superRefine(requireEarlierReason);
+  .object({ bedId: z.string().min(1, "Choose the new bed"), ...earlierTime, ...displaceFields })
+  .superRefine(requireEarlierReason)
+  .superRefine(requireDisplaceReason);
 
 export function TransferDialog({
   orgSlug,
@@ -191,10 +307,13 @@ export function TransferDialog({
 }) {
   const { timeZone } = useOrgDateTime();
   const board = useQuery(orpc.ipd.bedBoard.queryOptions({ input: { orgSlug } }));
+  const hold = useHoldRefusal(onClose);
 
   const free = (board.data?.beds ?? []).filter(
     (bed) => bed.status === "available" && bed.id !== currentBedId,
   );
+
+  const held = new Set(free.filter((bed) => bed.holds.length > 0).map((bed) => bed.id));
 
   return (
     <FormDialog
@@ -202,9 +321,10 @@ export function TransferDialog({
       description="The current bed is freed at the moment of the move."
       submitLabel="Move"
       schema={transferSchema}
-      defaultValues={{ bedId: "", earlierAt: "", reason: "" }}
+      defaultValues={{ bedId: "", earlierAt: "", reason: "", displace: false, displaceReason: "" }}
       success="Patient moved"
       onClose={onClose}
+      onError={(error, value) => hold.onError(error, held.has(value.bedId), value.displace)}
       run={(value) => {
         const earlier = earlierFields(value, timeZone);
 
@@ -215,6 +335,7 @@ export function TransferDialog({
           bedId: value.bedId,
           effectiveAt: earlier.at,
           reason: earlier.reason,
+          displace: displaceInput(value),
         });
       }}
     >
@@ -229,6 +350,7 @@ export function TransferDialog({
               {free.map((bed) => (
                 <option key={bed.id} value={bed.id}>
                   {bed.wardName} {bed.label} · {bed.categoryName}
+                  {held.has(bed.id) ? " · held" : ""}
                 </option>
               ))}
             </NativeSelect>
@@ -236,6 +358,7 @@ export function TransferDialog({
         )}
       />
       <EarlierTimeFields orgSlug={orgSlug} label="Moved at" />
+      <HoldRefusal orgSlug={orgSlug} refusal={hold.refusal} action="Move" />
     </FormDialog>
   );
 }
@@ -390,13 +513,21 @@ export function BlockBedDialog({
   onClose,
 }: {
   orgSlug: string;
-  bed: { id: string; label: string };
+  bed: { id: string; label: string; holds: number };
   onClose: () => void;
 }) {
   return (
     <FormDialog
       title={`Block bed ${bed.label}`}
-      description="A blocked bed takes no admissions until it is released."
+      description={
+        bed.holds === 0
+          ? "A blocked bed takes no admissions until it is released."
+          : `A blocked bed takes no admissions until it is released. ${
+              bed.holds === 1
+                ? "The 1 reservation held on it will need a bed again."
+                : `The ${bed.holds} reservations held on it will need a bed again.`
+            }`
+      }
       submitLabel="Block bed"
       schema={reasonSchema}
       defaultValues={{ reason: "" }}
