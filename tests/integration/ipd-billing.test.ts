@@ -56,6 +56,9 @@ function fiscalYearNow(): string {
   return `${startYear}-${String(startYear + 1).slice(-2)}`;
 }
 
+// Most of this suite bills GST, which only a GST-registered hospital may charge.
+const GSTIN = "27ABCDE1234F1Z5";
+
 function settingsInput(
   orgSlug: string,
   seed: string,
@@ -63,6 +66,7 @@ function settingsInput(
     invoicePrefix: string;
     pharmacyInvoicePrefix: string;
     ipdInvoicePrefix: string;
+    gstin: string;
   }> = {},
 ) {
   return {
@@ -70,7 +74,7 @@ function settingsInput(
     legalName: `${seed} Hospital`,
     address: `${seed} Address`,
     taxId: "GSTIN-TEST",
-    gstin: "",
+    gstin: prefixes.gstin ?? GSTIN,
     drugLicence20: "",
     drugLicence21: "",
     currency: "INR",
@@ -92,14 +96,14 @@ let phoneSequence = 5_570_000;
 
 type Hospital = Awaited<ReturnType<typeof createHospital>>;
 
-async function createHospital(seed: string) {
+async function createHospital(seed: string, options: { gstin?: string } = {}) {
   const owner = await createTestUser(`${seed}-owner`);
   const organization = await createOrganization(owner, seed);
   const orgSlug = organization.slug;
   const orgId = organization.id;
   const api = clientFor(owner);
 
-  await api.settings.update(settingsInput(orgSlug, seed));
+  await api.settings.update(settingsInput(orgSlug, seed, { gstin: options.gstin }));
 
   const roomService = await api.catalog.create({
     orgSlug,
@@ -1818,7 +1822,8 @@ test("the IPD invoice prefix defaults to IP, must differ from the other invoice 
 // ── Cutover of the existing streams ─────────────────────────────────────────
 
 test("existing OPD Charges and lines are exclusive, counter Pharmacy ones are inclusive, and the counter still rounds to rupees", async () => {
-  const hospital = await createHospital("ipd-cutover");
+  // Without a GSTIN, as the OPD and counter suites run: this test is about the basis.
+  const hospital = await createHospital("ipd-cutover", { gstin: "" });
   const { api, orgSlug, orgId } = hospital;
   const service = await hospital.createService({ unitPrice: 500_00n, taxRatePercent: "0" });
   phoneSequence += 1;
@@ -2122,4 +2127,69 @@ test("a registered organization's ipd Invoice needs the patient's address, and m
     taxTotal: 300_00n,
     grandTotal: 6_524_00n,
   });
+});
+
+// ── No GSTIN, no GST (CGST Act s.32(1)) ─────────────────────────────────────
+
+test("a hospital without a GSTIN cannot add GST to an inpatient bill", async () => {
+  const hospital = await createHospital("ipd-no-gstin-tax", { gstin: "" });
+  const { orgId, orgSlug, api } = hospital;
+  const { admission } = await readyAdmissionWithService(hospital);
+  const journalsBefore = await journalEntryCount(orgId);
+
+  await expectORPCCode(
+    hospital.issueInvoice(admission.id),
+    "BAD_REQUEST",
+    "GST added without a GSTIN",
+  );
+
+  expect(await db.select().from(invoices).where(eq(invoices.orgId, orgId))).toEqual([]);
+  expect(await counterValue(orgId, `invoice:ipd:${fiscalYearNow()}`)).toBeUndefined();
+  expect(await journalEntryCount(orgId)).toBe(journalsBefore);
+
+  const [taxed] = await admissionCharges(orgId, admission.id);
+  expect(taxed).toMatchObject({ status: "pending", taxRatePercent: "5.00" });
+
+  await api.billing.voidCharge({ orgSlug, chargeId: taxed!.id, reason: "Posted with GST" });
+  const exempt = await hospital.createService({ taxRatePercent: "0" });
+  await hospital.postServices(admission.id, [{ catalogItemId: exempt.id, qty: 1 }]);
+
+  const issued = await hospital.issueInvoice(admission.id);
+
+  const [invoice] = await db
+    .select()
+    .from(invoices)
+    .where(and(eq(invoices.orgId, orgId), eq(invoices.id, issued.invoiceId)));
+
+  expect(invoice).toMatchObject({
+    stream: "ipd",
+    orgGstin: "",
+    taxTotal: 0n,
+    addedTaxTotal: 0n,
+    grandTotal: 6_000_00n,
+  });
+});
+
+test("a hospital without a GSTIN issues medicines only as part of treatment", async () => {
+  const hospital = await createHospital("ipd-no-gstin-supply", { gstin: "" });
+  const { orgId } = hospital;
+  const medicine = await hospital.createMedicine({ taxRatePercent: "12.00" });
+  const { batchId } = await hospital.receive(medicine.productId, { qty: 5 });
+  const { admission } = await hospital.admit(0);
+
+  await expectORPCCode(
+    hospital.issue(admission.id, [{ batchId, qty: 1, supply: "independent" }]),
+    "BAD_REQUEST",
+    "a separately taxed issue without a GSTIN",
+  );
+
+  expect(await issueRows(orgId)).toEqual([]);
+  expect(await admissionCharges(orgId, admission.id)).toEqual([]);
+  expect(await hospital.shelfQty(batchId)).toBe(5);
+
+  await hospital.issue(admission.id, [{ batchId, qty: 1, supply: "bundled" }]);
+
+  const [charge] = await admissionCharges(orgId, admission.id);
+  expect(charge).toMatchObject({ taxRatePercent: "0.00", priceBasis: "inclusive", qty: 1 });
+  expect(await hospital.shelfQty(batchId)).toBe(4);
 });
