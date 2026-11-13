@@ -217,11 +217,35 @@ test("an ipd Invoice mixing an added-GST service with exempt and taxed MRP medic
     orgDrugLicence21: "MH-PUN-21B-0001",
   };
 
-  for (const orgGstin of ["27ABCDE1234F1Z5", ""]) {
+  // Without a GSTIN the bill carries no GST (D063): a 0% service and bundled medicines.
+  const unregisteredLines: InvoiceBundle["lines"] = lines.map((line) => ({
+    ...line,
+    taxableValue: line.lineSubtotal,
+    taxAmount: 0n,
+    gross: line.lineSubtotal,
+    taxRatePercent: "0.00",
+  }));
+
+  const cases = [
+    { invoice: { ...invoice, orgGstin: "27ABCDE1234F1Z5" }, lines },
+    {
+      invoice: {
+        ...invoice,
+        orgGstin: "",
+        subtotal: 6_336_00n,
+        addedTaxTotal: 0n,
+        taxTotal: 0n,
+        grandTotal: 6_336_00n,
+      },
+      lines: unregisteredLines,
+    },
+  ];
+
+  for (const billed of cases) {
     for (const layout of ["a4", "thermal"] as const) {
       const pdf = await renderBillingPdf({
         kind: "invoice",
-        data: { ...data, invoice: { ...invoice, orgGstin }, lines },
+        data: { ...data, ...billed },
         documentId: null,
         layout,
       });

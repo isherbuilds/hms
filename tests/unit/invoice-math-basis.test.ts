@@ -149,6 +149,7 @@ test("mixed lines add tax to the exclusive service and extract it from the inclu
     0n,
     663_600n,
   ]);
+  expect(result.addedTaxTotal).toBe(30_000n);
   expectHeaderSums(result);
 });
 
