@@ -60,7 +60,7 @@ same transaction; they stay visible for reassignment or cancellation and are not
 cancelled or reassigned by it. A safety block must still be recorded promptly;
 authorized staff mark affected holds disrupted and put them on the resolution
 worklist in that same transaction rather than suppressing the block or hiding the
-holds. Actual overstay remains authoritative and raises disruption without eviction.
+holds. Because every occupancy writer resolves the bed's other holds first, a live hold never sits behind an occupant; a stay is never ended to honour a booking.
 
 Longer real stays never force discharge or silently move a patient to satisfy a
 booking. Surface the affected reservation for reassignment/cancellation. An urgent

@@ -138,6 +138,7 @@ function AdmissionsRoute() {
               ]}
               rows={items}
               rowKey={(item) => item.id}
+              wrap
               link={(item) => ({
                 to: "/$orgSlug/ipd/$admissionId",
                 params: { orgSlug, admissionId: item.id },
