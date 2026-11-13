@@ -92,6 +92,7 @@ test("an exempt line names its basis without a GST claim; taxed lines add or inc
 
 test("an ipd Invoice prints GST columns only when registered and a line carries GST", () => {
   const registered = { orgGstin: GSTIN, stream: "ipd" as const };
+
   const cases = [
     { invoice: registered, lines: [bundledMedicine], title: "Bill of Supply", taxed: false },
     {
