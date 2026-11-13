@@ -660,6 +660,49 @@ const GUARDED_CALLS = {
     }),
   "pharmacy.getSale": (api, claim) => api.pharmacy.getSale({ ...claim, saleId: "missing" }),
   "pharmacy.listSales": (api, claim) => api.pharmacy.listSales({ ...claim }),
+  "ipd.facility": (api, claim) => api.ipd.facility({ ...claim }),
+  "ipd.createWard": (api, claim) => api.ipd.createWard({ ...claim, name: "Intrusion" }),
+  "ipd.createBedCategory": (api, claim) =>
+    api.ipd.createBedCategory({ ...claim, name: "Intrusion" }),
+  "ipd.setBedTariff": (api, claim) =>
+    api.ipd.setBedTariff({
+      ...claim,
+      categoryId: "missing",
+      catalogItemId: "missing",
+      dailyPrice: 1n,
+      effectiveFrom: new Date(),
+    }),
+  "ipd.createBed": (api, claim) =>
+    api.ipd.createBed({ ...claim, wardId: "missing", categoryId: "missing", label: "X" }),
+  "ipd.setBedActive": (api, claim) =>
+    api.ipd.setBedActive({ ...claim, bedId: "missing", active: false }),
+  "ipd.blockBed": (api, claim) => api.ipd.blockBed({ ...claim, bedId: "missing", reason: "x" }),
+  "ipd.releaseBed": (api, claim) => api.ipd.releaseBed({ ...claim, bedId: "missing" }),
+  "ipd.bedBoard": (api, claim) => api.ipd.bedBoard({ ...claim }),
+  "ipd.list": (api, claim) => api.ipd.list({ ...claim }),
+  "ipd.get": (api, claim) => api.ipd.get({ ...claim, admissionId: "missing" }),
+  "ipd.admit": (api, claim) =>
+    api.ipd.admit({ ...claim, patientId: "missing", practitionerId: "missing", bedId: "missing" }),
+  "ipd.transferBed": (api, claim) =>
+    api.ipd.transferBed({
+      ...claim,
+      admissionId: "missing",
+      expectedRevision: 0,
+      bedId: "missing",
+    }),
+  "ipd.markDischargeReady": (api, claim) =>
+    api.ipd.markDischargeReady({ ...claim, admissionId: "missing", expectedRevision: 0 }),
+  "ipd.undoDischargeReady": (api, claim) =>
+    api.ipd.undoDischargeReady({
+      ...claim,
+      admissionId: "missing",
+      expectedRevision: 0,
+      reason: "x",
+    }),
+  "ipd.discharge": (api, claim) =>
+    api.ipd.discharge({ ...claim, admissionId: "missing", expectedRevision: 0 }),
+  "ipd.cancel": (api, claim) =>
+    api.ipd.cancel({ ...claim, admissionId: "missing", expectedRevision: 0, reason: "x" }),
 } satisfies Record<string, (api: AppRouterClient, claim: OrgClaim) => Promise<object | void>>;
 
 // SAFETY: deliberately empty claim, typed only to reach the procedure signatures.
