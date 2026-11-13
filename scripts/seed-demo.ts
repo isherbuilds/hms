@@ -2007,6 +2007,7 @@ function billAdmission(admission: SeedAdmission, issuedAt: Date) {
     orgLegalName: HOSPITAL.legalName,
     orgAddress: HOSPITAL.address,
     orgTaxId: HOSPITAL.taxId,
+    orgGstin: settings.gstin,
     currency: "INR",
     patientName: patient.name,
     patientMrn: patient.mrn,
