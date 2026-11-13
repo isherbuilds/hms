@@ -246,8 +246,10 @@ and an admission fit a 390px phone in dark; an administrator added a bed, and
 retiring an occupied bed was refused. A second pass (GPT 6.1 Sol) confirmed
 two-terminal refusals for move, ready and departure, a stale **Release bed**
 refused with the newer block kept, and an earlier-time clash keeping the dialog
-open. The desktop-dark and phone-light inspection and the keyboard-only Admit
-that Slice 2 still owed were done in the reservations pass below.
+open. The reservations pass below did the keyboard-only Admit and inspected
+the four Slice 2 pages at desktop dark and phone light. Still owed for Slice 2:
+its dialogs (admit, move, ready to leave, departure, cancel, block) at those two
+sizes.
 
 Slice 2 reservations are built
 ([D064](./decisions.md#d064--bed-reservations-holds-expire-by-time-occupied-beds-are-never-promised-and-displacement-is-explicit)):
@@ -271,7 +273,7 @@ refused while another reservation is on the bed, a late arrival can be extended,
 a stale dialog closes, and each refusal shows once. It also completed Reserve a
 bed and Admit, including choosing the doctor, by keyboard alone, and inspected
 the bed board, admissions list, an admission and the setup page at desktop dark
-and phone light, which closes what Slice 2 still owed. Not seen in a browser:
+and phone light. Not seen in a browser:
 Admit appearing as the arrival minute passes, **Load more** on All, and the fixes
 made after the second pass (phone wrapping on the admissions and setup lists,
 the lapsed-hold form, the rate gate on Admit).
