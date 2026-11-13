@@ -30,6 +30,7 @@ import {
   expectedChargeRevision,
   lockAdmissionCharges,
   requireChargeable,
+  requireUnbilled,
 } from "../lib/admission-charges";
 import {
   billingDocumentContext,
@@ -1060,6 +1061,8 @@ export const ipdRouter = {
       const admission = await db.transaction(async (tx) => {
         const row = await lockAdmission(tx, scope.orgId, input.admissionId, input.expectedRevision);
         requireStatus(row, ["discharge_ready"], "This admission is not waiting for discharge.");
+        // A billed stay takes no further Charge, so it cannot return to care.
+        await requireUnbilled(tx, scope.orgId, row.id);
 
         const stay = await openStay(tx, scope.orgId, row.id);
 
@@ -1269,63 +1272,55 @@ export const ipdRouter = {
     const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
     const invoiceId = Bun.randomUUIDv7();
 
-    const result = await db
-      .transaction(async (tx) => {
-        const admission = await lockAdmissionCharges(tx, scope.orgId, input.admissionId);
+    const result = await db.transaction(async (tx) => {
+      const admission = await lockAdmissionCharges(tx, scope.orgId, input.admissionId);
 
-        await requireChargeable(tx, scope.orgId, admission, {
-          allowed: ["discharge_ready", "discharged"],
-          message: "Mark the Patient ready for discharge before issuing the bill.",
-          expectedChargeRevision: input.expectedChargeRevision,
-        });
-
-        const guardian = guardianLabel(admission.patient);
-
-        const issued = await issueInvoiceTx(tx, {
-          scope,
-          parent: {
-            stream: "ipd",
-            admissionId: admission.id,
-            patient: {
-              id: admission.patient.id,
-              name: admission.patient.name,
-              mrn: admission.patient.mrn,
-              phone: admission.patient.phone,
-              address: admission.patient.address,
-              guardian: guardian ? `${guardian.relation} ${guardian.name}` : null,
-            },
-          },
-          discountAmount: 0n,
-          note: input.outstandingReason,
-          settings,
-          now,
-          fiscalYear,
-          invoiceId,
-        });
-
-        const payments = await settleIssuedInvoiceTx(tx, {
-          scope,
-          invoice: issued.invoice,
-          expectedGrandTotal: input.expectedGrandTotal,
-          payments: input.payments,
-          applyCredit: 0n,
-          outstandingReason: input.outstandingReason,
-          settings,
-          now,
-          fiscalYear,
-        });
-
-        const chargeRevision = await bumpChargeRevision(tx, scope.orgId, admission.id);
-
-        return { invoice: issued.invoice, payments, chargeRevision };
-      })
-      .catch((error: unknown) => {
-        if (uniqueViolationConstraint(error) === "invoices_org_admission_idx") {
-          throw new ORPCError("CONFLICT", { message: "This admission has already been billed." });
-        }
-
-        throw error;
+      await requireChargeable(tx, scope.orgId, admission, {
+        allowed: ["discharge_ready", "discharged"],
+        message: "Mark the Patient ready for discharge before issuing the bill.",
+        expectedChargeRevision: input.expectedChargeRevision,
       });
+
+      const guardian = guardianLabel(admission.patient);
+
+      const issued = await issueInvoiceTx(tx, {
+        scope,
+        parent: {
+          stream: "ipd",
+          admissionId: admission.id,
+          patient: {
+            id: admission.patient.id,
+            name: admission.patient.name,
+            mrn: admission.patient.mrn,
+            phone: admission.patient.phone,
+            address: admission.patient.address,
+            guardian: guardian ? `${guardian.relation} ${guardian.name}` : null,
+          },
+        },
+        discountAmount: 0n,
+        note: input.outstandingReason,
+        settings,
+        now,
+        fiscalYear,
+        invoiceId,
+      });
+
+      const payments = await settleIssuedInvoiceTx(tx, {
+        scope,
+        invoice: issued.invoice,
+        expectedGrandTotal: input.expectedGrandTotal,
+        payments: input.payments,
+        applyCredit: 0n,
+        outstandingReason: input.outstandingReason,
+        settings,
+        now,
+        fiscalYear,
+      });
+
+      const chargeRevision = await bumpChargeRevision(tx, scope.orgId, admission.id);
+
+      return { invoice: issued.invoice, payments, chargeRevision };
+    });
 
     audit({
       action: "ipd.issueInvoice",

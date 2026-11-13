@@ -56,20 +56,25 @@ export async function requireChargeable(
     throw new ORPCError("CONFLICT", { message: rule.message });
   }
 
-  const [billed] = await tx
-    .select({ id: invoices.id })
-    .from(invoices)
-    .where(and(eq(invoices.orgId, orgId), eq(invoices.admissionId, admission.id)))
-    .limit(1);
-
-  if (billed) {
-    throw new ORPCError("CONFLICT", { message: "This admission has already been billed." });
-  }
+  await requireUnbilled(tx, orgId, admission.id);
 
   if (admission.chargeRevision !== rule.expectedChargeRevision) {
     throw new ORPCError("CONFLICT", {
       message: "The charges changed. Review the bill and try again",
     });
+  }
+}
+
+/** The one-bill rule; the caller holds the Admission row lock. */
+export async function requireUnbilled(tx: DbTransaction, orgId: string, admissionId: string) {
+  const [billed] = await tx
+    .select({ id: invoices.id })
+    .from(invoices)
+    .where(and(eq(invoices.orgId, orgId), eq(invoices.admissionId, admissionId)))
+    .limit(1);
+
+  if (billed) {
+    throw new ORPCError("CONFLICT", { message: "This admission has already been billed." });
   }
 }
 

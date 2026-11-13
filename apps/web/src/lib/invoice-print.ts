@@ -1,16 +1,14 @@
 // What an issued Invoice prints, decided from its GSTIN snapshot, stream and lines (D052).
 // An ipd Invoice can mix tax-exclusive services with MRP medicines, taxed or exempt, so its
 // title, columns and tax rows come from its lines rather than from the stream alone.
+import type { InvoiceStream, PriceBasis } from "@hms/api/lib/invoice-math";
 
-/** Declared here so ipd prints correctly before the API's Invoice type gains the stream. */
-export type InvoicePrintStream = "opd" | "pharmacy" | "ipd";
-
-type PrintedInvoice = { orgGstin: string; stream: InvoicePrintStream };
+type PrintedInvoice = { orgGstin: string; stream: InvoiceStream };
 
 type RatedLine = { taxRatePercent: string };
 
 type TaxedLine = RatedLine & {
-  priceBasis: "exclusive" | "inclusive";
+  priceBasis: PriceBasis;
   taxableValue: bigint;
   taxAmount: bigint;
 };
@@ -62,7 +60,7 @@ export function invoiceTaxBreakdown(lines: TaxedLine[]) {
  * `mixedLines`: lines may differ in price basis and exemption, so each line names its
  * basis, 0% prints as Exempt, and the totals separate taxable, exempt, added and MRP GST.
  */
-export function invoicePrintParticulars(invoice: { orgGstin: string; stream: InvoicePrintStream }) {
+export function invoicePrintParticulars(invoice: PrintedInvoice) {
   const registered = Boolean(invoice.orgGstin);
 
   switch (invoice.stream) {
@@ -80,16 +78,21 @@ export function invoicePrintParticulars(invoice: { orgGstin: string; stream: Inv
   }
 }
 
-/** How a mixed-line price reads; without GSTIN no tax claim is printed (D052). */
+/**
+ * How a mixed-line price reads. GST is claimed only by a registered organization on a
+ * taxed line (D052); an exempt line names its basis alone.
+ */
 export function linePriceBasis(
   registered: boolean,
-  priceBasis: TaxedLine["priceBasis"],
+  line: RatedLine & { priceBasis: PriceBasis },
 ): { label: string; suffix: string } {
-  switch (priceBasis) {
+  const claimsGst = registered && !isExempt(line);
+
+  switch (line.priceBasis) {
     case "exclusive":
-      return { label: "Rate", suffix: registered ? "+ GST" : "" };
+      return { label: "Rate", suffix: claimsGst ? "+ GST" : "" };
     case "inclusive":
-      return { label: "MRP", suffix: registered ? "incl. GST" : "" };
+      return { label: "MRP", suffix: claimsGst ? "incl. GST" : "" };
   }
 }
 

@@ -7,16 +7,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@hms/ui/components/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@hms/ui/components/dropdown-menu";
 import { Input } from "@hms/ui/components/input";
 import { Separator } from "@hms/ui/components/separator";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ClientOnly, Link } from "@tanstack/react-router";
-import { Trash2Icon } from "lucide-react";
+import { MoreHorizontalIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
+import { VoidChargeDialog } from "@/components/opd-billing/void-charge-dialog";
 import { ServicePicker, type ServiceLine } from "@/components/opd-service-picker";
 import { DataList, ErrorNote, Panel, PanelEmpty } from "@/components/page";
 import { billingPdfUrl } from "@/lib/billing-document";
@@ -62,7 +69,15 @@ export function AdmissionBill({
   canWrite: boolean;
   currency: string;
 }) {
-  const [overlay, setOverlay] = useState<"service" | "collect" | null>(null);
+  // The collect overlay holds the bill as it was opened: the cashier settles what they
+  // reviewed, and a Charge posted elsewhere blocks it until reopened.
+  const [overlay, setOverlay] = useState<
+    | { kind: "service" }
+    | { kind: "collect"; reviewed: Bill }
+    | { kind: "remove"; line: BillLine }
+    | null
+  >(null);
+
   const close = () => setOverlay(null);
   const data = bill.data;
 
@@ -94,6 +109,8 @@ export function AdmissionBill({
 
   const issued = data.invoiceId !== null;
   const canAddService = canWrite && !issued && admission.status !== "cancelled";
+  // Issued medicines come back by a return, not a removal.
+  const removable = (line: BillLine) => canWrite && !issued && line.admissionKind === "service";
 
   const billable = admission.status === "discharge_ready" || admission.status === "discharged";
 
@@ -102,27 +119,27 @@ export function AdmissionBill({
   const stale = data.chargeRevision !== admission.chargeRevision;
   const addedTax = data.grandTotal - data.subtotal - data.roundOff;
 
-  const quote: WalkInQuote = {
+  const quoteOf = (reviewed: Bill): WalkInQuote => ({
     currency,
-    lines: data.lines.map((line) => ({
+    lines: reviewed.lines.map((line) => ({
       ...line,
       source: "service" as const,
       category: line.admissionKind ?? "service",
     })),
-    subtotal: data.subtotal,
+    subtotal: reviewed.subtotal,
     discountAmount: ZERO,
-    taxTotal: data.taxTotal,
-    roundOff: data.roundOff,
-    grandTotal: data.grandTotal,
-  };
+    taxTotal: reviewed.taxTotal,
+    roundOff: reviewed.roundOff,
+    grandTotal: reviewed.grandTotal,
+  });
 
-  const settle = (draft: SettlementDraft) => {
+  const settle = (reviewed: Bill, draft: SettlementDraft) => {
     const collected = draft.payments.reduce((sum, payment) => sum + payment.amount, ZERO);
 
     issue.mutate({
       orgSlug,
       admissionId: admission.id,
-      expectedChargeRevision: data.chargeRevision,
+      expectedChargeRevision: reviewed.chargeRevision,
       expectedGrandTotal: draft.expectedGrandTotal,
       payments: draft.payments,
       // A reason travels only with a balance: a bill paid in full has nothing to explain.
@@ -136,7 +153,7 @@ export function AdmissionBill({
       minHeight=""
       action={
         canAddService ? (
-          <Button size="xs" variant="outline" onClick={() => setOverlay("service")}>
+          <Button size="xs" variant="outline" onClick={() => setOverlay({ kind: "service" })}>
             Add service
           </Button>
         ) : undefined
@@ -193,6 +210,31 @@ export function AdmissionBill({
           ]}
           rows={data.lines}
           rowKey={(line) => line.chargeId}
+          action={
+            data.lines.some(removable)
+              ? (line) =>
+                  removable(line) ? (
+                    <ClientOnly fallback={<span className="inline-block size-6" />}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={<Button variant="ghost" size="icon-xs" />}
+                          aria-label={`Actions for ${line.description}`}
+                        >
+                          <MoreHorizontalIcon />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="min-w-32">
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setOverlay({ kind: "remove", line })}
+                          >
+                            Remove
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </ClientOnly>
+                  ) : null
+              : undefined
+          }
         />
       )}
 
@@ -227,7 +269,7 @@ export function AdmissionBill({
           ) : !canWrite || admission.status === "cancelled" ? null : billable ? (
             <Button
               disabled={data.lines.length === 0 || stale}
-              onClick={() => setOverlay("collect")}
+              onClick={() => setOverlay({ kind: "collect", reviewed: data })}
             >
               <span className="tabular-nums">
                 Issue invoice {formatMoney(data.grandTotal, currency)}
@@ -241,7 +283,7 @@ export function AdmissionBill({
         </div>
       </div>
 
-      {overlay === "service" ? (
+      {overlay?.kind === "service" ? (
         <AddServiceDialog
           orgSlug={orgSlug}
           admission={admission}
@@ -249,23 +291,32 @@ export function AdmissionBill({
           onClose={close}
         />
       ) : null}
-      {overlay === "collect" ? (
+      {overlay?.kind === "remove" ? (
+        <VoidChargeDialog
+          charge={{ id: overlay.line.chargeId, description: overlay.line.description }}
+          orgSlug={orgSlug}
+          onClose={close}
+        />
+      ) : null}
+      {overlay?.kind === "collect" ? (
         <ClientOnly fallback={null}>
           <SettlementOverlay
-            quote={quote}
+            quote={quoteOf(overlay.reviewed)}
             stream="ipd"
             discountable={false}
             availableCredit={{ usable: ZERO, total: ZERO }}
-            description={`${data.lines.length} item${data.lines.length === 1 ? "" : "s"} on this admission`}
+            description={`${overlay.reviewed.lines.length} item${overlay.reviewed.lines.length === 1 ? "" : "s"} on this admission`}
             label="Issue invoice"
             pending={issue.isPending}
             blockedReason={
-              stale ? "The bill changed. Close this and review the current bill." : undefined
+              stale || data.chargeRevision !== overlay.reviewed.chargeRevision
+                ? "The bill changed. Close this and review the current bill."
+                : undefined
             }
             onOpenChange={(open) => {
               if (!open) close();
             }}
-            onConfirm={settle}
+            onConfirm={(draft) => settle(overlay.reviewed, draft)}
           />
         </ClientOnly>
       ) : null}
@@ -396,7 +447,7 @@ function AddServiceDialog({
               <ServicePicker
                 orgSlug={orgSlug}
                 chosen={new Set(lines.map((line) => line.catalogItemId))}
-                allowConsultation={false}
+                services="any"
                 onAdd={(line) => setLines((current) => [...current, line])}
               />
               {lines.length > 0 ? (

@@ -32,6 +32,11 @@ import {
   recordPaymentsTx,
   settleIssuedInvoiceTx,
 } from "../lib/billing-documents";
+import {
+  bumpChargeRevision,
+  lockAdmissionCharges,
+  requireUnbilled,
+} from "../lib/admission-charges";
 import { impossible } from "../lib/conflict";
 import { invoiceBalanceFor, invoiceBalancesFor } from "../lib/invoice-balance";
 import { voidPendingCharges } from "../lib/opd-close";
@@ -187,24 +192,44 @@ export const billingRouter = {
     const { scope } = context;
 
     const charge = await db.transaction(async (tx) => {
+      // The parent columns never change, so they are read before taking the parent's lock.
       const [candidate] = await tx
-        .select({ appointmentId: opdAppointments.id })
+        .select({
+          appointmentId: charges.opdAppointmentId,
+          admissionId: charges.admissionId,
+          admissionKind: charges.admissionKind,
+        })
         .from(charges)
-        .innerJoin(
-          opdAppointments,
-          and(
-            eq(opdAppointments.orgId, scope.orgId),
-            eq(opdAppointments.id, charges.opdAppointmentId),
-          ),
-        )
         .where(and(eq(charges.orgId, scope.orgId), eq(charges.id, input.chargeId)))
-        .limit(1)
-        .for("update", { of: opdAppointments });
+        .limit(1);
 
-      if (!candidate) {
+      if (candidate?.admissionId) {
+        const admission = await lockAdmissionCharges(tx, scope.orgId, candidate.admissionId);
+
+        // Voiding would orphan the stock the issue moved; returns are a later slice.
+        if (candidate.admissionKind === "pharmacy_issue") {
+          throw new ORPCError("CONFLICT", {
+            message: "Issued medicines are corrected by a return.",
+          });
+        }
+
+        await requireUnbilled(tx, scope.orgId, admission.id);
+        await bumpChargeRevision(tx, scope.orgId, admission.id);
+      } else if (candidate?.appointmentId) {
+        await tx
+          .update(opdAppointments)
+          .set({ chargeRevision: sql`${opdAppointments.chargeRevision} + 1` })
+          .where(
+            and(
+              eq(opdAppointments.orgId, scope.orgId),
+              eq(opdAppointments.id, candidate.appointmentId),
+            ),
+          );
+      } else {
         throw new ORPCError("NOT_FOUND", { message: "That charge no longer exists." });
       }
 
+      // The parent row is locked by its revision bump above; a refusal rolls it back.
       const [voided] = await voidPendingCharges({
         tx,
         orgId: scope.orgId,
@@ -218,16 +243,6 @@ export const billingRouter = {
           message: "This charge was already settled or voided.",
         });
       }
-
-      await tx
-        .update(opdAppointments)
-        .set({ chargeRevision: sql`${opdAppointments.chargeRevision} + 1` })
-        .where(
-          and(
-            eq(opdAppointments.orgId, scope.orgId),
-            eq(opdAppointments.id, candidate.appointmentId),
-          ),
-        );
 
       return voided;
     });

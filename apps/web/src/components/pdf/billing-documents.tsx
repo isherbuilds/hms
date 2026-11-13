@@ -315,7 +315,7 @@ export function InvoiceDocument({
   const title = invoiceDocumentTitle(invoice, lines);
 
   const linePrice = (line: InvoiceBundle["lines"][number]) =>
-    mixedLines ? linePriceBasis(registered, line.priceBasis) : { label: priceHeading, suffix: "" };
+    mixedLines ? linePriceBasis(registered, line) : { label: priceHeading, suffix: "" };
 
   const lineRate = (line: InvoiceBundle["lines"][number]) =>
     mixedLines ? mixedRateLabel(line) : `${line.taxRatePercent}%`;

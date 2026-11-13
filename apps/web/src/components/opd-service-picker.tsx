@@ -22,12 +22,12 @@ export type ServiceLine = {
 export function ServicePicker({
   orgSlug,
   chosen,
-  allowConsultation,
+  services,
   onAdd,
 }: {
   orgSlug: string;
   chosen: ReadonlySet<string>;
-  allowConsultation: boolean;
+  services: "visit" | "procedure" | "any";
   onAdd: (line: ServiceLine) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -36,7 +36,7 @@ export function ServicePicker({
 
   const search = useCatalogSearch({
     orgSlug,
-    includeConsultation: allowConsultation,
+    services,
     noMatch: "No unused service matches",
   });
 

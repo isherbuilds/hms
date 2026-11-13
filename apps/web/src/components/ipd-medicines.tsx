@@ -114,11 +114,6 @@ export function AdmissionMedicines({
   );
 }
 
-/** Whether any medicine already went onto an issued bill, read from the issue list. */
-export function issuesBilled(data: { issues: { lines: { chargeStatus: string | null }[] }[] }) {
-  return data.issues.some((issue) => issue.lines.some((line) => line.chargeStatus === "invoiced"));
-}
-
 // Mounted per open, so the cart starts empty without an effect.
 export function IssueMedicinesDialog({
   orgSlug,

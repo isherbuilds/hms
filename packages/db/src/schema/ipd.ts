@@ -315,6 +315,7 @@ export const admissionPharmacyIssueLines = pgTable(
   },
   (table) => [
     check("admission_pharmacy_issue_lines_qty_check", sql`${table.qty} > 0`),
+    index("admission_pharmacy_issue_lines_org_issue_idx").on(table.orgId, table.issueId),
     unique("admission_pharmacy_issue_lines_org_id_admission_batch_unique").on(
       table.orgId,
       table.id,

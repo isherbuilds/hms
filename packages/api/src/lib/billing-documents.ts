@@ -327,7 +327,10 @@ export async function issueInvoiceTx(
   if (settings.gstin && parent.stream !== "pharmacy") {
     if (!parent.patient.address?.trim()) {
       throw new ORPCError("BAD_REQUEST", {
-        message: "Add the patient's address before issuing a Bill of Supply",
+        message:
+          parent.stream === "ipd"
+            ? "Add the patient's address before issuing this bill"
+            : "Add the patient's address before issuing a Bill of Supply",
       });
     }
 

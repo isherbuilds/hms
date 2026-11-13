@@ -1,0 +1,1 @@
+CREATE INDEX "admission_pharmacy_issue_lines_org_issue_idx" ON "admission_pharmacy_issue_lines" USING btree ("org_id","issue_id");

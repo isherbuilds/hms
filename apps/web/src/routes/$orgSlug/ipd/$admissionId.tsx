@@ -27,7 +27,6 @@ import {
   AdmissionMedicines,
   admissionIssuesQuery,
   IssueMedicinesDialog,
-  issuesBilled,
 } from "@/components/ipd-medicines";
 import { DataList, ErrorNote, PageBody, PageHeader, Panel } from "@/components/page";
 import { useCan, useMembership } from "@/lib/membership";
@@ -76,18 +75,12 @@ function AdmissionRoute() {
   const canCorrect = useCan(orgSlug, { ipd: ["correct"] });
   const canIssue = useCan(orgSlug, { pharmacy: ["issueAdmission"] });
   const canReadIssues = useCan(orgSlug, { pharmacy: ["read"] });
-  // A pharmacist has no billing grant: the bill is not requested for them at all.
   const canReadBill = useCan(orgSlug, { billing: ["read"] });
   const canWriteBill = useCan(orgSlug, { billing: ["write"] });
   const [dialog, setDialog] = useState<Dialog>(null);
   const issuing = Route.useSearch().issue === 1;
   const navigate = Route.useNavigate();
   const detail = useQuery(admissionQuery(orgSlug, admissionId));
-
-  const issues = useQuery({
-    ...admissionIssuesQuery(orgSlug, admissionId),
-    enabled: canReadIssues,
-  });
 
   const bill = useQuery({ ...admissionBillQuery(orgSlug, admissionId), enabled: canReadBill });
 
@@ -119,9 +112,7 @@ function AdmissionRoute() {
     void navigate({ search: open ? { issue: 1 } : {}, replace: true });
 
   // Medicines go only onto an unbilled stay; the server refuses a billed one either way.
-  const billed =
-    (bill.data !== undefined && bill.data.invoiceId !== null) ||
-    (issues.data !== undefined && issuesBilled(issues.data));
+  const billed = bill.data !== undefined && bill.data.invoiceId !== null;
 
   const issuable = canIssue && canReadIssues && active && !billed;
 
