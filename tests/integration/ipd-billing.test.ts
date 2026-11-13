@@ -12,6 +12,7 @@ import { invoices } from "@hms/db/schema/invoices";
 import * as ipdSchema from "@hms/db/schema/ipd";
 import { journalEntries } from "@hms/db/schema/journal-entries";
 import { journalLines } from "@hms/db/schema/journal-lines";
+import { patients } from "@hms/db/schema/patients";
 import { payments } from "@hms/db/schema/payments";
 import { pharmacySales } from "@hms/db/schema/pharmacy-sales";
 import { stockMovements } from "@hms/db/schema/stock-movements";
@@ -1891,5 +1892,234 @@ test("existing OPD Charges and lines are exclusive, counter Pharmacy ones are in
     subtotal: 122_86n,
     roundOff: 14n,
     grandTotal: 123_00n,
+  });
+});
+
+// ── Corrections before and after the Invoice ────────────────────────────────
+
+test("undoing ready after the Invoice is refused", async () => {
+  const hospital = await createHospital("ipd-undo-after-invoice");
+  const { admission } = await readyAdmissionWithService(hospital);
+  await hospital.issueInvoice(admission.id);
+
+  const detail = await hospital.api.ipd.get({
+    orgSlug: hospital.orgSlug,
+    admissionId: admission.id,
+  });
+
+  await expectORPCCode(
+    hospital.api.ipd.undoDischargeReady({
+      orgSlug: hospital.orgSlug,
+      admissionId: admission.id,
+      expectedRevision: detail.admission.revision,
+      reason: "Patient stays another night",
+    }),
+    "CONFLICT",
+  );
+
+  const after = await hospital.api.ipd.get({
+    orgSlug: hospital.orgSlug,
+    admissionId: admission.id,
+  });
+
+  expect(after.admission.status).toBe("discharge_ready");
+  expect(after.admission.revision).toBe(detail.admission.revision);
+});
+
+test("a wrongly posted service is voided with a reason before the Invoice: it leaves the bill, bumps the charge revision, and is audited like an OPD void", async () => {
+  const hospital = await createHospital("ipd-void-service");
+  const { orgId, orgSlug } = hospital;
+  const { admission } = await hospital.admit(0);
+  const kept = await hospital.createService({ name: "Dressing" });
+  const wrong = await hospital.createService({ name: "Wrong procedure" });
+  await hospital.postServices(admission.id, [{ catalogItemId: kept.id, qty: 1 }]);
+  await hospital.postServices(admission.id, [{ catalogItemId: wrong.id, qty: 1 }]);
+
+  const before = await hospital.api.ipd.previewInvoice({ orgSlug, admissionId: admission.id });
+  expect(before.grandTotal).toBe(12_600_00n);
+
+  const wrongCharge = (await admissionCharges(orgId, admission.id)).find(
+    (charge) => charge.catalogItemId === wrong.id,
+  );
+
+  if (!wrongCharge) throw new Error("expected the wrong service's Charge");
+
+  const cashier = await hospital.member("cashier");
+  await cashier.api.billing.voidCharge({
+    orgSlug,
+    chargeId: wrongCharge.id,
+    reason: "Posted to the wrong Patient",
+  });
+
+  const after = await hospital.api.ipd.previewInvoice({ orgSlug, admissionId: admission.id });
+
+  expect(after.chargeRevision).toBe(before.chargeRevision + 1);
+  expect(after.grandTotal).toBe(6_300_00n);
+  expect(after.lines.map((line) => line.description)).toEqual(["Dressing"]);
+
+  const [voided] = await db
+    .select()
+    .from(charges)
+    .where(and(eq(charges.orgId, orgId), eq(charges.id, wrongCharge.id)));
+
+  expect(voided).toMatchObject({ status: "voided", voidReason: "Posted to the wrong Patient" });
+
+  const [entry] = await auditEntries(hospital, "charge.void");
+  expect(entry).toMatchObject({
+    target: `charge:${wrongCharge.id}`,
+    meta: { reason: "Posted to the wrong Patient" },
+  });
+
+  const keptCharge = (await admissionCharges(orgId, admission.id)).find(
+    (charge) => charge.catalogItemId === kept.id,
+  );
+
+  if (!keptCharge) throw new Error("expected the kept service's Charge");
+
+  await hospital.api.billing.voidCharge({
+    orgSlug,
+    chargeId: keptCharge.id,
+    reason: "Admitted by mistake",
+  });
+
+  const detail = await hospital.api.ipd.get({ orgSlug, admissionId: admission.id });
+
+  const cancelled = await hospital.api.ipd.cancel({
+    orgSlug,
+    admissionId: admission.id,
+    expectedRevision: detail.admission.revision,
+    reason: "Admitted by mistake",
+  });
+
+  expect(cancelled.status).toBe("cancelled");
+});
+
+test("an issued medicine Charge cannot be voided, and nothing can be voided after the Invoice", async () => {
+  const hospital = await createHospital("ipd-void-refused");
+  const { orgId, orgSlug, api } = hospital;
+  const medicine = await hospital.createMedicine();
+  const { batchId } = await hospital.receive(medicine.productId, { qty: 5 });
+  const { admission } = await readyAdmissionWithService(hospital);
+  await hospital.issue(admission.id, [{ batchId, qty: 2 }]);
+
+  const charged = await admissionCharges(orgId, admission.id);
+  const medicineCharge = charged.find((charge) => charge.admissionKind === "pharmacy_issue");
+  const serviceCharge = charged.find((charge) => charge.admissionKind === "service");
+
+  if (!medicineCharge || !serviceCharge) throw new Error("expected both Admission Charges");
+
+  const revision = await hospital.chargeRevision(admission.id);
+
+  await expectORPCCode(
+    api.billing.voidCharge({ orgSlug, chargeId: medicineCharge.id, reason: "Not given" }),
+    "CONFLICT",
+    "voiding an issued medicine",
+  );
+
+  expect(await hospital.shelfQty(batchId)).toBe(3);
+  expect(await admissionCharges(orgId, admission.id)).toEqual(charged);
+  expect(await hospital.chargeRevision(admission.id)).toBe(revision);
+
+  await hospital.issueInvoice(admission.id);
+  const billed = await admissionCharges(orgId, admission.id);
+
+  await expectORPCCode(
+    api.billing.voidCharge({ orgSlug, chargeId: serviceCharge.id, reason: "Too late" }),
+    "CONFLICT",
+    "voiding a service after the Invoice",
+  );
+  await expectORPCCode(
+    api.billing.voidCharge({ orgSlug, chargeId: medicineCharge.id, reason: "Too late" }),
+    "CONFLICT",
+    "voiding a medicine after the Invoice",
+  );
+
+  expect(await hospital.shelfQty(batchId)).toBe(3);
+  expect(await admissionCharges(orgId, admission.id)).toEqual(billed);
+});
+
+test("another organization cannot void this one's Admission Charge", async () => {
+  const hospital = await createHospital("ipd-void-home");
+  const outsider = await createHospital("ipd-void-away");
+  const { admission } = await readyAdmissionWithService(hospital);
+  const charged = await admissionCharges(hospital.orgId, admission.id);
+  const [charge] = charged;
+
+  if (!charge) throw new Error("expected the service Charge");
+
+  await expectORPCCode(
+    outsider.api.billing.voidCharge({
+      orgSlug: outsider.orgSlug,
+      chargeId: charge.id,
+      reason: "Not ours",
+    }),
+    "NOT_FOUND",
+  );
+
+  expect(await admissionCharges(hospital.orgId, admission.id)).toEqual(charged);
+});
+
+test("a registered organization's ipd Invoice needs the patient's address, and may carry GST", async () => {
+  const seed = "ipd-registered";
+  const hospital = await createHospital(seed);
+  const { orgId, orgSlug, api } = hospital;
+  await api.settings.update({ ...settingsInput(orgSlug, seed), gstin: "27ABCDE1234F1Z5" });
+
+  const medicine = await hospital.createMedicine();
+  const { batchId } = await hospital.receive(medicine.productId, { qty: 5 });
+  const service = await hospital.createService();
+
+  phoneSequence += 1;
+
+  const patient = await api.patient.register({
+    orgSlug,
+    name: `${seed} Patient without address`,
+    phone: String(phoneSequence),
+    sex: "other",
+    dateOfBirth: "1980-01-01",
+    dobEstimated: true,
+  });
+
+  const admission = await api.ipd.admit({
+    orgSlug,
+    patientId: patient.id,
+    practitionerId: hospital.practitioner.id,
+    bedId: hospital.beds[0]!.id,
+  });
+
+  await hospital.postServices(admission.id, [{ catalogItemId: service.id, qty: 1 }]);
+  await hospital.issue(admission.id, [{ batchId, qty: 2 }]);
+  await hospital.markReady(admission.id);
+
+  let refusal: { code?: string; message?: string } | undefined;
+
+  try {
+    await hospital.issueInvoice(admission.id);
+  } catch (error) {
+    // SAFETY: oRPC client errors carry `code` and `message`; asserted below.
+    refusal = error as { code?: string; message?: string };
+  }
+
+  expect(refusal?.code).toBe("BAD_REQUEST");
+  expect(refusal?.message).toContain("address");
+  expect(refusal?.message).not.toContain("Bill of Supply");
+  expect(await db.select().from(invoices).where(eq(invoices.orgId, orgId))).toEqual([]);
+
+  await db
+    .update(patients)
+    .set({ address: `${seed} Patient Address` })
+    .where(and(eq(patients.orgId, orgId), eq(patients.id, patient.id)));
+
+  const issued = await hospital.issueInvoice(admission.id);
+
+  const [invoice] = await db
+    .select()
+    .from(invoices)
+    .where(and(eq(invoices.orgId, orgId), eq(invoices.id, issued.invoiceId)));
+
+  expect(invoice).toMatchObject({
+    orgGstin: "27ABCDE1234F1Z5",
+    taxTotal: 300_00n,
+    grandTotal: 6_524_00n,
   });
 });

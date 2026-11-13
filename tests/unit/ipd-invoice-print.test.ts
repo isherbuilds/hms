@@ -2,7 +2,11 @@
 // exempt lines and both price bases, so its title and tax rows come from the lines (D052).
 import { expect, test } from "bun:test";
 
-import { invoiceDocumentTitle, invoiceTaxBreakdown } from "../../apps/web/src/lib/invoice-print";
+import {
+  invoiceDocumentTitle,
+  invoiceTaxBreakdown,
+  linePriceBasis,
+} from "../../apps/web/src/lib/invoice-print";
 
 const GSTIN = "27ABCDE1234F1Z5";
 
@@ -72,4 +76,15 @@ test("the tax breakdown separates taxable from exempt value and added GST from G
     gstAdded: 300_00n,
     gstIncluded: 12_00n,
   });
+});
+
+test("an exempt line names its basis without a GST claim; taxed lines add or include GST only when registered", () => {
+  const exemptService = { priceBasis: "exclusive" as const, taxRatePercent: "0.00" };
+
+  expect(linePriceBasis(true, exemptService)).toEqual({ label: "Rate", suffix: "" });
+  expect(linePriceBasis(true, bundledMedicine)).toEqual({ label: "MRP", suffix: "" });
+  expect(linePriceBasis(true, service)).toEqual({ label: "Rate", suffix: "+ GST" });
+  expect(linePriceBasis(true, independentMedicine)).toEqual({ label: "MRP", suffix: "incl. GST" });
+  expect(linePriceBasis(false, service)).toEqual({ label: "Rate", suffix: "" });
+  expect(linePriceBasis(false, independentMedicine)).toEqual({ label: "MRP", suffix: "" });
 });
