@@ -243,9 +243,12 @@ inpatient pharmacy or settlement exist yet; Slices 1 and 3–6 stay gated on a
 paying hospital and named owner. On 2026-11-13 a production build passed on the
 seeded demo org: reception admitted, moved, marked ready and recorded departure
 on desktop light; the board and an admission fit a 390px phone in dark; an
-administrator added a bed, and retiring an occupied bed was refused. Still owed:
-a two-terminal conflict check and a stale **Release bed** in the browser, and
-desktop dark and phone light.
+administrator added a bed, and retiring an occupied bed was refused. A second
+pass (GPT 6.1 Sol) confirmed two-terminal refusals for move, ready and
+departure, a stale **Release bed** refused with the newer block kept, and an
+earlier-time clash keeping the dialog open. Still owed: screenshots of every IPD
+screen at desktop dark and phone light (frame capture failed; no overflow was
+measured), and choosing the doctor and submitting Admit by keyboard alone.
 
 ### [Cashless claims](./specs/cashless-claims.md)
 
