@@ -721,6 +721,38 @@ const GUARDED_CALLS = {
       expectedChargeRevision: 0,
       lines: [{ catalogItemId: "missing", qty: 1 }],
     }),
+  "ipd.requestBed": (api, claim) =>
+    api.ipd.requestBed({
+      ...claim,
+      patientId: "missing",
+      categoryId: "missing",
+      plannedArrivalAt: new Date(Date.now() + 60 * 60 * 1_000),
+      plannedDepartureAt: new Date(Date.now() + 2 * 60 * 60 * 1_000),
+    }),
+  "ipd.confirmBedReservation": (api, claim) =>
+    api.ipd.confirmBedReservation({
+      ...claim,
+      reservationId: "missing",
+      expectedRevision: 0,
+      bedId: "missing",
+      holdUntil: new Date(Date.now() + 60 * 60 * 1_000),
+    }),
+  "ipd.rescheduleBedReservation": (api, claim) =>
+    api.ipd.rescheduleBedReservation({
+      ...claim,
+      reservationId: "missing",
+      expectedRevision: 0,
+      plannedArrivalAt: new Date(Date.now() + 60 * 60 * 1_000),
+      plannedDepartureAt: new Date(Date.now() + 2 * 60 * 60 * 1_000),
+    }),
+  "ipd.cancelBedReservation": (api, claim) =>
+    api.ipd.cancelBedReservation({
+      ...claim,
+      reservationId: "missing",
+      expectedRevision: 0,
+      reason: "x",
+    }),
+  "ipd.listBedReservations": (api, claim) => api.ipd.listBedReservations({ ...claim, view: "all" }),
   "ipd.previewInvoice": (api, claim) =>
     api.ipd.previewInvoice({ ...claim, admissionId: "missing" }),
   "ipd.issueInvoice": (api, claim) =>
