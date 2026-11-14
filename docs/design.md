@@ -8,42 +8,31 @@ that recurs is a missing primitive, not a style choice.
 
 ## 1. Surfaces
 
-Keep the three grey surfaces distinguishable. Their contrast separates the
-page, the grouping tray, and its content.
+Sections sit flat on the page. Space and type group them; a box is the
+exception, not the frame for every list.
 
-| Surface | Token                       | What it is                                                 |
-| ------- | --------------------------- | ---------------------------------------------------------- |
-| Canvas  | `bg-background`             | The page. Flat sections and rationed card trays sit on it. |
-| Shell   | `bg-muted`                  | The tinted wrapper that carries a card's label.            |
-| Card    | `bg-card` + `border-border` | The raised surface that carries the content.               |
+| Surface | Token                | What it is                                                     |
+| ------- | -------------------- | -------------------------------------------------------------- |
+| Canvas  | `bg-card`            | The content panel. Lists, forms and record facts sit on it.    |
+| Tint    | `bg-muted/60`        | One quiet block for a summary or a record part (`rounded-lg`). |
+| Outline | `ring-1 ring-border` | Only where an outline means something: a free bed is empty.    |
 
-**Card trays are rationed against stacking, not against use.** An operational
-list — a table of rows staff work through — gets exactly one tray. That is the
-standard list treatment, not an exception: the OPD day list, the patients
-registry, and record Charges or Billing tables all use it. Rationing means a
-screen does not stack many trays and boxes in one composition: flat sections
-with typographic hierarchy and hairlines are the default for everything that is
-not a row group. A tray uses `rounded-xl bg-muted p-1`, an `h-9` label row, and
-a raised `rounded-lg border bg-card` body. Never nest a card inside an
-already-raised surface, such as a Sheet or popover.
+**A list is a heading row and its rows.** `Panel` draws a label row (`min-h-8`,
+`font-medium`) and the table under it, with no tray and no bordered card. The
+table's column labels and row hairlines carry the structure. Never put a list in
+a box, a box in a box, or a tint inside a tint.
 
-```
-┌ shell (bg-muted, rounded-xl, p-1) ──────────┐
-│  label row (h-9, px-3, muted-foreground)    │
-│ ┌ card (bg-card, border, rounded-lg, p-4) ┐ │
-│ │  the content                            │ │
-│ └─────────────────────────────────────────┘ │
-└─────────────────────────────────────────────┘
-```
+**A summary is the one tinted block.** A payment summary beside a form, a
+record's facts, or a visit's invoice uses `bg-muted/60 rounded-lg p-4` with no
+border. Status surfaces (clinical notes) keep their colour token without an
+outline. The dashboard money card is the screen's one bright element: lime tint,
+no border.
 
-The shell groups related rows. Do not nest a shell inside a shell.
-
-Keep the muted tray and its inset card. Reduce the information shown at once
-before removing this framing. Billing separates open money, refunds, and held
-advances into routes. Patient billing opens on invoices; advance receipts expand
-below them. Staff keeps a compact panel and a button-style view selector, so
-nested tab strips do not add parallel rules. Reports use a muted
-navigation panel with no extra rule above or below it.
+Rules separate only what a reader must tell apart: table rows (`border-border/60`),
+a table's heading row, form bands, and a bill's totals. A page header drops its
+rule when a tab strip draws one directly below it. Billing separates open money,
+refunds, and held advances into routes. Patient billing opens on invoices;
+advance receipts expand below them.
 
 Organization settings use a left-aligned `max-w-5xl` content column. At `md`,
 section context occupies one column and its fields occupy two. On smaller screens
@@ -147,7 +136,7 @@ Theme tokens only: `bg-background`, `bg-card`, `bg-muted`, `text-foreground`,
 - **Both themes are shipped, not one flipped.** Every screen is checked in light
   and dark before it is done.
 
-Light `--muted-foreground` is `oklch(0.5 0 0)` so secondary text clears 4.5:1 on the canvas, card, and muted tray.
+Light `--muted-foreground` is `oklch(0.5 0 0)` so secondary text clears 4.5:1 on the canvas, card, and muted tint.
 
 - **Five documented exceptions.** Print documents use `bg-white text-black
 border-black` because paper is white with black ink in every theme; the login
@@ -293,9 +282,9 @@ Creation actions are text-first. Labels such as `New`, `Add`, `Register`,
 `Invite`, and `Create` do not repeat their meaning with a leading plus icon.
 Button labels render in Title Case through the shared button primitive; routes
 do not add one-off text transforms.
-Every section label — flat or in a tray — is muted `text-xs` at plain weight, so
-no section label competes with the page title. Flat section label rows carry
-`min-h-6`, so a section with an action and one without are the same height.
+Every section label is `text-xs` `font-medium` in the foreground colour: below
+the `text-sm` page title, above the muted column labels. Section label rows
+carry `min-h-8`, so a section with an action and one without are the same height.
 
 **Two surfaces are exempt from the org-shell rules.** Public entry pages
 (`login`, `join`, `create`, the root screen) do not use `PageHeader`; they may
@@ -339,12 +328,12 @@ cards at its outer boundary, including reverse scroll.
   the search field, `FilterSubmenu` and checkbox items for each dimension,
   `FilterChips` for what is applied, and `DateSubmenu`/`DateFilter` for the
   business-date presets and custom range.
-- **`Panel` / `PanelEmpty`** — the muted tray, label row, raised card, optional
-  footer, and centered empty copy used by every list. `grow` fills the page on
+- **`Panel` / `PanelEmpty`** — the flat label row, content, optional footer, and
+  centered empty copy used by every list; `padded` makes it the one tinted
+  summary block. `grow` fills the page on
   every page whose body is one list, so its footer sits at the same bottom edge
   everywhere; pages that stack several panels leave them at their rows. Patient visit details and advance receipts retain their disclosures. Non-growing panels within forms and disclosures use compact heights. A
-  single-list page drops `label` when the page title already names the list:
-  from `md` the table's column labels sit on the tray in the label row's place.
+  single-list page drops `label` when the page title already names the list.
   A panel with an `action`, or one of several on a page, keeps its label.
 - **`ListState`** — the only pending, error, retry, and empty-state branch for a
   list.
@@ -490,8 +479,8 @@ A new bespoke layout wrapper is a signal that one of these is missing a prop.
 
 ## Checklist before calling a screen done
 
-- [ ] When a card tray is used, canvas, shell and card are three visibly distinct surfaces.
-- [ ] Card trays group related rows only; flat sections use hairlines and typography, and no card sits inside a raised surface.
+- [ ] Lists sit flat under a label row; only a summary or record part gets a tint, and no box or tint sits inside another.
+- [ ] No border on a card or section unless the outline itself means something.
 - [ ] No route-level arbitrary values; only the documented component and print exceptions.
 - [ ] Every colour is a token; checked in light **and** dark. Brand marks identity/emphasis, never state; primary actions stay ink and focus stays neutral.
 - [ ] Spacing uses the scale; no margins on children where a gap would do.
