@@ -4,7 +4,7 @@
 import { formatBusinessDate } from "./business-date";
 
 // UTC throughout: a business date names a day, so a preset never shifts across zones.
-function shift(day: string, days: number): string {
+export function shift(day: string, days: number): string {
   const date = new Date(`${day}T00:00:00Z`);
 
   date.setUTCDate(date.getUTCDate() + days);

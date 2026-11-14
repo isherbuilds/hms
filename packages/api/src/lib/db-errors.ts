@@ -1,3 +1,5 @@
+import { ORPCError } from "@orpc/server";
+
 /**
  * Walks an error and its `cause` chain. The driver wraps the Postgres error, so
  * `code` is never on the outermost one. The `seen` set stops a self-referential
@@ -20,4 +22,13 @@ export function uniqueViolationConstraint(error: unknown): string | null | undef
   }
 
   return undefined;
+}
+
+/** A unique-name collision as a CONFLICT naming `what`; any other error rethrows. */
+export function nameConflict(error: unknown, what: string): never {
+  if (uniqueViolationConstraint(error) !== undefined) {
+    throw new ORPCError("CONFLICT", { message: `${what} already exists.` });
+  }
+
+  throw error;
 }

@@ -16,6 +16,9 @@ export const ac = createAccessControl({
   opd: ["create", "read", "update"],
   // `manageFacility` edits wards, beds and tariffs; `correct` backdates and cancels.
   ipd: ["read", "create", "update", "manageFacility", "correct"],
+  // `schedule` books surgical cases; `override` is the reasoned exception (a block
+  // that disrupts confirmed cases) and is never implied by `schedule`.
+  theatre: ["read", "schedule", "manageResources", "override"],
   billing: ["read", "write", "creditNote", "advanceRefund"],
   pharmacy: [
     "read",
@@ -43,6 +46,7 @@ export const reception = ac.newRole({
   patient: ["create", "read", "update"],
   opd: ["create", "read", "update"],
   ipd: ["read", "create", "update"],
+  theatre: ["read", "schedule"],
   billing: ["read", "write"],
   pharmacy: ["read"],
   treatment: ["create", "read", "update"],
@@ -115,6 +119,7 @@ export const admin = ac.newRole({
   patient: ["create", "read", "update"],
   opd: ["create", "read", "update"],
   ipd: ["read", "create", "update", "manageFacility", "correct"],
+  theatre: ["read", "schedule", "manageResources", "override"],
   billing: ["read", "write", "creditNote", "advanceRefund"],
   pharmacy: [
     "read",
@@ -142,6 +147,7 @@ export const owner = ac.newRole({
   patient: ["create", "read", "update"],
   opd: ["create", "read", "update"],
   ipd: ["read", "create", "update", "manageFacility", "correct"],
+  theatre: ["read", "schedule", "manageResources", "override"],
   billing: ["read", "write", "creditNote", "advanceRefund"],
   pharmacy: [
     "read",

@@ -209,7 +209,7 @@ export function IssueMedicinesDialog({
   return (
     <ClientOnly fallback={null}>
       <Dialog open onOpenChange={(open) => (open || issue.isPending ? undefined : onClose())}>
-        <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Issue medicines</DialogTitle>
             <DialogDescription>

@@ -469,6 +469,42 @@ const MATRIX: Array<{ permission: AppPermission } & Record<RoleKey, boolean>> = 
     accountant: false,
     pharmacist: false,
   },
+  {
+    permission: { theatre: ["read"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: false,
+    accountant: false,
+    pharmacist: false,
+  },
+  {
+    permission: { theatre: ["schedule"] },
+    owner: true,
+    admin: true,
+    reception: true,
+    cashier: false,
+    accountant: false,
+    pharmacist: false,
+  },
+  {
+    permission: { theatre: ["manageResources"] },
+    owner: true,
+    admin: true,
+    reception: false,
+    cashier: false,
+    accountant: false,
+    pharmacist: false,
+  },
+  {
+    permission: { theatre: ["override"] },
+    owner: true,
+    admin: true,
+    reception: false,
+    cashier: false,
+    accountant: false,
+    pharmacist: false,
+  },
 ];
 
 test("each role grants exactly the permissions the matrix declares", () => {

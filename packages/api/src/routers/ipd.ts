@@ -1,3 +1,4 @@
+import { authorize } from "@hms/auth/access";
 import { db } from "@hms/db";
 import { catalogItems } from "@hms/db/schema/catalog-items";
 import { charges } from "@hms/db/schema/charges";
@@ -10,6 +11,7 @@ import {
   admissionPharmacyIssues,
   admissions,
   bedCategories,
+  bedReservations,
   bedTariffs,
   beds,
   wards,
@@ -38,17 +40,29 @@ import {
   settleIssuedInvoiceTx,
 } from "../lib/billing-documents";
 import { impossible } from "../lib/conflict";
-import { uniqueViolationConstraint } from "../lib/db-errors";
+import { nameConflict, uniqueViolationConstraint } from "../lib/db-errors";
+import {
+  assertUnoccupied,
+  auditDisruptions,
+  auditReservation,
+  BACKDATE_TOLERANCE_MS,
+  clearHoldsForOccupancy,
+  liveHolds,
+  lockBeds,
+  requireInScope,
+} from "../lib/ipd-beds";
 import { orgInput, orgProcedure, requirePermission, type Scope } from "../lib/procedures/factory";
 import { computeInvoiceLines } from "../lib/invoice-math";
 import { money, pageLimit, paymentLine, reason, shortName } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
+import {
+  boardHolds,
+  ipdReservationsRouter,
+  lockHoldForArrival,
+  markConverted,
+} from "./ipd-reservations";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-// A desk entry a few minutes late is ordinary; anything older is a correction that
-// needs `ipd:correct` and a reason, and is audited.
-const BACKDATE_TOLERANCE_MS = 10 * 60 * 1_000;
 
 const AWAITING_CLEANING = "Awaiting cleaning after discharge";
 
@@ -62,6 +76,7 @@ function effectiveTime(scope: Scope, requested: Date | undefined, why: string | 
     throw new ORPCError("BAD_REQUEST", { message: "That time is in the future." });
   }
 
+  // Older than the tolerance is a correction: it needs `ipd:correct`, a reason, and an audit.
   const backdated = now.getTime() - at.getTime() > BACKDATE_TOLERANCE_MS;
 
   if (backdated) {
@@ -158,26 +173,6 @@ function requireNotBeforeStay(at: Date, stay: { startedAt: Date }) {
   }
 }
 
-// Locks beds in id order so two transfers touching the same pair cannot deadlock.
-async function lockBeds(tx: Tx, orgId: string, bedIds: string[]) {
-  const ordered = [...new Set(bedIds)].sort();
-
-  const rows = await tx
-    .select({
-      id: beds.id,
-      categoryId: beds.categoryId,
-      active: beds.active,
-      blockedAt: beds.blockedAt,
-      blockedReason: beds.blockedReason,
-    })
-    .from(beds)
-    .where(and(eq(beds.orgId, orgId), inArray(beds.id, ordered)))
-    .orderBy(asc(beds.id))
-    .for("update");
-
-  return new Map(rows.map((row) => [row.id, row]));
-}
-
 // The destination must be configured for use and free from `from` onwards, counting
 // historical stays of Admissions that were not cancelled as errors.
 async function assertBedFree(
@@ -266,30 +261,13 @@ function occupancyConflict(error: unknown): never {
   throw error;
 }
 
-function nameConflict(error: unknown, what: string): never {
-  if (uniqueViolationConstraint(error) !== undefined) {
-    throw new ORPCError("CONFLICT", { message: `${what} already exists.` });
-  }
-
-  throw error;
-}
-
-async function requireInScope<T>(promise: Promise<T[]>, message: string): Promise<T> {
-  const [row] = await promise;
-
-  if (!row) {
-    throw new ORPCError("NOT_FOUND", { message });
-  }
-
-  return row;
-}
-
 function auditBackdate(
   scope: Scope,
   action: string,
   admissionId: string,
   effective: Effective,
   why?: string,
+  reservationId?: string,
 ) {
   if (!effective.backdated) return;
 
@@ -298,8 +276,15 @@ function auditBackdate(
     actorId: scope.userId,
     orgId: scope.orgId,
     target: `admission:${admissionId}`,
-    meta: { effectiveAt: effective.at.toISOString(), reason: why },
+    meta: { effectiveAt: effective.at.toISOString(), reason: why, reservationId },
   });
+}
+
+// Moving a Patient into a held bed disrupts its holds; only `ipd:correct` may do so.
+const displaceInput = { displace: z.object({ reason }).optional() };
+
+function requireDisplaceGrant(scope: Scope, displace: { reason: string } | undefined) {
+  if (displace) requirePermission(scope, { ipd: ["correct"] });
 }
 
 // Each category's rate in force now: one row per category that can price a bed.
@@ -333,6 +318,7 @@ const ADMISSION_STATES = {
 } as const;
 
 export const ipdRouter = {
+  ...ipdReservationsRouter,
   facility: orgProcedure({ ipd: ["read"] }, orgInput).handler(async ({ context }) => {
     const { orgId } = context.scope;
 
@@ -461,46 +447,49 @@ export const ipdRouter = {
 
     const id = Bun.randomUUIDv7();
 
-    const [tariff] = await db.transaction(async (tx) => {
-      // The category lock serialises its rate writers, so two rates cannot start at one
-      // instant and leave the rate in force to an id tiebreak.
-      await tx
-        .select({ id: bedCategories.id })
-        .from(bedCategories)
-        .where(and(eq(bedCategories.orgId, scope.orgId), eq(bedCategories.id, input.categoryId)))
-        .for("update");
+    const [tariff] = await db
+      .transaction(async (tx) => {
+        // The category lock serialises its rate writers, so two rates cannot start at one
+        // instant and leave the rate in force to an id tiebreak.
+        await tx
+          .select({ id: bedCategories.id })
+          .from(bedCategories)
+          .where(and(eq(bedCategories.orgId, scope.orgId), eq(bedCategories.id, input.categoryId)))
+          .for("update");
 
-      const [sameInstant] = await tx
-        .select({ id: bedTariffs.id })
-        .from(bedTariffs)
-        .where(
-          and(
-            eq(bedTariffs.orgId, scope.orgId),
-            eq(bedTariffs.categoryId, input.categoryId),
-            eq(bedTariffs.effectiveFrom, input.effectiveFrom),
-          ),
-        )
-        .limit(1);
+        const [sameInstant] = await tx
+          .select({ id: bedTariffs.id })
+          .from(bedTariffs)
+          .where(
+            and(
+              eq(bedTariffs.orgId, scope.orgId),
+              eq(bedTariffs.categoryId, input.categoryId),
+              eq(bedTariffs.effectiveFrom, input.effectiveFrom),
+            ),
+          )
+          .limit(1);
 
-      if (sameInstant) {
-        throw new ORPCError("CONFLICT", {
-          message: "A rate starting at that time already exists.",
-        });
-      }
+        if (sameInstant) {
+          throw new ORPCError("CONFLICT", {
+            message: "A rate starting at that time already exists.",
+          });
+        }
 
-      return tx
-        .insert(bedTariffs)
-        .values({
-          id,
-          orgId: scope.orgId,
-          categoryId: input.categoryId,
-          catalogItemId: input.catalogItemId,
-          dailyPrice: input.dailyPrice,
-          effectiveFrom: input.effectiveFrom,
-          createdBy: scope.userId,
-        })
-        .returning();
-    });
+        return tx
+          .insert(bedTariffs)
+          .values({
+            id,
+            orgId: scope.orgId,
+            categoryId: input.categoryId,
+            catalogItemId: input.catalogItemId,
+            dailyPrice: input.dailyPrice,
+            effectiveFrom: input.effectiveFrom,
+            createdBy: scope.userId,
+          })
+          .returning();
+        // The unique index backs the check above should the lock ever be bypassed.
+      })
+      .catch((error: unknown) => nameConflict(error, "A rate starting at that time"));
 
     audit({
       action: "ipd.tariff.set",
@@ -583,6 +572,19 @@ export const ipdRouter = {
 
       if (!input.active) {
         await assertUnoccupied(tx, scope.orgId, input.bedId);
+
+        // The bed lock already serialises every writer of a hold on it.
+        const [held] = await tx
+          .select({ id: bedReservations.id })
+          .from(bedReservations)
+          .where(liveHolds(scope.orgId, input.bedId, new Date()))
+          .limit(1);
+
+        if (held) {
+          throw new ORPCError("CONFLICT", {
+            message: "That bed is held for a planned arrival. Move or cancel the hold first.",
+          });
+        }
       }
 
       const [updated] = await tx
@@ -610,7 +612,7 @@ export const ipdRouter = {
   ).handler(async ({ context, input }) => {
     const { scope } = context;
 
-    const bed = await db.transaction(async (tx) => {
+    const { bed, disrupted } = await db.transaction(async (tx) => {
       const locked = (await lockBeds(tx, scope.orgId, [input.bedId])).get(input.bedId);
 
       if (!locked) {
@@ -619,13 +621,25 @@ export const ipdRouter = {
 
       await assertUnoccupied(tx, scope.orgId, input.bedId);
 
+      // A safety block is never suppressed. Only owner/admin authority releases the
+      // bed's holds; otherwise they stay confirmed and the worklist flags them.
+      const disrupted = authorize(scope.roles, { ipd: ["correct"] })
+        ? await clearHoldsForOccupancy(
+            tx,
+            scope.orgId,
+            input.bedId,
+            { reason: input.reason },
+            new Date(),
+          )
+        : [];
+
       const [updated] = await tx
         .update(beds)
         .set({ blockedAt: new Date(), blockedReason: input.reason, updatedAt: new Date() })
         .where(and(eq(beds.orgId, scope.orgId), eq(beds.id, input.bedId)))
         .returning();
 
-      return updated!;
+      return { bed: updated!, disrupted };
     });
 
     audit({
@@ -634,6 +648,11 @@ export const ipdRouter = {
       orgId: scope.orgId,
       target: `bed:${input.bedId}`,
       meta: { reason: input.reason },
+    });
+    auditDisruptions(scope, disrupted, {
+      reason: input.reason,
+      cause: "ipd.blockBed",
+      bedId: input.bedId,
     });
 
     return bed;
@@ -737,7 +756,12 @@ export const ipdRouter = {
       .where(and(eq(beds.orgId, orgId), eq(beds.active, true)))
       .orderBy(asc(wards.name), asc(beds.label));
 
-    const [rows, tariffRows] = await Promise.all([boardRows, currentTariffs(orgId)]);
+    const [rows, tariffRows, holds] = await Promise.all([
+      boardRows,
+      currentTariffs(orgId),
+      boardHolds(orgId, new Date()),
+    ]);
+
     const priced = new Set(tariffRows.map((tariff) => tariff.categoryId));
 
     return {
@@ -771,6 +795,7 @@ export const ipdRouter = {
           blockedAt: row.blockedAt,
           blockedReason: row.blockedReason,
           admission,
+          holds: holds.get(row.id) ?? [],
         };
       }),
     };
@@ -780,6 +805,8 @@ export const ipdRouter = {
     { ipd: ["read"] },
     orgInput.extend({
       state: z.enum(["current", "past", "all"]).default("current"),
+      // One Patient's stays, for a picker that links one of them.
+      patientId: z.string().optional(),
       // Newest admission time first; backdated entries sort by when care began.
       cursor: z.object({ admittedAt: z.date(), id: z.string() }).optional(),
       limit: pageLimit,
@@ -829,6 +856,7 @@ export const ipdRouter = {
       .where(
         and(
           eq(admissions.orgId, orgId),
+          input.patientId ? eq(admissions.patientId, input.patientId) : undefined,
           input.state === "all"
             ? undefined
             : inArray(admissions.status, ADMISSION_STATES[input.state]),
@@ -925,16 +953,27 @@ export const ipdRouter = {
 
   admit: orgProcedure(
     { ipd: ["create"] },
-    orgInput.extend({
-      patientId: z.string(),
-      practitionerId: z.string(),
-      bedId: z.string(),
-      admittedAt: z.date().optional(),
-      reason: reason.optional(),
-    }),
+    orgInput
+      .extend({
+        patientId: z.string(),
+        practitionerId: z.string(),
+        bedId: z.string(),
+        admittedAt: z.date().optional(),
+        reason: reason.optional(),
+        // Arrival against a confirmed hold converts it in the same transaction.
+        reservationId: z.string().optional(),
+        expectedReservationRevision: z.number().int().nonnegative().optional(),
+        ...displaceInput,
+      })
+      .refine(
+        (value) =>
+          (value.reservationId === undefined) === (value.expectedReservationRevision === undefined),
+        { message: "A reservation needs its expected revision.", path: ["reservationId"] },
+      ),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const effective = effectiveTime(scope, input.admittedAt, input.reason);
+    requireDisplaceGrant(scope, input.displace);
     const { timeZone } = await readOrgSettings(scope.orgId);
 
     await requireInScope(
@@ -948,7 +987,7 @@ export const ipdRouter = {
       "That practitioner no longer exists.",
     );
 
-    const admission = await db
+    const { admission, disrupted } = await db
       .transaction(async (tx) => {
         // Lock order (D040): Patient, then Admission, then beds by id.
         await requireInScope(
@@ -987,13 +1026,63 @@ export const ipdRouter = {
           throw new ORPCError("CONFLICT", { message: "This Patient is already admitted." });
         }
 
+        // A walk-in would leave the Patient's reservation live, and its bed held for nobody.
+        if (input.reservationId === undefined) {
+          const [reserved] = await tx
+            .select({ id: bedReservations.id })
+            .from(bedReservations)
+            .where(
+              and(
+                eq(bedReservations.orgId, scope.orgId),
+                eq(bedReservations.patientId, input.patientId),
+                inArray(bedReservations.status, ["requested", "confirmed"]),
+                or(isNull(bedReservations.holdUntil), gt(bedReservations.holdUntil, new Date())),
+              ),
+            )
+            .limit(1);
+
+          if (reserved) {
+            throw new ORPCError("CONFLICT", {
+              message: "This Patient has a reservation. Admit them from it, or cancel it first.",
+            });
+          }
+        }
+
         const bed = (await lockBeds(tx, scope.orgId, [input.bedId])).get(input.bedId);
 
         if (!bed) {
           throw new ORPCError("NOT_FOUND", { message: "That bed no longer exists." });
         }
 
+        const { reservationId, expectedReservationRevision } = input;
+
+        if (reservationId !== undefined && expectedReservationRevision !== undefined) {
+          await lockHoldForArrival(
+            tx,
+            scope.orgId,
+            {
+              reservationId,
+              expectedRevision: expectedReservationRevision,
+              patientId: input.patientId,
+              bedId: bed.id,
+            },
+            effective.at,
+          );
+        }
+
         await assertBedFree(tx, scope.orgId, bed, effective.at);
+
+        // Every other live hold on the bed stands in the way, for a conversion too; the
+        // clock is read after the locks, so a hold that lapsed meanwhile no longer counts.
+        const disrupted = await clearHoldsForOccupancy(
+          tx,
+          scope.orgId,
+          bed.id,
+          input.displace,
+          new Date(),
+          reservationId,
+        );
+
         const tariff = await tariffAt(tx, scope.orgId, bed.categoryId, effective.at);
 
         const id = Bun.randomUUIDv7();
@@ -1023,23 +1112,51 @@ export const ipdRouter = {
           createdBy: scope.userId,
         });
 
-        return admissionView(created!, bed.id);
+        if (reservationId !== undefined) {
+          await markConverted(tx, scope.orgId, reservationId, id);
+        }
+
+        return { admission: admissionView(created!, bed.id), disrupted };
       })
       .catch(occupancyConflict);
 
-    auditBackdate(scope, "ipd.admit.backdate", admission.id, effective, input.reason);
+    auditBackdate(
+      scope,
+      "ipd.admit.backdate",
+      admission.id,
+      effective,
+      input.reason,
+      input.reservationId,
+    );
+
+    if (input.reservationId !== undefined) {
+      auditReservation(scope, "ipd.reservation.convert", input.reservationId, {
+        admissionId: admission.id,
+        bedId: input.bedId,
+      });
+    }
+
+    if (input.displace) {
+      auditDisruptions(scope, disrupted, {
+        reason: input.displace.reason,
+        cause: "ipd.admit",
+        bedId: input.bedId,
+        admissionId: admission.id,
+      });
+    }
 
     return admission;
   }),
 
   transferBed: orgProcedure(
     { ipd: ["update"] },
-    transitionInput.extend({ bedId: z.string(), ...effectiveInput }),
+    transitionInput.extend({ bedId: z.string(), ...effectiveInput, ...displaceInput }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const effective = effectiveTime(scope, input.effectiveAt, input.reason);
+    requireDisplaceGrant(scope, input.displace);
 
-    const admission = await db
+    const { admission, disrupted } = await db
       .transaction(async (tx) => {
         const row = await lockAdmission(tx, scope.orgId, input.admissionId, input.expectedRevision);
         requireStatus(row, ACTIVE_ADMISSION_STATUSES, "This admission has ended.");
@@ -1060,6 +1177,15 @@ export const ipdRouter = {
         }
 
         await assertBedFree(tx, scope.orgId, destination, effective.at);
+
+        const disrupted = await clearHoldsForOccupancy(
+          tx,
+          scope.orgId,
+          destination.id,
+          input.displace,
+          new Date(),
+        );
+
         const tariff = await tariffAt(tx, scope.orgId, destination.categoryId, effective.at);
 
         await tx
@@ -1084,11 +1210,20 @@ export const ipdRouter = {
           .where(and(eq(admissions.orgId, scope.orgId), eq(admissions.id, row.id)))
           .returning(admissionSelection);
 
-        return admissionView(updated!, destination.id);
+        return { admission: admissionView(updated!, destination.id), disrupted };
       })
       .catch(occupancyConflict);
 
     auditBackdate(scope, "ipd.transfer.backdate", admission.id, effective, input.reason);
+
+    if (input.displace) {
+      auditDisruptions(scope, disrupted, {
+        reason: input.displace.reason,
+        cause: "ipd.transferBed",
+        bedId: input.bedId,
+        admissionId: admission.id,
+      });
+    }
 
     return admission;
   }),
@@ -1642,22 +1777,4 @@ async function issuedBill(tx: Tx, orgId: string, invoiceId: string) {
   const { orgGstin, ...totals } = invoice;
 
   return { lines: rows.map(withBatch), registered: Boolean(orgGstin), ...totals };
-}
-
-async function assertUnoccupied(tx: Tx, orgId: string, bedId: string) {
-  const [stay] = await tx
-    .select({ id: admissionBedStays.id })
-    .from(admissionBedStays)
-    .where(
-      and(
-        eq(admissionBedStays.orgId, orgId),
-        eq(admissionBedStays.bedId, bedId),
-        isNull(admissionBedStays.endedAt),
-      ),
-    )
-    .limit(1);
-
-  if (stay) {
-    throw new ORPCError("CONFLICT", { message: "That bed is occupied." });
-  }
 }

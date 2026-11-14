@@ -1,0 +1,95 @@
+---
+title: Theatre schedule
+description: Book surgical cases into theatre rooms with their equipment and consultant, and keep rooms and machines out of use for maintenance
+---
+
+**Theatre** is the coordinator's calendar for operating theatres, procedure
+rooms and named machines. It plans who uses which room, machine and consultant,
+and when. It does not record what was done in theatre, and it bills nothing:
+procedures and supplies are billed on the Patient's admission as before.
+
+Reception can view and book cases. Only an owner or administrator can add rooms
+and equipment or block them.
+
+## Set up rooms and equipment
+
+An administrator opens **Theatre**, then **Rooms and equipment**:
+
+1. **Add room**: give the name staff use, such as OT 1, and say whether it is an
+   operating theatre or a procedure room.
+2. **Add equipment**: one entry per machine, named so staff can tell it apart,
+   such as C-arm 1 or Anaesthesia workstation 2. Two C-arms are two entries.
+   Consumables are stock, not equipment.
+
+A room or machine with a confirmed case still ahead cannot be taken out of use.
+Move or cancel those cases first.
+
+## Book a case
+
+Open **Theatre**, then **Schedule**, and choose **Book a case**. Find the
+Patient, choose the consultant and the procedure, the planned start and end,
+the minutes needed to prepare the room before and clean it after, the room and
+the machines the case needs.
+
+A booked case is a draft. **A draft holds nothing**: another case can still
+take the same room, machine or consultant. The room can be left empty until you
+know it.
+
+## Confirm
+
+**Confirm** holds the room and each machine for the case, from the start of
+preparation to the end of cleaning, and the consultant for the planned time.
+Either everything is held or nothing is.
+
+If HMS refuses, the message says what is in the way:
+
+- **booked at that time**: another confirmed case uses that room or machine,
+  preparation and cleaning included;
+- **the consultant has another case at that time**;
+- **blocked for maintenance** or **not in use**: the room or machine cannot be
+  booked then;
+- **choose a theatre room** or **that start time has already passed**;
+- **this procedure is no longer offered**: **Change** the case to another
+  procedure.
+
+Change the time, room or machine and confirm again. Once the planned start has
+passed, **Confirm** is no longer offered: change the case to a later time first.
+A case's preparation can
+begin once the previous case in that room finishes cleaning, so its start comes
+after its own preparation. Clinics and other staff are not
+checked: confirm the anaesthetist, nurses and the consultant's clinic yourself.
+
+## Change or cancel
+
+- **Change** edits a case. On a confirmed case, the new time, room and machines
+  are checked again. If anything clashes, nothing changes and the case keeps
+  its old booking. Changing what a confirmed case holds (its time, room,
+  machines or consultant) needs a planned start that is still ahead. When those
+  stay as they are, the procedure and notes can be corrected after the start.
+  A room or machine no longer in use stays on the case
+  it was booked for, marked **(no longer in use)**.
+- **Cancel case** needs a reason and frees everything the case held.
+
+If someone else changed the case on another screen, the form closes and the
+schedule shows the latest version. Check it before trying again.
+
+## Link the admission
+
+A case can be booked before the Patient is admitted. Once they are in a bed,
+open the case and choose **Link admission**. Only the same Patient's current
+admission can be linked. The case then shows **Linked admission**, which opens
+the stay. If the Patient leaves and is admitted again before a postponed case,
+choose **Change admission** to link the new stay.
+
+## Block a room or machine for maintenance
+
+Open **Rooms and equipment** and choose **Block** on the room or machine, with
+the dates and a reason, such as a service visit. Nobody can confirm a case on it
+while the block lasts. **Remove block**, in the block's **⋯** menu, asks you to
+confirm, then lifts the block only: it does not put a room or machine you
+stopped using back in use.
+
+A block that overlaps a confirmed case that has not finished is refused. An owner or administrator can
+block anyway by giving a reason. Those cases then show **Needs rescheduling**:
+they hold nothing any more. **Change** them to another room, machine or time and
+**Confirm** again, or **Cancel case**.

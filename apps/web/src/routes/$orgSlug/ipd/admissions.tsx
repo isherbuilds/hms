@@ -95,8 +95,10 @@ function AdmissionsRoute() {
                   head: "Patient",
                   cell: (item) => (
                     <span className="block min-w-0">
-                      <span className="block truncate capitalize">{item.patientName}</span>
-                      <span className="block truncate font-mono text-muted-foreground">
+                      <span className="block break-words capitalize md:truncate">
+                        {item.patientName}
+                      </span>
+                      <span className="block font-mono break-words text-muted-foreground md:truncate">
                         {item.mrn}
                       </span>
                     </span>
@@ -138,6 +140,7 @@ function AdmissionsRoute() {
               ]}
               rows={items}
               rowKey={(item) => item.id}
+              wrap
               link={(item) => ({
                 to: "/$orgSlug/ipd/$admissionId",
                 params: { orgSlug, admissionId: item.id },

@@ -12,6 +12,7 @@ import {
   ListOrderedIcon,
   PillIcon,
   ReceiptTextIcon,
+  ScissorsIcon,
   WalletIcon,
   StethoscopeIcon,
   UsersIcon,
@@ -36,6 +37,7 @@ type PrimaryNavItem = NavEntry<
   | "/$orgSlug/patients"
   | "/$orgSlug/opd"
   | "/$orgSlug/ipd"
+  | "/$orgSlug/theatre"
   | "/$orgSlug/pharmacy"
   | "/$orgSlug/billing"
   | "/$orgSlug/reports"
@@ -67,6 +69,13 @@ export const PRIMARY_NAV: readonly PrimaryNavItem[] = [
     icon: BedDoubleIcon,
     group: "Care",
     permission: { ipd: ["read"] },
+  },
+  {
+    to: "/$orgSlug/theatre",
+    label: "Theatre",
+    icon: ScissorsIcon,
+    group: "Care",
+    permission: { theatre: ["read"] },
   },
   {
     to: "/$orgSlug/pharmacy",
@@ -151,16 +160,34 @@ export const PHARMACY_TABS: readonly PharmacyTab[] = [
   { to: "/$orgSlug/pharmacy/movements", label: "Movements", permission: { pharmacy: ["read"] } },
 ];
 
-type IpdTab = NavEntry<"/$orgSlug/ipd" | "/$orgSlug/ipd/admissions" | "/$orgSlug/ipd/facility">;
+type IpdTab = NavEntry<
+  | "/$orgSlug/ipd"
+  | "/$orgSlug/ipd/admissions"
+  | "/$orgSlug/ipd/reservations"
+  | "/$orgSlug/ipd/facility"
+>;
 
 // Admitting is a task opened from a free bed on the board, not a tab.
 export const IPD_TABS: readonly IpdTab[] = [
   { to: "/$orgSlug/ipd", label: "Beds", permission: { ipd: ["read"] } },
   { to: "/$orgSlug/ipd/admissions", label: "Admissions", permission: { ipd: ["read"] } },
+  { to: "/$orgSlug/ipd/reservations", label: "Reservations", permission: { ipd: ["read"] } },
   {
     to: "/$orgSlug/ipd/facility",
     label: "Wards and beds",
     permission: { ipd: ["manageFacility"] },
+  },
+];
+
+type TheatreTab = NavEntry<"/$orgSlug/theatre" | "/$orgSlug/theatre/resources">;
+
+// Booking a case is a task opened from the schedule, not a tab.
+export const THEATRE_TABS: readonly TheatreTab[] = [
+  { to: "/$orgSlug/theatre", label: "Schedule", permission: { theatre: ["read"] } },
+  {
+    to: "/$orgSlug/theatre/resources",
+    label: "Rooms and equipment",
+    permission: { theatre: ["manageResources"] },
   },
 ];
 

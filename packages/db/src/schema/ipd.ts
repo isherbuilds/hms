@@ -83,6 +83,12 @@ export const bedTariffs = pgTable(
       table.effectiveFrom.desc(),
       table.id.desc(),
     ),
+    // Two rates from one instant would leave the rate in force to an id tiebreak.
+    uniqueIndex("bed_tariffs_org_category_effective_uq").on(
+      table.orgId,
+      table.categoryId,
+      table.effectiveFrom,
+    ),
   ],
 );
 
@@ -176,7 +182,7 @@ export const admissions = pgTable(
     ),
     check(
       "admissions_cancelled_check",
-      sql`(${table.status} = 'cancelled') = (${table.cancelledAt} is not null and ${table.cancelReason} is not null)`,
+      sql`(${table.status} = 'cancelled') = (${table.cancelledAt} is not null) and (${table.status} = 'cancelled') = (${table.cancelReason} is not null)`,
     ),
     check(
       "admissions_timeline_check",
@@ -334,5 +340,90 @@ export const admissionPharmacyIssueLines = pgTable(
       columns: [table.orgId, table.batchId],
       foreignColumns: [stockBatches.orgId, stockBatches.id],
     }),
+  ],
+);
+
+// Stored states only. Expiry is derived from `holdUntil` at read, never stored, so a
+// no-show frees the hold without a cleanup job.
+export const BED_RESERVATION_STATUSES = [
+  "requested",
+  "confirmed",
+  "converted",
+  "cancelled",
+  "disrupted",
+] as const;
+
+// A future bed booking. A request promises nothing; a confirmed hold promises one bed
+// for a half-open window and is distinct from actual occupancy.
+export const bedReservations = pgTable(
+  "bed_reservations",
+  {
+    id: text("id").primaryKey(),
+    orgId: orgIdColumn(),
+    patientId: text("patient_id").notNull(),
+    categoryId: text("category_id").notNull(),
+    bedId: text("bed_id"),
+    plannedArrivalAt: timestamp("planned_arrival_at", { withTimezone: true }).notNull(),
+    plannedDepartureAt: timestamp("planned_departure_at", { withTimezone: true }).notNull(),
+    holdUntil: timestamp("hold_until", { withTimezone: true }),
+    status: text("status", { enum: BED_RESERVATION_STATUSES }).notNull(),
+    revision: integer("revision").notNull().default(0),
+    admissionId: text("admission_id"),
+    cancelReason: text("cancel_reason"),
+    disruptedReason: text("disrupted_reason"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "bed_reservations_window_check",
+      sql`${table.plannedDepartureAt} > ${table.plannedArrivalAt}`,
+    ),
+    check(
+      "bed_reservations_hold_check",
+      sql`${table.holdUntil} is null or (${table.holdUntil} > ${table.plannedArrivalAt} and ${table.holdUntil} <= ${table.plannedDepartureAt})`,
+    ),
+    check(
+      "bed_reservations_held_check",
+      sql`${table.status} not in ('confirmed', 'converted') or (${table.bedId} is not null and ${table.holdUntil} is not null)`,
+    ),
+    check(
+      "bed_reservations_converted_check",
+      sql`(${table.status} = 'converted') = (${table.admissionId} is not null)`,
+    ),
+    check(
+      "bed_reservations_cancelled_check",
+      sql`(${table.status} = 'cancelled') = (${table.cancelReason} is not null)`,
+    ),
+    check(
+      "bed_reservations_disrupted_check",
+      sql`${table.status} <> 'disrupted' or ${table.disruptedReason} is not null`,
+    ),
+    unique("bed_reservations_org_id_id_unique").on(table.orgId, table.id),
+    // Lets a surgical case's link name the reservation's Patient as well.
+    unique("bed_reservations_org_id_patient_unique").on(table.orgId, table.id, table.patientId),
+    foreignKey({
+      columns: [table.orgId, table.patientId],
+      foreignColumns: [patients.orgId, patients.id],
+    }),
+    foreignKey({
+      columns: [table.orgId, table.categoryId],
+      foreignColumns: [bedCategories.orgId, bedCategories.id],
+    }),
+    foreignKey({
+      columns: [table.orgId, table.bedId],
+      foreignColumns: [beds.orgId, beds.id],
+    }),
+    // The Admission a hold became is the same Patient's.
+    foreignKey({
+      columns: [table.orgId, table.admissionId, table.patientId],
+      foreignColumns: [admissions.orgId, admissions.id, admissions.patientId],
+    }),
+    index("bed_reservations_org_arrival_idx").on(table.orgId, table.plannedArrivalAt, table.id),
+    index("bed_reservations_org_created_idx").on(table.orgId, table.createdAt, table.id),
+    index("bed_reservations_org_bed_status_idx").on(table.orgId, table.bedId, table.status),
   ],
 );
