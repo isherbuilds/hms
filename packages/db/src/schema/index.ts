@@ -71,3 +71,5 @@ export * from "./pharmacy-returns";
 export * from "./pharmacy-return-lines";
 
 export * from "./ipd";
+
+export * from "./theatre";

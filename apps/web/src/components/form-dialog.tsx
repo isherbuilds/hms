@@ -34,6 +34,7 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   onClose,
   onError,
   showsInline,
+  onSubmit,
   contentClassName,
   children,
 }: {
@@ -51,6 +52,8 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   onError?: (error: Error, value: z.output<T>) => void;
   /** True for an error `onError` renders in the dialog; it then raises no toast. */
   showsInline?: (error: Error, value: z.output<T>) => boolean;
+  /** Runs as the form is submitted, before the call: a dialog clears its last refusal. */
+  onSubmit?: () => void;
   contentClassName?: string;
   children: ReactNode;
 }) {
@@ -94,7 +97,10 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
             <Form {...form}>
               <form
                 className="flex flex-col gap-3"
-                onSubmit={form.handleSubmit((value) => submit.mutate(value))}
+                onSubmit={form.handleSubmit((value) => {
+                  onSubmit?.();
+                  submit.mutate(value);
+                })}
               >
                 <fieldset disabled={submit.isPending} className="contents">
                   {children}

@@ -633,7 +633,7 @@ export function BlockBedDialog({
   );
 }
 
-const nameSchema = z.object({
+export const nameSchema = z.object({
   name: z.string().trim().min(1, "Enter a name").max(200, "Keep the name under 200 characters"),
 });
 

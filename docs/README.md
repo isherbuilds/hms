@@ -324,7 +324,27 @@ bed reservations and the theatre resource schedule to be built ahead of the
 product and clinical gates; operational release still waits for those gates.
 Bed reservations are built (D064; see
 [IPD admission to discharge](#ipd-admission-to-discharge)). The theatre resource
-schedule is in progress.
+schedule (delivery slice 1) is built (D065) with `tests/integration/theatre.test.ts`
+and its rows in the tenancy table; the demo seed has rooms, units, blocks and cases.
+
+On 2026-11-13 a browser pass (GPT 6.1 Sol) on a production build covered the
+theatre schedule: the day view, booking and confirming, refusals for a taken
+room, unit and consultant, changing and cancelling, linking an admission, rooms,
+equipment, blocks and the reasoned override, two terminals, roles without
+access, and that booking added no charge. Late-evening times showed on the right
+day and no page errors were reported. It found the booking dialog unreachable on
+a 390px phone and a consultant refusal that did not name the consultant. A
+second pass after the fixes confirmed both, and that a stale dialog closes, a
+started case takes a notes correction, a block ignores a finished case and
+offers the override only over an upcoming one, a retired room stays editable on
+a draft but cannot be confirmed, the schedule refreshes by itself, and booking
+can be completed by keyboard alone. Not seen in a browser: the changes made
+after that pass (**Change admission**, the confirmation before **Remove
+block**, the procedure check at confirmation).
+
+Still owed: delivery slice 2 (changes and actual use) and slice 3 (safety handoff
+and delivered billing), and the spec's missing contracts table. Clinical release
+still needs the OT gate.
 
 ### [Cashless claims](./specs/cashless-claims.md)
 

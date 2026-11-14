@@ -2,7 +2,6 @@ import { localDateTime } from "@hms/api/lib/business-date";
 import { FormControl } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { z } from "zod";
 
@@ -10,10 +9,9 @@ import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
 import { reasonSchema } from "@/components/ipd-dialogs";
 import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
-import { ErrorNote } from "@/components/page";
+import { Refusal, useRefusal } from "@/components/refusal";
 import { formatDateTime, localInputValue, nextHalfHour, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
-import { errorMessage, errorReason, hasErrorCode } from "@/lib/orpc-error";
 
 export type Reservation = Awaited<
   ReturnType<typeof orpc.ipd.listBedReservations.call>
@@ -78,26 +76,6 @@ function WindowFields({ holdDescription }: { holdDescription: string }) {
       />
     </>
   );
-}
-
-/** Capacity refusals (occupied, blocked, overlapping hold) stay in the dialog to be fixed
- * there; a reservation changed on another screen closes it, since its revision is stale. */
-function useRefusal(onClose: () => void) {
-  const [refusal, setRefusal] = useState<string | null>(null);
-
-  const showsInline = (error: Error) =>
-    hasErrorCode(error, "CONFLICT") && errorReason(error) !== "stale_record";
-
-  const onError = (error: Error) => {
-    if (showsInline(error)) setRefusal(errorMessage(error));
-    else if (hasErrorCode(error, "CONFLICT")) onClose();
-  };
-
-  return { refusal, onError, showsInline };
-}
-
-function Refusal({ refusal }: { refusal: string | null }) {
-  return refusal === null ? null : <ErrorNote title="The bed could not be held" detail={refusal} />;
 }
 
 /** Beds a hold can take now: active, empty, not blocked, of the requested type. */
@@ -282,6 +260,7 @@ export function HoldBedDialog({
       onClose={onClose}
       onError={refusal.onError}
       showsInline={refusal.showsInline}
+      onSubmit={refusal.clear}
       run={(value) =>
         orpc.ipd.confirmBedReservation.call({
           orgSlug,
@@ -320,7 +299,7 @@ export function HoldBedDialog({
         className="tabular-nums"
         description="If the Patient has not arrived by then, the bed is free again."
       />
-      <Refusal refusal={refusal.refusal} />
+      <Refusal title="The bed could not be held" refusal={refusal.refusal} />
     </FormDialog>
   );
 }
@@ -386,6 +365,7 @@ export function ChangeDatesDialog({
       onClose={onClose}
       onError={refusal.onError}
       showsInline={refusal.showsInline}
+      onSubmit={refusal.clear}
       run={(value) =>
         orpc.ipd.rescheduleBedReservation.call({
           orgSlug,
@@ -430,7 +410,7 @@ export function ChangeDatesDialog({
           </FormControl>
         )}
       />
-      <Refusal refusal={refusal.refusal} />
+      <Refusal title="The bed could not be held" refusal={refusal.refusal} />
     </FormDialog>
   );
 }

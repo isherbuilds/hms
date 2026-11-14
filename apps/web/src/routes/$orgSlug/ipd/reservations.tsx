@@ -9,7 +9,7 @@ import {
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ClientOnly, Link, createFileRoute } from "@tanstack/react-router";
 import { MoreHorizontalIcon } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { z } from "zod";
 
 import { appHead } from "@/config/site";
@@ -31,6 +31,7 @@ import {
   Panel,
 } from "@/components/page";
 import { useCan } from "@/lib/membership";
+import { currentMinute, useMinuteClock } from "@/lib/minute-clock";
 import { OPERATIONAL_INFINITE_REFETCH, OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
@@ -67,33 +68,6 @@ const reservationsQuery = (orgSlug: string, view: View) =>
 
 const boardQuery = (orgSlug: string) =>
   orpc.ipd.bedBoard.queryOptions({ input: { orgSlug }, ...OPERATIONAL_REFETCH });
-
-const MINUTE_MS = 60_000;
-
-// Ticks on the minute boundary, so the clock turns when a wall clock does.
-function subscribeMinutes(tick: () => void) {
-  let timer: ReturnType<typeof setInterval> | undefined;
-
-  const first = setTimeout(
-    () => {
-      tick();
-      timer = setInterval(tick, MINUTE_MS);
-    },
-    MINUTE_MS - (Date.now() % MINUTE_MS),
-  );
-
-  return () => {
-    clearTimeout(first);
-    clearInterval(timer);
-  };
-}
-
-const currentMinute = () => Math.floor(Date.now() / MINUTE_MS) * MINUTE_MS;
-
-/** Wall-clock time to the minute; the first render uses the loader's clock so hydration matches. */
-function useMinuteClock(initial: number) {
-  return useSyncExternalStore(subscribeMinutes, currentMinute, () => initial);
-}
 
 export const Route = createFileRoute("/$orgSlug/ipd/reservations")({
   head: () => appHead("Reservations"),
