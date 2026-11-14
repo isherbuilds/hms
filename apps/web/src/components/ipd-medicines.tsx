@@ -238,7 +238,7 @@ export function IssueMedicinesDialog({
                   {lines.map((line, index) => (
                     <li
                       key={line.batchId}
-                      className="grid min-w-0 gap-2 rounded-lg border border-border p-3"
+                      className="grid min-w-0 gap-2 rounded-lg bg-muted/60 p-3"
                     >
                       <div className="flex min-w-0 items-start justify-between gap-2">
                         <div className="min-w-0">

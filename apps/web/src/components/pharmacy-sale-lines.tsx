@@ -70,7 +70,7 @@ export function SaleLines({
 
   return (
     <>
-      <div className="hidden overflow-hidden rounded-lg ring-1 ring-border md:block">
+      <div className="hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -117,10 +117,7 @@ export function SaleLines({
 
       <div className="grid gap-2 md:hidden">
         {lines.map((line) => (
-          <article
-            key={line.batchId}
-            className="grid min-w-0 gap-3 rounded-lg border border-border p-3"
-          >
+          <article key={line.batchId} className="grid min-w-0 gap-3 rounded-lg bg-muted/60 p-3">
             <div className="min-w-0">
               <p className="wrap-break-words font-medium capitalize">
                 {line.productName}
