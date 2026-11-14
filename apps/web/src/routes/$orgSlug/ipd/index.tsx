@@ -106,7 +106,7 @@ function BedBoardRoute() {
               }
               minHeight=""
             >
-              <ul className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 {wardBeds.map((bed) => (
                   <BedTile
                     key={bed.id}
@@ -189,11 +189,11 @@ function BedTile({
     const { admission } = bed;
 
     return (
-      <li className="bg-card">
+      <li className="rounded-lg bg-muted/60">
         <Link
           to="/$orgSlug/ipd/$admissionId"
           params={{ orgSlug, admissionId: admission.id }}
-          className="flex h-full min-h-24 flex-col gap-1 p-3 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/60"
+          className="flex h-full min-h-24 flex-col gap-1 rounded-lg p-3 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted"
         >
           {heading}
           <span className="truncate font-medium capitalize" title={admission.patientName}>
@@ -210,7 +210,7 @@ function BedTile({
   }
 
   return (
-    <li className="flex min-h-24 flex-col gap-1 bg-card p-3">
+    <li className="flex min-h-24 flex-col gap-1 rounded-lg p-3 ring-1 ring-border ring-inset">
       {heading}
       <span className="text-muted-foreground">{bed.categoryName}</span>
       {bed.status === "blocked" ? (
