@@ -1,3 +1,4 @@
+import { INVOICE_STREAM_LABELS } from "@hms/db/schema/invoice-streams";
 import { call } from "@orpc/server";
 import { writeXlsx } from "hucre/xlsx";
 import { z } from "zod";
@@ -144,7 +145,7 @@ export const exportRouter = {
           ...rows.map(registerRow).map((row) => ({
             businessDate: row.businessDate,
             invoiceNumber: row.invoiceNumber,
-            stream: row.stream,
+            stream: INVOICE_STREAM_LABELS[row.stream],
             fiscalYear: row.fiscalYear,
             patientName: row.patientName ?? "Counter sale",
             patientMrn: row.patientMrn ?? "",
@@ -168,7 +169,7 @@ export const exportRouter = {
           { header: "Last number", key: "lastNumber", width: 22 },
         ],
         rows: series.map((row) => ({
-          stream: row.stream ?? "",
+          stream: row.stream ? INVOICE_STREAM_LABELS[row.stream] : "",
           fiscalYear: row.fiscalYear ?? "",
           count: row.count,
           firstNumber: row.firstNumber,

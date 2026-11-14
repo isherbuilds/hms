@@ -278,6 +278,12 @@ separated on paper. Basis is arithmetic, not an exemption decision. IPD round-of
 is zero; D044 exact price units and counter-Pharmacy rounding remain unchanged.
 Evidence and supply-classification rules: [D056](#d056--calendar-checkout-segmented-occupancy-and-an-ipd-financial-desk).
 
+**Shipped 2026-11-13 with IPD Slice 1:** stream `ipd` with a typed Admission
+parent, counter `invoice:ipd:${fy}` and `ipdInvoicePrefix` (default `IP`);
+per-line `priceBasis` on Charges and Invoice lines; stored `addedTaxTotal`, so
+the header check is exactly `grandTotal = subtotal − discount + addedTaxTotal +
+roundOff` for every stream. Scope limits are in [D063](#d063--ipd-slice-1-bills-once-and-bundles-ward-medicine-by-default).
+
 **Rejected:** a universal visit parent or splitting documents by revenue category
 only. A counter Pharmacy sale has no visit; a future Admission uses its own typed
 parent and line-basis snapshots rather than pretending all streams share a tax basis.
@@ -329,6 +335,12 @@ Services retain catalog identity; medicines retain null catalog and a tenant-sco
 batch reference. Counter-sale `pharmacy_batch`/null-source-id rules stay intact.
 The same Invoice/accounting path prices both care settings; this does not copy
 Product GST into exempt composite inpatient care without supply classification.
+
+**Shipped 2026-11-13 with IPD Slice 1:** `sourceType = admission`,
+`sourceId = admissionId`, `admissionKind: service | pharmacy_issue`; a
+`pharmacy_issue` Charge pairs `admissionIssueLineId` with its Admission and
+`stockBatchId` through one composite foreign key. Bed-day and package kinds
+arrive with Slices 3–4.
 
 **Context:** The catalog copy duplicated Product names and tax facts without
 providing a service identity for stock goods. Keeping goods separate from
@@ -586,6 +598,11 @@ issue or a counter Invoice. Unrelated ward/department consumption retains
 `internal_issue` and its department; it is not converted into a patient sale.
 This preserves D042's vocabulary/zod and append-only migration rules.
 
+**Shipped 2026-11-13 with IPD Slice 1:** `admission_pharmacy_issues` and
+`admission_pharmacy_issue_lines`, one negative shelf movement per line with
+reason `admission_issue` and source `admission_pharmacy_issue_line`, and one
+pending Admission Charge per line. Inpatient returns arrive with Slice 4.
+
 **Rejected:** keeping the enum checks as a second guard. A check that repeats a
 zod enum fails later and worse — after the transaction, as a 500 instead of a
 field error — and the pair drifts on the first value someone adds to only one.
@@ -766,6 +783,11 @@ line/batch pair. Counter-sale null-source-id pairing is unchanged. Whole smalles
 stock units, frozen pack conversions and printed price units remain unchanged;
 per-line price basis from D025 does not round medicine unit prices.
 
+**Shipped 2026-11-13 with IPD Slice 1:** the Charge CHECK admits the typed
+Admission source, and the issue line/Admission/batch triple is a composite
+foreign key; issue quantities are whole smallest units at the batch MRP and
+`mrpUnits`, as at the counter.
+
 ### D050 — Edernal Care brand and green accent
 
 **Accepted 2026-09-30 on the owner's instruction; living rules: [Design](./design.md#5-colour).**
@@ -936,6 +958,13 @@ No consultation is required to decide this policy; citations cannot create deman
 
 **Accepted 2026-10-04 on the owner's instruction (autonomous decision, no CA/owner consultation); evidence: [ERPNext Inpatient Record](https://frappehealth.com/docs/v13/user/manual/en/healthcare/inpatient_record), [billable Service Unit Type](https://frappehealth.com/docs/v13/user/manual/en/healthcare/healthcare_service_unit_type), [Inpatient ADT](https://frappehealth.com/docs/v13/user/manual/en/healthcare/inpatient_adt), [Bahmni/OpenMRS-backed ADT](https://bahmni.atlassian.net/wiki/spaces/BAH/pages/114923665/Admit,+Discharge+and+Transfer+Patients), [Odoo third-party hospital module](https://apps.odoo.com/apps/modules/17.0/cerevantix_health_care_management), [NHA package inclusions/special cases](https://nha.gov.in/strapi/uploads/User_guidelines_for_HBP_2_2_6d2bc0412a.pdf), [ICAI AS 9 delivery recognition](https://resource.cdn.icai.org/27275asb-as-9.pdf), [CBIC inpatient healthcare clarification](https://cbic-gst.gov.in/pdf/circularno-32-cgst.pdf), [taxable-room exception](https://gstcouncil.gov.in/sites/default/files/2024-05/03_2022-ctr-eng_1.pdf), and [NMC paper-record duties](https://nmc.org.in/storage/cms/Ethics-Regulations-2002.pdf).**
 
+**Scope extension 2026-11-13:** future bed reservations belong to IPD slice 2,
+with hold expiry and atomic arrival conversion, separate from physical occupancy.
+[Facility booking and theatre](./specs/facility-booking-and-theatre.md) owns the
+separate theatre/team/equipment schedule and Emergency/day-care handoff boundaries.
+Booking posts no delivered revenue; this does not expand slice 1 or remove the
+clinical/market release gates.
+
 The [IPD contract](./specs/ipd-admission-to-discharge.md) and its Admission/public
 command seams are accepted. Retail bed billing uses calendar checkout,
 configurable prospectively by owner/admin, default noon and minimum one day:
@@ -972,6 +1001,9 @@ and evidenced product-gate handoff/cutover with baseline and measured insured
 volume. Design/accounting approval is not a remaining CA/owner question.
 Reference features and autonomous acceptance do not replace a paying hospital
 or real pilot observations.
+
+2026-11-13: the owner lifted the IPD/ADT build gate for Slice 2, then for Slice 1; operational
+release to a hospital still needs the gate's evidence.
 
 ### D054 — Revenue control separates posting-period sales, cash and current balances
 
@@ -1347,3 +1379,195 @@ account, not a verified public identity. Role wording is not claimed to satisfy
 the statutory officer-name requirement. No further crawler/contact design
 decision is pending. The optional production number and production controls
 remain external deployment evidence, not decisions this agent can manufacture.
+
+### D063 — IPD Slice 1 bills once and bundles ward medicine by default
+
+**Accepted 2026-11-13 on the owner's instruction for IPD Slice 1, autonomously;
+to be confirmed by the owner.**
+
+- **Bundled by default.** Each inpatient issue line is `bundled` unless the
+  pharmacist marks it `independent`. A bundled line snapshots 0% GST as part of
+  exempt composite healthcare; an independent line snapshots the Product's own
+  GST. Both price at the batch MRP on an inclusive basis (D025, D056). The
+  choice is made per line at issue time and never reclassified later.
+- **One Invoice per Admission.** A unique index on `(orgId, admissionId)` holds
+  until Slice 5's supplemental billing. Issue and service posting refuse once
+  the bill exists. `ipd.issueInvoice` needs the Patient ready or departed and
+  is superseded by Slice 5's final settlement.
+- **No Credit Notes on `ipd` Invoices yet.** Corrections come from the Admission
+  once inpatient returns (Slice 4) and final settlement (Slice 5) exist.
+- **Price basis is derived, not backfilled.** `charges.price_basis` is a
+  generated column (`inclusive` exactly when the Charge sells a stock batch)
+  and `invoices.added_tax_total` is generated from the header totals, so the
+  one generated migration fills existing rows without hand-written SQL.
+  Invoice lines read the basis through their Charge.
+
+**Rejected:** defaulting medicine to the Product's GST, which would tax exempt
+inpatient care mechanically, and a per-Admission running Invoice before
+supplemental-billing rules exist.
+
+**Confirmed and extended 2026-11-13 on the owner's instruction, by reference to
+comparable systems and the GST law; evidence:
+[CGST Act s.32](https://www.cggst.com/uploads/document/1753339153-section-32.pdf),
+advance rulings on inpatient medicine
+([taxmann](https://www.taxmann.com/post/blog/in-patient-medicine-supply-exempt-as-part-of-health-care-services-aar),
+[taxscan](https://www.taxscan.in/top-stories/supply-of-medicines-to-in-patients-by-pharmacy-amounts-to-composite-supply-exempt-from-gst-aar-1431642)),
+[ERPNext Inpatient Medication Entry](https://docs.frappe.io/erpnext/v13/user/manual/en/healthcare/inpatient_medication_entry),
+[ERPNext Inpatient ADT](https://docs.frappe.io/erpnext/v13/user/manual/en/healthcare/inpatient_adt),
+[Marley Health medication requests](https://marley.frappe.cloud/docs/v15/user/manual/en/healthcare/servicemedicationrequest)
+and [OpenMRS billing improvements 2026](https://openmrs.atlassian.net/wiki/spaces/projects/pages/751206405/Billing+Improvements+2026).**
+
+- **No GSTIN, no GST.** An unregistered person may not collect any amount by
+  way of tax (s.32(1)). An Organization without a GSTIN cannot issue an `ipd`
+  Invoice that carries any GST, added on top or inside an MRP, and cannot issue
+  an `independent` inpatient medicine; the issue form offers the choice only to a GST-registered
+  hospital. OPD and counter Pharmacy keep D052's behaviour for now; aligning
+  them is owed, not decided here.
+- **Bundled by default stands.** Advance rulings treat medicines for admitted
+  patients as part of exempt composite healthcare while outpatient pharmacy
+  sales stay taxable. They bind only their applicant, so they are persuasive,
+  not general law.
+- **Issue first, bill later stands.** ERPNext's Inpatient Medication Entry
+  posts a Stock Entry on submission, and Marley bills unbilled prescriptions
+  from the Sales Invoice. No documented path from the Medication Entry itself to
+  an invoice was found, so our typed issue-line Charge is our own design.
+- **One Invoice per Admission stands until Slice 5.** It is this product's
+  choice under D056. ERPNext checks at discharge that services are invoiced; how
+  it handles several invoices per stay was not confirmed.
+- **Corrections come first in the next slice.** Credit Notes on `ipd` Invoices
+  stay refused in Slice 1, and no live hospital bills inpatients until a
+  correction path exists. Credit Notes for service lines on `ipd` Invoices are
+  built before medicine returns. OpenMRS plans refunds as an approved
+  cancel-paid-bill flow; the decision rests mainly on our own gap.
+
+### D064 — Bed reservations: holds expire by time, occupied beds are never promised, and displacement is explicit
+
+**Accepted 2026-11-13 on the owner's instruction for IPD Slice 2 reservations,
+autonomously; to be confirmed by the owner.** Contract:
+[Bed reservations](./specs/facility-booking-and-theatre.md#bed-reservations-ipd-slice-2).
+
+- **Expiry is derived from `holdUntil`.** A requested or confirmed reservation
+  whose `holdUntil` has passed reads as expired. There is no stored `expired`
+  state and no cleanup job; an expired hold promises nothing and cannot convert.
+- **A confirmed hold needs a specific bed that is free, active and unblocked
+  now.** An occupied bed takes a request only, even for later dates. This is
+  the conservative first release the spec asks for.
+- **Any confirmed, unexpired hold blocks a walk-in admission or a transfer onto
+  that bed**, even one days away, because open occupancy has no promised end.
+- **Displacement is explicit.** Admitting or moving over a hold needs
+  `ipd:correct` and a reason, and marks the hold disrupted with that reason; it
+  is never deleted.
+- **Blocks.** A block always succeeds. It disrupts the bed's holds only when the
+  caller holds `ipd:correct`; anyone else's block, including the routine
+  cleaning block placed at departure, leaves them confirmed and flagged. A hold
+  on a bed still blocked at arrival cannot convert until the bed is released.
+  Deactivating a held bed is refused.
+- **Conversion on arrival is atomic** and the admitted time must fall inside
+  the held window; otherwise reschedule first. Failure leaves the Admission, the
+  stay and the reservation unchanged.
+- **No live hold sits on an occupied bed.** Occupancy needs the bed's other holds
+  resolved first, so there is no overstay-at-risk state; the occupant is never
+  evicted.
+- **From review:** one daily rate per bed type per instant
+  (`bed_tariffs_org_category_effective_uq`), and an Admission's cancelled check
+  runs both ways (cancelled exactly when both `cancelled_at` and `cancel_reason`
+  are set).
+
+**Amended after council 2026-11-13.** (A) A block is always recorded, but it
+disrupts the bed's holds only when the caller holds `ipd:correct`; otherwise the
+holds stay confirmed and are listed under attention as at risk (bed blocked), so
+blocking and releasing cannot displace a hold. (B) A conversion consumes only its
+own hold: any other confirmed hold on the bed, in any window, refuses it until
+moved or cancelled, unless an `ipd:correct` holder displaces it with a reason.
+(C) Expiry and "hold until is in the future" are judged on the clock read after
+the Patient, Bed and reservation locks are held. A lapsed hold is never judged
+against a backdated admit time; that arrival is a walk-in.
+
+**Amended after PR review 2026-11-13.** Needs attention lists a
+lapsed request or hold only for seven days after its `holdUntil`; older ones are
+found under all. A walk-in admission is refused while the Patient has a live
+reservation; they are admitted from it, or it is cancelled first. The
+`occupied` at-risk state is removed, because no command can leave a live hold on
+an occupied bed.
+
+**Evidence:**
+[Frappe scheduled admission and ADT](https://frappehealth.com/docs/v13/user/manual/en/healthcare/inpatient_record)
+schedules an admission first and allots a vacant bed only at arrival. We depart
+by adding dated holds on a specific bed with an explicit conflict contract.
+[Bahmni surgical blocks](https://bahmni.atlassian.net/wiki/spaces/BAH/pages/703660044/Surgical%2BBlock)
+refuse overlapping blocks for one theatre and surgeon; we apply the same
+no-overlap rule to bed holds, which Bahmni does not document for beds.
+
+**Rejected:** forecast capacity from estimated departures, which would promise
+beds that may not empty; automatic expiry jobs, which add a moving part for a
+state time already gives; and silently overriding holds, which would break a
+promise without a record or a reason.
+
+### D065 — Theatre bookings hold a room, named units and the consultant atomically; booking is never care or revenue
+
+**Accepted 2026-11-13 on the owner's instruction for facility booking delivery
+slice 1, autonomously; to be confirmed by the owner.** Contract:
+[Theatre, rooms and equipment](./specs/facility-booking-and-theatre.md#theatre-rooms-and-equipment-separate-delivery-slices).
+
+- **Grants.** `theatre: read, schedule, manageResources, override` in
+  `access.ts`. Owner and admin hold all four; reception holds `read` and
+  `schedule` as the coordinator desk; cashier, accountant and pharmacist hold
+  none. `schedule` never implies `override`.
+- **States.** A draft holds nothing and skips the availability-conflict checks,
+  but its inputs are still validated: interval, duration, buffers and active
+  references.
+  A confirmed case holds its room, units and consultant. A disrupted case
+  ("Needs rescheduling") lost a resource to a block, holds nothing and must be
+  confirmed again or cancelled. A cancelled case has a reason and frees every hold.
+- **What is held.** The room and each named unit for the buffered interval
+  `[start − prep, end + cleanup)`; the consultant for the planned interval only.
+  OPD Appointments and other staff are not checked: no schedulable staff
+  calendar exists yet.
+- **All or nothing.** Confirming or rescheduling locks rooms → units →
+  Practitioner → case (extending D040), then checks every clash and writes once
+  or not at all. Adjacent intervals are allowed after buffers.
+- **Blocks.** A maintenance block over a confirmed case is refused unless a
+  `theatre:override` holder gives a reason; the overlapping cases then become
+  disrupted in the same transaction. Deactivating a room or unit that a
+  confirmed future case holds is refused.
+- **Admission comes later.** A case can be booked before the Patient is
+  admitted. Nothing links it automatically: the coordinator links the Patient's
+  current Admission to the case with `attachCaseAdmission`. That link is
+  required before actual use is recorded in the next slice.
+- **No money.** Booking writes no Charge, stock movement, Invoice or journal.
+
+**Amended after council 2026-11-13.** The room, unit and Practitioner locks are
+`FOR NO KEY UPDATE`, so they serialise schedulers without colliding with the
+`KEY SHARE` a foreign-key insert takes; every edit of a case (draft, disrupted or
+confirmed) locks the union of the rooms and units it holds now and will hold,
+then the case, so an edit racing a confirmation or a block gets a revision
+conflict, never a deadlock. A block counts only confirmed cases whose held
+interval ends after now: one entered after the fact never refuses over, or
+disrupts, a case that is already over. A confirmed case whose time, buffers,
+room, units and consultant stay as they are skips the hold checks, so a started
+case still takes a notes or procedure fix. An edit keeps a room, unit or
+procedure the case already has even after it retired; only newly chosen ones
+must be in use, and confirmation still needs every resource in use.
+
+**Amended after the second review 2026-11-13.** Confirmation rechecks inside its
+transaction that the case's procedure is still an active `procedure` Service, and
+`attachCaseAdmission` needs `ipd: read` as well as `theatre: schedule`, may replace
+a link with another current Admission of the same Patient (re-sending the linked
+one changes nothing), and audits `theatre.case.linkAdmission` with the previous and
+new ids.
+
+**Evidence:**
+[Bahmni surgical blocks](https://bahmni.atlassian.net/wiki/spaces/BAH/pages/703660044/Surgical%2BBlock)
+refuse overlapping blocks for one theatre and one principal surgeon, and its
+[surgery workflow](https://bahmni.atlassian.net/wiki/spaces/BAH/pages/703594508/Managing%2BSurgeries%2Bin%2Ba%2BSurgical%2BBlock)
+records estimated duration and cleaning time. We depart by booking individual
+equipment units against the same clash rule and by holding the consultant per
+case rather than per surgeon block.
+[Frappe clinical procedures](https://frappehealth.com/docs/v13/user/manual/en/healthcare/clinical_procedure)
+keep the appointment apart from execution, consumed stock and billing; we keep
+the same split, so the schedule records neither use nor revenue.
+
+**Rejected:** pooled or forecast capacity, which promises equipment that may not
+be there; free-text team fields treated as availability, which check nothing;
+and emergency flags that bypass conflicts, which would double-book silently
+instead of making a coordinator move or cancel the affected cases.

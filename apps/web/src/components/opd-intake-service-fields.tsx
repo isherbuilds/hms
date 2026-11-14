@@ -107,7 +107,7 @@ export function ServicesFields({
       <ServicePicker
         orgSlug={orgSlug}
         chosen={chosen}
-        allowConsultation={when === "now"}
+        services={when === "now" ? "visit" : "procedure"}
         onAdd={(line) => form.setValue("services", [...services, line], { shouldDirty: true })}
       />
       {when === "now" && !quoteState.ready && quoteState.error ? (

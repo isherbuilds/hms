@@ -321,7 +321,7 @@ function ProcedureSearch({
 
   const search = useCatalogSearch({
     orgSlug,
-    includeConsultation: false,
+    services: "procedure",
     noMatch: "No procedure matches",
   });
 

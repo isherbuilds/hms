@@ -255,8 +255,18 @@ supplier-line `rate` is paise per `packSize` units. An
 internal supply (`sold = false`) can be stocked and issued but not sold;
 counter selection also requires `active`. Opening stock is a goods receipt
 with `opening` set, not a separate document. `invoices` and `charges`
-carry exactly one typed parent, an OPD Appointment or a Pharmacy sale,
-matched to `invoices.stream` by a check constraint.
+carry exactly one typed parent, an OPD Appointment, a Pharmacy sale or an
+Admission, matched to `invoices.stream` (`opd`, `pharmacy`, `ipd`) by a check
+constraint.
+
+An Admission Charge has `sourceType = admission`, `sourceId = admissionId` and
+`admissionKind`: a `service` keeps its catalog link; a `pharmacy_issue` has a
+null catalog link and names its `admissionIssueLineId` and `stockBatchId`,
+paired with the issue line's Admission and batch by one composite foreign key.
+`admission_pharmacy_issues` and their lines record the ward issue; each line
+writes one shelf movement with reason `admission_issue` and source
+`admission_pharmacy_issue_line`, and its own Charge. Every Charge-set change
+bumps `admissions.chargeRevision`, which the bill compares (D020, D063).
 
 ## Writes and concurrency
 
@@ -269,7 +279,10 @@ keeps its own locks (D040).
   then re-read balances in a new statement, because under READ COMMITTED only a
   statement that starts after the lock sees what committed while it waited.
 - **Lock order.** A transaction takes locks in this order and skips what it
-  does not need: OPD Appointment → Treatment plan item → Treatment plan →
+  does not need: Patient (to admit or to change a bed reservation) → OPD
+  Appointment → Admission → Beds (by `id`) → Bed reservations (by `id`) →
+  Theatre rooms (by `id`) → Equipment units (by `id`) → Practitioner (the
+  consultant) → Surgical cases (by `id`) → Treatment plan item → Treatment plan →
   Charges → Invoice → Products (by `id`) → Stock batches (by `expiryDate`
   ascending, nulls last, then `id`) → Advance Receipts (by `createdAt`, `id`).
   Receipts and product updates both lock the Product before reading or
@@ -280,6 +293,43 @@ keeps its own locks (D040).
   counter. A return locks its existing Invoice first, then its batches before
   inserting return lines with batch FKs; sales never wait on that existing
   Invoice. Goods receipts likewise lock batches before inserting priced lines.
+  An admission locks the Patient before checking for an overlapping stay, then
+  the bed; a transfer locks the Admission, then both beds by `id`.
+  Bed reservations (IPD Slice 2) lock after the Bed, so every writer that could
+  promise or occupy a bed serializes on that Bed row. Confirming or rescheduling a
+  reservation locks its Patient (found through the reservation in one statement;
+  a reservation never changes Patient), then the target bed, then the reservation
+  row and compares its `revision`; the overlap check needs no further lock.
+  Conversion is part of `admit`: Patient → bed → the reservation. A walk-in
+  admission and a transfer lock the bed, then its confirmed, unlapsed holds by
+  `id`, and refuse or (with `ipd:correct` and a reason) displace them in the same
+  transaction. A block by an `ipd:correct` holder disrupts them the same way; any
+  other block leaves them confirmed. A deactivation checks for a live hold under
+  the Bed lock and refuses. Cancellation is one
+  conditional update. Expiry is derived from `holdUntil` at read, so no job locks
+  anything; a Patient lock is never taken after a Bed lock.
+  The theatre schedule (facility booking slice 1) serializes on the room and unit
+  rows, locked `FOR NO KEY UPDATE` (as is the Practitioner) so that the `KEY SHARE`
+  of a case's foreign-key writes never waits on them: confirming or editing a
+  surgical case locks its rooms by `id` (on an edit, the one it holds now and the
+  one it moves to), its units by `id` (likewise both sets) and the consultant's
+  Practitioner row, then the case row with its `revision`, and only then runs every
+  clash check (inactive resource, live block, another confirmed case holding the
+  room or a unit for an overlapping buffered interval, the consultant's overlapping
+  planned interval), reading the clock after the locks. A block locks the one
+  room or unit, then the confirmed cases holding it by `id`; deactivation locks the
+  resource and refuses while a confirmed case still holds it. Attaching an Admission
+  locks the Admission before the case. Creating a draft and cancelling take no
+  resource lock: a draft promises nothing, and cancelling only frees.
+  Every change to an Admission's Charge set locks the Admission first
+  (`lockAdmissionCharges`) and bumps its `chargeRevision`. An inpatient issue,
+  posting services and issuing the bill also compare the caller's expected
+  revision and refuse a stale one; `billing.voidCharge` only bumps it, so a void
+  makes any open bill stale without itself checking a revision. An inpatient issue
+  then locks Products and batches exactly as a sale does; posting services locks
+  nothing else; the bill locks the pending Charges, then takes the invoice and
+  receipt counters. Cancellation keeps the lifecycle lock and refuses once a
+  live (non-voided) Charge or any issue exists.
 - **Counters are locks.** A counter row stays locked until commit, which keeps a
   series gapless. One transaction takes series in the order token → invoice →
   receipt; every other command takes a single series.
@@ -359,9 +409,23 @@ lines receive leftover paise by largest remainder, ties in input order.
 Taxable value and tax are extracted from discounted gross per line. The
 pharmacy grand total alone rounds to the nearest rupee, with `roundOff`
 (−49..50 paise) posted to the Round-off account
-and reversed on the credit note completing a full return. OPD invoices stay
-tax-exclusive and round to the paisa (`roundOff = 0`). Stored money remains
-`bigint` paise (D031, D044, D049).
+and reversed on the credit note completing a full return. OPD and IPD invoices
+round to the paisa (`roundOff = 0`). Stored money remains `bigint` paise (D031,
+D044, D049).
+
+Price basis is a per-line snapshot, not a stream rule: every Charge and Invoice
+line stores `priceBasis`. An `exclusive` line adds tax on its taxable value; an
+`inclusive` line (counter and inpatient medicine at MRP) extracts tax from its
+gross. A line CHECK pins `gross = taxableValue + taxAmount` and the basis
+arithmetic. The Invoice stores `addedTaxTotal`, the tax added on top of
+exclusive lines, so its header CHECK is exact for every stream:
+`grandTotal = subtotal − discountAmount + addedTaxTotal + roundOff`. An `ipd`
+Invoice mixes both bases, is numbered from `invoice:ipd:${fy}` with
+`ipdInvoicePrefix`, and posts the same journal shape as the other streams.
+Both are generated columns, so PostgreSQL fills existing rows itself: a
+Charge's basis is `inclusive` exactly when it sells a stock batch, and
+`addedTaxTotal` is `grandTotal − subtotal + discountAmount − roundOff`. An
+Invoice line reads its basis from its Charge (D063).
 
 Split collection is one tenant-scoped transaction containing up to four
 Payments. Every line gets its own Receipt and journal source; lines

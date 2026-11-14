@@ -32,6 +32,9 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   run,
   done,
   onClose,
+  onError,
+  showsInline,
+  onSubmit,
   contentClassName,
   children,
 }: {
@@ -45,6 +48,12 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   /** Keeps the dialog open on success, showing the document the call produced. */
   done?: (result: R) => Printed;
   onClose: () => void;
+  /** Replaces closing on CONFLICT, for a dialog that shows a refusal and offers a way on. */
+  onError?: (error: Error, value: z.output<T>) => void;
+  /** True for an error `onError` renders in the dialog; it then raises no toast. */
+  showsInline?: (error: Error, value: z.output<T>) => boolean;
+  /** Runs as the form is submitted, before the call: a dialog clears its last refusal. */
+  onSubmit?: () => void;
   contentClassName?: string;
   children: ReactNode;
 }) {
@@ -54,12 +63,16 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
 
   const submit = useMutation({
     mutationFn: (value: z.output<T>) => run(value),
+    // SAFETY: the variables TanStack hands back are the value this mutation was called with.
+    meta: showsInline
+      ? { showsInline: (error, value) => showsInline(error, value as z.output<T>) }
+      : undefined,
     onSuccess: (result) => {
       if (done) setPrinted(done(result));
       else onClose();
       toast.success(success);
     },
-    onError: closeOnConflict(onClose),
+    onError: onError ?? closeOnConflict(onClose),
   });
 
   return (
@@ -84,7 +97,10 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
             <Form {...form}>
               <form
                 className="flex flex-col gap-3"
-                onSubmit={form.handleSubmit((value) => submit.mutate(value))}
+                onSubmit={form.handleSubmit((value) => {
+                  onSubmit?.();
+                  submit.mutate(value);
+                })}
               >
                 <fieldset disabled={submit.isPending} className="contents">
                   {children}

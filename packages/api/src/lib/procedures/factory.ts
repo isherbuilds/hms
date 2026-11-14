@@ -78,18 +78,27 @@ async function authorizeOrg(
 
   const { orgId, roles } = membership;
 
-  if (!authorize(roles, permission)) {
-    audit({
-      action: "rbac.permission",
-      denied: true,
-      actorId: userId,
-      orgId,
-      meta: { roles, permission },
-    });
-    throw new ORPCError("FORBIDDEN", { message: "You do not have permission to do that." });
-  }
+  const scope = { userId, orgId, roles };
+  requirePermission(scope, permission);
 
-  return { userId, orgId, roles };
+  return scope;
+}
+
+/**
+ * The same audited denial as the procedure guard, for a handler whose input decides
+ * that a second grant is needed (an IPD backdate needs `ipd:correct`).
+ */
+export function requirePermission(scope: Scope, permission: AppPermission): void {
+  if (authorize(scope.roles, permission)) return;
+
+  audit({
+    action: "rbac.permission",
+    denied: true,
+    actorId: scope.userId,
+    orgId: scope.orgId,
+    meta: { roles: scope.roles, permission },
+  });
+  throw new ORPCError("FORBIDDEN", { message: "You do not have permission to do that." });
 }
 
 export const orgProcedure = <TSchema extends z.ZodType<{ orgSlug: string }, unknown>>(

@@ -293,6 +293,7 @@ const GUARDED_CALLS = {
       advanceReceiptPrefix: "ADV",
       creditNotePrefix: "CN",
       pharmacyInvoicePrefix: "PH",
+      ipdInvoicePrefix: "IP",
       fiscalYearStartMonth: 4,
       followUpValidityDays: 14,
       unbilledAlertHours: 24,
@@ -660,6 +661,164 @@ const GUARDED_CALLS = {
     }),
   "pharmacy.getSale": (api, claim) => api.pharmacy.getSale({ ...claim, saleId: "missing" }),
   "pharmacy.listSales": (api, claim) => api.pharmacy.listSales({ ...claim }),
+  "pharmacy.issueToAdmission": (api, claim) =>
+    api.pharmacy.issueToAdmission({
+      ...claim,
+      admissionId: "missing",
+      expectedChargeRevision: 0,
+      lines: [{ batchId: "missing", qty: 1 }],
+    }),
+  "pharmacy.listAdmissionIssues": (api, claim) =>
+    api.pharmacy.listAdmissionIssues({ ...claim, admissionId: "missing" }),
+  "ipd.facility": (api, claim) => api.ipd.facility({ ...claim }),
+  "ipd.createWard": (api, claim) => api.ipd.createWard({ ...claim, name: "Intrusion" }),
+  "ipd.createBedCategory": (api, claim) =>
+    api.ipd.createBedCategory({ ...claim, name: "Intrusion" }),
+  "ipd.setBedTariff": (api, claim) =>
+    api.ipd.setBedTariff({
+      ...claim,
+      categoryId: "missing",
+      catalogItemId: "missing",
+      dailyPrice: 1n,
+      effectiveFrom: new Date(),
+    }),
+  "ipd.createBed": (api, claim) =>
+    api.ipd.createBed({ ...claim, wardId: "missing", categoryId: "missing", label: "X" }),
+  "ipd.setBedActive": (api, claim) =>
+    api.ipd.setBedActive({ ...claim, bedId: "missing", active: false }),
+  "ipd.blockBed": (api, claim) => api.ipd.blockBed({ ...claim, bedId: "missing", reason: "x" }),
+  "ipd.releaseBed": (api, claim) =>
+    api.ipd.releaseBed({ ...claim, bedId: "missing", expectedBlockedAt: new Date() }),
+  "ipd.bedBoard": (api, claim) => api.ipd.bedBoard({ ...claim }),
+  "ipd.list": (api, claim) => api.ipd.list({ ...claim }),
+  "ipd.get": (api, claim) => api.ipd.get({ ...claim, admissionId: "missing" }),
+  "ipd.admit": (api, claim) =>
+    api.ipd.admit({ ...claim, patientId: "missing", practitionerId: "missing", bedId: "missing" }),
+  "ipd.transferBed": (api, claim) =>
+    api.ipd.transferBed({
+      ...claim,
+      admissionId: "missing",
+      expectedRevision: 0,
+      bedId: "missing",
+    }),
+  "ipd.markDischargeReady": (api, claim) =>
+    api.ipd.markDischargeReady({ ...claim, admissionId: "missing", expectedRevision: 0 }),
+  "ipd.undoDischargeReady": (api, claim) =>
+    api.ipd.undoDischargeReady({
+      ...claim,
+      admissionId: "missing",
+      expectedRevision: 0,
+      reason: "x",
+    }),
+  "ipd.discharge": (api, claim) =>
+    api.ipd.discharge({ ...claim, admissionId: "missing", expectedRevision: 0 }),
+  "ipd.cancel": (api, claim) =>
+    api.ipd.cancel({ ...claim, admissionId: "missing", expectedRevision: 0, reason: "x" }),
+  "ipd.postServices": (api, claim) =>
+    api.ipd.postServices({
+      ...claim,
+      admissionId: "missing",
+      expectedChargeRevision: 0,
+      lines: [{ catalogItemId: "missing", qty: 1 }],
+    }),
+  "ipd.requestBed": (api, claim) =>
+    api.ipd.requestBed({
+      ...claim,
+      patientId: "missing",
+      categoryId: "missing",
+      plannedArrivalAt: new Date(Date.now() + 60 * 60 * 1_000),
+      plannedDepartureAt: new Date(Date.now() + 2 * 60 * 60 * 1_000),
+    }),
+  "ipd.confirmBedReservation": (api, claim) =>
+    api.ipd.confirmBedReservation({
+      ...claim,
+      reservationId: "missing",
+      expectedRevision: 0,
+      bedId: "missing",
+      holdUntil: new Date(Date.now() + 60 * 60 * 1_000),
+    }),
+  "ipd.rescheduleBedReservation": (api, claim) =>
+    api.ipd.rescheduleBedReservation({
+      ...claim,
+      reservationId: "missing",
+      expectedRevision: 0,
+      plannedArrivalAt: new Date(Date.now() + 60 * 60 * 1_000),
+      plannedDepartureAt: new Date(Date.now() + 2 * 60 * 60 * 1_000),
+    }),
+  "ipd.cancelBedReservation": (api, claim) =>
+    api.ipd.cancelBedReservation({
+      ...claim,
+      reservationId: "missing",
+      expectedRevision: 0,
+      reason: "x",
+    }),
+  "ipd.listBedReservations": (api, claim) => api.ipd.listBedReservations({ ...claim, view: "all" }),
+  "ipd.previewInvoice": (api, claim) =>
+    api.ipd.previewInvoice({ ...claim, admissionId: "missing" }),
+  "ipd.issueInvoice": (api, claim) =>
+    api.ipd.issueInvoice({
+      ...claim,
+      admissionId: "missing",
+      expectedChargeRevision: 0,
+      expectedGrandTotal: 0n,
+      payments: [],
+      outstandingReason: "Guarded-call tenant probe",
+    }),
+  "theatre.resources": (api, claim) => api.theatre.resources({ ...claim }),
+  "theatre.createRoom": (api, claim) =>
+    api.theatre.createRoom({ ...claim, name: "Intrusion", kind: "operating_theatre" }),
+  "theatre.setRoomActive": (api, claim) =>
+    api.theatre.setRoomActive({ ...claim, roomId: "missing", active: false }),
+  "theatre.createEquipment": (api, claim) =>
+    api.theatre.createEquipment({ ...claim, name: "Intrusion", kind: "C-arm" }),
+  "theatre.setEquipmentActive": (api, claim) =>
+    api.theatre.setEquipmentActive({ ...claim, equipmentId: "missing", active: false }),
+  "theatre.blockResource": (api, claim) =>
+    api.theatre.blockResource({
+      ...claim,
+      roomId: "missing",
+      startsAt: new Date(Date.now() + 60 * 60 * 1_000),
+      endsAt: new Date(Date.now() + 2 * 60 * 60 * 1_000),
+      reason: "x",
+    }),
+  "theatre.removeBlock": (api, claim) => api.theatre.removeBlock({ ...claim, blockId: "missing" }),
+  "theatre.schedule": (api, claim) =>
+    api.theatre.schedule({
+      ...claim,
+      from: new Date(),
+      to: new Date(Date.now() + 24 * 60 * 60 * 1_000),
+    }),
+  "theatre.getCase": (api, claim) => api.theatre.getCase({ ...claim, caseId: "missing" }),
+  "theatre.draftCase": (api, claim) =>
+    api.theatre.draftCase({
+      ...claim,
+      patientId: "missing",
+      practitionerId: "missing",
+      procedureItemId: "missing",
+      plannedStartAt: new Date(Date.now() + 60 * 60 * 1_000),
+      plannedEndAt: new Date(Date.now() + 2 * 60 * 60 * 1_000),
+    }),
+  "theatre.updateCase": (api, claim) =>
+    api.theatre.updateCase({
+      ...claim,
+      caseId: "missing",
+      expectedRevision: 0,
+      practitionerId: "missing",
+      procedureItemId: "missing",
+      plannedStartAt: new Date(Date.now() + 60 * 60 * 1_000),
+      plannedEndAt: new Date(Date.now() + 2 * 60 * 60 * 1_000),
+    }),
+  "theatre.confirmCase": (api, claim) =>
+    api.theatre.confirmCase({ ...claim, caseId: "missing", expectedRevision: 0 }),
+  "theatre.cancelCase": (api, claim) =>
+    api.theatre.cancelCase({ ...claim, caseId: "missing", expectedRevision: 0, reason: "x" }),
+  "theatre.attachCaseAdmission": (api, claim) =>
+    api.theatre.attachCaseAdmission({
+      ...claim,
+      caseId: "missing",
+      expectedRevision: 0,
+      admissionId: "missing",
+    }),
 } satisfies Record<string, (api: AppRouterClient, claim: OrgClaim) => Promise<object | void>>;
 
 // SAFETY: deliberately empty claim, typed only to reach the procedure signatures.
@@ -1109,6 +1268,7 @@ async function createScopedInvoice(
     advanceReceiptPrefix: "ADV",
     creditNotePrefix: "CN",
     pharmacyInvoicePrefix: "PH",
+    ipdInvoicePrefix: "IP",
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
     unbilledAlertHours: 24,

@@ -42,6 +42,7 @@ export const settingsFields = z.object({
   advanceReceiptPrefix: documentPrefixSchema,
   creditNotePrefix: documentPrefixSchema,
   pharmacyInvoicePrefix: documentPrefixSchema,
+  ipdInvoicePrefix: documentPrefixSchema,
   fiscalYearStartMonth: z.number().int().min(1, "Pick a month").max(12, "Pick a month"),
   followUpValidityDays: z
     .number()
@@ -61,6 +62,7 @@ type RuleFields = Pick<
   SettingsFields,
   | "invoicePrefix"
   | "pharmacyInvoicePrefix"
+  | "ipdInvoicePrefix"
   | "gstin"
   | "legalName"
   | "address"
@@ -71,10 +73,16 @@ export function settingsRules(value: RuleFields, context: z.RefinementCtx): void
   const issue = (path: keyof RuleFields, message: string) =>
     context.addIssue({ code: "custom", path: [path], message });
 
-  // OPD and pharmacy invoices count on separate counters but share one uniqueness
-  // index on `(orgId, invoiceNumber)`, so equal prefixes would issue one number twice.
+  // The invoice streams count on separate counters but share one uniqueness index on
+  // `(orgId, invoiceNumber)`, so equal prefixes would issue one number twice.
   if (value.invoicePrefix === value.pharmacyInvoicePrefix) {
     issue("pharmacyInvoicePrefix", "Use a different prefix from the OPD invoice prefix");
+  }
+
+  if (value.ipdInvoicePrefix === value.invoicePrefix) {
+    issue("ipdInvoicePrefix", "Use a different prefix from the OPD invoice prefix");
+  } else if (value.ipdInvoicePrefix === value.pharmacyInvoicePrefix) {
+    issue("ipdInvoicePrefix", "Use a different prefix from the pharmacy invoice prefix");
   }
 
   if (!value.gstin) return;

@@ -1,4 +1,5 @@
 import { db } from "@hms/db";
+import type { InvoiceStream } from "@hms/db/schema/invoice-streams";
 import { invoices } from "@hms/db/schema/invoices";
 import { SETTINGS_DEFAULTS, organizationSettings } from "@hms/db/schema/organization-settings";
 import { and, eq } from "drizzle-orm";
@@ -41,6 +42,7 @@ export const settingsRouter = {
         currency: organizationSettings.currency,
         invoicePrefix: organizationSettings.invoicePrefix,
         pharmacyInvoicePrefix: organizationSettings.pharmacyInvoicePrefix,
+        ipdInvoicePrefix: organizationSettings.ipdInvoicePrefix,
       })
       .from(organizationSettings)
       .where(eq(organizationSettings.orgId, scope.orgId))
@@ -55,9 +57,9 @@ export const settingsRouter = {
       });
     }
 
-    // The streams count independently over one number index, so moving a prefix to the
-    // other stream recreates a number it already issued. An issued prefix is final.
-    const issued = async (stream: "opd" | "pharmacy") => {
+    // The streams count independently over one number index, so moving a prefix to
+    // another stream recreates a number it already issued. An issued prefix is final.
+    const issued = async (stream: InvoiceStream) => {
       const [row] = await db
         .select({ id: invoices.id })
         .from(invoices)
@@ -79,6 +81,12 @@ export const settingsRouter = {
     ) {
       throw new ORPCError("CONFLICT", {
         message: "The pharmacy invoice prefix cannot change once a sale has been invoiced",
+      });
+    }
+
+    if (fields.ipdInvoicePrefix !== stored.ipdInvoicePrefix && (await issued("ipd"))) {
+      throw new ORPCError("CONFLICT", {
+        message: "The IPD invoice prefix cannot change once an inpatient bill has been issued",
       });
     }
 

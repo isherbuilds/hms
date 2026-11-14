@@ -22,6 +22,7 @@ export const REASON_LABELS: Record<MovementReason, string> = {
   breakage: "Breakage",
   count_correction: "Count correction",
   internal_issue: "Internal issue",
+  admission_issue: "Issued to admission",
 };
 
 // Kept local so no @hms/db server module reaches the client bundle (hard rule 6).
@@ -53,6 +54,11 @@ export const SCHEDULE_LABELS: Record<(typeof SCHEDULES)[number], string> = {
   x: "Schedule X · not sold here",
 };
 
+/** The unit a stock quantity counts, as a field names it: "tablets", "ml", "pieces". */
+export function stockUnitPlural(stockUnit: string): string {
+  return stockUnit === "ml" ? stockUnit : `${stockUnit}s`;
+}
+
 /** Render stock in whole packs and remaining counted units, without rounding a price. */
 export function formatStockQty({
   qty,
@@ -63,7 +69,7 @@ export function formatStockQty({
   unitsPerPack: number;
   stockUnit: string;
 }): string {
-  const plural = stockUnit === "piece" ? "pieces" : `${stockUnit}s`;
+  const plural = stockUnitPlural(stockUnit);
 
   const counted = (count: number) =>
     `${count} ${stockUnit === "ml" || count === 1 ? stockUnit : plural}`;

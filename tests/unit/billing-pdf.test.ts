@@ -156,3 +156,101 @@ test("invoice and receipt PDFs ignore later account activity", async () => {
   ).toEqual((await invoice(source)).bytes);
   expect((await receipt(later)).bytes).toEqual((await receipt(issued)).bytes);
 });
+
+test("an ipd Invoice mixing an added-GST service with exempt and taxed MRP medicines renders", async () => {
+  const data = billingPdfFixture({ lineCount: 3, unicode: false });
+  const [service, exemptMedicine, taxedMedicine] = data.lines;
+
+  if (!service || !exemptMedicine || !taxedMedicine) throw new Error("fixture has three lines");
+
+  const lines: InvoiceBundle["lines"] = [
+    {
+      ...service,
+      description: "Ward bed (general)",
+      qty: 3,
+      unitPrice: 2_000_00n,
+      lineSubtotal: 6_000_00n,
+      taxableValue: 6_000_00n,
+      taxAmount: 300_00n,
+      gross: 6_300_00n,
+      taxRatePercent: "5.00",
+      priceBasis: "exclusive",
+    },
+    {
+      ...exemptMedicine,
+      description: "Ceftriaxone 1 g injection",
+      qty: 4,
+      unitPrice: 56_00n,
+      lineSubtotal: 224_00n,
+      taxableValue: 224_00n,
+      taxAmount: 0n,
+      gross: 224_00n,
+      taxRatePercent: "0.00",
+      priceBasis: "inclusive",
+      revenueCategory: "pharmacy",
+    },
+    {
+      ...taxedMedicine,
+      description: "Paracetamol 500 mg strip",
+      qty: 1,
+      unitPrice: 112_00n,
+      lineSubtotal: 112_00n,
+      taxableValue: 100_00n,
+      taxAmount: 12_00n,
+      gross: 112_00n,
+      taxRatePercent: "12.00",
+      priceBasis: "inclusive",
+      revenueCategory: "pharmacy",
+    },
+  ];
+
+  const invoice = {
+    ...data.invoice,
+    // SAFETY: the Invoice type widens to include "ipd" when the ipd stream lands.
+    stream: "ipd" as unknown as InvoiceBundle["invoice"]["stream"],
+    opdAppointmentId: null,
+    subtotal: 6_324_00n,
+    addedTaxTotal: 300_00n,
+    taxTotal: 312_00n,
+    grandTotal: 6_636_00n,
+    orgDrugLicence20: "MH-PUN-20B-0001",
+    orgDrugLicence21: "MH-PUN-21B-0001",
+  };
+
+  // Without a GSTIN the bill carries no GST (D063): a 0% service and bundled medicines.
+  const unregisteredLines: InvoiceBundle["lines"] = lines.map((line) => ({
+    ...line,
+    taxableValue: line.lineSubtotal,
+    taxAmount: 0n,
+    gross: line.lineSubtotal,
+    taxRatePercent: "0.00",
+  }));
+
+  const cases = [
+    { invoice: { ...invoice, orgGstin: "27ABCDE1234F1Z5" }, lines },
+    {
+      invoice: {
+        ...invoice,
+        orgGstin: "",
+        subtotal: 6_336_00n,
+        addedTaxTotal: 0n,
+        taxTotal: 0n,
+        grandTotal: 6_336_00n,
+      },
+      lines: unregisteredLines,
+    },
+  ];
+
+  for (const billed of cases) {
+    for (const layout of ["a4", "thermal"] as const) {
+      const pdf = await renderBillingPdf({
+        kind: "invoice",
+        data: { ...data, ...billed },
+        documentId: null,
+        layout,
+      });
+
+      expect(new TextDecoder().decode(pdf.bytes.slice(0, 5))).toBe("%PDF-");
+    }
+  }
+});

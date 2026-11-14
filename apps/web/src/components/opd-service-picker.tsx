@@ -22,12 +22,15 @@ export type ServiceLine = {
 export function ServicePicker({
   orgSlug,
   chosen,
-  allowConsultation,
+  services,
+  taxedBillable = true,
   onAdd,
 }: {
   orgSlug: string;
   chosen: ReadonlySet<string>;
-  allowConsultation: boolean;
+  services: "visit" | "procedure" | "any";
+  /** False where GST cannot be billed (an inpatient bill without a GSTIN): taxed services are shown but not selectable. */
+  taxedBillable?: boolean;
   onAdd: (line: ServiceLine) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -36,17 +39,22 @@ export function ServicePicker({
 
   const search = useCatalogSearch({
     orgSlug,
-    includeConsultation: allowConsultation,
+    services,
     noMatch: "No unused service matches",
   });
 
   const results = search.items.filter((item) => !chosen.has(item.id));
 
+  const unbillable = (item: (typeof results)[number]) =>
+    !taxedBillable && Number(item.taxRatePercent) > 0;
+
   const renderMatch = (item: (typeof results)[number]) => (
     <>
       <span className="min-w-0">
         <span className="block truncate font-medium">{item.name}</span>
-        <span className="text-muted-foreground">{item.category}</span>
+        <span className="text-muted-foreground">
+          {unbillable(item) ? "Charges GST — set to 0% to bill here" : item.category}
+        </span>
       </span>
       <span className="tabular-nums">{formatMoney(item.unitPrice, currency)}</span>
     </>
@@ -82,7 +90,7 @@ export function ServicePicker({
               if (reason === "input-change") search.onInputValueChange(value);
             }}
             onValueChange={(item) => {
-              if (!item) return;
+              if (!item || unbillable(item)) return;
 
               onAdd({
                 catalogItemId: item.id,
@@ -117,6 +125,7 @@ export function ServicePicker({
             />
             <ComboboxPopup
               getItemKey={(item: (typeof results)[number]) => item.id}
+              isItemDisabled={unbillable}
               itemClassName="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2"
               renderItem={renderMatch}
               emptyContent={

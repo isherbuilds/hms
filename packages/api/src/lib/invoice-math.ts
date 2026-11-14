@@ -1,3 +1,5 @@
+import type { InvoiceStream } from "@hms/db/schema/invoice-streams";
+import type { PriceBasis } from "@hms/db/schema/price-basis";
 import { z } from "zod";
 
 import { divideHalfUp, parseDecimal } from "../core/money";
@@ -36,6 +38,7 @@ type ChargeInput = {
   priceUnits: number;
   taxRatePercent: string;
   taxCode: string | null;
+  priceBasis: PriceBasis;
 };
 
 type InvoiceLine = {
@@ -51,9 +54,18 @@ type InvoiceLine = {
   taxAmount: bigint;
   gross: bigint;
   taxCode: string | null;
+  priceBasis: PriceBasis;
 };
 
-export type InvoiceStream = "opd" | "pharmacy";
+export type { InvoiceStream, PriceBasis };
+
+// Re-exported so the client reads stream names without importing @hms/db.
+export { INVOICE_STREAMS, INVOICE_STREAM_LABELS } from "@hms/db/schema/invoice-streams";
+
+/** Only the counter Pharmacy document total rounds to whole rupees (D044). */
+export function roundsToRupee(stream: InvoiceStream) {
+  return stream === "pharmacy";
+}
 
 export class InvoiceDiscountExceededError extends Error {}
 
@@ -68,11 +80,8 @@ function gcd(left: bigint, right: bigint): bigint {
 export function computeInvoiceLines(
   charges: ChargeInput[],
   discountPaise: bigint,
-  stream: InvoiceStream,
+  { roundToRupee }: { roundToRupee: boolean },
 ) {
-  // Pharmacy MRP carries its tax and its document total rounds to whole rupees;
-  // OPD prices are tax-exclusive and total to the paisa.
-  const inclusive = stream === "pharmacy";
   let commonUnits = 1n;
 
   const preparedLines = charges.map((charge) => {
@@ -135,11 +144,13 @@ export function computeInvoiceLines(
   }
 
   let taxTotalPaise = 0n;
+  let addedTaxTotalPaise = 0n;
   let preRoundPaise = 0n;
 
   const lines = preparedLines.map(({ charge, lineSubtotal, allocatedDiscount }): InvoiceLine => {
     const netPaise = lineSubtotal - allocatedDiscount;
     const rate = parseDecimal(charge.taxRatePercent);
+    const inclusive = charge.priceBasis === "inclusive";
 
     // Inclusive: the net amount already contains the tax, so it is the gross and the
     // taxable value is extracted from it. Exclusive: the net is taxable.
@@ -156,6 +167,8 @@ export function computeInvoiceLines(
     taxTotalPaise += taxAmountPaise;
     preRoundPaise += grossPaise;
 
+    if (!inclusive) addedTaxTotalPaise += taxAmountPaise;
+
     return {
       chargeId: charge.chargeId,
       description: charge.description,
@@ -169,15 +182,17 @@ export function computeInvoiceLines(
       taxAmount: taxAmountPaise,
       gross: grossPaise,
       taxCode: charge.taxCode,
+      priceBasis: charge.priceBasis,
     };
   });
 
-  const grandTotal = inclusive ? divideHalfUp(preRoundPaise, 100n) * 100n : preRoundPaise;
+  const grandTotal = roundToRupee ? divideHalfUp(preRoundPaise, 100n) * 100n : preRoundPaise;
 
   return {
     lines,
     subtotal: subtotalPaise,
     taxTotal: taxTotalPaise,
+    addedTaxTotal: addedTaxTotalPaise,
     roundOff: grandTotal - preRoundPaise,
     grandTotal,
   };

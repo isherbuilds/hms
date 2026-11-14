@@ -68,6 +68,7 @@ async function createBillingFixture(seed: string) {
     advanceReceiptPrefix: "ADV",
     creditNotePrefix: "CN",
     pharmacyInvoicePrefix: "PH",
+    ipdInvoicePrefix: "IP",
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
     unbilledAlertHours: 1,

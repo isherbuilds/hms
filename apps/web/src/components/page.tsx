@@ -194,6 +194,8 @@ type DataListProps<T> = {
   onActivate?: (row: T) => void;
   /** Row controls, rendered outside the row target. */
   action?: (row: T) => ReactNode;
+  /** Compact rows wrap instead of truncating: for facts staff must read in full. */
+  wrap?: boolean;
 };
 
 export function DataList<T>({
@@ -204,6 +206,7 @@ export function DataList<T>({
   link,
   onActivate,
   action,
+  wrap,
 }: DataListProps<T>) {
   const shape = (compact: boolean) =>
     rows.map((row) => (
@@ -215,6 +218,7 @@ export function DataList<T>({
         link={link}
         onActivate={onActivate}
         action={action}
+        wrap={wrap}
       />
     ));
 
@@ -247,6 +251,7 @@ function DataRow<T>({
   link,
   onActivate,
   action,
+  wrap,
 }: Omit<DataListProps<T>, "rows" | "rowKey"> & {
   row: T;
   compact: boolean;
@@ -306,7 +311,11 @@ function DataRow<T>({
         "flex min-h-10 min-w-0 flex-1 flex-col gap-1 px-3 py-2",
         <>
           <span className="flex min-w-0 items-center gap-2">
-            <span className="min-w-0 truncate font-medium">{name.cell(row)}</span>
+            <span
+              className={wrap ? "min-w-0 font-medium break-words" : "min-w-0 truncate font-medium"}
+            >
+              {name.cell(row)}
+            </span>
             {titles.map((column, index) => (
               <span key={index} className="shrink-0">
                 {column.cell(row)}
@@ -314,7 +323,13 @@ function DataRow<T>({
             ))}
           </span>
           {meta.length > 0 && (
-            <span className="truncate text-muted-foreground">
+            <span
+              className={
+                wrap
+                  ? "min-w-0 break-words text-muted-foreground"
+                  : "truncate text-muted-foreground"
+              }
+            >
               {meta.map((column, index) => (
                 <span key={index}>
                   {index > 0 && " · "}

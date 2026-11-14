@@ -12,6 +12,7 @@ test("selected services preview totals immediately and a discount updates tax an
         qty: 2,
         unitPrice: 100_00n,
         taxRatePercent: "18.00",
+        priceBasis: "exclusive",
       },
     ],
     "INR",

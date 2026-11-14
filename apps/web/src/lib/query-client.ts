@@ -4,6 +4,15 @@ import { toast } from "sonner";
 
 import { errorMessage } from "./orpc-error";
 
+declare module "@tanstack/react-query" {
+  interface Register {
+    mutationMeta: {
+      /** True when the dialog shows this error itself, so the global toast stays quiet. */
+      showsInline?: (error: Error, variables: unknown) => boolean;
+    };
+  }
+}
+
 // TanStack's default JSON.stringify hash throws on bigint query keys.
 const keySerializer = new StandardRPCJsonSerializer();
 
@@ -35,9 +44,13 @@ export function createQueryClient() {
     queryCache: new QueryCache({ onError: recoverFromExpiredSession }),
     mutationCache: new MutationCache({
       onSuccess: refreshAll,
-      onError: (error) => {
+      onError: (error, variables, _context, mutation) => {
         refreshAll();
         recoverFromExpiredSession(error);
+
+        // Say it once: a refusal the dialog shows inline is not toasted too.
+        if (mutation.meta?.showsInline?.(error, variables)) return;
+
         toast.error(errorMessage(error, "Could not save. Try again."));
       },
     }),

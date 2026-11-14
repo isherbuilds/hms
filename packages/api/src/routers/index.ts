@@ -6,6 +6,7 @@ import { catalogRouter } from "./catalog";
 import { dashboardRouter } from "./dashboard";
 import { exportRouter } from "./export";
 import { fileRouter } from "./file";
+import { ipdRouter } from "./ipd";
 import { memberRouter } from "./member";
 import { patientRouter } from "./patient";
 import { payerRouter } from "./payer";
@@ -14,6 +15,7 @@ import { reportRouter } from "./report";
 import { settingsRouter } from "./settings";
 import { staffRouter } from "./staff";
 import { opdRouter } from "./opd";
+import { theatreRouter } from "./theatre";
 import { treatmentRouter } from "./treatment";
 
 export const appRouter = {
@@ -23,6 +25,7 @@ export const appRouter = {
   dashboard: dashboardRouter,
   export: exportRouter,
   file: fileRouter,
+  ipd: ipdRouter,
   member: memberRouter,
   patient: patientRouter,
   payer: payerRouter,
@@ -31,6 +34,7 @@ export const appRouter = {
   settings: settingsRouter,
   staff: staffRouter,
   opd: opdRouter,
+  theatre: theatreRouter,
   treatment: treatmentRouter,
 };
 

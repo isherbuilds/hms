@@ -1,5 +1,6 @@
 import type { AppPermission } from "@hms/auth/access";
 import {
+  BedDoubleIcon,
   Building2Icon,
   ClipboardListIcon,
   ChartColumnIcon,
@@ -11,6 +12,7 @@ import {
   ListOrderedIcon,
   PillIcon,
   ReceiptTextIcon,
+  ScissorsIcon,
   WalletIcon,
   StethoscopeIcon,
   UsersIcon,
@@ -34,6 +36,8 @@ type PrimaryNavItem = NavEntry<
   | "/$orgSlug/dashboard"
   | "/$orgSlug/patients"
   | "/$orgSlug/opd"
+  | "/$orgSlug/ipd"
+  | "/$orgSlug/theatre"
   | "/$orgSlug/pharmacy"
   | "/$orgSlug/billing"
   | "/$orgSlug/reports"
@@ -58,6 +62,20 @@ export const PRIMARY_NAV: readonly PrimaryNavItem[] = [
     icon: ListOrderedIcon,
     group: "Care",
     permission: { opd: ["read"] },
+  },
+  {
+    to: "/$orgSlug/ipd",
+    label: "IPD",
+    icon: BedDoubleIcon,
+    group: "Care",
+    permission: { ipd: ["read"] },
+  },
+  {
+    to: "/$orgSlug/theatre",
+    label: "Theatre",
+    icon: ScissorsIcon,
+    group: "Care",
+    permission: { theatre: ["read"] },
   },
   {
     to: "/$orgSlug/pharmacy",
@@ -123,6 +141,7 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
 type PharmacyTab = NavEntry<
   | "/$orgSlug/pharmacy"
   | "/$orgSlug/pharmacy/stock"
+  | "/$orgSlug/pharmacy/inpatient"
   | "/$orgSlug/pharmacy/items"
   | "/$orgSlug/pharmacy/movements"
 >;
@@ -131,9 +150,45 @@ type PharmacyTab = NavEntry<
 export const PHARMACY_TABS: readonly PharmacyTab[] = [
   { to: "/$orgSlug/pharmacy", label: "Sales", permission: { pharmacy: ["read"] } },
   { to: "/$orgSlug/pharmacy/stock", label: "Stock", permission: { pharmacy: ["read"] } },
+  {
+    to: "/$orgSlug/pharmacy/inpatient",
+    label: "Inpatient issue",
+    permission: { pharmacy: ["read", "issueAdmission"], ipd: ["read"] },
+  },
   { to: "/$orgSlug/pharmacy/items", label: "Products", permission: { pharmacy: ["manageItems"] } },
   // Last: the movement ledger is an audit view, opened rarely.
   { to: "/$orgSlug/pharmacy/movements", label: "Movements", permission: { pharmacy: ["read"] } },
+];
+
+type IpdTab = NavEntry<
+  | "/$orgSlug/ipd"
+  | "/$orgSlug/ipd/admissions"
+  | "/$orgSlug/ipd/reservations"
+  | "/$orgSlug/ipd/facility"
+>;
+
+// Admitting is a task opened from a free bed on the board, not a tab.
+export const IPD_TABS: readonly IpdTab[] = [
+  { to: "/$orgSlug/ipd", label: "Beds", permission: { ipd: ["read"] } },
+  { to: "/$orgSlug/ipd/admissions", label: "Admissions", permission: { ipd: ["read"] } },
+  { to: "/$orgSlug/ipd/reservations", label: "Reservations", permission: { ipd: ["read"] } },
+  {
+    to: "/$orgSlug/ipd/facility",
+    label: "Wards and beds",
+    permission: { ipd: ["manageFacility"] },
+  },
+];
+
+type TheatreTab = NavEntry<"/$orgSlug/theatre" | "/$orgSlug/theatre/resources">;
+
+// Booking a case is a task opened from the schedule, not a tab.
+export const THEATRE_TABS: readonly TheatreTab[] = [
+  { to: "/$orgSlug/theatre", label: "Schedule", permission: { theatre: ["read"] } },
+  {
+    to: "/$orgSlug/theatre/resources",
+    label: "Rooms and equipment",
+    permission: { theatre: ["manageResources"] },
+  },
 ];
 
 type ReportLink = NavEntry<
@@ -158,7 +213,7 @@ export const REPORT_LINKS: readonly ReportLink[] = [
   {
     to: "/$orgSlug/reports/invoice-register",
     label: "Invoice register",
-    description: "OPD and pharmacy invoice series, full filtered totals, and balances now.",
+    description: "Invoice series, full filtered totals, and balances now.",
     icon: ReceiptTextIcon,
     permission: { report: ["readFinancial"] },
   },

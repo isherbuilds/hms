@@ -7,6 +7,14 @@ import { formatDecimal } from "@hms/api/core/money";
 import { formatMoney, ZERO } from "@/lib/money";
 import { methodLabel } from "@/lib/settlement";
 import { gstStateLabel } from "@hms/api/lib/gst-state";
+import {
+  gstSummaryRows,
+  invoiceDocumentTitle,
+  invoicePrintParticulars,
+  invoiceTaxBreakdown,
+  linePriceBasis,
+  mixedRateLabel,
+} from "@/lib/invoice-print";
 
 export type InvoiceBundle = Awaited<ReturnType<RouterClient<AppRouter>["billing"]["getInvoice"]>>;
 
@@ -33,12 +41,6 @@ type DocumentHeader = Pick<
   | "patientMrn"
 > &
   Partial<Pick<Invoice, "orgDrugLicence20" | "orgDrugLicence21" | "stream">>;
-
-export function invoiceDocumentTitle(invoice: Pick<Invoice, "orgGstin" | "stream">): string {
-  if (!invoice.orgGstin) return "Invoice";
-
-  return invoice.stream === "opd" ? "Bill of Supply" : "Tax Invoice";
-}
 
 export function advanceReceiptTitle(receipt: Pick<AdvanceBundle["receipt"], "orgGstin">): string {
   return receipt.orgGstin ? "Receipt Voucher" : "Advance Receipt";
@@ -97,24 +99,30 @@ function DocumentShell({
   title,
   number,
   thermal = false,
+  lines = [],
   children,
 }: {
   document: DocumentHeader;
   title: string;
   number: string;
   thermal?: boolean;
+  /** The Invoice's lines where the document has them; they decide the ipd licences. */
+  lines?: InvoiceBundle["lines"];
   children: ReactNode;
 }) {
+  const { orgGstin, stream } = document;
+  const licences = stream ? invoicePrintParticulars({ orgGstin, stream }, lines).licences : false;
+
   const letterhead = [
     document.orgAddress.replace(/\n/g, ", ").trim(),
     document.orgTaxId && document.orgTaxId !== document.orgGstin
       ? `Tax ID ${document.orgTaxId}`
       : "",
     document.orgGstin ? `GSTIN ${document.orgGstin}` : "",
-    document.stream === "pharmacy" && document.orgDrugLicence20
+    licences && document.orgDrugLicence20
       ? `Drug licence (Form 20) ${document.orgDrugLicence20}`
       : "",
-    document.stream === "pharmacy" && document.orgDrugLicence21
+    licences && document.orgDrugLicence21
       ? `Drug licence (Form 21) ${document.orgDrugLicence21}`
       : "",
   ]
@@ -244,20 +252,13 @@ function SummaryBox({ rows }: { rows: Array<{ label: string; value: string; tota
 
 function TaxSummary({
   lines,
+  mixedLines,
   thermal = false,
 }: {
   lines: InvoiceBundle["lines"];
+  mixedLines: boolean;
   thermal?: boolean;
 }) {
-  const groups = new Map<string, { taxable: bigint; tax: bigint }>();
-
-  for (const line of lines) {
-    const amounts = groups.get(line.taxRatePercent) ?? { taxable: ZERO, tax: ZERO };
-    amounts.taxable += line.taxableValue;
-    amounts.tax += line.taxAmount;
-    groups.set(line.taxRatePercent, amounts);
-  }
-
   return (
     <section style={{ breakInside: "avoid", marginTop: 18 }}>
       <SectionTitle>GST summary</SectionTitle>
@@ -271,15 +272,13 @@ function TaxSummary({
           </tr>
         </thead>
         <tbody>
-          {Array.from(groups, ([rate, amounts]) => {
-            const { cgst, sgst } = splitGst(amounts.tax);
+          {gstSummaryRows(lines, mixedLines).map(({ rate, taxable, tax }) => {
+            const { cgst, sgst } = splitGst(tax);
 
             return (
               <tr key={rate}>
-                <td style={cellStyle}>{rate}%</td>
-                <td style={{ ...cellStyle, textAlign: "right" }}>
-                  {formatDecimal(amounts.taxable)}
-                </td>
+                <td style={cellStyle}>{`${rate}%`}</td>
+                <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(taxable)}</td>
                 <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(cgst)}</td>
                 <td style={{ ...cellStyle, textAlign: "right" }}>{formatDecimal(sgst)}</td>
               </tr>
@@ -301,31 +300,54 @@ export function InvoiceDocument({
   layout: "a4" | "thermal";
 }) {
   const currency = invoice.currency;
-  // Only a registered pharmacy bill carries GST; a registered OPD bill is exempt.
-  const taxed = Boolean(invoice.orgGstin) && invoice.stream === "pharmacy";
+  const registered = Boolean(invoice.orgGstin);
+  // A registered OPD bill is exempt; a registered ipd bill carries GST when a line does.
+  const { taxed, mixedLines, priceHeading } = invoicePrintParticulars(invoice, lines);
+  const title = invoiceDocumentTitle(invoice, lines);
 
-  const unitLabel =
-    invoice.stream === "pharmacy"
-      ? invoice.orgGstin
-        ? "MRP (incl. GST)"
-        : "MRP (incl. all taxes)"
-      : "Unit";
+  const linePrice = (line: InvoiceBundle["lines"][number]) =>
+    mixedLines ? linePriceBasis(registered, line) : { label: priceHeading, suffix: "" };
 
-  const totals = [
-    {
-      label: taxed ? "Subtotal (incl. GST)" : "Subtotal",
-      value: formatMoney(
-        invoice.stream === "opd" ? invoice.subtotal + invoice.taxTotal : invoice.subtotal,
-        currency,
-      ),
-    },
-    { label: "Discount", value: formatMoney(invoice.discountAmount, currency) },
-    ...(taxed ? [{ label: "GST included", value: formatMoney(invoice.taxTotal, currency) }] : []),
-    ...(invoice.roundOff !== ZERO
+  const lineRate = (line: InvoiceBundle["lines"][number]) =>
+    mixedLines ? mixedRateLabel(line) : `${line.taxRatePercent}%`;
+
+  const roundOffRows =
+    invoice.roundOff !== ZERO
       ? [{ label: "Round off", value: formatMoney(invoice.roundOff, currency) }]
-      : []),
-    { label: "Grand total", value: formatMoney(invoice.grandTotal, currency), total: true },
-  ];
+      : [];
+
+  const grandTotal = {
+    label: "Grand total",
+    value: formatMoney(invoice.grandTotal, currency),
+    total: true,
+  };
+
+  const breakdown = invoiceTaxBreakdown(lines);
+
+  const totals =
+    taxed && mixedLines
+      ? [
+          { label: "Taxable value", amount: breakdown.taxableValue },
+          { label: "Exempt value", amount: breakdown.exemptValue },
+          { label: "GST added", amount: breakdown.gstAdded },
+          { label: "GST included in MRP", amount: breakdown.gstIncluded },
+        ]
+          .flatMap(({ label, amount }) =>
+            amount === ZERO ? [] : [{ label, value: formatMoney(amount, currency) }],
+          )
+          .concat(roundOffRows, grandTotal)
+      : [
+          {
+            label: taxed ? "Subtotal (incl. GST)" : "Subtotal",
+            value: formatMoney(invoice.subtotal + invoice.addedTaxTotal, currency),
+          },
+          { label: "Discount", value: formatMoney(invoice.discountAmount, currency) },
+          ...(taxed
+            ? [{ label: "GST included", value: formatMoney(invoice.taxTotal, currency) }]
+            : []),
+          ...roundOffRows,
+          grandTotal,
+        ];
 
   const separator = (invoice.patientGuardian?.indexOf(" ") ?? -1) + 1;
 
@@ -340,8 +362,9 @@ export function InvoiceDocument({
     return (
       <DocumentShell
         document={invoice}
-        title={invoiceDocumentTitle(invoice)}
+        title={title}
         number={invoice.invoiceNumber}
+        lines={lines}
         thermal
       >
         <Details
@@ -379,23 +402,19 @@ export function InvoiceDocument({
                 <span>{formatMoney(line.gross, currency)}</span>
               </div>
               <div style={{ color: colors.muted, fontSize: 8 }}>
-                {`${unitLabel} ${formatDecimal(line.unitPrice)}${line.priceUnits > 1 ? ` / ${line.priceUnits}` : ""}${taxed ? ` · value ${formatDecimal(line.taxableValue)} · tax ${formatDecimal(line.taxAmount)} @ ${line.taxRatePercent}%` : ""}`}
+                {`${linePrice(line).label} ${formatDecimal(line.unitPrice)}${line.priceUnits > 1 ? ` / ${line.priceUnits}` : ""}${linePrice(line).suffix ? ` ${linePrice(line).suffix}` : ""}${taxed ? ` · value ${formatDecimal(line.taxableValue)} · tax ${formatDecimal(line.taxAmount)} @ ${lineRate(line)}` : ""}`}
               </div>
             </div>
           ))}
         </section>
-        {taxed ? <TaxSummary lines={lines} thermal /> : null}
+        {taxed ? <TaxSummary lines={lines} mixedLines={mixedLines} thermal /> : null}
         <Details roomy rows={totals} />
       </DocumentShell>
     );
   }
 
   return (
-    <DocumentShell
-      document={invoice}
-      title={invoiceDocumentTitle(invoice)}
-      number={invoice.invoiceNumber}
-    >
+    <DocumentShell document={invoice} title={title} number={invoice.invoiceNumber} lines={lines}>
       <section style={{ display: "flex", gap: 28, marginBottom: 20 }}>
         <div style={{ flex: 1 }}>
           <SectionTitle>Invoice details</SectionTitle>
@@ -430,7 +449,7 @@ export function InvoiceDocument({
           <tr>
             <th style={headingCellStyle}>Description</th>
             <th style={{ ...headingCellStyle, textAlign: "right" }}>Qty</th>
-            <th style={{ ...headingCellStyle, textAlign: "right" }}>{unitLabel}</th>
+            <th style={{ ...headingCellStyle, textAlign: "right" }}>{priceHeading}</th>
             <th style={{ ...headingCellStyle, textAlign: "right" }}>Discount</th>
             {taxed ? (
               <>
@@ -455,6 +474,11 @@ export function InvoiceDocument({
               <td style={{ ...cellStyle, textAlign: "right" }}>
                 {formatDecimal(line.unitPrice)}
                 {line.priceUnits > 1 ? ` / ${line.priceUnits}` : ""}
+                {mixedLines ? (
+                  <div style={{ color: colors.muted, fontSize: 8 }}>
+                    {[linePrice(line).label, linePrice(line).suffix].filter(Boolean).join(" ")}
+                  </div>
+                ) : null}
               </td>
               <td style={{ ...cellStyle, textAlign: "right" }}>
                 {formatDecimal(line.allocatedDiscount)}
@@ -464,7 +488,7 @@ export function InvoiceDocument({
                   <td style={{ ...cellStyle, textAlign: "right" }}>
                     {formatDecimal(line.taxableValue)}
                   </td>
-                  <td style={{ ...cellStyle, textAlign: "right" }}>{`${line.taxRatePercent}%`}</td>
+                  <td style={{ ...cellStyle, textAlign: "right" }}>{lineRate(line)}</td>
                   <td style={{ ...cellStyle, textAlign: "right" }}>
                     {formatDecimal(line.taxAmount)}
                   </td>
@@ -476,7 +500,7 @@ export function InvoiceDocument({
         </tbody>
       </table>
 
-      {taxed ? <TaxSummary lines={lines} /> : null}
+      {taxed ? <TaxSummary lines={lines} mixedLines={mixedLines} /> : null}
 
       <SummaryBox rows={totals} />
     </DocumentShell>
@@ -520,7 +544,7 @@ export function CreditNoteDocument({
   note: CreditNote;
 }) {
   const sourceLines = new Map(invoiceLines.map((line) => [line.id, line]));
-  const taxed = Boolean(invoice.orgGstin) && invoice.stream === "pharmacy";
+  const { taxed } = invoicePrintParticulars(invoice, invoiceLines);
 
   const rows = note.lines.map((line) => {
     const source = sourceLines.get(line.invoiceLineId);
@@ -535,7 +559,12 @@ export function CreditNoteDocument({
   });
 
   return (
-    <DocumentShell document={invoice} title="Credit note" number={note.creditNoteNumber}>
+    <DocumentShell
+      document={invoice}
+      title="Credit note"
+      number={note.creditNoteNumber}
+      lines={invoiceLines}
+    >
       <section style={{ display: "flex", gap: 28, marginBottom: 18 }}>
         <div style={{ flex: 1 }}>
           <SectionTitle>Credit note details</SectionTitle>

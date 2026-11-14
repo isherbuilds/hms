@@ -12,7 +12,13 @@ import { departments } from "@hms/db/schema/departments";
 import { creditNoteLines } from "@hms/db/schema/credit-note-lines";
 import { creditNotes } from "@hms/db/schema/credit-notes";
 import { invoiceLines } from "@hms/db/schema/invoice-lines";
+import {
+  INVOICE_STREAMS,
+  INVOICE_STREAM_LABELS,
+  type InvoiceStream,
+} from "@hms/db/schema/invoice-streams";
 import { invoices } from "@hms/db/schema/invoices";
+import { admissions } from "@hms/db/schema/ipd";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { patients } from "@hms/db/schema/patients";
 import { payments } from "@hms/db/schema/payments";
@@ -66,7 +72,7 @@ export const periodInput = orgInput.extend({ from: reportDate, to: reportDate })
 export const asOfInput = orgInput.extend({ asOf: reportDate });
 
 const invoiceRegisterInput = periodInput.extend({
-  stream: z.enum(["opd", "pharmacy"]).optional(),
+  stream: z.enum(INVOICE_STREAMS).optional(),
   query: searchQuery,
   limit: pageLimit,
   cursor: z
@@ -104,15 +110,18 @@ const expiryExposureInput = orgInput.extend({
 
 export const REVENUE_BOUND = { report: "Revenue control", maxDays: 92 };
 
-type ReportSource = { type: "opd" | "pharmacy" | "advance" | "stock"; id: string };
+type ReportSource = { type: InvoiceStream | "advance" | "stock"; id: string };
 
 function invoiceSource(row: {
   opdAppointmentId: string | null;
   pharmacySaleId: string | null;
+  admissionId: string | null;
 }): ReportSource | null {
   if (row.opdAppointmentId) return { type: "opd", id: row.opdAppointmentId };
 
   if (row.pharmacySaleId) return { type: "pharmacy", id: row.pharmacySaleId };
+
+  if (row.admissionId) return { type: "ipd", id: row.admissionId };
 
   return null;
 }
@@ -276,6 +285,7 @@ export function registerRows(
       refundsTotal: sql`movements.refunded`.mapWith(BigInt),
       opdAppointmentId: invoices.opdAppointmentId,
       pharmacySaleId: invoices.pharmacySaleId,
+      admissionId: invoices.admissionId,
     })
     .from(invoices)
     .leftJoin(movements, joinOn)
@@ -320,10 +330,14 @@ function registerFigures<T extends RegisterMoney>(row: T) {
 export function registerRow({
   opdAppointmentId,
   pharmacySaleId,
+  admissionId,
   cursorCreatedAt: _cursorCreatedAt,
   ...row
 }: Awaited<ReturnType<typeof registerRows>>[number]) {
-  return { ...registerFigures(row), source: invoiceSource({ opdAppointmentId, pharmacySaleId }) };
+  return {
+    ...registerFigures(row),
+    source: invoiceSource({ opdAppointmentId, pharmacySaleId, admissionId }),
+  };
 }
 
 /** Whole-filter totals and per-series counts in one scan: the empty grouping set is the total. */
@@ -331,7 +345,7 @@ export async function registerSummary(orgId: string, filter: SQL | undefined) {
   const { movements, joinOn } = invoiceMovements(orgId);
 
   const result = await db.execute<{
-    stream: "opd" | "pharmacy" | null;
+    stream: InvoiceStream | null;
     fiscalYear: string | null;
     count: string;
     subtotal: string;
@@ -422,8 +436,9 @@ export function signalSource(
       return sql`
         select ${charges.id} as id, (${charges.updatedAt} at time zone ${timeZone})::date::text as "eventDate",
           ${charges.updatedAt} as "eventAt", ${charges.invoiceId} as "invoiceId",
-          case when ${charges.opdAppointmentId} is not null then 'opd' else 'pharmacy' end as "sourceType",
-          coalesce(${charges.opdAppointmentId},${charges.pharmacySaleId}) as "sourceId",
+          case when ${charges.opdAppointmentId} is not null then 'opd'
+            when ${charges.admissionId} is not null then 'ipd' else 'pharmacy' end as "sourceType",
+          coalesce(${charges.opdAppointmentId},${charges.pharmacySaleId},${charges.admissionId}) as "sourceId",
           ${charges.description} as label,
           round(${charges.unitPrice}::numeric * ${charges.qty}/${charges.priceUnits})::bigint as amount,
           ${charges.voidReason} as reason, null::text as "actorId", null::text as "actorName",
@@ -438,7 +453,7 @@ export function signalSource(
         select ${invoices.id} as id, ${invoices.businessDate}::text as "eventDate",
           ${invoices.businessDate}::timestamp at time zone 'UTC' as "eventAt",
           ${invoices.id} as "invoiceId", ${invoices.stream} as "sourceType",
-          coalesce(${invoices.opdAppointmentId},${invoices.pharmacySaleId}) as "sourceId",
+          coalesce(${invoices.opdAppointmentId},${invoices.pharmacySaleId},${invoices.admissionId}) as "sourceId",
           ${invoices.invoiceNumber} as label, ${invoices.discountAmount} as amount,
           ${invoices.note} as reason, ${invoices.issuedBy} as "actorId", ${user.name} as "actorName",
           '{}'::jsonb as details
@@ -451,7 +466,7 @@ export function signalSource(
         select ${creditNotes.id} as id, ${creditNotes.businessDate}::text as "eventDate",
           ${creditNotes.businessDate}::timestamp at time zone 'UTC' as "eventAt",
           ${invoices.id} as "invoiceId", ${invoices.stream} as "sourceType",
-          coalesce(${invoices.opdAppointmentId},${invoices.pharmacySaleId}) as "sourceId",
+          coalesce(${invoices.opdAppointmentId},${invoices.pharmacySaleId},${invoices.admissionId}) as "sourceId",
           ${creditNotes.creditNoteNumber} || ' · ' || ${invoices.invoiceNumber} as label,
           ${creditNotes.total} as amount, ${creditNotes.reason} as reason,
           ${creditNotes.issuedBy} as "actorId", ${user.name} as "actorName", '{}'::jsonb as details
@@ -504,7 +519,7 @@ export function signalSource(
           ${refunds.businessDate}::timestamp at time zone 'UTC' as "eventAt",
           ${refunds.invoiceId} as "invoiceId",
           case when ${refunds.advanceReceiptId} is not null then 'advance' else ${invoices.stream} end as "sourceType",
-          coalesce(${refunds.advanceReceiptId},${invoices.opdAppointmentId},${invoices.pharmacySaleId}) as "sourceId",
+          coalesce(${refunds.advanceReceiptId},${invoices.opdAppointmentId},${invoices.pharmacySaleId},${invoices.admissionId}) as "sourceId",
           ${refunds.refundNumber} || ' · ' || coalesce(${advanceReceipts.receiptNumber},${invoices.invoiceNumber}) as label,
           ${refunds.amount} as amount, ${creditNotes.reason} as reason,
           ${refunds.refundedBy} as "actorId", ${user.name} as "actorName",
@@ -1086,7 +1101,7 @@ export const reportRouter = {
 
       const [activity, rounding, bridgeResult] = await Promise.all([
         db.execute<{
-          stream: "opd" | "pharmacy";
+          stream: InvoiceStream;
           practitionerId: string | null;
           practitionerName: string | null;
           category: string | null;
@@ -1095,7 +1110,7 @@ export const reportRouter = {
           tax: string;
         }>(sql`
           with activity as (
-            select ${invoices.stream} as stream, ${opdAppointments.practitionerId} as practitioner_id,
+            select ${invoices.stream} as stream, ${practitioners.id} as practitioner_id,
               ${practitioners.name} as practitioner_name, ${invoiceLines.revenueCategory} as category,
               ${invoiceLines.taxableValue} as issued, 0::bigint as credited, ${invoiceLines.taxAmount} as tax
             from ${invoiceLines} inner join ${invoices}
@@ -1104,10 +1119,13 @@ export const reportRouter = {
             left join ${opdAppointments}
               on ${opdAppointments.id}=coalesce(${invoices.opdAppointmentId},${pharmacySales.opdAppointmentId})
               and ${opdAppointments.orgId}=${orgId}
-            left join ${practitioners} on ${practitioners.id}=${opdAppointments.practitionerId} and ${practitioners.orgId}=${orgId}
+            left join ${admissions} on ${admissions.id}=${invoices.admissionId} and ${admissions.orgId}=${orgId}
+            left join ${practitioners}
+              on ${practitioners.id}=coalesce(${opdAppointments.practitionerId},${admissions.practitionerId})
+              and ${practitioners.orgId}=${orgId}
             where ${invoiceLines.orgId}=${orgId} and ${invoices.businessDate} between ${input.from} and ${input.to}
             union all
-            select ${invoices.stream},${opdAppointments.practitionerId},${practitioners.name},
+            select ${invoices.stream},${practitioners.id},${practitioners.name},
               ${invoiceLines.revenueCategory},0::bigint,${creditNoteLines.taxableValue},-${creditNoteLines.taxAmount}
             from ${creditNoteLines} inner join ${creditNotes}
               on ${creditNotes.id}=${creditNoteLines.creditNoteId} and ${creditNotes.orgId}=${orgId}
@@ -1117,14 +1135,17 @@ export const reportRouter = {
             left join ${opdAppointments}
               on ${opdAppointments.id}=coalesce(${invoices.opdAppointmentId},${pharmacySales.opdAppointmentId})
               and ${opdAppointments.orgId}=${orgId}
-            left join ${practitioners} on ${practitioners.id}=${opdAppointments.practitionerId} and ${practitioners.orgId}=${orgId}
+            left join ${admissions} on ${admissions.id}=${invoices.admissionId} and ${admissions.orgId}=${orgId}
+            left join ${practitioners}
+              on ${practitioners.id}=coalesce(${opdAppointments.practitionerId},${admissions.practitionerId})
+              and ${practitioners.orgId}=${orgId}
             where ${creditNoteLines.orgId}=${orgId} and ${creditNotes.businessDate} between ${input.from} and ${input.to}
           )
           select stream,practitioner_id as "practitionerId",practitioner_name as "practitionerName",category,
             sum(issued)::text as issued,sum(credited)::text as credited,sum(tax)::text as tax
           from activity group by stream,practitioner_id,practitioner_name,category
         `),
-        db.execute<{ stream: "opd" | "pharmacy"; roundOff: string }>(sql`
+        db.execute<{ stream: InvoiceStream; roundOff: string }>(sql`
           select stream,sum(amount)::text as "roundOff" from (
             select ${invoices.stream} as stream,${invoices.roundOff} as amount from ${invoices}
               where ${invoices.orgId}=${orgId} and ${invoices.businessDate} between ${input.from} and ${input.to}
@@ -1177,7 +1198,7 @@ export const reportRouter = {
 
       for (const row of activity.rows) {
         const stream =
-          streams.get(row.stream) ?? bucket(row.stream, row.stream === "opd" ? "OPD" : "Pharmacy");
+          streams.get(row.stream) ?? bucket(row.stream, INVOICE_STREAM_LABELS[row.stream]);
 
         const practitioner =
           doctors.get(row.practitionerId) ??
@@ -1200,7 +1221,7 @@ export const reportRouter = {
 
       for (const row of rounding.rows) {
         const stream =
-          streams.get(row.stream) ?? bucket(row.stream, row.stream === "opd" ? "OPD" : "Pharmacy");
+          streams.get(row.stream) ?? bucket(row.stream, INVOICE_STREAM_LABELS[row.stream]);
 
         stream.roundOff = BigInt(row.roundOff);
         streams.set(row.stream, stream);

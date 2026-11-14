@@ -30,6 +30,7 @@ const STOCK_MOVEMENT_REASONS = [
   "breakage",
   "count_correction",
   "internal_issue",
+  "admission_issue",
 ] as const;
 
 export type StockMovementReason = (typeof STOCK_MOVEMENT_REASONS)[number];
@@ -39,6 +40,7 @@ const STOCK_MOVEMENT_SOURCES = [
   "pharmacy_sale",
   "pharmacy_return",
   "adjustment",
+  "admission_pharmacy_issue_line",
 ] as const;
 
 export type StockMovementSource = (typeof STOCK_MOVEMENT_SOURCES)[number];
@@ -69,7 +71,7 @@ export const stockMovements = pgTable(
     // `count_correction` goes either way, so only the one-way reasons pin a sign.
     check(
       "stock_movements_sign_check",
-      sql`(${table.reason} in ('sale', 'writeoff', 'breakage', 'internal_issue') and ${table.qty} < 0) or (${table.reason} in ('opening', 'receipt', 'return') and ${table.qty} > 0) or (${table.reason} in ('release', 'quarantine', 'count_correction'))`,
+      sql`(${table.reason} in ('sale', 'writeoff', 'breakage', 'internal_issue', 'admission_issue') and ${table.qty} < 0) or (${table.reason} in ('opening', 'receipt', 'return') and ${table.qty} > 0) or (${table.reason} in ('release', 'quarantine', 'count_correction'))`,
     ),
     unique("stock_movements_org_id_id_unique").on(table.orgId, table.id),
     foreignKey({

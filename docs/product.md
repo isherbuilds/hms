@@ -35,6 +35,11 @@ AI reconstruction as the clinical source.
   patient credit, and the billing ledger.
 - Pharmacy products, batch stock, goods receipts, counter sales, returns,
   quarantine, stock adjustments, and movement history.
+- IPD Slices 1–2, on the owner's instruction: wards, beds, the bed board,
+  admission to departure, future bed reservations, inpatient medicine issue,
+  posted services and one IPD bill per Admission.
+- The theatre schedule, on the same instruction: rooms, named equipment units,
+  maintenance blocks and surgical cases that hold room, units and consultant (D065).
 - Dashboard, billing worklists, and the five [reports](./reports.md).
 - Organization access, member administration, files, audit, security headers,
   production images, and upload cleanup.
@@ -48,8 +53,9 @@ stock reconciliation, and owner walkthroughs remain in the
 ### Evidence-gated
 
 Patient timeline and vitals, purchasing and supplier accounts, lab, radiology,
-IPD/ADT, Emergency, OT, insurance/TPA billing, ABDM, payment gateway, patient
-portal, offline mode, and AI assistance.
+IPD beyond Slices 1–2 (bed-day billing, packages, deposits, final settlement),
+Emergency, OT beyond the theatre schedule, insurance/TPA billing, ABDM, payment gateway, patient portal,
+offline mode, and AI assistance.
 
 Evidence-gated work gets no placeholder route, table, permission, or navigation
 entry. It starts only with a paid/observed need, a named operational owner, and
@@ -61,28 +67,52 @@ Use exact staff language in navigation and exact record names in code. Avoid a
 generic Visit, Encounter, Episode, Case, or Account when the actual record is
 known.
 
-| Staff label       | URL                               | Record / code                       | Meaning                                                                                                                                                                                                                                     |
-| ----------------- | --------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OPD               | `/$orgSlug/opd`                   | OPD Appointment / `opdAppointment`  | One scheduled or walk-in outpatient attendance from booking/arrival through consultation outcome                                                                                                                                            |
-| Patients          | `/$orgSlug/patients`              | Patient                             | Organization-local patient identity and MRN                                                                                                                                                                                                 |
-| Billing           | `/$orgSlug/billing`               | Charge / Invoice                    | Organization-wide financial worklists and source documents                                                                                                                                                                                  |
-| Treatment plan    | OPD visit Treatment plan section  | Treatment plan / `treatmentPlan`    | One course of quoted work for one Patient and Practitioner, named by its items                                                                                                                                                              |
-| Sitting           | OPD and Treatment surfaces        | Plan-linked OPD Appointment         | One attendance in a Treatment plan; the count is derived from linked appointments                                                                                                                                                           |
-| Follow-ups        | `/$orgSlug/opd?status=follow-ups` | Treatment follow-up read model      | Open plans without a booked sitting, due or undated, ordered by the requested next date; a Status filter of the OPD desk, not its own page                                                                                                  |
-| Advance Receipt   | Patient Billing route             | Advance receipt / `advanceReceipt`  | Money held for future services; it is Credit and a liability until allocation                                                                                                                                                               |
-| Credit            | Patient and settlement views      | Unallocated advance balance         | What is left of a Patient's Advance Receipts; the cashier applies it to an Invoice                                                                                                                                                          |
-| Bill this sitting | OPD visit Treatment plan section  | `treatment.postToVisit`             | Turns one quoted plan item into a Charge on the sitting that delivered it                                                                                                                                                                   |
-| Reports           | `/$orgSlug/reports`               | Report/read model                   | Reproducible views over source records; never another write model                                                                                                                                                                           |
-| Pharmacy          | `/$orgSlug/pharmacy`              | Pharmacy sale / `pharmacySale`      | One counter sale of medicines to a walk-in or a Patient, with its own Invoice                                                                                                                                                               |
-| Services          | `/$orgSlug/settings/catalog`      | Service / `catalog_items`           | Consultation, procedure, lab, radiology or other non-stock service; the URL and API name remain `catalog`                                                                                                                                   |
-| Product           | `/$orgSlug/pharmacy/items`        | Product / `products`                | One stocked item, sold at the counter or an internal supply; counts in its smallest unit and records how many units make a pack (`unitsPerPack`, 1 if none). Printed `pack` remains descriptive text; owns GST, HSN and active state (D027) |
-| Batch             | `/$orgSlug/pharmacy/stock`        | Stock batch / `stockBatches`        | One received lot with batch number, expiry and printed MRP per `mrpUnits` counted units; stock displays as packs plus loose units where a conversion exists                                                                                 |
-| Stock movement    | `/$orgSlug/pharmacy/movements`    | `stockMovements`                    | One signed, reason-coded change in smallest counted units on a batch and bucket; stock on hand is their sum (D041)                                                                                                                          |
-| Pharmacy return   | Pharmacy sale Sheet               | Pharmacy return / `pharmacyReturns` | Goods coming back against a sale into quarantine, with its Credit Note and any refund                                                                                                                                                       |
-| IPD               | future `/$orgSlug/ipd`            | Admission                           | A future inpatient stay with its own lifecycle                                                                                                                                                                                              |
-| Emergency         | future `/$orgSlug/emergency`      | Emergency Case                      | A future emergency workflow with its own lifecycle                                                                                                                                                                                          |
+| Staff label       | URL                               | Record / code                       | Meaning                                                                                                                                                                                                                                                                           |
+| ----------------- | --------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OPD               | `/$orgSlug/opd`                   | OPD Appointment / `opdAppointment`  | One scheduled or walk-in outpatient attendance from booking/arrival through consultation outcome                                                                                                                                                                                  |
+| Patients          | `/$orgSlug/patients`              | Patient                             | Organization-local patient identity and MRN                                                                                                                                                                                                                                       |
+| Billing           | `/$orgSlug/billing`               | Charge / Invoice                    | Organization-wide financial worklists and source documents                                                                                                                                                                                                                        |
+| Treatment plan    | OPD visit Treatment plan section  | Treatment plan / `treatmentPlan`    | One course of quoted work for one Patient and Practitioner, named by its items                                                                                                                                                                                                    |
+| Sitting           | OPD and Treatment surfaces        | Plan-linked OPD Appointment         | One attendance in a Treatment plan; the count is derived from linked appointments                                                                                                                                                                                                 |
+| Follow-ups        | `/$orgSlug/opd?status=follow-ups` | Treatment follow-up read model      | Open plans without a booked sitting, due or undated, ordered by the requested next date; a Status filter of the OPD desk, not its own page                                                                                                                                        |
+| Advance Receipt   | Patient Billing route             | Advance receipt / `advanceReceipt`  | Money held for future services; it is Credit and a liability until allocation                                                                                                                                                                                                     |
+| Credit            | Patient and settlement views      | Unallocated advance balance         | What is left of a Patient's Advance Receipts; the cashier applies it to an Invoice                                                                                                                                                                                                |
+| Bill this sitting | OPD visit Treatment plan section  | `treatment.postToVisit`             | Turns one quoted plan item into a Charge on the sitting that delivered it                                                                                                                                                                                                         |
+| Reports           | `/$orgSlug/reports`               | Report/read model                   | Reproducible views over source records; never another write model                                                                                                                                                                                                                 |
+| Pharmacy          | `/$orgSlug/pharmacy`              | Pharmacy sale / `pharmacySale`      | One counter sale of medicines to a walk-in or a Patient, with its own Invoice                                                                                                                                                                                                     |
+| Services          | `/$orgSlug/settings/catalog`      | Service / `catalog_items`           | Consultation, procedure, lab, radiology or other non-stock service; the URL and API name remain `catalog`                                                                                                                                                                         |
+| Product           | `/$orgSlug/pharmacy/items`        | Product / `products`                | One stocked item, sold at the counter or an internal supply; counts in its smallest unit and records how many units make a pack (`unitsPerPack`, 1 if none). Printed `pack` remains descriptive text; owns GST, HSN and active state (D027)                                       |
+| Batch             | `/$orgSlug/pharmacy/stock`        | Stock batch / `stockBatches`        | One received lot with batch number, expiry and printed MRP per `mrpUnits` counted units; stock displays as packs plus loose units where a conversion exists                                                                                                                       |
+| Stock movement    | `/$orgSlug/pharmacy/movements`    | `stockMovements`                    | One signed, reason-coded change in smallest counted units on a batch and bucket; stock on hand is their sum (D041)                                                                                                                                                                |
+| Pharmacy return   | Pharmacy sale Sheet               | Pharmacy return / `pharmacyReturns` | Goods coming back against a sale into quarantine, with its Credit Note and any refund                                                                                                                                                                                             |
+| IPD               | `/$orgSlug/ipd`                   | Admission / `admissions`            | One inpatient stay: bed occupancy history (`admission_bed_stays`) from admission to departure or cancellation, with its Admission Charges and one IPD bill                                                                                                                        |
+| Inpatient issue   | Admission page, Pharmacy          | `admissionPharmacyIssues`           | Medicines handed to the ward for one admitted Patient: stock leaves the shelf and each line waits as an Admission Charge. No sale, Invoice or Payment                                                                                                                             |
+| IPD bill          | Admission page                    | `ipd` Invoice                       | The one Invoice for an Admission's pending Charges, issued after the discharge handoff; services carrying GST add it on top only when the hospital has a GSTIN, medicines carry MRP                                                                                               |
+| Reservation       | IPD → Reservations                | Bed reservation / `bedReservations` | A planned admission's future claim on a bed type or one bed, for a dated window                                                                                                                                                                                                   |
+| Theatre room      | Theatre → Rooms and equipment     | `theatreRooms`                      | An operating theatre or procedure room that a confirmed case holds, buffers included                                                                                                                                                                                              |
+| Equipment unit    | Theatre → Rooms and equipment     | `equipmentUnits`                    | One named reusable machine, such as "C-arm 1"; booked by name, never as a pooled count. Consumables are stock                                                                                                                                                                     |
+| Surgical case     | Theatre → Schedule                | `surgicalCases`                     | One planned procedure for a Patient with a consultant, room and units. **Draft** holds nothing; **Confirmed** holds them all; **Needs rescheduling** (`disrupted`) lost a resource to a block and holds nothing; **Cancelled** has a reason. Booking is neither care nor a Charge |
+| Maintenance block | Theatre → Rooms and equipment     | `resourceBlocks`                    | A dated period when one room or unit cannot be booked                                                                                                                                                                                                                             |
+| Emergency         | future `/$orgSlug/emergency`      | Emergency Case                      | A future emergency workflow with its own lifecycle                                                                                                                                                                                                                                |
 
-There is no universal care wrapper. OPD Appointments, future Admissions, and
+Bed reservation terms:
+
+- **Reservation:** a planned admission for one Patient: a bed type, an optional
+  bed and a planned arrival and departure. It is neither occupancy nor a Charge;
+  only an Admission occupies a bed, and nothing is billed or paid for a
+  reservation.
+- **Waiting list:** a requested reservation with no bed held. It promises no
+  capacity.
+- **Hold:** a confirmed reservation on one free bed until **Hold until**. Other
+  holds cannot overlap it, and a walk-in or a move cannot take that bed unless
+  an owner or administrator overrides the hold with a reason. After **Hold
+  until** the hold has lapsed and promises nothing.
+- **Disrupted:** a hold released by that override, or by an owner or
+  administrator blocking its bed. It promises nothing until it is held on a ready
+  bed again or cancelled. Anyone else's block leaves the hold confirmed and
+  flagged **Bed blocked**.
+
+There is no universal care wrapper. OPD Appointments, Admissions, and
 future Emergency Cases own separate tables and state machines. Typed child
 records point to their exact parent. A shared anchor is reconsidered only after
 two live care settings prove a concrete cross-setting record or query needs it.
@@ -124,6 +154,8 @@ Financial vocabulary is precise:
   classification may be a Bill of Supply or Tax Invoice;
 - a **Payment** is money received and a **Receipt** is its proof;
 - a **Credit Note** corrects an issued Invoice and a **Refund** returns money;
+- an **Admission Charge** is a Charge on an inpatient stay: a posted service or
+  an inpatient issue line, pending until the IPD bill;
 - booking money taken before supply is an **Advance Receipt/Credit**, not
   Appointment payment state, and remains a liability until allocation.
 
@@ -135,6 +167,19 @@ One collection may be split across at most four Payment lines. Each non-cash
 line requires its reconciliation reference and produces its own Receipt. After
 an Invoice is issued, a discount is represented by a Credit Note; recording a
 Payment never rewrites the immutable Invoice.
+
+Inpatient money differs from the counter. An inpatient issue moves stock and
+adds pending Admission Charges; nothing is billed or paid until the IPD bill.
+Each issue line is **bundled** (part of treatment, 0% GST) unless the
+pharmacist of a GST-registered hospital marks it **independent** (sold
+separately, at the Product's own GST); a hospital without a GSTIN has no such choice. Once the Patient is
+ready to leave, billing issues one `ipd` Invoice from every pending Charge and
+may collect against it. Services are priced before GST and medicines at MRP
+with any GST inside, so one bill mixes both bases; it never rounds to the rupee.
+GST is added to a service only when the Service carries a rate and the hospital
+has a GSTIN; without one, the bill carries no GST (D063).
+An issued IPD bill cannot be edited, and Credit Notes on it wait for inpatient
+returns and final settlement (D063).
 
 Never label a Payment Receipt as the itemized bill. [D052](./decisions.md#d052--gst-registration-determines-document-particulars-and-bounded-numbering)
 fixes the document rules for the current local-supply scope:
@@ -155,7 +200,8 @@ fixes the document rules for the current local-supply scope:
   requires `legalName` and `address`; its GSTIN must start with a known state
   code. Local in-person care and counter sales use that state as place of supply
   and the existing CGST/SGST split; interstate supplies are outside this scope.
-  Pharmacy prints configured `drugLicence20` and `drugLicence21` particulars.
+  Pharmacy prints configured `drugLicence20` and `drugLicence21` particulars;
+  an IPD Invoice prints them only when it carries a medicine line.
 - Issuance stores `orgGstin` on Invoices and Advance Receipts, and
   `orgDrugLicence20`/`orgDrugLicence21` on Invoices; the printed place of
   supply comes from the GSTIN's first two digits. Later settings changes
@@ -193,19 +239,19 @@ adapter is evidence-gated.
 
 ## Roadmap gates
 
-| Increment                   | Trigger before specification                                                                                                                                                                          |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Patient timeline and vitals | Live OPD use identifies fields, authors, signing, and correction rules                                                                                                                                |
-| Pharmacy purchasing         | Counter sales and stock are implemented. Supplier accounts and broader purchasing need a separate accepted spec; see [the current boundary](./specs/pharmacy-counter-sale-and-stock.md#out-of-scope). |
-| Lab/radiology               | Named clinical owner, measured demand, approved order/result boundary, templates, units, and signing rules                                                                                            |
-| IPD/ADT                     | Stable OPD, paid scope, facility master, and signed admission-to-discharge, deposit, nursing, and billing flow                                                                                        |
-| Emergency                   | Separate safety discovery, medical-owner approval, triage/disposition rules, and downtime ownership                                                                                                   |
-| OT/surgery                  | Live IPD plus approved consent, anesthesia, resources, consumables, recovery, and billing                                                                                                             |
-| Insurance/TPA               | Meaningful insured volume or signed payer requirement with tariffs and claim lifecycle                                                                                                                |
-| ABDM                        | Sale requirement plus HFR/HPR/ABHA prerequisites, sandbox access, and compliance owner                                                                                                                |
-| Gateway/portal              | Real remote-payment journey with webhook, refund, and reconciliation ownership                                                                                                                        |
-| Offline mode                | Outage evidence proves network/UPS remediation and controlled paper fallback insufficient                                                                                                             |
-| AI assistance               | Owned workflow with consent, provenance, authorization, source linkage, human review, and failure handling                                                                                            |
+| Increment                   | Trigger before specification                                                                                                                                                                                                                                                          |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Patient timeline and vitals | Live OPD use identifies fields, authors, signing, and correction rules                                                                                                                                                                                                                |
+| Pharmacy purchasing         | Counter sales and stock are implemented. Supplier accounts and broader purchasing need a separate accepted spec; see [the current boundary](./specs/pharmacy-counter-sale-and-stock.md#out-of-scope).                                                                                 |
+| Lab/radiology               | Named clinical owner, measured demand, approved order/result boundary, templates, units, and signing rules                                                                                                                                                                            |
+| IPD/ADT                     | Stable OPD, paid scope, facility master, and signed admission-to-discharge, deposit, nursing, and billing flow. The owner lifted the build gate for Slices 1–2 on 2026-11-13 (D056); release to a hospital still needs this evidence.                                                 |
+| Emergency                   | Separate safety discovery, medical-owner approval, triage/disposition rules, and downtime ownership                                                                                                                                                                                   |
+| OT/surgery                  | [Facility booking and theatre contract](./specs/facility-booking-and-theatre.md). Scheduling (delivery slice 1) is built on the owner's instruction (D065); operational release still needs live IPD plus approved consent, anesthesia, resources, consumables, recovery, and billing |
+| Insurance/TPA               | Meaningful insured volume or signed payer requirement with tariffs and claim lifecycle                                                                                                                                                                                                |
+| ABDM                        | Sale requirement plus HFR/HPR/ABHA prerequisites, sandbox access, and compliance owner                                                                                                                                                                                                |
+| Gateway/portal              | Real remote-payment journey with webhook, refund, and reconciliation ownership                                                                                                                                                                                                        |
+| Offline mode                | Outage evidence proves network/UPS remediation and controlled paper fallback insufficient                                                                                                                                                                                             |
+| AI assistance               | Owned workflow with consent, provenance, authorization, source linkage, human review, and failure handling                                                                                                                                                                            |
 
 Before pilot traffic, walk the role map with the shift lead, validate real
 printers, rehearse backups/restores and data import, define cashier handover and

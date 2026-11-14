@@ -41,6 +41,12 @@ export const invoiceLines = pgTable(
   (table) => [
     unique("invoice_lines_org_id_id_unique").on(table.orgId, table.id),
     check("invoice_lines_price_units_check", sql`${table.priceUnits} >= 1`),
+    // The net is the taxable value (GST added) or the gross (MRP, GST inside); the
+    // line's Charge says which.
+    check(
+      "invoice_lines_basis_math_check",
+      sql`${table.gross} = ${table.taxableValue} + ${table.taxAmount} and ${table.lineSubtotal} - ${table.allocatedDiscount} in (${table.gross}, ${table.taxableValue})`,
+    ),
     foreignKey({
       columns: [table.orgId, table.invoiceId],
       foreignColumns: [invoices.orgId, invoices.id],
