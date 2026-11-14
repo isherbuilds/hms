@@ -47,7 +47,7 @@ export function PatientTreatment({
         isEmpty={plans.data?.length === 0}
         empty="No treatment plans yet"
       >
-        <div className="flex flex-col gap-4 p-3">
+        <div className="flex flex-col gap-6 p-3">
           {plans.data?.map((plan) => (
             <PlanCard
               key={plan.id}
@@ -78,7 +78,7 @@ function PlanCard({
   const editable = canEdit && plan.status === "open";
 
   return (
-    <article className="flex flex-col gap-3 rounded-lg border bg-card p-3">
+    <article className="flex flex-col gap-3">
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-sm font-medium">{plan.label}</h2>

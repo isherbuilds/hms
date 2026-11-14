@@ -72,16 +72,16 @@ function RecordTab({
       <div className="grid gap-4 sm:grid-cols-2">
         <section
           className={cn(
-            "flex flex-col gap-1 rounded-lg border p-3",
+            "flex flex-col gap-1 rounded-lg p-3",
             record.allergies
-              ? "border-clinical-alert-border bg-clinical-alert-surface text-clinical-alert"
-              : "border-clinical-clear-border bg-clinical-clear-surface text-clinical-clear",
+              ? "bg-clinical-alert-surface text-clinical-alert"
+              : "bg-clinical-clear-surface text-clinical-clear",
           )}
         >
           <h2 className="text-muted-foreground">Allergies</h2>
           <p>{record.allergies ?? "No known allergies"}</p>
         </section>
-        <section className="flex flex-col gap-1 rounded-lg border border-clinical-note-border bg-clinical-note-surface p-3 text-clinical-note">
+        <section className="flex flex-col gap-1 rounded-lg bg-clinical-note-surface p-3 text-clinical-note">
           <h2 className="text-muted-foreground">Medical history</h2>
           <p>{record.medicalHistory ?? <Empty>Nothing recorded</Empty>}</p>
         </section>
