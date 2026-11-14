@@ -1404,7 +1404,6 @@ export const ipdRouter = {
         unitPrice: item.unitPrice,
         taxRatePercent: item.taxRatePercent,
         taxCode: item.taxCode,
-        priceBasis: "exclusive" as const,
         revenueCategory: item.category,
         qty: line.qty,
         sourceType: "admission" as const,
@@ -1758,7 +1757,7 @@ async function issuedBill(tx: Tx, orgId: string, invoiceId: string) {
         taxAmount: invoiceLines.taxAmount,
         gross: invoiceLines.gross,
         taxCode: invoiceLines.taxCode,
-        priceBasis: invoiceLines.priceBasis,
+        priceBasis: charges.priceBasis,
         admissionKind: charges.admissionKind,
         ...billBatch,
       })

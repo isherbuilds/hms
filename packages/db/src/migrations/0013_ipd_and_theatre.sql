@@ -213,16 +213,16 @@ CREATE TABLE "theatre_rooms" (
 --> statement-breakpoint
 ALTER TABLE "charges" DROP CONSTRAINT "charges_parent_check";--> statement-breakpoint
 ALTER TABLE "charges" DROP CONSTRAINT "charges_catalog_item_source_check";--> statement-breakpoint
+ALTER TABLE "invoices" DROP CONSTRAINT "invoices_total_math_check";--> statement-breakpoint
 ALTER TABLE "invoices" DROP CONSTRAINT "invoices_parent_check";--> statement-breakpoint
 ALTER TABLE "stock_movements" DROP CONSTRAINT "stock_movements_sign_check";--> statement-breakpoint
 ALTER TABLE "charges" ADD COLUMN "admission_id" text;--> statement-breakpoint
 ALTER TABLE "charges" ADD COLUMN "admission_kind" text;--> statement-breakpoint
 ALTER TABLE "charges" ADD COLUMN "admission_issue_line_id" text;--> statement-breakpoint
-ALTER TABLE "charges" ADD COLUMN "price_basis" text;--> statement-breakpoint
-ALTER TABLE "organization_settings" ADD COLUMN "ipd_invoice_prefix" text DEFAULT 'IP' NOT NULL;--> statement-breakpoint
+ALTER TABLE "charges" ADD COLUMN "price_basis" text GENERATED ALWAYS AS (case when stock_batch_id is null then 'exclusive' else 'inclusive' end) STORED NOT NULL;--> statement-breakpoint
+ALTER TABLE "organization_settings" ADD COLUMN "ipd_invoice_prefix" text DEFAULT 'IPD' NOT NULL;--> statement-breakpoint
 ALTER TABLE "invoices" ADD COLUMN "admission_id" text;--> statement-breakpoint
-ALTER TABLE "invoices" ADD COLUMN "added_tax_total" bigint;--> statement-breakpoint
-ALTER TABLE "invoice_lines" ADD COLUMN "price_basis" text;--> statement-breakpoint
+ALTER TABLE "invoices" ADD COLUMN "added_tax_total" bigint GENERATED ALWAYS AS (grand_total - subtotal + discount_amount - round_off) STORED NOT NULL;--> statement-breakpoint
 ALTER TABLE "admission_bed_stays" ADD CONSTRAINT "admission_bed_stays_org_id_organization_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "admission_bed_stays" ADD CONSTRAINT "admission_bed_stays_created_by_user_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "admission_bed_stays" ADD CONSTRAINT "admission_bed_stays_org_id_admission_id_admissions_org_id_id_fk" FOREIGN KEY ("org_id","admission_id") REFERENCES "public"."admissions"("org_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -303,5 +303,7 @@ CREATE UNIQUE INDEX "charges_org_admission_issue_line_idx" ON "charges" USING bt
 CREATE UNIQUE INDEX "invoices_org_admission_idx" ON "invoices" USING btree ("org_id","admission_id") WHERE "invoices"."admission_id" is not null;--> statement-breakpoint
 ALTER TABLE "charges" ADD CONSTRAINT "charges_parent_check" CHECK (num_nonnulls("charges"."opd_appointment_id", "charges"."pharmacy_sale_id", "charges"."admission_id") = 1);--> statement-breakpoint
 ALTER TABLE "charges" ADD CONSTRAINT "charges_catalog_item_source_check" CHECK (("charges"."source_type" = 'admission') = ("charges"."admission_id" is not null) and ("charges"."source_type" = 'admission') = ("charges"."admission_kind" is not null) and ("charges"."source_type" <> 'admission' or "charges"."source_id" is not distinct from "charges"."admission_id") and ("charges"."admission_issue_line_id" is not null) = coalesce("charges"."admission_kind" = 'pharmacy_issue', false) and ("charges"."stock_batch_id" is not null) = ("charges"."source_type" = 'pharmacy_batch' or coalesce("charges"."admission_kind" = 'pharmacy_issue', false)) and ("charges"."catalog_item_id" is null) = ("charges"."stock_batch_id" is not null) and ("charges"."source_type" <> 'pharmacy_batch' or ("charges"."pharmacy_sale_id" is not null and "charges"."source_id" is null)));--> statement-breakpoint
+ALTER TABLE "invoices" ADD CONSTRAINT "invoices_added_tax_total_check" CHECK ("invoices"."added_tax_total" >= 0 and "invoices"."added_tax_total" <= "invoices"."tax_total");--> statement-breakpoint
 ALTER TABLE "invoices" ADD CONSTRAINT "invoices_parent_check" CHECK (("invoices"."stream" = 'opd' and "invoices"."opd_appointment_id" is not null and "invoices"."patient_id" is not null and "invoices"."pharmacy_sale_id" is null and "invoices"."admission_id" is null) or ("invoices"."stream" = 'pharmacy' and "invoices"."pharmacy_sale_id" is not null and "invoices"."opd_appointment_id" is null and "invoices"."admission_id" is null) or ("invoices"."stream" = 'ipd' and "invoices"."admission_id" is not null and "invoices"."patient_id" is not null and "invoices"."opd_appointment_id" is null and "invoices"."pharmacy_sale_id" is null));--> statement-breakpoint
+ALTER TABLE "invoice_lines" ADD CONSTRAINT "invoice_lines_basis_math_check" CHECK ("invoice_lines"."gross" = "invoice_lines"."taxable_value" + "invoice_lines"."tax_amount" and "invoice_lines"."line_subtotal" - "invoice_lines"."allocated_discount" in ("invoice_lines"."gross", "invoice_lines"."taxable_value"));--> statement-breakpoint
 ALTER TABLE "stock_movements" ADD CONSTRAINT "stock_movements_sign_check" CHECK (("stock_movements"."reason" in ('sale', 'writeoff', 'breakage', 'internal_issue', 'admission_issue') and "stock_movements"."qty" < 0) or ("stock_movements"."reason" in ('opening', 'receipt', 'return') and "stock_movements"."qty" > 0) or ("stock_movements"."reason" in ('release', 'quarantine', 'count_correction')));

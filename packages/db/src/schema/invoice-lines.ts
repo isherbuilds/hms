@@ -16,7 +16,6 @@ import { orgIdColumn } from "./auth";
 import { REVENUE_CATEGORIES } from "./catalog-items";
 import { charges } from "./charges";
 import { invoices } from "./invoices";
-import { PRICE_BASES } from "./price-basis";
 
 // Fixed at issuance; invoice header totals are sums of these stored line values.
 export const invoiceLines = pgTable(
@@ -37,16 +36,16 @@ export const invoiceLines = pgTable(
     gross: bigint("gross", { mode: "bigint" }).notNull(),
     taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull(),
     taxCode: text("tax_code"),
-    priceBasis: text("price_basis", { enum: PRICE_BASES }).notNull(),
     revenueCategory: text("revenue_category", { enum: REVENUE_CATEGORIES }).notNull(),
   },
   (table) => [
     unique("invoice_lines_org_id_id_unique").on(table.orgId, table.id),
     check("invoice_lines_price_units_check", sql`${table.priceUnits} >= 1`),
-    // Exclusive: tax is added on top of the net. Inclusive: the net already is the gross.
+    // The net is the taxable value (GST added) or the gross (MRP, GST inside); the
+    // line's Charge says which.
     check(
       "invoice_lines_basis_math_check",
-      sql`${table.gross} = ${table.taxableValue} + ${table.taxAmount} and ${table.lineSubtotal} - ${table.allocatedDiscount} = case ${table.priceBasis} when 'inclusive' then ${table.gross} else ${table.taxableValue} end`,
+      sql`${table.gross} = ${table.taxableValue} + ${table.taxAmount} and ${table.lineSubtotal} - ${table.allocatedDiscount} in (${table.gross}, ${table.taxableValue})`,
     ),
     foreignKey({
       columns: [table.orgId, table.invoiceId],

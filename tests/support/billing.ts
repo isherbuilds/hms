@@ -51,7 +51,6 @@ export async function addPendingCatalogCharge({
         unitPrice: item.unitPrice,
         taxRatePercent: item.taxRatePercent,
         taxCode: item.taxCode,
-        priceBasis: "exclusive",
         revenueCategory: item.category,
         sourceType: "catalog",
         sourceId: null,

@@ -300,7 +300,6 @@ export const pharmacyRouter = {
             priceUnits: batch.mrpUnits,
             taxRatePercent: batch.taxRatePercent,
             taxCode: batch.taxCode,
-            priceBasis: "inclusive" as const,
             revenueCategory: "pharmacy" as const,
             qty: line.qty,
             sourceType: "pharmacy_batch" as const,
@@ -517,7 +516,6 @@ export const pharmacyRouter = {
           // supply keeps the Product's own GST.
           taxRatePercent: line.supply === "independent" ? batch.taxRatePercent : "0.00",
           taxCode: batch.taxCode,
-          priceBasis: "inclusive" as const,
           revenueCategory: "pharmacy" as const,
           qty: line.qty,
           sourceType: "admission" as const,
@@ -1003,6 +1001,7 @@ export const pharmacyRouter = {
           db
             .select({
               line: invoiceLines,
+              priceBasis: charges.priceBasis,
               batchNumber: stockBatches.batchNumber,
               expiryDate: stockBatches.expiryDate,
             })
@@ -1088,8 +1087,9 @@ export const pharmacyRouter = {
       return {
         sale: { ...row.sale, soldByName: row.soldByName },
         invoice: row.invoice,
-        lines: lines.map(({ line, batchNumber, expiryDate }) => ({
+        lines: lines.map(({ line, priceBasis, batchNumber, expiryDate }) => ({
           ...line,
+          priceBasis,
           batchNumber,
           expiryDate,
         })),

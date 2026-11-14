@@ -386,7 +386,6 @@ export async function issueInvoiceTx(
       note: args.note ?? null,
       subtotal: computed.subtotal,
       taxTotal: computed.taxTotal,
-      addedTaxTotal: computed.addedTaxTotal,
       roundOff: computed.roundOff,
       grandTotal: computed.grandTotal,
       orgLegalName: settings.legalName,

@@ -41,7 +41,7 @@ export const organizationSettings = pgTable(
     mrnPrefix: text("mrn_prefix").notNull(),
     invoicePrefix: text("invoice_prefix").notNull(),
     pharmacyInvoicePrefix: text("pharmacy_invoice_prefix").notNull().default("PH"),
-    ipdInvoicePrefix: text("ipd_invoice_prefix").notNull().default("IP"),
+    ipdInvoicePrefix: text("ipd_invoice_prefix").notNull().default("IPD"),
     receiptPrefix: text("receipt_prefix").notNull(),
     advanceReceiptPrefix: text("advance_receipt_prefix").notNull().default("ADV"),
     creditNotePrefix: text("credit_note_prefix").notNull(),

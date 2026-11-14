@@ -43,7 +43,9 @@ export const invoices = pgTable(
     subtotal: bigint("subtotal", { mode: "bigint" }).notNull(),
     taxTotal: bigint("tax_total", { mode: "bigint" }).notNull(),
     // The GST added on top of tax-exclusive lines; inclusive lines carry theirs in the price.
-    addedTaxTotal: bigint("added_tax_total", { mode: "bigint" }).notNull(),
+    addedTaxTotal: bigint("added_tax_total", { mode: "bigint" })
+      .notNull()
+      .generatedAlwaysAs(sql`grand_total - subtotal + discount_amount - round_off`),
     roundOff: bigint("round_off", { mode: "bigint" })
       .notNull()
       .default(sql`0`),
@@ -87,10 +89,6 @@ export const invoices = pgTable(
     check(
       "invoices_parent_check",
       sql`(${table.stream} = 'opd' and ${table.opdAppointmentId} is not null and ${table.patientId} is not null and ${table.pharmacySaleId} is null and ${table.admissionId} is null) or (${table.stream} = 'pharmacy' and ${table.pharmacySaleId} is not null and ${table.opdAppointmentId} is null and ${table.admissionId} is null) or (${table.stream} = 'ipd' and ${table.admissionId} is not null and ${table.patientId} is not null and ${table.opdAppointmentId} is null and ${table.pharmacySaleId} is null)`,
-    ),
-    check(
-      "invoices_total_math_check",
-      sql`${table.grandTotal} = ${table.subtotal} - ${table.discountAmount} + ${table.addedTaxTotal} + ${table.roundOff}`,
     ),
     check(
       "invoices_added_tax_total_check",

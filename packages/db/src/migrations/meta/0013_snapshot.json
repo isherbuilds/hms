@@ -1,5 +1,5 @@
 {
-  "id": "4a987036-622c-4b04-8d89-5160f51cd5ad",
+  "id": "8ccbb522-c471-43e2-9d26-a91d6cbcbaa5",
   "prevId": "1a391cae-a25a-4ea7-95d9-ff8587d2d35f",
   "version": "7",
   "dialect": "postgresql",
@@ -1874,7 +1874,11 @@
           "name": "price_basis",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "generated": {
+            "as": "case when stock_batch_id is null then 'exclusive' else 'inclusive' end",
+            "type": "stored"
+          }
         },
         "revenue_category": {
           "name": "revenue_category",
@@ -3445,7 +3449,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'IP'"
+          "default": "'IPD'"
         },
         "receipt_prefix": {
           "name": "receipt_prefix",
@@ -4710,7 +4714,11 @@
           "name": "added_tax_total",
           "type": "bigint",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "generated": {
+            "as": "grand_total - subtotal + discount_amount - round_off",
+            "type": "stored"
+          }
         },
         "round_off": {
           "name": "round_off",
@@ -5091,9 +5099,9 @@
           "name": "invoices_parent_check",
           "value": "(\"invoices\".\"stream\" = 'opd' and \"invoices\".\"opd_appointment_id\" is not null and \"invoices\".\"patient_id\" is not null and \"invoices\".\"pharmacy_sale_id\" is null and \"invoices\".\"admission_id\" is null) or (\"invoices\".\"stream\" = 'pharmacy' and \"invoices\".\"pharmacy_sale_id\" is not null and \"invoices\".\"opd_appointment_id\" is null and \"invoices\".\"admission_id\" is null) or (\"invoices\".\"stream\" = 'ipd' and \"invoices\".\"admission_id\" is not null and \"invoices\".\"patient_id\" is not null and \"invoices\".\"opd_appointment_id\" is null and \"invoices\".\"pharmacy_sale_id\" is null)"
         },
-        "invoices_total_math_check": {
-          "name": "invoices_total_math_check",
-          "value": "\"invoices\".\"grand_total\" = \"invoices\".\"subtotal\" - \"invoices\".\"discount_amount\" + (case \"invoices\".\"stream\" when 'opd' then \"invoices\".\"tax_total\" else 0 end) + \"invoices\".\"round_off\""
+        "invoices_added_tax_total_check": {
+          "name": "invoices_added_tax_total_check",
+          "value": "\"invoices\".\"added_tax_total\" >= 0 and \"invoices\".\"added_tax_total\" <= \"invoices\".\"tax_total\""
         }
       },
       "isRLSEnabled": false
@@ -5189,12 +5197,6 @@
         },
         "tax_code": {
           "name": "tax_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "price_basis": {
-          "name": "price_basis",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -5305,6 +5307,10 @@
         "invoice_lines_price_units_check": {
           "name": "invoice_lines_price_units_check",
           "value": "\"invoice_lines\".\"price_units\" >= 1"
+        },
+        "invoice_lines_basis_math_check": {
+          "name": "invoice_lines_basis_math_check",
+          "value": "\"invoice_lines\".\"gross\" = \"invoice_lines\".\"taxable_value\" + \"invoice_lines\".\"tax_amount\" and \"invoice_lines\".\"line_subtotal\" - \"invoice_lines\".\"allocated_discount\" in (\"invoice_lines\".\"gross\", \"invoice_lines\".\"taxable_value\")"
         }
       },
       "isRLSEnabled": false

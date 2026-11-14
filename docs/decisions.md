@@ -1396,11 +1396,11 @@ to be confirmed by the owner.**
   is superseded by Slice 5's final settlement.
 - **No Credit Notes on `ipd` Invoices yet.** Corrections come from the Admission
   once inpatient returns (Slice 4) and final settlement (Slice 5) exist.
-- **Three-step basis backfill.** Migrations 0013 (nullable columns), 0014
-  (hand-authored backfill: counter Pharmacy inclusive, everything else
-  exclusive; `addedTaxTotal` 0 for Pharmacy, `taxTotal` otherwise) and 0015
-  (NOT NULL plus the new checks) keep generated and hand-written SQL apart
-  (hard rule 4).
+- **Price basis is derived, not backfilled.** `charges.price_basis` is a
+  generated column (`inclusive` exactly when the Charge sells a stock batch)
+  and `invoices.added_tax_total` is generated from the header totals, so the
+  one generated migration fills existing rows without hand-written SQL.
+  Invoice lines read the basis through their Charge.
 
 **Rejected:** defaulting medicine to the Product's GST, which would tax exempt
 inpatient care mechanically, and a per-Admission running Invoice before

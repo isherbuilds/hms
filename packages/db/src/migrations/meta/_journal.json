@@ -96,22 +96,8 @@
     {
       "idx": 13,
       "version": "7",
-      "when": 1794647589159,
+      "when": 1794648194355,
       "tag": "0013_ipd_and_theatre",
-      "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "7",
-      "when": 1794647597030,
-      "tag": "0014_backfill_price_basis",
-      "breakpoints": true
-    },
-    {
-      "idx": 15,
-      "version": "7",
-      "when": 1794647597520,
-      "tag": "0015_price_basis_required",
       "breakpoints": true
     }
   ]

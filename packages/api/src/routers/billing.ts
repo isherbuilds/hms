@@ -16,7 +16,7 @@ import { user } from "@hms/db/schema/auth";
 import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { treatmentPlanItems } from "@hms/db/schema/treatment-plan-items";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { formatDecimal } from "../core/money";
@@ -932,8 +932,12 @@ export const billingRouter = {
     const [lines, invoicePayments, invoiceAllocations, noteRows, invoiceRefunds] =
       await Promise.all([
         db
-          .select()
+          .select({ ...getTableColumns(invoiceLines), priceBasis: charges.priceBasis })
           .from(invoiceLines)
+          .innerJoin(
+            charges,
+            and(eq(charges.orgId, scope.orgId), eq(charges.id, invoiceLines.chargeId)),
+          )
           .where(
             and(eq(invoiceLines.orgId, scope.orgId), eq(invoiceLines.invoiceId, input.invoiceId)),
           )

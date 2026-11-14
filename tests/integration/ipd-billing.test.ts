@@ -1306,7 +1306,8 @@ test("the mixed-basis Invoice: exclusive taxed service, bundled and independent 
 
     if (!line) throw new Error("expected an invoice line");
 
-    return line;
+    // A line's price basis is its Charge's.
+    return { ...line, priceBasis: chargeById.get(line.chargeId)!.priceBasis };
   };
 
   const serviceLine = lineFor((charge) => charge.admissionKind === "service");
@@ -1847,22 +1848,15 @@ test("existing OPD Charges and lines are exclusive, counter Pharmacy ones are in
   });
 
   await api.opd.checkIn({ orgSlug, appointmentId: booked.id });
-  const settledOpd = await settlePendingCharges(api, { orgSlug, appointmentId: booked.id });
+  await settlePendingCharges(api, { orgSlug, appointmentId: booked.id });
 
   const opdCharges = await db
     .select()
     .from(charges)
     .where(and(eq(charges.orgId, orgId), eq(charges.opdAppointmentId, booked.id)));
 
-  const opdLines = await db
-    .select()
-    .from(invoiceLines)
-    .where(and(eq(invoiceLines.orgId, orgId), eq(invoiceLines.invoiceId, settledOpd.invoice.id)));
-
   expect(opdCharges.length).toBeGreaterThan(0);
   expect(opdCharges.every((charge) => charge.priceBasis === "exclusive")).toBe(true);
-  expect(opdLines.length).toBeGreaterThan(0);
-  expect(opdLines.every((line) => line.priceBasis === "exclusive")).toBe(true);
 
   const medicine = await hospital.createMedicine({ taxRatePercent: "12.00" });
   const { batchId } = await hospital.receive(medicine.productId, { qty: 2, mrp: 122_86n });
@@ -1880,18 +1874,12 @@ test("existing OPD Charges and lines are exclusive, counter Pharmacy ones are in
     .from(charges)
     .where(and(eq(charges.orgId, orgId), eq(charges.pharmacySaleId, sold.saleId)));
 
-  const saleLines = await db
-    .select()
-    .from(invoiceLines)
-    .where(and(eq(invoiceLines.orgId, orgId), eq(invoiceLines.invoiceId, sold.invoiceId)));
-
   const [saleInvoice] = await db
     .select()
     .from(invoices)
     .where(and(eq(invoices.orgId, orgId), eq(invoices.id, sold.invoiceId)));
 
   expect(saleCharges.map((charge) => charge.priceBasis)).toEqual(["inclusive"]);
-  expect(saleLines.map((line) => line.priceBasis)).toEqual(["inclusive"]);
   expect(saleInvoice).toMatchObject({
     stream: "pharmacy",
     subtotal: 122_86n,

@@ -51,7 +51,12 @@ export const charges = pgTable(
     priceUnits: integer("price_units").notNull().default(1),
     taxRatePercent: numeric("tax_rate_percent", { precision: 4, scale: 2 }).notNull(),
     taxCode: text("tax_code"),
-    priceBasis: text("price_basis", { enum: PRICE_BASES }).notNull(),
+    // A Charge that sells a stock batch is priced at MRP, GST inside; everything else adds GST.
+    priceBasis: text("price_basis", { enum: PRICE_BASES })
+      .notNull()
+      .generatedAlwaysAs(
+        sql`case when stock_batch_id is null then 'exclusive' else 'inclusive' end`,
+      ),
     revenueCategory: text("revenue_category", { enum: REVENUE_CATEGORIES }).notNull(),
     qty: integer("qty").notNull().default(1),
     sourceType: text("source_type", { enum: CHARGE_SOURCE_TYPES }).notNull(),

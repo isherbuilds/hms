@@ -422,9 +422,10 @@ exclusive lines, so its header CHECK is exact for every stream:
 `grandTotal = subtotal − discountAmount + addedTaxTotal + roundOff`. An `ipd`
 Invoice mixes both bases, is numbered from `invoice:ipd:${fy}` with
 `ipdInvoicePrefix`, and posts the same journal shape as the other streams.
-Migrations 0013–0015 introduced the columns nullable, backfilled them
-(Pharmacy inclusive, everything else exclusive) and then made them required
-with the new checks (D063).
+Both are generated columns, so PostgreSQL fills existing rows itself: a
+Charge's basis is `inclusive` exactly when it sells a stock batch, and
+`addedTaxTotal` is `grandTotal − subtotal + discountAmount − roundOff`. An
+Invoice line reads its basis from its Charge (D063).
 
 Split collection is one tenant-scoped transaction containing up to four
 Payments. Every line gets its own Receipt and journal source; lines
