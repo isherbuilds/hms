@@ -31,6 +31,7 @@ import { Route as OrgSlugIpdRouteRouteImport } from './routes/$orgSlug/ipd/route
 import { Route as OrgSlugOnboardingRouteImport } from './routes/$orgSlug/onboarding'
 import { Route as OrgSlugPharmacyRouteRouteImport } from './routes/$orgSlug/pharmacy/route'
 import { Route as OrgSlugSettingsRouteRouteImport } from './routes/$orgSlug/settings/route'
+import { Route as OrgSlugTheatreRouteRouteImport } from './routes/$orgSlug/theatre/route'
 import { Route as ChangelogIndexRouteImport } from './routes/changelog.index'
 import { Route as ChangelogSlugRouteImport } from './routes/changelog.$slug'
 import { Route as OrgSlugBillingIndexRouteImport } from './routes/$orgSlug/billing/index'
@@ -40,12 +41,14 @@ import { Route as OrgSlugIpdIndexRouteImport } from './routes/$orgSlug/ipd/index
 import { Route as OrgSlugIpdAdmissionIdRouteImport } from './routes/$orgSlug/ipd/$admissionId'
 import { Route as OrgSlugIpdAdmissionsRouteImport } from './routes/$orgSlug/ipd/admissions'
 import { Route as OrgSlugIpdFacilityRouteImport } from './routes/$orgSlug/ipd/facility'
+import { Route as OrgSlugIpdReservationsRouteImport } from './routes/$orgSlug/ipd/reservations'
 import { Route as OrgSlugOpdIndexRouteImport } from './routes/$orgSlug/opd/index'
 import { Route as OrgSlugOpdAppointmentIdRouteRouteImport } from './routes/$orgSlug/opd/$appointmentId/route'
 import { Route as OrgSlugOpdNewRouteImport } from './routes/$orgSlug/opd/new'
 import { Route as OrgSlugPatientsIndexRouteImport } from './routes/$orgSlug/patients/index'
 import { Route as OrgSlugPatientsPatientIdRouteRouteImport } from './routes/$orgSlug/patients/$patientId/route'
 import { Route as OrgSlugPharmacyIndexRouteImport } from './routes/$orgSlug/pharmacy/index'
+import { Route as OrgSlugPharmacyInpatientRouteImport } from './routes/$orgSlug/pharmacy/inpatient'
 import { Route as OrgSlugPharmacyItemsRouteImport } from './routes/$orgSlug/pharmacy/items'
 import { Route as OrgSlugPharmacyMovementsRouteImport } from './routes/$orgSlug/pharmacy/movements'
 import { Route as OrgSlugPharmacyNewRouteImport } from './routes/$orgSlug/pharmacy/new'
@@ -66,6 +69,8 @@ import { Route as OrgSlugSettingsMembersRouteImport } from './routes/$orgSlug/se
 import { Route as OrgSlugSettingsOrganizationRouteImport } from './routes/$orgSlug/settings/organization'
 import { Route as OrgSlugSettingsPayersRouteImport } from './routes/$orgSlug/settings/payers'
 import { Route as OrgSlugSettingsStaffRouteImport } from './routes/$orgSlug/settings/staff'
+import { Route as OrgSlugTheatreIndexRouteImport } from './routes/$orgSlug/theatre/index'
+import { Route as OrgSlugTheatreResourcesRouteImport } from './routes/$orgSlug/theatre/resources'
 import { Route as OrgSlugBillingInvoicesInvoiceIdRouteImport } from './routes/$orgSlug/billing/invoices.$invoiceId'
 import { Route as OrgSlugOpdAppointmentIdIndexRouteImport } from './routes/$orgSlug/opd/$appointmentId/index'
 import { Route as OrgSlugOpdAppointmentIdBillingRouteImport } from './routes/$orgSlug/opd/$appointmentId/billing'
@@ -189,6 +194,11 @@ const OrgSlugSettingsRouteRoute = OrgSlugSettingsRouteRouteImport.update({
   path: '/settings',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
+const OrgSlugTheatreRouteRoute = OrgSlugTheatreRouteRouteImport.update({
+  id: '/theatre',
+  path: '/theatre',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
 const ChangelogIndexRoute = ChangelogIndexRouteImport.update({
   id: '/changelog/',
   path: '/changelog/',
@@ -234,6 +244,11 @@ const OrgSlugIpdFacilityRoute = OrgSlugIpdFacilityRouteImport.update({
   path: '/facility',
   getParentRoute: () => OrgSlugIpdRouteRoute,
 } as any)
+const OrgSlugIpdReservationsRoute = OrgSlugIpdReservationsRouteImport.update({
+  id: '/reservations',
+  path: '/reservations',
+  getParentRoute: () => OrgSlugIpdRouteRoute,
+} as any)
 const OrgSlugOpdIndexRoute = OrgSlugOpdIndexRouteImport.update({
   id: '/opd/',
   path: '/opd/',
@@ -266,6 +281,12 @@ const OrgSlugPharmacyIndexRoute = OrgSlugPharmacyIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OrgSlugPharmacyRouteRoute,
 } as any)
+const OrgSlugPharmacyInpatientRoute =
+  OrgSlugPharmacyInpatientRouteImport.update({
+    id: '/inpatient',
+    path: '/inpatient',
+    getParentRoute: () => OrgSlugPharmacyRouteRoute,
+  } as any)
 const OrgSlugPharmacyItemsRoute = OrgSlugPharmacyItemsRouteImport.update({
   id: '/items',
   path: '/items',
@@ -374,6 +395,16 @@ const OrgSlugSettingsStaffRoute = OrgSlugSettingsStaffRouteImport.update({
   path: '/staff',
   getParentRoute: () => OrgSlugSettingsRouteRoute,
 } as any)
+const OrgSlugTheatreIndexRoute = OrgSlugTheatreIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OrgSlugTheatreRouteRoute,
+} as any)
+const OrgSlugTheatreResourcesRoute = OrgSlugTheatreResourcesRouteImport.update({
+  id: '/resources',
+  path: '/resources',
+  getParentRoute: () => OrgSlugTheatreRouteRoute,
+} as any)
 const OrgSlugBillingInvoicesInvoiceIdRoute =
   OrgSlugBillingInvoicesInvoiceIdRouteImport.update({
     id: '/billing/invoices/$invoiceId',
@@ -466,6 +497,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/ipd': typeof OrgSlugIpdRouteRouteWithChildren
   '/$orgSlug/pharmacy': typeof OrgSlugPharmacyRouteRouteWithChildren
   '/$orgSlug/settings': typeof OrgSlugSettingsRouteRouteWithChildren
+  '/$orgSlug/theatre': typeof OrgSlugTheatreRouteRouteWithChildren
   '/$orgSlug/dashboard': typeof OrgSlugDashboardRoute
   '/$orgSlug/files': typeof OrgSlugFilesRoute
   '/$orgSlug/onboarding': typeof OrgSlugOnboardingRoute
@@ -479,7 +511,9 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/ipd/$admissionId': typeof OrgSlugIpdAdmissionIdRoute
   '/$orgSlug/ipd/admissions': typeof OrgSlugIpdAdmissionsRoute
   '/$orgSlug/ipd/facility': typeof OrgSlugIpdFacilityRoute
+  '/$orgSlug/ipd/reservations': typeof OrgSlugIpdReservationsRoute
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
+  '/$orgSlug/pharmacy/inpatient': typeof OrgSlugPharmacyInpatientRoute
   '/$orgSlug/pharmacy/items': typeof OrgSlugPharmacyItemsRoute
   '/$orgSlug/pharmacy/movements': typeof OrgSlugPharmacyMovementsRoute
   '/$orgSlug/pharmacy/new': typeof OrgSlugPharmacyNewRoute
@@ -498,6 +532,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
   '/$orgSlug/settings/payers': typeof OrgSlugSettingsPayersRoute
   '/$orgSlug/settings/staff': typeof OrgSlugSettingsStaffRoute
+  '/$orgSlug/theatre/resources': typeof OrgSlugTheatreResourcesRoute
   '/$orgSlug/billing/': typeof OrgSlugBillingIndexRoute
   '/$orgSlug/ipd/': typeof OrgSlugIpdIndexRoute
   '/$orgSlug/opd/': typeof OrgSlugOpdIndexRoute
@@ -505,6 +540,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/pharmacy/': typeof OrgSlugPharmacyIndexRoute
   '/$orgSlug/reports/': typeof OrgSlugReportsIndexRoute
   '/$orgSlug/settings/': typeof OrgSlugSettingsIndexRoute
+  '/$orgSlug/theatre/': typeof OrgSlugTheatreIndexRoute
   '/$orgSlug/billing/invoices/$invoiceId': typeof OrgSlugBillingInvoicesInvoiceIdRoute
   '/$orgSlug/opd/$appointmentId/billing': typeof OrgSlugOpdAppointmentIdBillingRoute
   '/$orgSlug/patients/$patientId/billing': typeof OrgSlugPatientsPatientIdBillingRoute
@@ -544,7 +580,9 @@ export interface FileRoutesByTo {
   '/$orgSlug/ipd/$admissionId': typeof OrgSlugIpdAdmissionIdRoute
   '/$orgSlug/ipd/admissions': typeof OrgSlugIpdAdmissionsRoute
   '/$orgSlug/ipd/facility': typeof OrgSlugIpdFacilityRoute
+  '/$orgSlug/ipd/reservations': typeof OrgSlugIpdReservationsRoute
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
+  '/$orgSlug/pharmacy/inpatient': typeof OrgSlugPharmacyInpatientRoute
   '/$orgSlug/pharmacy/items': typeof OrgSlugPharmacyItemsRoute
   '/$orgSlug/pharmacy/movements': typeof OrgSlugPharmacyMovementsRoute
   '/$orgSlug/pharmacy/new': typeof OrgSlugPharmacyNewRoute
@@ -563,6 +601,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
   '/$orgSlug/settings/payers': typeof OrgSlugSettingsPayersRoute
   '/$orgSlug/settings/staff': typeof OrgSlugSettingsStaffRoute
+  '/$orgSlug/theatre/resources': typeof OrgSlugTheatreResourcesRoute
   '/$orgSlug/billing': typeof OrgSlugBillingIndexRoute
   '/$orgSlug/ipd': typeof OrgSlugIpdIndexRoute
   '/$orgSlug/opd': typeof OrgSlugOpdIndexRoute
@@ -570,6 +609,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/pharmacy': typeof OrgSlugPharmacyIndexRoute
   '/$orgSlug/reports': typeof OrgSlugReportsIndexRoute
   '/$orgSlug/settings': typeof OrgSlugSettingsIndexRoute
+  '/$orgSlug/theatre': typeof OrgSlugTheatreIndexRoute
   '/$orgSlug/billing/invoices/$invoiceId': typeof OrgSlugBillingInvoicesInvoiceIdRoute
   '/$orgSlug/opd/$appointmentId/billing': typeof OrgSlugOpdAppointmentIdBillingRoute
   '/$orgSlug/patients/$patientId/billing': typeof OrgSlugPatientsPatientIdBillingRoute
@@ -603,6 +643,7 @@ export interface FileRoutesById {
   '/$orgSlug/ipd': typeof OrgSlugIpdRouteRouteWithChildren
   '/$orgSlug/pharmacy': typeof OrgSlugPharmacyRouteRouteWithChildren
   '/$orgSlug/settings': typeof OrgSlugSettingsRouteRouteWithChildren
+  '/$orgSlug/theatre': typeof OrgSlugTheatreRouteRouteWithChildren
   '/$orgSlug/dashboard': typeof OrgSlugDashboardRoute
   '/$orgSlug/files': typeof OrgSlugFilesRoute
   '/$orgSlug/onboarding': typeof OrgSlugOnboardingRoute
@@ -616,7 +657,9 @@ export interface FileRoutesById {
   '/$orgSlug/ipd/$admissionId': typeof OrgSlugIpdAdmissionIdRoute
   '/$orgSlug/ipd/admissions': typeof OrgSlugIpdAdmissionsRoute
   '/$orgSlug/ipd/facility': typeof OrgSlugIpdFacilityRoute
+  '/$orgSlug/ipd/reservations': typeof OrgSlugIpdReservationsRoute
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
+  '/$orgSlug/pharmacy/inpatient': typeof OrgSlugPharmacyInpatientRoute
   '/$orgSlug/pharmacy/items': typeof OrgSlugPharmacyItemsRoute
   '/$orgSlug/pharmacy/movements': typeof OrgSlugPharmacyMovementsRoute
   '/$orgSlug/pharmacy/new': typeof OrgSlugPharmacyNewRoute
@@ -635,6 +678,7 @@ export interface FileRoutesById {
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
   '/$orgSlug/settings/payers': typeof OrgSlugSettingsPayersRoute
   '/$orgSlug/settings/staff': typeof OrgSlugSettingsStaffRoute
+  '/$orgSlug/theatre/resources': typeof OrgSlugTheatreResourcesRoute
   '/$orgSlug/billing/': typeof OrgSlugBillingIndexRoute
   '/$orgSlug/ipd/': typeof OrgSlugIpdIndexRoute
   '/$orgSlug/opd/': typeof OrgSlugOpdIndexRoute
@@ -642,6 +686,7 @@ export interface FileRoutesById {
   '/$orgSlug/pharmacy/': typeof OrgSlugPharmacyIndexRoute
   '/$orgSlug/reports/': typeof OrgSlugReportsIndexRoute
   '/$orgSlug/settings/': typeof OrgSlugSettingsIndexRoute
+  '/$orgSlug/theatre/': typeof OrgSlugTheatreIndexRoute
   '/$orgSlug/billing/invoices/$invoiceId': typeof OrgSlugBillingInvoicesInvoiceIdRoute
   '/$orgSlug/opd/$appointmentId/billing': typeof OrgSlugOpdAppointmentIdBillingRoute
   '/$orgSlug/patients/$patientId/billing': typeof OrgSlugPatientsPatientIdBillingRoute
@@ -676,6 +721,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/ipd'
     | '/$orgSlug/pharmacy'
     | '/$orgSlug/settings'
+    | '/$orgSlug/theatre'
     | '/$orgSlug/dashboard'
     | '/$orgSlug/files'
     | '/$orgSlug/onboarding'
@@ -689,7 +735,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/ipd/$admissionId'
     | '/$orgSlug/ipd/admissions'
     | '/$orgSlug/ipd/facility'
+    | '/$orgSlug/ipd/reservations'
     | '/$orgSlug/opd/new'
+    | '/$orgSlug/pharmacy/inpatient'
     | '/$orgSlug/pharmacy/items'
     | '/$orgSlug/pharmacy/movements'
     | '/$orgSlug/pharmacy/new'
@@ -708,6 +756,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/organization'
     | '/$orgSlug/settings/payers'
     | '/$orgSlug/settings/staff'
+    | '/$orgSlug/theatre/resources'
     | '/$orgSlug/billing/'
     | '/$orgSlug/ipd/'
     | '/$orgSlug/opd/'
@@ -715,6 +764,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/pharmacy/'
     | '/$orgSlug/reports/'
     | '/$orgSlug/settings/'
+    | '/$orgSlug/theatre/'
     | '/$orgSlug/billing/invoices/$invoiceId'
     | '/$orgSlug/opd/$appointmentId/billing'
     | '/$orgSlug/patients/$patientId/billing'
@@ -754,7 +804,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/ipd/$admissionId'
     | '/$orgSlug/ipd/admissions'
     | '/$orgSlug/ipd/facility'
+    | '/$orgSlug/ipd/reservations'
     | '/$orgSlug/opd/new'
+    | '/$orgSlug/pharmacy/inpatient'
     | '/$orgSlug/pharmacy/items'
     | '/$orgSlug/pharmacy/movements'
     | '/$orgSlug/pharmacy/new'
@@ -773,6 +825,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/organization'
     | '/$orgSlug/settings/payers'
     | '/$orgSlug/settings/staff'
+    | '/$orgSlug/theatre/resources'
     | '/$orgSlug/billing'
     | '/$orgSlug/ipd'
     | '/$orgSlug/opd'
@@ -780,6 +833,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/pharmacy'
     | '/$orgSlug/reports'
     | '/$orgSlug/settings'
+    | '/$orgSlug/theatre'
     | '/$orgSlug/billing/invoices/$invoiceId'
     | '/$orgSlug/opd/$appointmentId/billing'
     | '/$orgSlug/patients/$patientId/billing'
@@ -812,6 +866,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/ipd'
     | '/$orgSlug/pharmacy'
     | '/$orgSlug/settings'
+    | '/$orgSlug/theatre'
     | '/$orgSlug/dashboard'
     | '/$orgSlug/files'
     | '/$orgSlug/onboarding'
@@ -825,7 +880,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/ipd/$admissionId'
     | '/$orgSlug/ipd/admissions'
     | '/$orgSlug/ipd/facility'
+    | '/$orgSlug/ipd/reservations'
     | '/$orgSlug/opd/new'
+    | '/$orgSlug/pharmacy/inpatient'
     | '/$orgSlug/pharmacy/items'
     | '/$orgSlug/pharmacy/movements'
     | '/$orgSlug/pharmacy/new'
@@ -844,6 +901,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/organization'
     | '/$orgSlug/settings/payers'
     | '/$orgSlug/settings/staff'
+    | '/$orgSlug/theatre/resources'
     | '/$orgSlug/billing/'
     | '/$orgSlug/ipd/'
     | '/$orgSlug/opd/'
@@ -851,6 +909,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/pharmacy/'
     | '/$orgSlug/reports/'
     | '/$orgSlug/settings/'
+    | '/$orgSlug/theatre/'
     | '/$orgSlug/billing/invoices/$invoiceId'
     | '/$orgSlug/opd/$appointmentId/billing'
     | '/$orgSlug/patients/$patientId/billing'
@@ -1043,6 +1102,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugSettingsRouteRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/$orgSlug/theatre': {
+      id: '/$orgSlug/theatre'
+      path: '/theatre'
+      fullPath: '/$orgSlug/theatre'
+      preLoaderRoute: typeof OrgSlugTheatreRouteRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
     '/changelog/': {
       id: '/changelog/'
       path: '/changelog'
@@ -1106,6 +1172,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugIpdFacilityRouteImport
       parentRoute: typeof OrgSlugIpdRouteRoute
     }
+    '/$orgSlug/ipd/reservations': {
+      id: '/$orgSlug/ipd/reservations'
+      path: '/reservations'
+      fullPath: '/$orgSlug/ipd/reservations'
+      preLoaderRoute: typeof OrgSlugIpdReservationsRouteImport
+      parentRoute: typeof OrgSlugIpdRouteRoute
+    }
     '/$orgSlug/opd/': {
       id: '/$orgSlug/opd/'
       path: '/opd'
@@ -1146,6 +1219,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/$orgSlug/pharmacy/'
       preLoaderRoute: typeof OrgSlugPharmacyIndexRouteImport
+      parentRoute: typeof OrgSlugPharmacyRouteRoute
+    }
+    '/$orgSlug/pharmacy/inpatient': {
+      id: '/$orgSlug/pharmacy/inpatient'
+      path: '/inpatient'
+      fullPath: '/$orgSlug/pharmacy/inpatient'
+      preLoaderRoute: typeof OrgSlugPharmacyInpatientRouteImport
       parentRoute: typeof OrgSlugPharmacyRouteRoute
     }
     '/$orgSlug/pharmacy/items': {
@@ -1288,6 +1368,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugSettingsStaffRouteImport
       parentRoute: typeof OrgSlugSettingsRouteRoute
     }
+    '/$orgSlug/theatre/': {
+      id: '/$orgSlug/theatre/'
+      path: '/'
+      fullPath: '/$orgSlug/theatre/'
+      preLoaderRoute: typeof OrgSlugTheatreIndexRouteImport
+      parentRoute: typeof OrgSlugTheatreRouteRoute
+    }
+    '/$orgSlug/theatre/resources': {
+      id: '/$orgSlug/theatre/resources'
+      path: '/resources'
+      fullPath: '/$orgSlug/theatre/resources'
+      preLoaderRoute: typeof OrgSlugTheatreResourcesRouteImport
+      parentRoute: typeof OrgSlugTheatreRouteRoute
+    }
     '/$orgSlug/billing/invoices/$invoiceId': {
       id: '/$orgSlug/billing/invoices/$invoiceId'
       path: '/billing/invoices/$invoiceId'
@@ -1379,6 +1473,7 @@ interface OrgSlugIpdRouteRouteChildren {
   OrgSlugIpdAdmissionIdRoute: typeof OrgSlugIpdAdmissionIdRoute
   OrgSlugIpdAdmissionsRoute: typeof OrgSlugIpdAdmissionsRoute
   OrgSlugIpdFacilityRoute: typeof OrgSlugIpdFacilityRoute
+  OrgSlugIpdReservationsRoute: typeof OrgSlugIpdReservationsRoute
   OrgSlugIpdIndexRoute: typeof OrgSlugIpdIndexRoute
 }
 
@@ -1386,6 +1481,7 @@ const OrgSlugIpdRouteRouteChildren: OrgSlugIpdRouteRouteChildren = {
   OrgSlugIpdAdmissionIdRoute: OrgSlugIpdAdmissionIdRoute,
   OrgSlugIpdAdmissionsRoute: OrgSlugIpdAdmissionsRoute,
   OrgSlugIpdFacilityRoute: OrgSlugIpdFacilityRoute,
+  OrgSlugIpdReservationsRoute: OrgSlugIpdReservationsRoute,
   OrgSlugIpdIndexRoute: OrgSlugIpdIndexRoute,
 }
 
@@ -1394,6 +1490,7 @@ const OrgSlugIpdRouteRouteWithChildren = OrgSlugIpdRouteRoute._addFileChildren(
 )
 
 interface OrgSlugPharmacyRouteRouteChildren {
+  OrgSlugPharmacyInpatientRoute: typeof OrgSlugPharmacyInpatientRoute
   OrgSlugPharmacyItemsRoute: typeof OrgSlugPharmacyItemsRoute
   OrgSlugPharmacyMovementsRoute: typeof OrgSlugPharmacyMovementsRoute
   OrgSlugPharmacyNewRoute: typeof OrgSlugPharmacyNewRoute
@@ -1403,6 +1500,7 @@ interface OrgSlugPharmacyRouteRouteChildren {
 }
 
 const OrgSlugPharmacyRouteRouteChildren: OrgSlugPharmacyRouteRouteChildren = {
+  OrgSlugPharmacyInpatientRoute: OrgSlugPharmacyInpatientRoute,
   OrgSlugPharmacyItemsRoute: OrgSlugPharmacyItemsRoute,
   OrgSlugPharmacyMovementsRoute: OrgSlugPharmacyMovementsRoute,
   OrgSlugPharmacyNewRoute: OrgSlugPharmacyNewRoute,
@@ -1436,6 +1534,19 @@ const OrgSlugSettingsRouteRouteChildren: OrgSlugSettingsRouteRouteChildren = {
 
 const OrgSlugSettingsRouteRouteWithChildren =
   OrgSlugSettingsRouteRoute._addFileChildren(OrgSlugSettingsRouteRouteChildren)
+
+interface OrgSlugTheatreRouteRouteChildren {
+  OrgSlugTheatreResourcesRoute: typeof OrgSlugTheatreResourcesRoute
+  OrgSlugTheatreIndexRoute: typeof OrgSlugTheatreIndexRoute
+}
+
+const OrgSlugTheatreRouteRouteChildren: OrgSlugTheatreRouteRouteChildren = {
+  OrgSlugTheatreResourcesRoute: OrgSlugTheatreResourcesRoute,
+  OrgSlugTheatreIndexRoute: OrgSlugTheatreIndexRoute,
+}
+
+const OrgSlugTheatreRouteRouteWithChildren =
+  OrgSlugTheatreRouteRoute._addFileChildren(OrgSlugTheatreRouteRouteChildren)
 
 interface OrgSlugOpdAppointmentIdRouteRouteChildren {
   OrgSlugOpdAppointmentIdBillingRoute: typeof OrgSlugOpdAppointmentIdBillingRoute
@@ -1478,6 +1589,7 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugIpdRouteRoute: typeof OrgSlugIpdRouteRouteWithChildren
   OrgSlugPharmacyRouteRoute: typeof OrgSlugPharmacyRouteRouteWithChildren
   OrgSlugSettingsRouteRoute: typeof OrgSlugSettingsRouteRouteWithChildren
+  OrgSlugTheatreRouteRoute: typeof OrgSlugTheatreRouteRouteWithChildren
   OrgSlugDashboardRoute: typeof OrgSlugDashboardRoute
   OrgSlugFilesRoute: typeof OrgSlugFilesRoute
   OrgSlugOnboardingRoute: typeof OrgSlugOnboardingRoute
@@ -1508,6 +1620,7 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugIpdRouteRoute: OrgSlugIpdRouteRouteWithChildren,
   OrgSlugPharmacyRouteRoute: OrgSlugPharmacyRouteRouteWithChildren,
   OrgSlugSettingsRouteRoute: OrgSlugSettingsRouteRouteWithChildren,
+  OrgSlugTheatreRouteRoute: OrgSlugTheatreRouteRouteWithChildren,
   OrgSlugDashboardRoute: OrgSlugDashboardRoute,
   OrgSlugFilesRoute: OrgSlugFilesRoute,
   OrgSlugOnboardingRoute: OrgSlugOnboardingRoute,

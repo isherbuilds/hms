@@ -91,9 +91,10 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
       priceUnits: line.mrpUnits,
       taxRatePercent: line.taxRatePercent,
       taxCode: null,
+      priceBasis: "inclusive" as const,
     })),
     ZERO,
-    "pharmacy",
+    { roundToRupee: true },
   );
 
   const displayLines = cart.map((line, index) => {

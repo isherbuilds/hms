@@ -1,3 +1,8 @@
+import {
+  INVOICE_STREAMS,
+  INVOICE_STREAM_LABELS,
+  type InvoiceStream,
+} from "@hms/api/lib/invoice-math";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import {
   Table,
@@ -31,7 +36,7 @@ import { saveXlsx } from "@/lib/report-export";
 import { REPORT_PRINT_LANDSCAPE_CSS } from "@/lib/report-presentation";
 import { requireOrgPermission } from "@/lib/route-permission";
 
-type RegisterFilters = { from: string; to: string; stream?: "opd" | "pharmacy"; query?: string };
+type RegisterFilters = { from: string; to: string; stream?: InvoiceStream; query?: string };
 
 type RegisterCursor = { businessDate: string; createdAt: string; id: string };
 
@@ -62,7 +67,7 @@ export const Route = createFileRoute("/$orgSlug/reports/invoice-register")({
   validateSearch: z.object({
     from: z.iso.date().optional().catch(undefined),
     to: z.iso.date().optional().catch(undefined),
-    stream: z.enum(["opd", "pharmacy"]).optional().catch(undefined),
+    stream: z.enum(INVOICE_STREAMS).optional().catch(undefined),
     query: z.string().trim().min(1).max(100).optional().catch(undefined),
   }),
   loaderDeps: ({ search }) => search,
@@ -104,6 +109,7 @@ function InvoiceRegisterRoute() {
   const canReadBilling = useCan(orgSlug, { billing: ["read"] });
   const canReadOpd = useCan(orgSlug, { opd: ["read"] });
   const canReadPharmacy = useCan(orgSlug, { pharmacy: ["read"] });
+  const canReadIpd = useCan(orgSlug, { ipd: ["read"] });
   const report = useSuspenseInfiniteQuery(registerQuery(orgSlug, filters));
   const summary = report.data.pages[0]?.summary;
   const rows = report.data.pages.flatMap((page) => page.rows);
@@ -142,18 +148,16 @@ function InvoiceRegisterRoute() {
                 value={filters.stream ?? "all"}
                 onChange={(event) =>
                   patchSearch({
-                    stream:
-                      event.target.value === "all"
-                        ? undefined
-                        : event.target.value === "opd"
-                          ? "opd"
-                          : "pharmacy",
+                    stream: INVOICE_STREAMS.find((stream) => stream === event.target.value),
                   })
                 }
               >
                 <option value="all">All streams</option>
-                <option value="opd">OPD</option>
-                <option value="pharmacy">Pharmacy</option>
+                {INVOICE_STREAMS.map((stream) => (
+                  <option key={stream} value={stream}>
+                    {INVOICE_STREAM_LABELS[stream]}
+                  </option>
+                ))}
               </NativeSelect>
             </label>
           </ListToolbar>
@@ -207,7 +211,9 @@ function InvoiceRegisterRoute() {
                   <TableBody>
                     {summary.series.map((series) => (
                       <TableRow key={`${series.stream}-${series.fiscalYear}`}>
-                        <TableCell className="capitalize">{series.stream}</TableCell>
+                        <TableCell>
+                          {series.stream ? INVOICE_STREAM_LABELS[series.stream] : null}
+                        </TableCell>
                         <TableCell>{series.fiscalYear}</TableCell>
                         <TableCell>{series.count}</TableCell>
                         <TableCell className="font-mono">{series.firstNumber}</TableCell>
@@ -268,7 +274,7 @@ function InvoiceRegisterRoute() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <span className="capitalize">{row.stream}</span>
+                        <span>{INVOICE_STREAM_LABELS[row.stream]}</span>
                         <p className="text-muted-foreground">{row.fiscalYear}</p>
                       </TableCell>
                       <TableCell>
@@ -302,6 +308,14 @@ function InvoiceRegisterRoute() {
                             className="text-brand underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
                           >
                             Sale
+                          </Link>
+                        ) : row.source?.type === "ipd" && canReadIpd ? (
+                          <Link
+                            to="/$orgSlug/ipd/$admissionId"
+                            params={{ orgSlug, admissionId: row.source.id }}
+                            className="text-brand underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                          >
+                            Admission
                           </Link>
                         ) : (
                           <span className="text-muted-foreground">Unavailable</span>

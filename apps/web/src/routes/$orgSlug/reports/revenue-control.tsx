@@ -188,7 +188,7 @@ function RevenueControlRoute() {
         </div>
         <section data-report-print className="flex flex-col gap-4">
           <header className="flex flex-col gap-1 border-b pb-2">
-            <h1 className="text-sm font-medium">Revenue control · OPD and pharmacy</h1>
+            <h1 className="text-sm font-medium">Revenue control</h1>
             <p className="text-muted-foreground">
               {filters.from} to {filters.to}. Billed revenue excludes GST; refunds affect cash, not
               revenue.
@@ -367,6 +367,7 @@ function SignalReview({
   const canReadBilling = useCan(orgSlug, { billing: ["read"] });
   const canReadOpd = useCan(orgSlug, { opd: ["read"] });
   const canReadPharmacy = useCan(orgSlug, { pharmacy: ["read"] });
+  const canReadIpd = useCan(orgSlug, { ipd: ["read"] });
 
   return (
     <section className="flex flex-col gap-3" aria-label="Review signals">
@@ -512,6 +513,14 @@ function SignalReview({
                       className={linkClass}
                     >
                       Sale
+                    </Link>
+                  ) : row.source?.type === "ipd" && canReadIpd ? (
+                    <Link
+                      to="/$orgSlug/ipd/$admissionId"
+                      params={{ orgSlug, admissionId: row.source.id }}
+                      className={linkClass}
+                    >
+                      Admission
                     </Link>
                   ) : row.source?.type === "stock" && canReadPharmacy ? (
                     <Link

@@ -1,0 +1,1 @@
+ALTER TABLE "bed_reservations" ADD CONSTRAINT "bed_reservations_org_id_patient_unique" UNIQUE("org_id","id","patient_id");

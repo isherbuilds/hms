@@ -1,4 +1,5 @@
 import { practitionerDisplayName } from "@hms/api/lib/labels";
+import { authorize } from "@hms/auth/access";
 import { Button } from "@hms/ui/components/button";
 import {
   DropdownMenu,
@@ -10,8 +11,10 @@ import { useQuery } from "@tanstack/react-query";
 import { ClientOnly, Link, createFileRoute } from "@tanstack/react-router";
 import { MoreHorizontalIcon } from "lucide-react";
 import { useState } from "react";
+import { z } from "zod";
 
 import { appHead } from "@/config/site";
+import { AdmissionBill, admissionBillQuery, issuedInvoiceQuery } from "@/components/ipd-bill";
 import {
   AdmissionStatusBadge,
   CancelAdmissionDialog,
@@ -20,6 +23,11 @@ import {
   TransferDialog,
   UndoReadyDialog,
 } from "@/components/ipd-dialogs";
+import {
+  AdmissionMedicines,
+  admissionIssuesQuery,
+  IssueMedicinesDialog,
+} from "@/components/ipd-medicines";
 import { DataList, ErrorNote, PageBody, PageHeader, Panel } from "@/components/page";
 import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
@@ -34,9 +42,32 @@ const admissionQuery = (orgSlug: string, admissionId: string) =>
 
 export const Route = createFileRoute("/$orgSlug/ipd/$admissionId")({
   head: () => appHead("Admission"),
+  // `?issue=1` opens the medicine issue form, so the pharmacy can link straight to it.
+  validateSearch: z.object({ issue: z.literal(1).optional().catch(undefined) }),
   loader: async ({ context: { queryClient }, params: { orgSlug, admissionId } }) => {
-    await requireOrgPermission(queryClient, orgSlug, { ipd: ["read"] }, "/$orgSlug/dashboard");
-    await queryClient.query(admissionQuery(orgSlug, admissionId)).catch(() => {});
+    const { roles } = await requireOrgPermission(
+      queryClient,
+      orgSlug,
+      { ipd: ["read"] },
+      "/$orgSlug/dashboard",
+    );
+
+    await Promise.all([
+      queryClient.query(admissionQuery(orgSlug, admissionId)),
+      authorize(roles, { pharmacy: ["read"] })
+        ? queryClient.query(admissionIssuesQuery(orgSlug, admissionId))
+        : null,
+      // A billed stay shows its Invoice's payments, so that loads with the bill.
+      authorize(roles, { billing: ["read"] })
+        ? queryClient
+            .query(admissionBillQuery(orgSlug, admissionId))
+            .then((bill) =>
+              bill.invoiceId === null
+                ? null
+                : queryClient.query(issuedInvoiceQuery(orgSlug, bill.invoiceId)),
+            )
+        : null,
+    ]).catch(() => {});
   },
   component: AdmissionRoute,
 });
@@ -52,8 +83,16 @@ function AdmissionRoute() {
   const currency = useMembership(orgSlug, (membership) => membership.currency);
   const canUpdate = useCan(orgSlug, { ipd: ["update"] });
   const canCorrect = useCan(orgSlug, { ipd: ["correct"] });
+  const canIssue = useCan(orgSlug, { pharmacy: ["issueAdmission"] });
+  const canReadIssues = useCan(orgSlug, { pharmacy: ["read"] });
+  const canReadBill = useCan(orgSlug, { billing: ["read"] });
+  const canWriteBill = useCan(orgSlug, { billing: ["write"] });
   const [opened, setOpened] = useState<OpenDialog | null>(null);
+  const issuing = Route.useSearch().issue === 1;
+  const navigate = Route.useNavigate();
   const detail = useQuery(admissionQuery(orgSlug, admissionId));
+
+  const bill = useQuery({ ...admissionBillQuery(orgSlug, admissionId), enabled: canReadBill });
 
   if (!detail.data) {
     return (
@@ -88,6 +127,14 @@ function AdmissionRoute() {
   const stale = mine !== null && mine.admission.revision !== admission.revision;
   const dialog = stale ? null : mine?.kind;
   const ref = mine?.admission;
+
+  const setIssuing = (open: boolean) =>
+    void navigate({ search: open ? { issue: 1 } : {}, replace: true });
+
+  // Medicines go only onto an unbilled stay; the server refuses a billed one either way.
+  const billed = bill.data !== undefined && bill.data.invoiceId !== null;
+
+  const issuable = canIssue && canReadIssues && active && !billed;
 
   return (
     <>
@@ -222,7 +269,39 @@ function AdmissionRoute() {
             rowKey={(stay) => stay.id}
           />
         </Panel>
+
+        {canReadIssues ? (
+          <AdmissionMedicines
+            orgSlug={orgSlug}
+            admissionId={admission.id}
+            action={
+              issuable ? (
+                <Button size="xs" variant="outline" onClick={() => setIssuing(true)}>
+                  Issue medicines
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : null}
+
+        {canReadBill ? (
+          <AdmissionBill
+            orgSlug={orgSlug}
+            admission={admission}
+            bill={bill}
+            canWrite={canWriteBill}
+            currency={currency}
+          />
+        ) : null}
       </PageBody>
+
+      {issuing && issuable ? (
+        <IssueMedicinesDialog
+          orgSlug={orgSlug}
+          admission={admission}
+          onClose={() => setIssuing(false)}
+        />
+      ) : null}
 
       {ref && dialog === "transfer" ? (
         <TransferDialog

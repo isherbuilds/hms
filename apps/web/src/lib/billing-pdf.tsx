@@ -14,10 +14,10 @@ import {
   type InvoiceBundle,
   advanceReceiptTitle,
   InvoiceDocument,
-  invoiceDocumentTitle,
   ReceiptDocument,
   RefundDocument,
 } from "@/components/pdf/billing-documents";
+import { invoiceDocumentTitle } from "@/lib/invoice-print";
 import { siteConfig } from "@/config/site";
 import type { BillingDocumentRequest } from "@/lib/billing-document";
 
@@ -102,7 +102,7 @@ function findDocument(data: InvoiceBundle, request: BillingDocumentRequest) {
           <InvoiceDocument invoice={data.invoice} lines={data.lines} layout={request.layout} />
         ),
         number: data.invoice.invoiceNumber,
-        title: invoiceDocumentTitle(data.invoice),
+        title: invoiceDocumentTitle(data.invoice, data.lines),
       };
     case "receipt": {
       const payment = data.payments.find((row) => row.id === request.documentId);

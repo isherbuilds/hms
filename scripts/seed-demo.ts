@@ -1,6 +1,12 @@
 import { formatDecimal, parseDecimal } from "@hms/api/core/money";
+import { admissionIssueDescription } from "@hms/api/lib/admission-charges";
 import { businessDate } from "@hms/api/lib/business-date";
-import { computeInvoiceLines, documentNumber, fiscalYearLabel } from "@hms/api/lib/invoice-math";
+import {
+  computeInvoiceLines,
+  documentNumber,
+  fiscalYearLabel,
+  roundsToRupee,
+} from "@hms/api/lib/invoice-math";
 import { postJournalEntries, revenueAccountFor, settlementAccountFor } from "@hms/api/lib/ledger";
 import { db } from "@hms/db";
 import { nextCounter } from "@hms/db/counter";
@@ -18,8 +24,11 @@ import { invoiceLines } from "@hms/db/schema/invoice-lines";
 import { invoices } from "@hms/db/schema/invoices";
 import {
   admissionBedStays,
+  admissionPharmacyIssueLines,
+  admissionPharmacyIssues,
   admissions,
   bedCategories,
+  bedReservations,
   bedTariffs,
   beds,
   wards,
@@ -38,6 +47,13 @@ import { products } from "@hms/db/schema/products";
 import { refunds } from "@hms/db/schema/refunds";
 import { stockBatches } from "@hms/db/schema/stock-batches";
 import { stockMovements } from "@hms/db/schema/stock-movements";
+import {
+  equipmentUnits,
+  resourceBlocks,
+  surgicalCaseEquipment,
+  surgicalCases,
+  theatreRooms,
+} from "@hms/db/schema/theatre";
 import { treatmentPlanItems } from "@hms/db/schema/treatment-plan-items";
 import { treatmentPlans } from "@hms/db/schema/treatment-plans";
 import { env } from "@hms/env/server";
@@ -987,6 +1003,7 @@ function visit(
     unitPrice: item.unitPrice,
     taxRatePercent: "0",
     taxCode: null,
+    priceBasis: "exclusive" as const,
     revenueCategory: item.category,
     qty: 1,
     sourceType: source,
@@ -1015,6 +1032,7 @@ function visit(
     note: null,
     subtotal,
     taxTotal: 0n,
+    addedTaxTotal: 0n,
     grandTotal: subtotal,
     orgLegalName: HOSPITAL.legalName,
     orgAddress: HOSPITAL.address,
@@ -1043,6 +1061,7 @@ function visit(
       gross: row.unitPrice,
       taxRatePercent: "0",
       taxCode: null,
+      priceBasis: row.priceBasis,
       revenueCategory: row.revenueCategory,
     })),
   );
@@ -1266,6 +1285,7 @@ for (let offset = HISTORY_DAYS; offset >= 0; offset--) {
         priceUnits: batch.mrpUnits,
         taxRatePercent: spec.gst,
         taxCode: spec.hsn ?? null,
+        priceBasis: "inclusive",
         revenueCategory: "pharmacy",
         qty,
         sourceType: "pharmacy_batch",
@@ -1300,9 +1320,10 @@ for (let offset = HISTORY_DAYS; offset >= 0; offset--) {
         priceUnits: batch.mrpUnits,
         taxRatePercent: spec.gst,
         taxCode: spec.hsn ?? null,
+        priceBasis: "inclusive" as const,
       })),
       0n,
-      "pharmacy",
+      { roundToRupee: roundsToRupee("pharmacy") },
     );
 
     invoiceRows.push({
@@ -1319,6 +1340,7 @@ for (let offset = HISTORY_DAYS; offset >= 0; offset--) {
       note: null,
       subtotal: computed.subtotal,
       taxTotal: computed.taxTotal,
+      addedTaxTotal: computed.addedTaxTotal,
       roundOff: computed.roundOff,
       grandTotal: computed.grandTotal,
       orgLegalName: HOSPITAL.legalName,
@@ -1349,6 +1371,7 @@ for (let offset = HISTORY_DAYS; offset >= 0; offset--) {
         gross: line.gross,
         taxRatePercent: line.taxRatePercent,
         taxCode: line.taxCode,
+        priceBasis: line.priceBasis,
         revenueCategory: "pharmacy" as const,
       })),
     );
@@ -1750,7 +1773,7 @@ function ipdAdmission(
   const last = stays.at(-1)!;
   const doctor = doctorRows[admissionRows.length % doctorRows.length]!;
 
-  admissionRows.push({
+  const admission = {
     id: admissionId,
     orgId,
     patientId: patient.id,
@@ -1769,7 +1792,9 @@ function ipdAdmission(
       (end.status === "discharged" || end.status === "cancelled" ? 1 : 0),
     createdBy: userId,
     createdAt: stays[0]!.from,
-  });
+  } satisfies typeof admissions.$inferInsert;
+
+  admissionRows.push(admission);
 
   for (const stay of stays) {
     const tariff = tariffOf(stay.bed);
@@ -1786,6 +1811,255 @@ function ipdAdmission(
       createdAt: stay.from,
     });
   }
+
+  return admission;
+}
+
+/* IPD Slice 1: medicines issued to the ward and services posted against a stay, as
+   pending Admission Charges that the stay's single ipd Invoice later bills. The demo
+   hospital has no GSTIN, so it adds no GST and every ward medicine is bundled (D063):
+   services are priced without tax and medicine keeps its MRP. */
+const issueRows: (typeof admissionPharmacyIssues.$inferInsert)[] = [];
+
+const issueLineRows: (typeof admissionPharmacyIssueLines.$inferInsert)[] = [];
+
+const roomSupplementItem = {
+  id: id("item"),
+  orgId,
+  name: "Deluxe room supplement",
+  category: "other" as const,
+  unitPrice: parseDecimal("1200.00"),
+  taxRatePercent: "0.00",
+  taxCode: "996311",
+  active: true,
+};
+
+type SeedAdmission = (typeof admissionRows)[number];
+
+const doctorOf = (admission: SeedAdmission) =>
+  doctorRows.find((doctor) => doctor.id === admission.practitionerId)!;
+
+function wardBatch(name: string, qty: number) {
+  const productIndex = PRODUCT_SPECS.findIndex((spec) => spec.name === name);
+
+  const row = shelf
+    .filter(
+      (batch) =>
+        batch.productIndex === productIndex &&
+        (batch.expiry === null || batch.expiry > today) &&
+        batch.qty >= qty,
+    )
+    .sort((a, b) => (a.expiry ?? "9999").localeCompare(b.expiry ?? "9999"))[0];
+
+  if (!row) throw new Error(`Seed has no ${name} on the shelf for the ward`);
+  row.qty -= qty;
+
+  return {
+    batch: productBatches.find((batch) => batch.id === row.batchId)!,
+    spec: PRODUCT_SPECS[productIndex]!,
+    product: productRows[productIndex]!,
+  };
+}
+
+function issueToWard(
+  admission: SeedAdmission,
+  issuedAt: Date,
+  lines: { name: string; qty: number; supply: "bundled" | "independent" }[],
+) {
+  const issueId = id("issue");
+
+  issueRows.push({
+    id: issueId,
+    orgId,
+    admissionId: admission.id,
+    prescriberName: doctorOf(admission).name,
+    issuedBy: userId,
+    createdAt: issuedAt,
+  });
+
+  for (const line of lines) {
+    const { batch, spec, product } = wardBatch(line.name, line.qty);
+    const lineId = id("issue-line");
+
+    issueLineRows.push({
+      id: lineId,
+      orgId,
+      issueId,
+      admissionId: admission.id,
+      batchId: batch.id!,
+      qty: line.qty,
+      supply: line.supply,
+    });
+    chargeRows.push({
+      id: id("chg"),
+      orgId,
+      admissionId: admission.id,
+      admissionKind: "pharmacy_issue",
+      admissionIssueLineId: lineId,
+      catalogItemId: null,
+      description: admissionIssueDescription({
+        name: product.name,
+        batchNumber: batch.batchNumber!,
+        expiryDate: batch.expiryDate ?? null,
+      }),
+      unitPrice: batch.mrp!,
+      priceUnits: batch.mrpUnits,
+      taxRatePercent: line.supply === "independent" ? spec.gst : "0.00",
+      taxCode: spec.hsn ?? null,
+      priceBasis: "inclusive",
+      revenueCategory: "pharmacy",
+      qty: line.qty,
+      sourceType: "admission",
+      sourceId: admission.id,
+      stockBatchId: batch.id!,
+      status: "pending",
+      createdBy: userId,
+      createdAt: issuedAt,
+      updatedAt: issuedAt,
+    });
+    movementRows.push({
+      id: id("movement"),
+      orgId,
+      batchId: batch.id!,
+      bucket: "shelf",
+      qty: -line.qty,
+      reason: "admission_issue",
+      sourceType: "admission_pharmacy_issue_line",
+      sourceId: lineId,
+      createdBy: userId,
+      createdAt: issuedAt,
+    });
+  }
+
+  admission.chargeRevision = (admission.chargeRevision ?? 0) + 1;
+}
+
+function postWardServices(
+  admission: SeedAdmission,
+  postedAt: Date,
+  lines: { item: (typeof procedureItems)[number] | typeof roomSupplementItem; qty: number }[],
+) {
+  for (const { item, qty } of lines) {
+    chargeRows.push({
+      id: id("chg"),
+      orgId,
+      admissionId: admission.id,
+      admissionKind: "service",
+      catalogItemId: item.id,
+      description: item.name,
+      unitPrice: item.unitPrice,
+      taxRatePercent: item.taxRatePercent,
+      taxCode: item.taxCode,
+      priceBasis: "exclusive",
+      revenueCategory: item.category,
+      qty,
+      sourceType: "admission",
+      sourceId: admission.id,
+      status: "pending",
+      createdBy: userId,
+      createdAt: postedAt,
+      updatedAt: postedAt,
+    });
+  }
+
+  admission.chargeRevision = (admission.chargeRevision ?? 0) + 1;
+}
+
+// The stay's one ipd Invoice from its pending Charges, paid in full at the desk.
+function billAdmission(admission: SeedAdmission, issuedAt: Date) {
+  const invoiceId = id("inv");
+  const day = businessDate(issuedAt, ipdTimeZone);
+  const patient = patientRows.find((row) => row.id === admission.patientId)!;
+
+  const pending = chargeRows
+    .filter((charge) => charge.admissionId === admission.id && charge.status === "pending")
+    .sort((a, b) => a.createdAt!.getTime() - b.createdAt!.getTime() || a.id!.localeCompare(b.id!));
+
+  const computed = computeInvoiceLines(
+    pending.map((charge) => ({
+      chargeId: charge.id!,
+      description: charge.description,
+      qty: charge.qty!,
+      unitPrice: charge.unitPrice,
+      priceUnits: charge.priceUnits ?? 1,
+      taxRatePercent: charge.taxRatePercent,
+      taxCode: charge.taxCode ?? null,
+      priceBasis: charge.priceBasis,
+    })),
+    0n,
+    { roundToRupee: roundsToRupee("ipd") },
+  );
+
+  for (const charge of pending) {
+    charge.status = "invoiced";
+    charge.invoiceId = invoiceId;
+    charge.updatedAt = issuedAt;
+  }
+
+  invoiceRows.push({
+    id: invoiceId,
+    orgId,
+    stream: "ipd",
+    admissionId: admission.id,
+    patientId: patient.id,
+    invoiceNumber: "",
+    fiscalYear: fyOf(day),
+    businessDate: day,
+    discountAmount: 0n,
+    note: null,
+    subtotal: computed.subtotal,
+    taxTotal: computed.taxTotal,
+    addedTaxTotal: computed.addedTaxTotal,
+    roundOff: computed.roundOff,
+    grandTotal: computed.grandTotal,
+    orgLegalName: HOSPITAL.legalName,
+    orgAddress: HOSPITAL.address,
+    orgTaxId: HOSPITAL.taxId,
+    orgGstin: settings.gstin,
+    currency: "INR",
+    patientName: patient.name,
+    patientMrn: patient.mrn,
+    patientPhone: patient.phone,
+    patientAddress: patient.address,
+    issuedBy: userId,
+    createdAt: issuedAt,
+  });
+  invoiceLineRows.push(
+    ...computed.lines.map((line, index) => ({
+      id: id("line"),
+      orgId,
+      invoiceId,
+      chargeId: line.chargeId,
+      description: line.description,
+      qty: line.qty,
+      unitPrice: line.unitPrice,
+      priceUnits: line.priceUnits,
+      lineSubtotal: line.lineSubtotal,
+      allocatedDiscount: line.allocatedDiscount,
+      taxableValue: line.taxableValue,
+      taxAmount: line.taxAmount,
+      gross: line.gross,
+      taxRatePercent: line.taxRatePercent,
+      taxCode: line.taxCode,
+      priceBasis: line.priceBasis,
+      revenueCategory: pending[index]!.revenueCategory,
+    })),
+  );
+  paymentRows.push({
+    id: id("pay"),
+    orgId,
+    invoiceId,
+    method: "upi",
+    amount: computed.grandTotal,
+    reference: null,
+    receiptNumber: "",
+    fiscalYear: fyOf(day),
+    businessDate: day,
+    receivedBy: userId,
+    createdAt: issuedAt,
+  });
+
+  admission.chargeRevision = (admission.chargeRevision ?? 0) + 1;
 }
 
 {
@@ -1808,10 +2082,11 @@ function ipdAdmission(
   }
 
   // Left a few hours ago; the bed waits for cleaning.
-  ipdAdmission([{ bed: general[2]!, from: hoursAgo(24 * 5), to: hoursAgo(3) }], {
+  const leftToday = ipdAdmission([{ bed: general[2]!, from: hoursAgo(24 * 5), to: hoursAgo(3) }], {
     status: "discharged",
     readyAt: hoursAgo(6),
   });
+
   general[2]!.blockedAt = hoursAgo(3);
   general[2]!.blockedReason = "Awaiting cleaning after discharge";
 
@@ -1835,7 +2110,7 @@ function ipdAdmission(
   ipdAdmission([{ bed: icu[0]!, from: hoursAgo(14), to: null }], { status: "admitted" });
 
   // Stepped down from ICU to a private room two days ago.
-  ipdAdmission(
+  const steppedDown = ipdAdmission(
     [
       { bed: icu[2]!, from: hoursAgo(24 * 6), to: hoursAgo(48) },
       { bed: privateRooms[3]!, from: hoursAgo(48), to: null },
@@ -1846,6 +2121,331 @@ function ipdAdmission(
   ipdAdmission([{ bed: privateRooms[4]!, from: hoursAgo(24 * 10), to: hoursAgo(24 * 10 - 0.3) }], {
     status: "cancelled",
   });
+
+  // Still in the ward: two issues and a service, all waiting for the bill.
+  issueToWard(steppedDown, hoursAgo(100), [
+    { name: "Paracetamol 500 mg", qty: 20, supply: "bundled" },
+  ]);
+  issueToWard(steppedDown, hoursAgo(30), [
+    { name: "Pantoprazole 40 mg", qty: 10, supply: "bundled" },
+  ]);
+  postWardServices(steppedDown, hoursAgo(20), [{ item: roomSupplementItem, qty: 2 }]);
+
+  // Ready to leave: one service and one bundled medicine, ready to bill.
+  const readyToBill = admissionRows.find((row) => row.status === "discharge_ready")!;
+  issueToWard(readyToBill, new Date(readyToBill.admittedAt.getTime() + 2 * HOUR_MS), [
+    { name: "Paracetamol 500 mg", qty: 10, supply: "bundled" },
+  ]);
+  postWardServices(readyToBill, new Date(readyToBill.admittedAt.getTime() + 4 * HOUR_MS), [
+    { item: procedureItems[1]!, qty: 2 },
+  ]);
+
+  // Left today with the bill issued and paid: a service priced before tax and two
+  // medicines at MRP on one ipd Invoice.
+  issueToWard(leftToday, hoursAgo(100), [
+    { name: "Paracetamol 500 mg", qty: 20, supply: "bundled" },
+    { name: "Pantoprazole 40 mg", qty: 15, supply: "bundled" },
+  ]);
+  postWardServices(leftToday, hoursAgo(30), [{ item: roomSupplementItem, qty: 3 }]);
+  billAdmission(leftToday, hoursAgo(4));
+}
+
+/* Future bed reservations: two holds arriving soon, two waiting-list requests, one hold
+   whose bed went for maintenance, one lapsed hold, one cancelled and one already
+   admitted. Holds sit on beds that are free and unblocked now, as the app requires. */
+const reservationRows: (typeof bedReservations.$inferInsert)[] = [];
+
+{
+  const general = bedsOf("general");
+  const privateRooms = bedsOf("private");
+  const icu = bedsOf("icu");
+  const hoursAhead = (hours: number) => hoursAgo(-hours);
+
+  // Patients past the IPD block, so no reservation collides with a seeded stay.
+  const [arriving, arrivingTomorrow, waiting, waitingIcu, disrupted, lapsed, cancelled] =
+    patientRows.slice(40, 47);
+
+  const reserve = (
+    patient: (typeof patientRows)[number] | undefined,
+    bed: (typeof bedRows)[number] | null,
+    categoryKey: (typeof ipdServices)[number]["key"],
+    window: { from: Date; to: Date; holdUntil: Date | null },
+    state: Partial<typeof bedReservations.$inferInsert> &
+      Pick<typeof bedReservations.$inferInsert, "status">,
+  ) => {
+    if (!patient) throw new Error("Seed ran out of patients for reservations");
+    reservationRows.push({
+      id: id("resv"),
+      orgId,
+      patientId: patient.id,
+      categoryId: bedCategoryRows[ipdServices.findIndex((s) => s.key === categoryKey)]!.id,
+      bedId: bed?.id ?? null,
+      plannedArrivalAt: window.from,
+      plannedDepartureAt: window.to,
+      holdUntil: window.holdUntil,
+      createdBy: userId,
+      createdAt: hoursAgo(48),
+      ...state,
+    });
+  };
+
+  reserve(
+    arriving,
+    general[0]!,
+    "general",
+    { from: hoursAhead(3), to: hoursAhead(3 + 24 * 3), holdUntil: hoursAhead(7) },
+    { status: "confirmed", revision: 1 },
+  );
+  reserve(
+    arrivingTomorrow,
+    privateRooms[5]!,
+    "private",
+    { from: hoursAhead(26), to: hoursAhead(26 + 24 * 4), holdUntil: hoursAhead(30) },
+    { status: "confirmed", revision: 1 },
+  );
+  reserve(
+    waiting,
+    null,
+    "general",
+    { from: hoursAhead(24 * 2), to: hoursAhead(24 * 5), holdUntil: null },
+    { status: "requested" },
+  );
+  reserve(
+    waitingIcu,
+    null,
+    "icu",
+    { from: hoursAhead(24 * 3), to: hoursAhead(24 * 6), holdUntil: null },
+    { status: "requested" },
+  );
+  reserve(
+    disrupted,
+    icu[3]!,
+    "icu",
+    { from: hoursAhead(20), to: hoursAhead(20 + 24 * 2), holdUntil: hoursAhead(24) },
+    { status: "disrupted", revision: 2, disruptedReason: "Ventilator under service" },
+  );
+  reserve(
+    lapsed,
+    general[1]!,
+    "general",
+    { from: hoursAgo(10), to: hoursAhead(24 * 2), holdUntil: hoursAgo(4) },
+    { status: "confirmed", revision: 1 },
+  );
+  reserve(
+    cancelled,
+    null,
+    "private",
+    { from: hoursAhead(24 * 4), to: hoursAhead(24 * 7), holdUntil: null },
+    { status: "cancelled", revision: 1, cancelReason: "Surgery postponed by the Patient" },
+  );
+
+  // The ICU Patient admitted 14 hours ago came in on a hold for that bed.
+  const icuStay = stayRows.find((stay) => stay.bedId === icu[0]!.id && stay.endedAt === null)!;
+  const icuAdmission = admissionRows.find((row) => row.id === icuStay.admissionId)!;
+  reserve(
+    patientRows.find((row) => row.id === icuAdmission.patientId),
+    icu[0]!,
+    "icu",
+    {
+      from: new Date(icuAdmission.admittedAt.getTime() - 2 * HOUR_MS),
+      to: new Date(icuAdmission.admittedAt.getTime() + 24 * 3 * HOUR_MS),
+      holdUntil: new Date(icuAdmission.admittedAt.getTime() + 2 * HOUR_MS),
+    },
+    { status: "converted", revision: 2, admissionId: icuAdmission.id },
+  );
+}
+
+/* Theatre schedule: two operating theatres, a procedure room and four named units.
+   Today and tomorrow carry three confirmed cases that clash on no room, unit or
+   consultant, two drafts, one case put out by the workstation's service and one
+   cancelled. Booking writes no Charge, so nothing here touches billing. */
+const ot1 = id("otroom");
+
+const ot2 = id("otroom");
+
+const procedureRoom = id("otroom");
+
+const roomRows: (typeof theatreRooms.$inferInsert)[] = [
+  { id: ot1, orgId, name: "OT 1", kind: "operating_theatre" },
+  { id: ot2, orgId, name: "OT 2", kind: "operating_theatre" },
+  { id: procedureRoom, orgId, name: "Procedure room", kind: "procedure_room" },
+];
+
+const cArm = id("unit");
+
+const workstation1 = id("unit");
+
+const workstation2 = id("unit");
+
+const unitRows: (typeof equipmentUnits.$inferInsert)[] = [
+  { id: cArm, orgId, name: "C-arm 1", kind: "C-arm" },
+  { id: id("unit"), orgId, name: "Laparoscopy tower 1", kind: "Laparoscopy tower" },
+  { id: workstation1, orgId, name: "Anaesthesia workstation 1", kind: "Anaesthesia workstation" },
+  { id: workstation2, orgId, name: "Anaesthesia workstation 2", kind: "Anaesthesia workstation" },
+];
+
+const resourceBlockRows: (typeof resourceBlocks.$inferInsert)[] = [];
+
+const caseRows: (typeof surgicalCases.$inferInsert)[] = [];
+
+const caseEquipmentRows: (typeof surgicalCaseEquipment.$inferInsert)[] = [];
+
+{
+  const tomorrow = addDays(today, 1);
+
+  const MINUTE_MS = 60_000;
+
+  // Today's first slot: the next half hour at least an hour from now.
+  const soon = new Date(Math.ceil((now.getTime() + HOUR_MS) / (30 * MINUTE_MS)) * 30 * MINUTE_MS);
+
+  const later = (minutes: number) => new Date(soon.getTime() + minutes * MINUTE_MS);
+
+  const doctor = (name: string) => doctorRows.find((row) => row.name === name)!;
+
+  const procedure = (name: string) =>
+    procedureItems[PROCEDURES.findIndex((row) => row.name === name)]!;
+
+  const [biopsyPatient, endoscopyPatient, nasalPatient, iucdPatient, postponedPatient] =
+    patientRows.slice(47, 52);
+
+  const inWard = admissionRows.find((row) => row.status === "admitted")!;
+
+  const tomorrowsHold = reservationRows[1]!;
+
+  // The cast follows the patient's arrival on the hold, whatever the hour of seeding.
+  const afterArrival = new Date(tomorrowsHold.plannedArrivalAt.getTime() + 2 * HOUR_MS);
+
+  resourceBlockRows.push(
+    {
+      id: id("block"),
+      orgId,
+      equipmentId: workstation2,
+      startsAt: hoursAgo(5),
+      endsAt: hoursAgo(-30),
+      reason: "Annual service by the vendor",
+      createdBy: userId,
+      createdAt: hoursAgo(5),
+    },
+    {
+      id: id("block"),
+      orgId,
+      roomId: procedureRoom,
+      startsAt: at(addDays(today, 2), 8, 0),
+      endsAt: at(addDays(today, 2), 13, 0),
+      reason: "Air-handling filter change",
+      createdBy: userId,
+      createdAt: hoursAgo(24),
+    },
+  );
+
+  const book = (
+    patientId: string | undefined,
+    consultant: string,
+    procedureName: string,
+    plan: { roomId: string | null; from: Date; to: Date; prep: number; cleanup: number },
+    unitIds: string[],
+    state: Partial<typeof surgicalCases.$inferInsert> &
+      Pick<typeof surgicalCases.$inferInsert, "status">,
+  ) => {
+    if (!patientId) throw new Error("Seed ran out of patients for theatre cases");
+
+    const caseId = id("case");
+
+    caseRows.push({
+      id: caseId,
+      orgId,
+      patientId,
+      practitionerId: doctor(consultant).id,
+      procedureItemId: procedure(procedureName).id,
+      procedureName,
+      roomId: plan.roomId,
+      plannedStartAt: plan.from,
+      plannedEndAt: plan.to,
+      prepMinutes: plan.prep,
+      cleanupMinutes: plan.cleanup,
+      createdBy: userId,
+      createdAt: hoursAgo(30),
+      ...state,
+    });
+
+    for (const equipmentId of unitIds) caseEquipmentRows.push({ orgId, caseId, equipmentId });
+  };
+
+  // Confirmed: three rooms, three consultants, and no unit booked twice at once.
+  book(
+    inWard.patientId,
+    "Dr. Suresh Iyer",
+    "Joint injection",
+    { roomId: ot1, from: soon, to: later(90), prep: 30, cleanup: 30 },
+    [cArm, workstation1],
+    { status: "confirmed", revision: 2, admissionId: inWard.id },
+  );
+  book(
+    endoscopyPatient?.id,
+    "Dr. Imran Shaikh",
+    "Upper GI endoscopy",
+    { roomId: procedureRoom, from: later(60), to: later(105), prep: 15, cleanup: 15 },
+    [],
+    { status: "confirmed", revision: 1 },
+  );
+  book(
+    nasalPatient?.id,
+    "Dr. Kavya Pillai",
+    "Nasal endoscopy",
+    { roomId: ot2, from: at(tomorrow, 9, 0), to: at(tomorrow, 10, 30), prep: 30, cleanup: 30 },
+    [workstation1],
+    { status: "confirmed", revision: 1 },
+  );
+
+  // Drafts hold nothing; the second waits on tomorrow's private-room hold.
+  book(
+    iucdPatient?.id,
+    "Dr. Sunita Bhat",
+    "IUCD insertion",
+    { roomId: ot2, from: at(tomorrow, 14, 0), to: at(tomorrow, 15, 0), prep: 15, cleanup: 15 },
+    [],
+    { status: "draft" },
+  );
+  book(
+    tomorrowsHold.patientId,
+    "Dr. Suresh Iyer",
+    "Plaster cast, forearm",
+    {
+      roomId: null,
+      from: afterArrival,
+      to: new Date(afterArrival.getTime() + HOUR_MS),
+      prep: 15,
+      cleanup: 15,
+    },
+    [cArm],
+    {
+      status: "draft",
+      bedReservationId: tomorrowsHold.id,
+      notes: "Arrives on the private-room hold",
+    },
+  );
+
+  // The workstation went for service over this case, so it needs a new slot.
+  book(
+    biopsyPatient?.id,
+    "Dr. Nadia Qureshi",
+    "Skin biopsy",
+    { roomId: ot2, from: later(120), to: later(180), prep: 15, cleanup: 15 },
+    [workstation2],
+    {
+      status: "disrupted",
+      revision: 2,
+      disruptedReason: "Anaesthesia workstation 2 is under service",
+    },
+  );
+  book(
+    postponedPatient?.id,
+    "Dr. Sunita Bhat",
+    "IUCD insertion",
+    { roomId: ot1, from: at(tomorrow, 11, 0), to: at(tomorrow, 11, 45), prep: 15, cleanup: 15 },
+    [],
+    { status: "cancelled", revision: 2, cancelReason: "Patient asked to postpone" },
+  );
 }
 
 const seeding = db.transaction(async (tx) => {
@@ -1880,13 +2480,19 @@ const seeding = db.transaction(async (tx) => {
     .where(and(eq(journalLines.orgId, orgId), inArray(journalLines.entryId, demoJournals)));
   await tx.delete(journalEntries).where(journalScope);
 
+  await tx
+    .delete(surgicalCaseEquipment)
+    .where(
+      targetSlug
+        ? eq(surgicalCaseEquipment.orgId, orgId)
+        : and(eq(surgicalCaseEquipment.orgId, orgId), like(surgicalCaseEquipment.caseId, "demo-%")),
+    );
+
   for (const table of [
-    admissionBedStays,
-    admissions,
-    bedTariffs,
-    beds,
-    bedCategories,
-    wards,
+    surgicalCases,
+    resourceBlocks,
+    equipmentUnits,
+    theatreRooms,
     refunds,
     advanceAllocations,
     creditNoteLines,
@@ -1896,6 +2502,15 @@ const seeding = db.transaction(async (tx) => {
     invoiceLines,
     charges,
     invoices,
+    bedReservations,
+    admissionPharmacyIssueLines,
+    admissionPharmacyIssues,
+    admissionBedStays,
+    admissions,
+    bedTariffs,
+    beds,
+    bedCategories,
+    wards,
     pharmacySales,
     stockMovements,
     goodsReceiptLines,
@@ -1935,20 +2550,18 @@ const seeding = db.transaction(async (tx) => {
   // Documents are numbered in the order they were issued, as the app would have.
   const issued = (row: { createdAt?: Date | null }) => row.createdAt?.getTime() ?? 0;
 
+  const invoiceSeries = {
+    opd: { counter: "invoice:", prefix: settings.invoicePrefix },
+    pharmacy: { counter: "invoice:pharmacy:", prefix: settings.pharmacyInvoicePrefix },
+    ipd: { counter: "invoice:ipd:", prefix: settings.ipdInvoicePrefix },
+  };
+
   for (const invoice of [...invoiceRows].sort((a, b) => issued(a) - issued(b))) {
     const pharmacy = invoice.stream === "pharmacy";
+    const series = invoiceSeries[invoice.stream ?? "opd"];
+    const sequence = await nextCounter(tx, orgId, `${series.counter}${invoice.fiscalYear}`);
 
-    const sequence = await nextCounter(
-      tx,
-      orgId,
-      pharmacy ? `invoice:pharmacy:${invoice.fiscalYear}` : `invoice:${invoice.fiscalYear}`,
-    );
-
-    invoice.invoiceNumber = documentNumber(
-      pharmacy ? settings.pharmacyInvoicePrefix : settings.invoicePrefix,
-      invoice.fiscalYear,
-      sequence,
-    );
+    invoice.invoiceNumber = documentNumber(series.prefix, invoice.fiscalYear, sequence);
 
     const patient = invoice.patientId ? patientById.get(invoice.patientId) : undefined;
 
@@ -1992,7 +2605,12 @@ const seeding = db.transaction(async (tx) => {
     }
   }
 
-  await insertAll(catalogItems, [...consultItems, ...procedureItems, ...ipdItems]);
+  await insertAll(catalogItems, [
+    ...consultItems,
+    ...procedureItems,
+    ...ipdItems,
+    roomSupplementItem,
+  ]);
   await insertAll(
     departments,
     deptRows.map(({ share: _share, ...row }) => row),
@@ -2008,6 +2626,20 @@ const seeding = db.transaction(async (tx) => {
   await insertAll(products, productRows);
   await insertAll(goodsReceipts, receiptRows);
   await insertAll(stockBatches, productBatches);
+  await insertAll(wards, wardRows);
+  await insertAll(bedCategories, bedCategoryRows);
+  await insertAll(beds, bedRows);
+  await insertAll(bedTariffs, tariffRows);
+  await insertAll(admissions, admissionRows);
+  await insertAll(admissionBedStays, stayRows);
+  await insertAll(bedReservations, reservationRows);
+  await insertAll(theatreRooms, roomRows);
+  await insertAll(equipmentUnits, unitRows);
+  await insertAll(resourceBlocks, resourceBlockRows);
+  await insertAll(surgicalCases, caseRows);
+  await insertAll(surgicalCaseEquipment, caseEquipmentRows);
+  await insertAll(admissionPharmacyIssues, issueRows);
+  await insertAll(admissionPharmacyIssueLines, issueLineRows);
   await insertAll(pharmacySales, saleRows);
   await insertAll(invoices, invoiceRows);
   await insertAll(charges, chargeRows);
@@ -2022,12 +2654,6 @@ const seeding = db.transaction(async (tx) => {
   await insertAll(refunds, refundRows);
   await insertAll(goodsReceiptLines, receiptLineRows);
   await insertAll(stockMovements, movementRows);
-  await insertAll(wards, wardRows);
-  await insertAll(bedCategories, bedCategoryRows);
-  await insertAll(beds, bedRows);
-  await insertAll(bedTariffs, tariffRows);
-  await insertAll(admissions, admissionRows);
-  await insertAll(admissionBedStays, stayRows);
 
   // The same balanced entries the billing documents post in the app, so the trial
   // balance and balance sheet agree with the seeded invoices and receipts.
@@ -2169,7 +2795,8 @@ console.info(
     `  ${HISTORY_DAYS + 1} days, ${appointmentRows.length} appointments, ${invoiceRows.length} invoices, ${paymentRows.length} receipts.`,
     `  ${deptRows.length} departments, ${doctorRows.length} doctors, ${patientRows.length} patients.`,
     `  Pharmacy: ${productRows.length} products, ${productBatches.length} batches, ${saleRows.length} counter sales, ${movementRows.length} stock movements.`,
-    `  IPD: ${bedRows.length} beds in ${wardRows.length} wards, ${admissionRows.length} admissions.`,
+    `  IPD: ${bedRows.length} beds in ${wardRows.length} wards, ${admissionRows.length} admissions, ${reservationRows.length} reservations, ${issueRows.length} ward issues.`,
+    `  Theatre: ${roomRows.length} rooms, ${unitRows.length} equipment units, ${caseRows.length} cases, ${resourceBlockRows.length} blocks.`,
     `  ${creditNoteRows.length} credit notes, ${refundRows.length} refunds, ${advanceRows.length} advances, ${planRows.length} treatment plans, ${payerRows.length} payers.`,
     `  Today (${today}): ₹${formatDecimal(collectedToday)} collected.`,
     `  Sign in as ${ACTOR_EMAIL} and open /${SLUG}/dashboard`,

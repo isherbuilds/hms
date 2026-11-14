@@ -1344,6 +1344,7 @@ test("bookings need a future minute, can be rescheduled, and a no-show voids pen
     unitPrice: item.unitPrice,
     taxRatePercent: item.taxRatePercent,
     taxCode: item.taxCode,
+    priceBasis: "exclusive",
     revenueCategory: item.category,
     sourceType: "catalog",
     status: "pending",

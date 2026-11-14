@@ -31,6 +31,8 @@ export const catalogRouter = {
     orgInput.extend({
       query: z.string().trim().max(100).optional(),
       includeConsultation: z.boolean(),
+      /** `opd`: what an OPD visit bills; `all`: every Service category, as an Admission bills. */
+      categories: z.enum(["opd", "all"]).default("opd"),
     }),
   ).handler(async ({ context, input }) => {
     const pattern = input.query ? likePattern(input.query) : undefined;
@@ -49,7 +51,9 @@ export const catalogRouter = {
         and(
           eq(catalogItems.orgId, context.scope.orgId),
           eq(catalogItems.active, true),
-          inArray(catalogItems.category, [...OPD_BILLABLE_CATEGORIES]),
+          input.categories === "all"
+            ? undefined
+            : inArray(catalogItems.category, [...OPD_BILLABLE_CATEGORIES]),
           input.includeConsultation ? undefined : ne(catalogItems.category, "consultation"),
           pattern
             ? or(ilike(catalogItems.name, pattern), ilike(catalogItems.category, pattern))

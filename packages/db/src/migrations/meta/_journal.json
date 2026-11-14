@@ -99,6 +99,90 @@
       "when": 1794549258697,
       "tag": "0013_ipd_facility_and_admissions",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794552689112,
+      "tag": "0014_price_basis_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1794552691868,
+      "tag": "0015_backfill_price_basis",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1794552704981,
+      "tag": "0016_price_basis_required",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794553554954,
+      "tag": "0017_admission_patient_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794553555475,
+      "tag": "0018_ipd_issue_and_invoice",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794555822107,
+      "tag": "0019_ipd_issue_line_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794555823793,
+      "tag": "0020_ipd_prefix_distinct",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794566743503,
+      "tag": "0021_bed_reservations",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1794568216636,
+      "tag": "0022_ipd_review_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794578759534,
+      "tag": "0023_bed_reservations_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794584928314,
+      "tag": "0024_bed_reservation_patient_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794584932596,
+      "tag": "0025_theatre_schedule",
+      "breakpoints": true
     }
   ]
 }

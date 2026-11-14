@@ -13,11 +13,11 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { orgIdColumn, user } from "./auth";
+import { INVOICE_STREAMS } from "./invoice-streams";
+import { admissions } from "./ipd";
 import { opdAppointments } from "./opd-appointments";
 import { patients } from "./patients";
 import { pharmacySales } from "./pharmacy-sales";
-
-const INVOICE_STREAMS = ["opd", "pharmacy"] as const;
 
 // Immutable: issuance is the only write, and credit notes are the only correction
 // path. Print fields are snapshots, so later profile edits cannot alter the document.
@@ -29,6 +29,7 @@ export const invoices = pgTable(
     stream: text("stream", { enum: INVOICE_STREAMS }).notNull().default("opd"),
     opdAppointmentId: text("opd_appointment_id"),
     pharmacySaleId: text("pharmacy_sale_id"),
+    admissionId: text("admission_id"),
     patientId: text("patient_id"),
     invoiceNumber: text("invoice_number").notNull(),
     fiscalYear: text("fiscal_year").notNull(),
@@ -41,6 +42,8 @@ export const invoices = pgTable(
     note: text("note"),
     subtotal: bigint("subtotal", { mode: "bigint" }).notNull(),
     taxTotal: bigint("tax_total", { mode: "bigint" }).notNull(),
+    // The GST added on top of tax-exclusive lines; inclusive lines carry theirs in the price.
+    addedTaxTotal: bigint("added_tax_total", { mode: "bigint" }).notNull(),
     roundOff: bigint("round_off", { mode: "bigint" })
       .notNull()
       .default(sql`0`),
@@ -83,12 +86,15 @@ export const invoices = pgTable(
     // Exactly one parent, and it matches the stream.
     check(
       "invoices_parent_check",
-      sql`(${table.stream} = 'opd' and ${table.opdAppointmentId} is not null and ${table.patientId} is not null and ${table.pharmacySaleId} is null) or (${table.stream} = 'pharmacy' and ${table.pharmacySaleId} is not null and ${table.opdAppointmentId} is null)`,
+      sql`(${table.stream} = 'opd' and ${table.opdAppointmentId} is not null and ${table.patientId} is not null and ${table.pharmacySaleId} is null and ${table.admissionId} is null) or (${table.stream} = 'pharmacy' and ${table.pharmacySaleId} is not null and ${table.opdAppointmentId} is null and ${table.admissionId} is null) or (${table.stream} = 'ipd' and ${table.admissionId} is not null and ${table.patientId} is not null and ${table.opdAppointmentId} is null and ${table.pharmacySaleId} is null)`,
     ),
-    // Pharmacy prices are MRP inclusive of GST, so its tax is already inside the gross.
     check(
       "invoices_total_math_check",
-      sql`${table.grandTotal} = ${table.subtotal} - ${table.discountAmount} + (case ${table.stream} when 'opd' then ${table.taxTotal} else 0 end) + ${table.roundOff}`,
+      sql`${table.grandTotal} = ${table.subtotal} - ${table.discountAmount} + ${table.addedTaxTotal} + ${table.roundOff}`,
+    ),
+    check(
+      "invoices_added_tax_total_check",
+      sql`${table.addedTaxTotal} >= 0 and ${table.addedTaxTotal} <= ${table.taxTotal}`,
     ),
     unique("invoices_org_id_id_unique").on(table.orgId, table.id),
     uniqueIndex("invoices_org_number_idx").on(table.orgId, table.invoiceNumber),
@@ -104,6 +110,10 @@ export const invoices = pgTable(
       columns: [table.orgId, table.patientId],
       foreignColumns: [patients.orgId, patients.id],
     }),
+    foreignKey({
+      columns: [table.orgId, table.admissionId, table.patientId],
+      foreignColumns: [admissions.orgId, admissions.id, admissions.patientId],
+    }),
     index("invoices_org_opd_appointment_idx").on(
       table.orgId,
       table.opdAppointmentId,
@@ -113,6 +123,10 @@ export const invoices = pgTable(
     uniqueIndex("invoices_org_pharmacy_sale_idx")
       .on(table.orgId, table.pharmacySaleId)
       .where(sql`${table.pharmacySaleId} is not null`),
+    // One bill per Admission in IPD Slice 1; supplemental invoices replace this later.
+    uniqueIndex("invoices_org_admission_idx")
+      .on(table.orgId, table.admissionId)
+      .where(sql`${table.admissionId} is not null`),
     index("invoices_org_business_date_idx").on(table.orgId, table.businessDate),
     // Ascending: the worklist reads oldest-first, and a DESC index cannot serve an ASC
     // scan without the same NULLS trap as file.ts.

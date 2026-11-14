@@ -1,5 +1,6 @@
 import { db } from "@hms/db";
 import { advanceReceipts } from "@hms/db/schema/advance-receipts";
+import type { InvoiceStream } from "@hms/db/schema/invoice-streams";
 import { invoices } from "@hms/db/schema/invoices";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { patients } from "@hms/db/schema/patients";
@@ -185,7 +186,7 @@ export const dashboardRouter = {
       db
         .select({
           method: payments.method,
-          source: sql<"opd" | "pharmacy" | "advance">`${invoices.stream}`.as("source"),
+          source: sql<InvoiceStream | "advance">`${invoices.stream}`.as("source"),
           amount: payments.amount,
         })
         .from(payments)
@@ -195,7 +196,7 @@ export const dashboardRouter = {
           db
             .select({
               method: advanceReceipts.method,
-              source: sql<"opd" | "pharmacy" | "advance">`'advance'`,
+              source: sql<InvoiceStream | "advance">`'advance'`,
               amount: advanceReceipts.amount,
             })
             .from(advanceReceipts)
@@ -210,7 +211,7 @@ export const dashboardRouter = {
           db
             .select({
               method: refunds.method,
-              source: sql<"opd" | "pharmacy" | "advance">`coalesce(${invoices.stream}, 'advance')`,
+              source: sql<InvoiceStream | "advance">`coalesce(${invoices.stream}, 'advance')`,
               amount: sql<bigint>`-${refunds.amount}`,
             })
             .from(refunds)
@@ -233,7 +234,7 @@ export const dashboardRouter = {
     ]);
 
     const methods = new Map<PaymentMethod, bigint>();
-    const sources = new Map<"opd" | "pharmacy" | "advance", bigint>();
+    const sources = new Map<InvoiceStream | "advance", bigint>();
 
     for (const row of totals) {
       methods.set(row.method, (methods.get(row.method) ?? 0n) + row.amount);

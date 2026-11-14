@@ -1,4 +1,5 @@
 import { db } from "@hms/db";
+import type { DbTransaction } from "@hms/db/counter";
 import { advanceAllocations } from "@hms/db/schema/advance-allocations";
 import { user } from "@hms/db/schema/auth";
 import { charges } from "@hms/db/schema/charges";
@@ -6,6 +7,11 @@ import { creditNoteLines } from "@hms/db/schema/credit-note-lines";
 import { creditNotes } from "@hms/db/schema/credit-notes";
 import { invoiceLines } from "@hms/db/schema/invoice-lines";
 import { invoices } from "@hms/db/schema/invoices";
+import {
+  ADMISSION_ISSUE_SUPPLIES,
+  admissionPharmacyIssueLines,
+  admissionPharmacyIssues,
+} from "@hms/db/schema/ipd";
 import { products } from "@hms/db/schema/products";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { patients } from "@hms/db/schema/patients";
@@ -16,11 +22,18 @@ import { pharmacySales } from "@hms/db/schema/pharmacy-sales";
 import { refunds } from "@hms/db/schema/refunds";
 import { stockBatches } from "@hms/db/schema/stock-batches";
 import { ORPCError } from "@orpc/server";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
 import { divideHalfUp, formatDecimal } from "../core/money";
+import {
+  admissionIssueDescription,
+  bumpChargeRevision,
+  expectedChargeRevision,
+  lockAdmissionCharges,
+  requireChargeable,
+} from "../lib/admission-charges";
 import {
   billingDocumentContext,
   insertRefundTx,
@@ -45,6 +58,7 @@ import {
   personName,
   phone,
   resolveDayRange,
+  shortName,
 } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
 import { insertStockMovements, lockBatchStock } from "../lib/stock";
@@ -59,6 +73,95 @@ function aggregateByBatch(lines: ReadonlyArray<{ batchId: string; qty: number }>
   }
 
   return wanted;
+}
+
+/**
+ * Locks the Products behind the requested batches (by Product id, D040) and refuses
+ * what may not leave the shelf for a patient: expired, unsold, Schedule X, or H1
+ * without a prescriber. Shared by the counter sale and the inpatient issue.
+ */
+async function lockSaleableBatches(
+  tx: DbTransaction,
+  orgId: string,
+  lines: ReadonlyArray<{ batchId: string }>,
+  facts: { today: string; prescriberName: string | undefined },
+) {
+  const batchIds = [...new Set(lines.map((line) => line.batchId))];
+
+  const rows = await tx
+    .select({
+      batchId: stockBatches.id,
+      batchNumber: stockBatches.batchNumber,
+      expiryDate: stockBatches.expiryDate,
+      mrp: stockBatches.mrp,
+      mrpUnits: stockBatches.mrpUnits,
+      productId: products.id,
+      schedule: products.schedule,
+      name: products.name,
+      sold: products.sold,
+      active: products.active,
+      taxRatePercent: products.taxRatePercent,
+      taxCode: products.taxCode,
+    })
+    .from(stockBatches)
+    .innerJoin(products, and(eq(products.orgId, orgId), eq(products.id, stockBatches.productId)))
+    .where(and(eq(stockBatches.orgId, orgId), inArray(stockBatches.id, batchIds)))
+    .orderBy(asc(products.id), asc(stockBatches.id))
+    .for("update", { of: products });
+
+  if (rows.length !== batchIds.length) {
+    throw new ORPCError("NOT_FOUND", { message: "That batch no longer exists." });
+  }
+
+  for (const batch of rows) {
+    if (batch.expiryDate !== null && batch.expiryDate < facts.today) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: `${batch.name} batch ${batch.batchNumber} has expired`,
+      });
+    }
+
+    if (!batch.sold || !batch.active) {
+      throw new ORPCError("BAD_REQUEST", { message: `${batch.name} is no longer sold` });
+    }
+
+    if (batch.schedule === "x") {
+      throw new ORPCError("BAD_REQUEST", {
+        message: `${batch.name} is a Schedule X medicine and is not sold here`,
+      });
+    }
+
+    // The patient is already named, so the H1 register only lacks the prescriber.
+    if (batch.schedule === "h1" && !facts.prescriberName) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: `${batch.name} needs the prescriber's name`,
+      });
+    }
+  }
+
+  return new Map(rows.map((row) => [row.batchId, row]));
+}
+
+/** Locks the batches and refuses any whose shelf cannot cover the summed request. */
+async function requireShelfStock(
+  tx: DbTransaction,
+  orgId: string,
+  wanted: ReadonlyMap<string, number>,
+  batchById: ReadonlyMap<string, { name: string; batchNumber: string }>,
+) {
+  const onHand = await lockBatchStock(tx, orgId, [...wanted.keys()]);
+
+  for (const [batchId, qty] of wanted) {
+    const stock = onHand.get(batchId);
+    const batch = batchById.get(batchId);
+
+    if (!stock || !batch) throw impossible(`locked batch ${batchId} has no stock row`);
+
+    if (stock.shelf - qty < 0) {
+      throw new ORPCError("CONFLICT", {
+        message: `${batch.name} batch ${batch.batchNumber} has only ${stock.shelf} left`,
+      });
+    }
+  }
 }
 
 export const pharmacyRouter = {
@@ -172,78 +275,13 @@ export const pharmacyRouter = {
         createdAt: now,
       });
 
-      const batchIds = [...new Set(input.lines.map((line) => line.batchId))];
-
-      const rows = await tx
-        .select({
-          batchId: stockBatches.id,
-          batchNumber: stockBatches.batchNumber,
-          expiryDate: stockBatches.expiryDate,
-          mrp: stockBatches.mrp,
-          mrpUnits: stockBatches.mrpUnits,
-          productId: products.id,
-          schedule: products.schedule,
-          name: products.name,
-          sold: products.sold,
-          active: products.active,
-          taxRatePercent: products.taxRatePercent,
-          taxCode: products.taxCode,
-        })
-        .from(stockBatches)
-        .innerJoin(
-          products,
-          and(eq(products.orgId, scope.orgId), eq(products.id, stockBatches.productId)),
-        )
-        .where(and(eq(stockBatches.orgId, scope.orgId), inArray(stockBatches.id, batchIds)))
-        .orderBy(asc(products.id), asc(stockBatches.id))
-        .for("update", { of: products });
-
-      if (rows.length !== batchIds.length) {
-        throw new ORPCError("NOT_FOUND", { message: "That batch no longer exists." });
-      }
-
-      const batchById = new Map(rows.map((row) => [row.batchId, row]));
-
-      for (const batch of rows) {
-        if (batch.expiryDate !== null && batch.expiryDate < today) {
-          throw new ORPCError("BAD_REQUEST", {
-            message: `${batch.name} batch ${batch.batchNumber} has expired`,
-          });
-        }
-
-        if (!batch.sold || !batch.active) {
-          throw new ORPCError("BAD_REQUEST", { message: `${batch.name} is no longer sold` });
-        }
-
-        if (batch.schedule === "x") {
-          throw new ORPCError("BAD_REQUEST", {
-            message: `${batch.name} is a Schedule X medicine and is not sold here`,
-          });
-        }
-
-        // `forName` defaults to the buyer, so the H1 register only lacks the prescriber.
-        if (batch.schedule === "h1" && !input.prescriberName) {
-          throw new ORPCError("BAD_REQUEST", {
-            message: `${batch.name} needs the prescriber's name`,
-          });
-        }
-      }
+      const batchById = await lockSaleableBatches(tx, scope.orgId, input.lines, {
+        today,
+        prescriberName: input.prescriberName,
+      });
 
       const wanted = aggregateByBatch(input.lines);
-      const onHand = await lockBatchStock(tx, scope.orgId, [...wanted.keys()]);
-
-      for (const [batchId, qty] of wanted) {
-        const stock = onHand.get(batchId);
-        const batch = batchById.get(batchId);
-
-        if (!stock || !batch) throw impossible(`locked batch ${batchId} has no stock row`);
-
-        if (stock.shelf - qty < 0) {
-          throw new ORPCError("CONFLICT", {
-            message: `${batch.name} batch ${batch.batchNumber} has only ${stock.shelf} left`,
-          });
-        }
-      }
+      await requireShelfStock(tx, scope.orgId, wanted, batchById);
 
       await tx.insert(charges).values(
         input.lines.map((line) => {
@@ -262,6 +300,7 @@ export const pharmacyRouter = {
             priceUnits: batch.mrpUnits,
             taxRatePercent: batch.taxRatePercent,
             taxCode: batch.taxCode,
+            priceBasis: "inclusive" as const,
             revenueCategory: "pharmacy" as const,
             qty: line.qty,
             sourceType: "pharmacy_batch" as const,
@@ -382,6 +421,214 @@ export const pharmacyRouter = {
       invoiceId,
       invoiceNumber: result.invoice.invoiceNumber,
       payments: result.payments,
+    };
+  }),
+
+  // A ward issue moves shelf stock and posts pending Admission Charges; the Admission
+  // bill invoices them later. No sale, Invoice, Payment, journal or counter here.
+  issueToAdmission: orgProcedure(
+    { ipd: ["read"], pharmacy: ["issueAdmission"] },
+    orgInput.extend({
+      admissionId: z.string(),
+      expectedChargeRevision,
+      lines: z
+        .array(
+          z.object({
+            batchId: z.string(),
+            qty: z.number().int().positive(),
+            supply: z.enum(ADMISSION_ISSUE_SUPPLIES).default("bundled"),
+          }),
+        )
+        .min(1),
+      prescriberName: shortName.optional(),
+    }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+    const { timeZone, gstin } = await readOrgSettings(scope.orgId);
+
+    // Without a GSTIN there is no separately taxed supply (CGST Act s.32(1), D063).
+    if (!gstin && input.lines.some((line) => line.supply === "independent")) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "This hospital has no GSTIN, so medicines are issued as part of treatment",
+      });
+    }
+
+    const now = new Date();
+    const issueId = Bun.randomUUIDv7();
+
+    const result = await db.transaction(async (tx) => {
+      const admission = await lockAdmissionCharges(tx, scope.orgId, input.admissionId);
+
+      await requireChargeable(tx, scope.orgId, admission, {
+        allowed: ["admitted", "discharge_ready"],
+        message: "Medicines are issued only while the Patient is in the ward.",
+        expectedChargeRevision: input.expectedChargeRevision,
+      });
+
+      const batchById = await lockSaleableBatches(tx, scope.orgId, input.lines, {
+        today: businessDate(now, timeZone),
+        prescriberName: input.prescriberName,
+      });
+
+      await requireShelfStock(tx, scope.orgId, aggregateByBatch(input.lines), batchById);
+
+      // UUIDv7 ids are monotonic, so (createdAt, id) keeps the desk's line order on the bill.
+      const issued = input.lines.map((line) => {
+        const batch = batchById.get(line.batchId);
+
+        if (!batch) throw impossible(`batch ${line.batchId} vanished after its lock`);
+
+        return { line, batch, lineId: Bun.randomUUIDv7(), chargeId: Bun.randomUUIDv7() };
+      });
+
+      await tx.insert(admissionPharmacyIssues).values({
+        id: issueId,
+        orgId: scope.orgId,
+        admissionId: admission.id,
+        prescriberName: input.prescriberName ?? null,
+        issuedBy: scope.userId,
+        createdAt: now,
+      });
+
+      await tx.insert(admissionPharmacyIssueLines).values(
+        issued.map(({ line, lineId }) => ({
+          id: lineId,
+          orgId: scope.orgId,
+          issueId,
+          admissionId: admission.id,
+          batchId: line.batchId,
+          qty: line.qty,
+          supply: line.supply,
+        })),
+      );
+
+      await tx.insert(charges).values(
+        issued.map(({ line, batch, lineId, chargeId }) => ({
+          id: chargeId,
+          orgId: scope.orgId,
+          admissionId: admission.id,
+          admissionKind: "pharmacy_issue" as const,
+          admissionIssueLineId: lineId,
+          catalogItemId: null,
+          description: admissionIssueDescription(batch),
+          unitPrice: batch.mrp,
+          priceUnits: batch.mrpUnits,
+          // Bundled inpatient medicine is exempt composite healthcare; an independent
+          // supply keeps the Product's own GST.
+          taxRatePercent: line.supply === "independent" ? batch.taxRatePercent : "0.00",
+          taxCode: batch.taxCode,
+          priceBasis: "inclusive" as const,
+          revenueCategory: "pharmacy" as const,
+          qty: line.qty,
+          sourceType: "admission" as const,
+          sourceId: admission.id,
+          stockBatchId: line.batchId,
+          status: "pending" as const,
+          createdBy: scope.userId,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      );
+
+      await insertStockMovements(tx, {
+        orgId: scope.orgId,
+        userId: scope.userId,
+        now,
+        rows: issued.map(({ line, lineId }) => ({
+          batchId: line.batchId,
+          bucket: "shelf" as const,
+          qty: -line.qty,
+          reason: "admission_issue" as const,
+          sourceType: "admission_pharmacy_issue_line" as const,
+          sourceId: lineId,
+          note: null,
+        })),
+      });
+
+      return { chargeRevision: await bumpChargeRevision(tx, scope.orgId, admission.id) };
+    });
+
+    audit({
+      action: "pharmacy.issueToAdmission",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `admissionPharmacyIssue:${issueId}`,
+      meta: {
+        admissionId: input.admissionId,
+        lines: input.lines.map(({ batchId, qty, supply }) => ({ batchId, qty, supply })),
+      },
+    });
+
+    return { issueId, chargeRevision: result.chargeRevision };
+  }),
+
+  listAdmissionIssues: orgProcedure(
+    { ipd: ["read"], pharmacy: ["read"] },
+    orgInput.extend({ admissionId: z.string() }),
+  ).handler(async ({ context, input }) => {
+    const { orgId } = context.scope;
+
+    const rows = await db
+      .select({
+        issueId: admissionPharmacyIssues.id,
+        createdAt: admissionPharmacyIssues.createdAt,
+        prescriberName: admissionPharmacyIssues.prescriberName,
+        issuedByName: user.name,
+        line: {
+          id: admissionPharmacyIssueLines.id,
+          batchId: admissionPharmacyIssueLines.batchId,
+          productName: products.name,
+          batchNumber: stockBatches.batchNumber,
+          expiryDate: stockBatches.expiryDate,
+          qty: admissionPharmacyIssueLines.qty,
+          chargeId: charges.id,
+          chargeStatus: charges.status,
+        },
+      })
+      .from(admissionPharmacyIssues)
+      .innerJoin(user, eq(user.id, admissionPharmacyIssues.issuedBy))
+      .innerJoin(
+        admissionPharmacyIssueLines,
+        and(
+          eq(admissionPharmacyIssueLines.orgId, orgId),
+          eq(admissionPharmacyIssueLines.issueId, admissionPharmacyIssues.id),
+        ),
+      )
+      .innerJoin(
+        stockBatches,
+        and(
+          eq(stockBatches.orgId, orgId),
+          eq(stockBatches.id, admissionPharmacyIssueLines.batchId),
+        ),
+      )
+      .innerJoin(products, and(eq(products.orgId, orgId), eq(products.id, stockBatches.productId)))
+      .leftJoin(
+        charges,
+        and(
+          eq(charges.orgId, orgId),
+          eq(charges.admissionIssueLineId, admissionPharmacyIssueLines.id),
+          ne(charges.status, "voided"),
+        ),
+      )
+      .where(
+        and(
+          eq(admissionPharmacyIssues.orgId, orgId),
+          eq(admissionPharmacyIssues.admissionId, input.admissionId),
+        ),
+      )
+      .orderBy(
+        asc(admissionPharmacyIssues.createdAt),
+        asc(admissionPharmacyIssues.id),
+        asc(admissionPharmacyIssueLines.id),
+      );
+
+    return {
+      issues: [...Map.groupBy(rows, (row) => row.issueId)].map(([id, lines]) => {
+        // A group always holds the row that created it.
+        const { createdAt, prescriberName, issuedByName } = lines[0]!;
+
+        return { id, createdAt, prescriberName, issuedByName, lines: lines.map((row) => row.line) };
+      }),
     };
   }),
 

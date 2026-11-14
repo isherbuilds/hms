@@ -5,12 +5,17 @@ import { ORPCError } from "@orpc/server";
  *
  * - `duplicate` — that payer name is already in use (mapped to the name field).
  * - `uid_taken` — that patient UID belongs to someone else (mapped to the UID field).
- * - `stale_record` — the patient row moved after the operator opened it (offers Refresh).
+ * - `stale_record` — the patient row, bed reservation or surgical case moved after the
+ *   operator opened it (the dialog closes instead of showing a capacity refusal).
+ * - `bed_held` — a live hold stands on the bed (the admit and move dialogs show it and,
+ *   for `ipd:correct`, offer to release the bed's holds with a reason).
+ * - `case_held` — a maintenance block would cover a confirmed surgical case (the block
+ *   dialog offers, for `theatre:override`, to block anyway and disrupt the cases).
  *
  * Every other CONFLICT is a plain `ORPCError("CONFLICT")`: the client refetches and
  * shows the server message.
  */
-export type ConflictReason = "duplicate" | "uid_taken" | "stale_record";
+export type ConflictReason = "duplicate" | "uid_taken" | "stale_record" | "bed_held" | "case_held";
 
 /** A clash the operator can act on. Expected, so the server does not log it. */
 export function conflict(reason: ConflictReason, message: string) {

@@ -159,6 +159,7 @@ function FacilityRoute() {
                 ]}
                 rows={categories}
                 rowKey={(category) => category.id}
+                wrap
                 action={(category) => (
                   <Button
                     size="xs"
@@ -203,6 +204,7 @@ function FacilityRoute() {
                 ]}
                 rows={beds}
                 rowKey={(bed) => bed.id}
+                wrap
                 action={(bed) =>
                   bed.active ? (
                     <Button

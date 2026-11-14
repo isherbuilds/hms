@@ -235,21 +235,116 @@ authorised sample export from an unrelated hospital and its approvers.
 ### [IPD admission to discharge](./specs/ipd-admission-to-discharge.md)
 
 **Verification.** On 2026-11-13 the owner lifted the IPD/ADT build gate for
-Slice 2 only, ahead of Slice 1
-([D056](./decisions.md#d056--calendar-checkout-segmented-occupancy-and-an-ipd-financial-desk)): wards, bed types with effective-dated daily rates, beds,
-the bed board, admit, transfer, ready to leave, departure, cancellation, bed
-block and release, and audited backdating under `ipd:correct`. Integration tests
-cover concurrency, tenancy and grants. No Admission Charges, bed-day billing,
-inpatient pharmacy or settlement exist yet; Slices 1 and 3–6 stay gated on a
-paying hospital and named owner. On 2026-11-13 a production build passed on the
-seeded demo org: reception admitted, moved, marked ready and recorded departure
-on desktop light; the board and an admission fit a 390px phone in dark; an
-administrator added a bed, and retiring an occupied bed was refused. A second
-pass (GPT 6.1 Sol) confirmed two-terminal refusals for move, ready and
-departure, a stale **Release bed** refused with the newer block kept, and an
-earlier-time clash keeping the dialog open. Still owed: screenshots of every IPD
-screen at desktop dark and phone light (frame capture failed; no overflow was
-measured), and choosing the doctor and submitting Admit by keyboard alone.
+Slice 2 first, then for Slice 1 the same day
+([D056](./decisions.md#d056--calendar-checkout-segmented-occupancy-and-an-ipd-financial-desk)).
+Slice 2 built wards, bed types with
+effective-dated daily rates, beds, the bed board, admit, transfer, ready to
+leave, departure, cancellation, bed block and release, and audited backdating
+under `ipd:correct`. A production build passed on the seeded demo org: reception
+admitted, moved, marked ready and recorded departure on desktop light; the board
+and an admission fit a 390px phone in dark; an administrator added a bed, and
+retiring an occupied bed was refused. A second pass (GPT 6.1 Sol) confirmed
+two-terminal refusals for move, ready and departure, a stale **Release bed**
+refused with the newer block kept, and an earlier-time clash keeping the dialog
+open. The reservations pass below did the keyboard-only Admit and inspected
+the four Slice 2 pages at desktop dark and phone light. Still owed for Slice 2:
+its dialogs (admit, move, ready to leave, departure, cancel, block) at those two
+sizes.
+
+Slice 2 reservations are built
+([D064](./decisions.md#d064--bed-reservations-holds-expire-by-time-occupied-beds-are-never-promised-and-displacement-is-explicit)):
+waiting-list requests, dated holds on a free bed, expiry by time, conversion on
+arrival, holds respected by admit, transfer, block and retire, and explicit
+displacement under `ipd:correct`. Procedures `requestBed`,
+`confirmBedReservation`, `rescheduleBedReservation`, `cancelBedReservation` and
+`listBedReservations`, plus `reservationId` and `displace` on `admit` and
+`displace` on `transferBed`. Spec and tenancy tests pass:
+`tests/integration/bed-reservations.test.ts` and the tenancy guard table. The
+demo seed carries two holds arriving today and tomorrow, two waiting-list
+requests, a disrupted hold, a lapsed hold, a cancelled reservation and one
+converted on arrival.
+
+On 2026-11-13 two browser passes (GPT 6.1 Sol) on a production build covered
+reservations: the four views, reserve, hold, arrival, change, cancel, the
+reasoned override for admit and move, blocking, two terminals and read-only
+roles, at desktop and a 390px phone in light and dark. The second pass confirmed
+the rules changed in review: a block by reception keeps the hold, an arrival is
+refused while another reservation is on the bed, a late arrival can be extended,
+a stale dialog closes, and each refusal shows once. It also completed Reserve a
+bed and Admit, including choosing the doctor, by keyboard alone, and inspected
+the bed board, admissions list, an admission and the setup page at desktop dark
+and phone light. Not seen in a browser:
+Admit appearing as the arrival minute passes, **Load more** on All, and the fixes
+made after the second pass (phone wrapping on the admissions and setup lists,
+the lapsed-hold form, the rate gate on Admit).
+
+Slice 1 built inpatient medicine issue (`pharmacy.issueToAdmission`, each line
+bundled or independent), posted services (`ipd.postServices`), and one `ipd`
+Invoice per Admission (`ipd.previewInvoice`, `ipd.issueInvoice`) on a
+per-line price basis with stored `addedTaxTotal`; cancellation is refused once a
+Charge or issue exists. Its spec, tenancy and unit tests pass:
+`tests/integration/ipd-billing.test.ts`, the tenancy guard table,
+`tests/unit/invoice-math-basis.test.ts` and `tests/unit/ipd-invoice-print.test.ts`.
+The demo seed carries an admitted stay with pending issues and a service, a
+ready-to-bill stay, and a departed stay with a paid `ipd` Invoice.
+
+On 2026-11-13 a production build passed a browser pass (GPT 6.1 Sol) on the
+seeded demo org: the pharmacist issued two medicines on different supply bases
+(stock fell, no counter sale); the cashier added and removed a service, was held
+until **Ready to leave**, and issued and collected an `ipd` Invoice; a second
+terminal's added service made the open collection refuse; both A4 Invoices
+printed with batch, expiry and matching totals; reception, cashier and
+pharmacist saw only their own actions; both forms completed by keyboard; and
+the issue tab, admission, issue form and collection fit desktop and a 390px
+phone in light and dark with no page overflow. Changed after that pass and not yet seen in a browser: a quantity above shelf stock now says it was capped, and medicine facts wrap on a phone. Still owed: a thermal `ipd` Invoice
+(the admission offers A4 only), the collection overlay's 24–32px phone targets
+(shared with OPD), a hydration error on **Settings → Organization** from the
+time-zone list (predates IPD), and a Gemini council seat (quota).
+
+A hospital without a GSTIN cannot add GST to an inpatient bill or issue a
+separately taxed medicine (D063); the demo hospital has none, so its seeded
+inpatient bills carry no GST.
+
+Still owed, in order: Credit Notes for service lines on `ipd` Invoices, before
+any live hospital bills inpatients; then Slices 3–6 (bed-day review, interim
+bill, packages, inpatient returns, deposits and final settlement, IPD reports).
+An Admission takes one Invoice until supplemental billing in Slice 5 (D063).
+The same no-GSTIN rule is not yet applied to OPD or counter Pharmacy.
+
+### [Facility booking and theatre](./specs/facility-booking-and-theatre.md)
+
+**Active.** Planning and reference research completed on 2026-11-13 for future
+bed reservations in IPD slice 2 and separate theatre/room/equipment scheduling.
+Sol's council review (7/10) produced five findings, addressed in the contract:
+all-writer hold protection, pre-admission case scheduling, conservative capacity
+promises, source-owned financial handoffs and an inpatient-only first OT release.
+Claude failed authentication (Cloudflare 403); Gemini hit its monthly quota, so
+there is no three-provider council sign-off. On 2026-11-13 the owner asked for
+bed reservations and the theatre resource schedule to be built ahead of the
+product and clinical gates; operational release still waits for those gates.
+Bed reservations are built (D064; see
+[IPD admission to discharge](#ipd-admission-to-discharge)). The theatre resource
+schedule (delivery slice 1) is built (D065) with `tests/integration/theatre.test.ts`
+and its rows in the tenancy table; the demo seed has rooms, units, blocks and cases.
+
+On 2026-11-13 a browser pass (GPT 6.1 Sol) on a production build covered the
+theatre schedule: the day view, booking and confirming, refusals for a taken
+room, unit and consultant, changing and cancelling, linking an admission, rooms,
+equipment, blocks and the reasoned override, two terminals, roles without
+access, and that booking added no charge. Late-evening times showed on the right
+day and no page errors were reported. It found the booking dialog unreachable on
+a 390px phone and a consultant refusal that did not name the consultant. A
+second pass after the fixes confirmed both, and that a stale dialog closes, a
+started case takes a notes correction, a block ignores a finished case and
+offers the override only over an upcoming one, a retired room stays editable on
+a draft but cannot be confirmed, the schedule refreshes by itself, and booking
+can be completed by keyboard alone. Not seen in a browser: the changes made
+after that pass (**Change admission**, the confirmation before **Remove
+block**, the procedure check at confirmation).
+
+Still owed: delivery slice 2 (changes and actual use) and slice 3 (safety handoff
+and delivered billing), and the spec's missing contracts table. Clinical release
+still needs the OT gate.
 
 ### [Cashless claims](./specs/cashless-claims.md)
 

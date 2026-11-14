@@ -16,6 +16,7 @@ export async function requireOrgPermission(
     | "/$orgSlug/dashboard"
     | "/$orgSlug/opd"
     | "/$orgSlug/ipd"
+    | "/$orgSlug/theatre"
     | "/$orgSlug/pharmacy"
     | "/$orgSlug/settings",
 ): Promise<Membership> {

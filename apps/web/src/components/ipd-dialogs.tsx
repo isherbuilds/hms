@@ -2,19 +2,27 @@ import { DECIMAL_PATTERN, parseDecimal } from "@hms/api/core/money";
 import { localDateTime } from "@hms/api/lib/business-date";
 import { practitionerDisplayName } from "@hms/api/lib/labels";
 import { Badge } from "@hms/ui/components/badge";
-import { FormControl } from "@hms/ui/components/form";
+import { Checkbox } from "@hms/ui/components/checkbox";
+import { FormControl, FormField, FormItem, FormLabel } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
-import { useWatch } from "react-hook-form";
+import { useState, type ReactNode } from "react";
+import {
+  useFormContext,
+  useWatch,
+  type ControllerRenderProps,
+  type FieldValues,
+} from "react-hook-form";
 import { z } from "zod";
 
 import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
 import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
+import { ErrorNote } from "@/components/page";
 import { useCan } from "@/lib/membership";
-import { localInputValue, useOrgDateTime } from "@/lib/org-datetime";
+import { formatDateTime, localInputValue, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
+import { errorMessage, errorReason, hasErrorCode } from "@/lib/orpc-error";
 
 type AdmissionStatus = "admitted" | "discharge_ready" | "discharged" | "cancelled";
 
@@ -100,6 +108,116 @@ function EarlierTimeFields({ orgSlug, label }: { orgSlug: string; label: string 
   );
 }
 
+// A walk-in onto a held bed is refused; `ipd:correct` may override it with a reason,
+// which turns the bed's holds into reservations that need a bed again.
+const displaceFields = {
+  displace: z.boolean(),
+  displaceReason: z.string().trim().max(500),
+};
+
+function requireDisplaceReason(
+  value: { displace: boolean; displaceReason: string },
+  context: z.RefinementCtx,
+) {
+  if (value.displace && !value.displaceReason) {
+    context.addIssue({
+      code: "custom",
+      path: ["displaceReason"],
+      message: "Give a reason to release the hold",
+    });
+  }
+}
+
+type Refusal = { message: string; bedId: string };
+
+/** Keeps the dialog open on the first hold refusal for a bed so it can be shown and, if
+ * allowed, overridden. The server's `bed_held` decides, not the board snapshot. */
+function useHoldRefusal(onClose: () => void) {
+  const [refusal, setRefusal] = useState<Refusal | null>(null);
+
+  const showsInline = (error: Error, bedId: string, displacing: boolean) =>
+    hasErrorCode(error, "CONFLICT") &&
+    errorReason(error) === "bed_held" &&
+    !displacing &&
+    refusal?.bedId !== bedId;
+
+  const onError = (error: Error, bedId: string, displacing: boolean) => {
+    if (!hasErrorCode(error, "CONFLICT")) return;
+
+    if (showsInline(error, bedId, displacing)) setRefusal({ message: errorMessage(error), bedId });
+    else onClose();
+  };
+
+  /** The refusal, only while the form is still on the bed it was about. */
+  const refusalFor = (bedId: string) => (refusal?.bedId === bedId ? refusal.message : null);
+
+  return { refusalFor, onError, showsInline };
+}
+
+type BoardHold = { patientName: string; plannedArrivalAt: Date };
+
+function HoldRefusal({
+  orgSlug,
+  refusal,
+  action,
+  holds,
+}: {
+  orgSlug: string;
+  refusal: string | null;
+  action: string;
+  /** The refused bed's holds, so the desk sees whose arrival the bed is kept for. */
+  holds: readonly BoardHold[];
+}) {
+  const { timeZone } = useOrgDateTime();
+  const canCorrect = useCan(orgSlug, { ipd: ["correct"] });
+  const displace = useWatch<{ displace: boolean }, "displace">({ name: "displace" });
+
+  if (refusal === null) return null;
+
+  const [first, ...others] = holds;
+
+  const heldFor = first
+    ? `Held for ${first.patientName} from ${formatDateTime(first.plannedArrivalAt, timeZone)}${
+        others.length > 0 ? `, and ${others.length} more` : ""
+      }.`
+    : undefined;
+
+  return (
+    <>
+      <ErrorNote
+        title={refusal}
+        detail={[heldFor, canCorrect ? undefined : "Choose another bed, or ask an administrator."]
+          .filter(Boolean)
+          .join(" ")}
+      />
+      {canCorrect ? (
+        <>
+          <FormField
+            name="displace"
+            render={({ field }) => (
+              <FormItem className="flex items-center gap-2">
+                <FormControl>
+                  <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+                <FormLabel>
+                  {action} anyway and release every reservation held on this bed
+                </FormLabel>
+              </FormItem>
+            )}
+          />
+          {displace ? (
+            <TextField name="displaceReason" label="Reason to release the hold" autoFocus />
+          ) : null}
+        </>
+      ) : null}
+    </>
+  );
+}
+
+function displaceInput(value: { displace: boolean; displaceReason: string }) {
+  return value.displace ? { reason: value.displaceReason } : undefined;
+}
+
 const admitSchema = z
   .object({
     patient: z
@@ -107,30 +225,56 @@ const admitSchema = z
       .refine((patient): patient is SelectedPatient => patient !== null, "Choose the Patient"),
     practitionerId: z.string().min(1, "Choose the admitting doctor"),
     ...earlierTime,
+    ...displaceFields,
   })
-  .superRefine(requireEarlierReason);
+  .superRefine(requireEarlierReason)
+  .superRefine(requireDisplaceReason);
 
 export function AdmitDialog({
   orgSlug,
   bed,
+  reservation,
   onClose,
 }: {
   orgSlug: string;
-  bed: { id: string; label: string; wardName: string };
+  /** `holds` are the bed's live holds, apart from the one this admission converts. */
+  bed: { id: string; label: string; wardName: string; holds: readonly BoardHold[] };
+  /** The hold being turned into this admission, captured when the dialog opened. */
+  reservation?: { id: string; revision: number; patient: SelectedPatient };
   onClose: () => void;
 }) {
   const { timeZone } = useOrgDateTime();
   const practitioners = useQuery(orpc.staff.listPractitioners.queryOptions({ input: { orgSlug } }));
+  const hold = useHoldRefusal(onClose);
 
   return (
     <FormDialog
       title={`Admit to ${bed.wardName} ${bed.label}`}
-      description="The bed shows as occupied from the time of admission."
+      description={
+        reservation ? (
+          <>
+            <span className="capitalize">{reservation.patient.name}</span> (
+            <span className="font-mono">{reservation.patient.mrn}</span>) arrives on their
+            reservation. The bed shows as occupied from the time of admission.
+          </>
+        ) : (
+          "The bed shows as occupied from the time of admission."
+        )
+      }
       submitLabel="Admit"
       schema={admitSchema}
-      defaultValues={{ patient: null, practitionerId: "", earlierAt: "", reason: "" }}
+      defaultValues={{
+        patient: reservation?.patient ?? null,
+        practitionerId: "",
+        earlierAt: "",
+        reason: "",
+        displace: false,
+        displaceReason: "",
+      }}
       success="Patient admitted"
       onClose={onClose}
+      onError={(error, value) => hold.onError(error, bed.id, value.displace)}
+      showsInline={(error, value) => hold.showsInline(error, bed.id, value.displace)}
       run={(value) => {
         const earlier = earlierFields(value, timeZone);
 
@@ -141,16 +285,21 @@ export function AdmitDialog({
           practitionerId: value.practitionerId,
           admittedAt: earlier.at,
           reason: earlier.reason,
+          reservationId: reservation?.id,
+          expectedReservationRevision: reservation?.revision,
+          displace: displaceInput(value),
         });
       }}
     >
-      <ControlledField
-        name="patient"
-        label="Patient"
-        render={(field) => (
-          <OpdPatientSearch orgSlug={orgSlug} selected={field.value} onChange={field.onChange} />
-        )}
-      />
+      {reservation ? null : (
+        <ControlledField
+          name="patient"
+          label="Patient"
+          render={(field) => (
+            <OpdPatientSearch orgSlug={orgSlug} selected={field.value} onChange={field.onChange} />
+          )}
+        />
+      )}
       <ControlledField
         name="practitionerId"
         label="Admitting doctor"
@@ -168,6 +317,12 @@ export function AdmitDialog({
         )}
       />
       <EarlierTimeFields orgSlug={orgSlug} label="Admitted at" />
+      <HoldRefusal
+        orgSlug={orgSlug}
+        refusal={hold.refusalFor(bed.id)}
+        action="Admit"
+        holds={bed.holds}
+      />
     </FormDialog>
   );
 }
@@ -175,8 +330,68 @@ export function AdmitDialog({
 type AdmissionRef = { id: string; revision: number };
 
 const transferSchema = z
-  .object({ bedId: z.string().min(1, "Choose the new bed"), ...earlierTime })
-  .superRefine(requireEarlierReason);
+  .object({ bedId: z.string().min(1, "Choose the new bed"), ...earlierTime, ...displaceFields })
+  .superRefine(requireEarlierReason)
+  .superRefine(requireDisplaceReason);
+
+// The refusal belongs to the bed chosen in the form, so it and its holds are read from there.
+function MoveRefusal({
+  orgSlug,
+  refusalFor,
+  beds,
+}: {
+  orgSlug: string;
+  refusalFor: (bedId: string) => string | null;
+  beds: ReadonlyArray<{ id: string; holds: readonly BoardHold[] }>;
+}) {
+  const bedId = useWatch<{ bedId: string }, "bedId">({ name: "bedId" });
+
+  return (
+    <HoldRefusal
+      orgSlug={orgSlug}
+      refusal={refusalFor(bedId)}
+      action="Move"
+      holds={beds.find((bed) => bed.id === bedId)?.holds ?? []}
+    />
+  );
+}
+
+// A new bed has not been refused yet, so an override ticked for the last one is cleared.
+function MoveBedSelect({
+  beds,
+  held,
+  disabled,
+  field,
+}: {
+  beds: ReadonlyArray<{ id: string; wardName: string; label: string; categoryName: string }>;
+  held: ReadonlySet<string>;
+  disabled: boolean;
+  field: ControllerRenderProps<FieldValues, string>;
+}) {
+  const { setValue } = useFormContext<{ displace: boolean; displaceReason: string }>();
+
+  return (
+    <FormControl>
+      <NativeSelect
+        {...field}
+        disabled={disabled}
+        onChange={(event) => {
+          field.onChange(event);
+          setValue("displace", false);
+          setValue("displaceReason", "");
+        }}
+      >
+        <option value="">Choose a free bed</option>
+        {beds.map((bed) => (
+          <option key={bed.id} value={bed.id}>
+            {bed.wardName} {bed.label} · {bed.categoryName}
+            {held.has(bed.id) ? " · held" : ""}
+          </option>
+        ))}
+      </NativeSelect>
+    </FormControl>
+  );
+}
 
 export function TransferDialog({
   orgSlug,
@@ -191,10 +406,13 @@ export function TransferDialog({
 }) {
   const { timeZone } = useOrgDateTime();
   const board = useQuery(orpc.ipd.bedBoard.queryOptions({ input: { orgSlug } }));
+  const hold = useHoldRefusal(onClose);
 
   const free = (board.data?.beds ?? []).filter(
     (bed) => bed.status === "available" && bed.id !== currentBedId,
   );
+
+  const held = new Set(free.filter((bed) => bed.holds.length > 0).map((bed) => bed.id));
 
   return (
     <FormDialog
@@ -202,9 +420,11 @@ export function TransferDialog({
       description="The current bed is freed at the moment of the move."
       submitLabel="Move"
       schema={transferSchema}
-      defaultValues={{ bedId: "", earlierAt: "", reason: "" }}
+      defaultValues={{ bedId: "", earlierAt: "", reason: "", displace: false, displaceReason: "" }}
       success="Patient moved"
       onClose={onClose}
+      onError={(error, value) => hold.onError(error, value.bedId, value.displace)}
+      showsInline={(error, value) => hold.showsInline(error, value.bedId, value.displace)}
       run={(value) => {
         const earlier = earlierFields(value, timeZone);
 
@@ -215,6 +435,7 @@ export function TransferDialog({
           bedId: value.bedId,
           effectiveAt: earlier.at,
           reason: earlier.reason,
+          displace: displaceInput(value),
         });
       }}
     >
@@ -223,19 +444,11 @@ export function TransferDialog({
         label="New bed"
         description={board.isSuccess && free.length === 0 ? "No bed is free right now." : undefined}
         render={(field) => (
-          <FormControl>
-            <NativeSelect {...field} disabled={board.isPending}>
-              <option value="">Choose a free bed</option>
-              {free.map((bed) => (
-                <option key={bed.id} value={bed.id}>
-                  {bed.wardName} {bed.label} · {bed.categoryName}
-                </option>
-              ))}
-            </NativeSelect>
-          </FormControl>
+          <MoveBedSelect beds={free} held={held} disabled={board.isPending} field={field} />
         )}
       />
       <EarlierTimeFields orgSlug={orgSlug} label="Moved at" />
+      <MoveRefusal orgSlug={orgSlug} refusalFor={hold.refusalFor} beds={free} />
     </FormDialog>
   );
 }
@@ -316,7 +529,7 @@ export function DischargeDialog({
   );
 }
 
-const reasonSchema = z.object({
+export const reasonSchema = z.object({
   reason: z.string().trim().min(1, "Give a reason").max(500, "Keep it under 500 characters"),
 });
 
@@ -390,13 +603,24 @@ export function BlockBedDialog({
   onClose,
 }: {
   orgSlug: string;
-  bed: { id: string; label: string };
+  bed: { id: string; label: string; holds: readonly unknown[] };
   onClose: () => void;
 }) {
+  const { length } = bed.holds;
+  // Only owner/admin authority releases holds; anyone else's block leaves them held.
+  const canCorrect = useCan(orgSlug, { ipd: ["correct"] });
+  const held = `${length} ${length === 1 ? "reservation" : "reservations"} held on it`;
+
   return (
     <FormDialog
       title={`Block bed ${bed.label}`}
-      description="A blocked bed takes no admissions until it is released."
+      description={`A blocked bed takes no admissions until it is released.${
+        length === 0
+          ? ""
+          : canCorrect
+            ? ` The ${held} will need a bed again.`
+            : ` The ${held} stay held and will need attention.`
+      }`}
       submitLabel="Block bed"
       schema={reasonSchema}
       defaultValues={{ reason: "" }}
@@ -409,7 +633,7 @@ export function BlockBedDialog({
   );
 }
 
-const nameSchema = z.object({
+export const nameSchema = z.object({
   name: z.string().trim().min(1, "Enter a name").max(200, "Keep the name under 200 characters"),
 });
 

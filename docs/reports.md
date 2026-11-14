@@ -56,15 +56,15 @@ administrators, and owners.
 reuse `report:readFinancial`: owner, admin and accountant can read the pages,
 procedures and exports; reception, cashier or pharmacist alone cannot. Every
 request carries `orgSlug`, queries are organization-keyed, and source links
-retain their own billing, OPD or pharmacy permission checks. These reports add
+retain their own billing, OPD, pharmacy or IPD (`ipd:read`) permission checks. These reports add
 no grants, domain tables, source writes, no-show reconciliation, read-audit events
 or alert-resolution workflow. Clinical notes, phone numbers and scans are excluded.
-They cover OPD and pharmacy, not unrecorded IPD or other hospital systems.
+They cover every Invoice stream (OPD, pharmacy and IPD), not other hospital systems.
 
 ### Invoice Register
 
 `report.invoiceRegister` accepts inclusive `from/to` (at most 366 days), optional
-`stream` (`opd` or `pharmacy`) and full-number/name/MRN `query`, and a keyset cursor
+`stream` (`opd`, `pharmacy` or `ipd`) and full-number/name/MRN `query`, and a keyset cursor
 `(businessDate, createdAt, id)` in descending order. The page defaults to the
 Organization's fiscal-year start through today. Pages contain 25 rows by default,
 100 maximum; whole-filter totals and stream/fiscal-year series summaries are not

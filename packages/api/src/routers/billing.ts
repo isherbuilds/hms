@@ -30,7 +30,13 @@ import {
   lockInvoice,
   postCreditNoteTx,
   recordPaymentsTx,
+  settleIssuedInvoiceTx,
 } from "../lib/billing-documents";
+import {
+  bumpChargeRevision,
+  lockAdmissionCharges,
+  requireUnbilled,
+} from "../lib/admission-charges";
 import { impossible } from "../lib/conflict";
 import { invoiceBalanceFor, invoiceBalancesFor } from "../lib/invoice-balance";
 import { voidPendingCharges } from "../lib/opd-close";
@@ -145,45 +151,17 @@ export async function settleInvoiceTx(
     invoiceId: args.invoiceId,
   });
 
-  if (issued.invoice.grandTotal !== args.expectedGrandTotal) {
-    throw new ORPCError("CONFLICT", {
-      message: "The charges changed. Review the invoice and try again",
-    });
-  }
-
-  const collected = args.payments.reduce((sum, payment) => sum + payment.amount, 0n);
-  const due = issued.invoice.grandTotal;
-
-  if (args.applyCredit > due) {
-    throw new ORPCError("CONFLICT", {
-      message: "That credit is more than the invoice still owes.",
-    });
-  }
-
-  if (collected > due - args.applyCredit) {
-    throw new ORPCError("BAD_REQUEST", {
-      message: "Collected amount cannot exceed the invoice total",
-    });
-  }
-
-  if (collected + args.applyCredit < due && !args.note) {
-    throw new ORPCError("BAD_REQUEST", {
-      message: "Add a reason for the outstanding balance",
-    });
-  }
-
-  const recorded =
-    args.payments.length === 0 && args.applyCredit === 0n
-      ? []
-      : await recordPaymentsTx(tx, {
-          scope,
-          invoiceId: args.invoiceId,
-          payments: args.payments,
-          applyCredit: args.applyCredit,
-          settings: args.settings,
-          now: args.now,
-          fiscalYear: args.fiscalYear,
-        });
+  const recorded = await settleIssuedInvoiceTx(tx, {
+    scope,
+    invoice: issued.invoice,
+    expectedGrandTotal: args.expectedGrandTotal,
+    payments: args.payments,
+    applyCredit: args.applyCredit,
+    outstandingReason: args.note,
+    settings: args.settings,
+    now: args.now,
+    fiscalYear: args.fiscalYear,
+  });
 
   const [versionedAppointment] = await tx
     .update(opdAppointments)
@@ -214,24 +192,44 @@ export const billingRouter = {
     const { scope } = context;
 
     const charge = await db.transaction(async (tx) => {
+      // The parent columns never change, so they are read before taking the parent's lock.
       const [candidate] = await tx
-        .select({ appointmentId: opdAppointments.id })
+        .select({
+          appointmentId: charges.opdAppointmentId,
+          admissionId: charges.admissionId,
+          admissionKind: charges.admissionKind,
+        })
         .from(charges)
-        .innerJoin(
-          opdAppointments,
-          and(
-            eq(opdAppointments.orgId, scope.orgId),
-            eq(opdAppointments.id, charges.opdAppointmentId),
-          ),
-        )
         .where(and(eq(charges.orgId, scope.orgId), eq(charges.id, input.chargeId)))
-        .limit(1)
-        .for("update", { of: opdAppointments });
+        .limit(1);
 
-      if (!candidate) {
+      if (candidate?.admissionId) {
+        const admission = await lockAdmissionCharges(tx, scope.orgId, candidate.admissionId);
+
+        // Voiding would orphan the stock the issue moved; returns are a later slice.
+        if (candidate.admissionKind === "pharmacy_issue") {
+          throw new ORPCError("CONFLICT", {
+            message: "Issued medicines are corrected by a return.",
+          });
+        }
+
+        await requireUnbilled(tx, scope.orgId, admission.id);
+        await bumpChargeRevision(tx, scope.orgId, admission.id);
+      } else if (candidate?.appointmentId) {
+        await tx
+          .update(opdAppointments)
+          .set({ chargeRevision: sql`${opdAppointments.chargeRevision} + 1` })
+          .where(
+            and(
+              eq(opdAppointments.orgId, scope.orgId),
+              eq(opdAppointments.id, candidate.appointmentId),
+            ),
+          );
+      } else {
         throw new ORPCError("NOT_FOUND", { message: "That charge no longer exists." });
       }
 
+      // The parent row is locked by its revision bump above; a refusal rolls it back.
       const [voided] = await voidPendingCharges({
         tx,
         orgId: scope.orgId,
@@ -245,16 +243,6 @@ export const billingRouter = {
           message: "This charge was already settled or voided.",
         });
       }
-
-      await tx
-        .update(opdAppointments)
-        .set({ chargeRevision: sql`${opdAppointments.chargeRevision} + 1` })
-        .where(
-          and(
-            eq(opdAppointments.orgId, scope.orgId),
-            eq(opdAppointments.id, candidate.appointmentId),
-          ),
-        );
 
       return voided;
     });
@@ -635,10 +623,17 @@ export const billingRouter = {
       // Checked before any write: a pharmacy correction has to bring the goods back.
       const invoice = await lockInvoice(tx, scope.orgId, input.invoiceId);
 
-      if (invoice.stream !== "opd") {
-        throw new ORPCError("CONFLICT", {
-          message: "Pharmacy invoices are corrected by a return.",
-        });
+      switch (invoice.stream) {
+        case "opd":
+          break;
+        case "pharmacy":
+          throw new ORPCError("CONFLICT", {
+            message: "Pharmacy invoices are corrected by a return.",
+          });
+        case "ipd":
+          throw new ORPCError("CONFLICT", {
+            message: "Inpatient bills are corrected from the admission",
+          });
       }
 
       const posted = await postCreditNoteTx(tx, {
