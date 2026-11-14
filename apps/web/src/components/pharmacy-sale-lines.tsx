@@ -115,9 +115,12 @@ export function SaleLines({
         </Table>
       </div>
 
-      <div className="grid gap-2 md:hidden">
+      <div className="grid md:hidden">
         {lines.map((line) => (
-          <article key={line.batchId} className="grid min-w-0 gap-3 rounded-lg bg-muted/60 p-3">
+          <article
+            key={line.batchId}
+            className="grid min-w-0 gap-3 border-b border-border/60 py-3 last:border-b-0"
+          >
             <div className="min-w-0">
               <p className="wrap-break-words font-medium capitalize">
                 {line.productName}
@@ -141,7 +144,7 @@ export function SaleLines({
                 </p>
               </div>
             </div>
-            <div className="flex min-w-0 items-end justify-between gap-2 border-t border-border pt-2">
+            <div className="flex min-w-0 items-end justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-muted-foreground">Amount</p>
                 <p className="wrap-break-words font-medium tabular-nums">

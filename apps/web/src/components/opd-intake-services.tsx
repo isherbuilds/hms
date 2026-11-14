@@ -181,9 +181,12 @@ export function ServiceLines({
         </Table>
       </div>
 
-      <div className="grid gap-2 md:hidden">
+      <div className="grid md:hidden">
         {lines.map((line) => (
-          <article key={line.key} className="grid min-w-0 gap-3 rounded-lg bg-muted/60 p-3">
+          <article
+            key={line.key}
+            className="grid min-w-0 gap-3 border-b border-border/60 py-3 last:border-b-0"
+          >
             <div className="min-w-0">
               <p className="wrap-break-words font-medium">{line.description}</p>
               <div className="flex flex-wrap gap-1 pt-2">

@@ -11,11 +11,11 @@ that recurs is a missing primitive, not a style choice.
 Sections sit flat on the page. Space and type group them; a box is the
 exception, not the frame for every list.
 
-| Surface | Token                | What it is                                                     |
-| ------- | -------------------- | -------------------------------------------------------------- |
-| Canvas  | `bg-card`            | The content panel. Lists, forms and record facts sit on it.    |
-| Tint    | `bg-muted/60`        | One quiet block for a summary or a record part (`rounded-lg`). |
-| Outline | `ring-1 ring-border` | Only where an outline means something: a free bed is empty.    |
+| Surface | Token                | What it is                                                                                |
+| ------- | -------------------- | ----------------------------------------------------------------------------------------- |
+| Panel   | `bg-card`            | The content panel on the `bg-background` canvas, where lists, forms and record facts sit. |
+| Tint    | `bg-muted/60`        | One quiet block for a summary or a record part (`rounded-lg`).                            |
+| Outline | `ring-1 ring-border` | Only where an outline means something: a free bed is empty.                               |
 
 **A list is a heading row and its rows.** `Panel` draws a label row (`min-h-8`,
 `font-medium`) and the table under it, with no tray and no bordered card. The
@@ -26,7 +26,8 @@ a box, a box in a box, or a tint inside a tint.
 record's facts, or a visit's invoice uses `bg-muted/60 rounded-lg p-4` with no
 border. Status surfaces (clinical notes) keep their colour token without an
 outline. The dashboard money card is the screen's one bright element: lime tint,
-no border.
+no border. A row of headline figures above a list, like Billing's four totals, sits flat
+because it introduces the list rather than summarising a form.
 
 Rules separate only what a reader must tell apart: table rows (`border-border/60`),
 a table's heading row, form bands, and a bill's totals. A page header drops its
@@ -284,7 +285,7 @@ Button labels render in Title Case through the shared button primitive; routes
 do not add one-off text transforms.
 Every section label is `text-xs` `font-medium` in the foreground colour: below
 the `text-sm` page title, above the muted column labels. Section label rows
-carry `min-h-8`, so a section with an action and one without are the same height.
+carry `min-h-8` in `Panel`, so a section with an action and one without are the same height.
 
 **Two surfaces are exempt from the org-shell rules.** Public entry pages
 (`login`, `join`, `create`, the root screen) do not use `PageHeader`; they may

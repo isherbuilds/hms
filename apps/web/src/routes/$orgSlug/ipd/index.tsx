@@ -189,11 +189,11 @@ function BedTile({
     const { admission } = bed;
 
     return (
-      <li className="rounded-lg bg-muted/60">
+      <li>
         <Link
           to="/$orgSlug/ipd/$admissionId"
           params={{ orgSlug, admissionId: admission.id }}
-          className="flex h-full min-h-24 flex-col gap-1 rounded-lg p-3 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted"
+          className="flex h-full min-h-24 flex-col gap-1 rounded-lg bg-muted/60 p-3 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted"
         >
           {heading}
           <span className="truncate font-medium capitalize" title={admission.patientName}>

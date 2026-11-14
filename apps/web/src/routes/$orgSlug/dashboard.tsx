@@ -75,7 +75,7 @@ export const Route = createFileRoute("/$orgSlug/dashboard")({
 
 const hover = "[@media(hover:hover)_and_(pointer:fine)]:hover";
 
-// One layer of container: a bordered card with its title inside, in ink.
+// One layer of container: a borderless tinted card with its title inside, in ink.
 function Card({
   title,
   action,

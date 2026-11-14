@@ -170,7 +170,8 @@
     height: 6px;
   }
   ::-webkit-scrollbar-thumb {
-    background-color: var(--border);
+    /* --input, not --border: a scroll cue stays as strong as a control edge. */
+    background-color: var(--input);
     border-radius: 10px;
   }
   ::-webkit-scrollbar-track {
@@ -236,7 +237,7 @@
   --scroll-rule-surface: var(--color-popover);
   background-image:
     linear-gradient(var(--scroll-rule-surface), var(--scroll-rule-surface)),
-    linear-gradient(var(--color-border), var(--color-border));
+    linear-gradient(var(--color-input), var(--color-input));
   background-position: bottom;
   background-size: 100% 1px;
   background-repeat: no-repeat;
