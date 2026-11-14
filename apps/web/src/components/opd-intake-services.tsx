@@ -101,7 +101,7 @@ export function ServiceLines({
 
   return (
     <>
-      <div className="hidden overflow-hidden rounded-lg ring-1 ring-border md:block">
+      <div className="hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -181,11 +181,11 @@ export function ServiceLines({
         </Table>
       </div>
 
-      <div className="grid gap-2 md:hidden">
+      <div className="grid md:hidden">
         {lines.map((line) => (
           <article
             key={line.key}
-            className="grid min-w-0 gap-3 rounded-lg border border-border p-3"
+            className="grid min-w-0 gap-3 border-b border-border/60 py-3 last:border-b-0"
           >
             <div className="min-w-0">
               <p className="wrap-break-words font-medium">{line.description}</p>

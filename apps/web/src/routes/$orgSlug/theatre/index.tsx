@@ -259,7 +259,7 @@ function ScheduleRoute() {
               return (
                 <Panel key={room.id} label={room.name} minHeight="">
                   {rows.length ? (
-                    <ul className="divide-y divide-border">{rows.map(({ row }) => row)}</ul>
+                    <ul className="divide-y divide-border/60">{rows.map(({ row }) => row)}</ul>
                   ) : (
                     <p className="p-3 text-muted-foreground">Nothing booked</p>
                   )}
@@ -269,13 +269,13 @@ function ScheduleRoute() {
 
             {unplaced.length ? (
               <Panel label="No room yet" minHeight="">
-                <ul className="divide-y divide-border">{unplaced.map(caseRow)}</ul>
+                <ul className="divide-y divide-border/60">{unplaced.map(caseRow)}</ul>
               </Panel>
             ) : null}
 
             {unitBlocks.length ? (
               <Panel label="Equipment out of use" minHeight="">
-                <ul className="divide-y divide-border">
+                <ul className="divide-y divide-border/60">
                   {unitBlocks.map((block) =>
                     blockRow(block, units.get(block.equipmentId!) ?? "Equipment"),
                   )}

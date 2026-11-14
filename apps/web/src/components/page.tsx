@@ -34,7 +34,7 @@ export function PageHeader({
   return (
     <div
       data-slot="page-header"
-      className="z-10 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-card px-3 lg:pr-4 lg:pl-6 print:h-auto print:px-4 print:py-3"
+      className="z-10 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-card px-3 [&:has(+nav)]:border-transparent lg:pr-4 lg:pl-6 print:h-auto print:px-4 print:py-3"
     >
       <SidebarTrigger className="print:hidden lg:hidden" />
       <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -306,7 +306,7 @@ function DataRow<T>({
   const meta = rest.filter((column) => column.mobile === undefined);
 
   return (
-    <li className="flex min-w-0 items-start border-b text-xs">
+    <li className="flex min-w-0 items-start border-b border-border/60 text-xs last:border-0">
       {target(
         "flex min-h-10 min-w-0 flex-1 flex-col gap-1 px-3 py-2",
         <>
@@ -345,10 +345,7 @@ function DataRow<T>({
   );
 }
 
-/**
- * One titled band of a full-page form. The card owns the border; the last section
- * drops its own so the card's rounded edge is not cut by a line.
- */
+/** One titled band of a full-page form, separated from the next by a hairline. */
 export function FormSection({
   title,
   description,
@@ -359,7 +356,7 @@ export function FormSection({
   children: ReactNode;
 }) {
   return (
-    <section className="grid gap-3 border-b border-border p-4 last:border-b-0">
+    <section className="grid gap-3 border-b border-border/60 py-4 first:pt-0 last:border-b-0">
       <div className="flex flex-wrap items-baseline gap-x-3">
         <h2 className="font-medium">{title}</h2>
         {description ? <p className="text-muted-foreground">{description}</p> : null}
@@ -469,7 +466,7 @@ export function Panel({
   className,
   children,
 }: {
-  /** Omit on a single-list page: the table's column labels take the label row. */
+  /** Omit on a single-list page: the page title already names the list. */
   label?: ReactNode;
   action?: ReactNode;
   footer?: ReactNode;
@@ -480,27 +477,23 @@ export function Panel({
   className?: string;
   children: ReactNode;
 }) {
+  // Flat by default: a heading row and the rows on the page, no tray or card. A
+  // `padded` panel is a summary block, so it alone gets one quiet tinted surface.
   return (
-    <section className={cn("flex flex-col rounded-xl bg-muted p-1", grow && "flex-1")}>
+    <section
+      className={cn(
+        "flex flex-col",
+        padded && "gap-3 rounded-lg bg-muted/60 p-4",
+        grow && "flex-1",
+      )}
+    >
       {label && (
-        <div className="flex h-9 items-center justify-between gap-2 px-3 text-muted-foreground">
-          <h2 className="min-w-0 truncate">{label}</h2>
+        <div className={cn("flex min-h-8 items-center justify-between gap-2", !padded && "px-3")}>
+          <h2 className="min-w-0 truncate font-medium">{label}</h2>
           {action}
         </div>
       )}
-      <div
-        className={cn(
-          "flex flex-1 flex-col",
-          label
-            ? "overflow-hidden rounded-lg border border-border bg-card"
-            : // The card starts under the header row, so the column labels sit on the tray
-              // while staying in the rows' table and keeping their columns aligned.
-              "relative isolate before:absolute before:inset-x-0 before:top-0 before:bottom-0 before:-z-10 before:rounded-lg before:border before:border-border before:bg-card md:before:top-8 [&_thead_tr]:border-0",
-          minHeight,
-          padded && "gap-3 p-4",
-          className,
-        )}
-      >
+      <div className={cn("flex flex-1 flex-col", minHeight, padded && "gap-3", className)}>
         {children}
       </div>
       {footer}

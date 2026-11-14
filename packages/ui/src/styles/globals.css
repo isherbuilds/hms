@@ -31,7 +31,7 @@
      beside them (docs/design.md §5). */
   --pending: oklch(0.55 0.14 250);
   --overdue: oklch(0.6 0.16 42);
-  --border: oklch(0.922 0 0);
+  --border: oklch(0.93 0 0);
   --input: oklch(0.922 0 0);
   /* Focus indicators must maintain 3:1 contrast; guarded by the theme contrast test. */
   --ring: oklch(0.45 0 0);
@@ -87,7 +87,7 @@
   --destructive: oklch(0.704 0.191 22.216);
   --pending: oklch(0.72 0.13 250);
   --overdue: oklch(0.76 0.16 42);
-  --border: oklch(1 0 0 / 10%);
+  --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
   --clinical-alert: oklch(0.78 0.13 27);
@@ -170,7 +170,8 @@
     height: 6px;
   }
   ::-webkit-scrollbar-thumb {
-    background-color: var(--border);
+    /* --input, not --border: a scroll cue stays as strong as a control edge. */
+    background-color: var(--input);
     border-radius: 10px;
   }
   ::-webkit-scrollbar-track {
@@ -236,7 +237,7 @@
   --scroll-rule-surface: var(--color-popover);
   background-image:
     linear-gradient(var(--scroll-rule-surface), var(--scroll-rule-surface)),
-    linear-gradient(var(--color-border), var(--color-border));
+    linear-gradient(var(--color-input), var(--color-input));
   background-position: bottom;
   background-size: 100% 1px;
   background-repeat: no-repeat;

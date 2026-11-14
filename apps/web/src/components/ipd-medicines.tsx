@@ -234,11 +234,11 @@ export function IssueMedicinesDialog({
               />
 
               {lines.length > 0 ? (
-                <ul className="grid gap-2">
+                <ul className="grid">
                   {lines.map((line, index) => (
                     <li
                       key={line.batchId}
-                      className="grid min-w-0 gap-2 rounded-lg border border-border p-3"
+                      className="grid min-w-0 gap-2 border-b border-border/60 py-3 last:border-b-0"
                     >
                       <div className="flex min-w-0 items-start justify-between gap-2">
                         <div className="min-w-0">

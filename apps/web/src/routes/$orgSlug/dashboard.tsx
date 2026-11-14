@@ -75,7 +75,7 @@ export const Route = createFileRoute("/$orgSlug/dashboard")({
 
 const hover = "[@media(hover:hover)_and_(pointer:fine)]:hover";
 
-// One layer of container: a bordered card with its title inside, in ink.
+// One layer of container: a borderless tinted card with its title inside, in ink.
 function Card({
   title,
   action,
@@ -92,10 +92,8 @@ function Card({
 }) {
   return (
     <section
-      className={`flex min-w-0 flex-col gap-3 rounded-xl border p-4 ${
-        tinted
-          ? "border-brand-border bg-[color-mix(in_oklab,var(--brand-fill)_16%,var(--card))]"
-          : "border-border bg-card"
+      className={`flex min-w-0 flex-col gap-3 rounded-xl p-4 ${
+        tinted ? "bg-[color-mix(in_oklab,var(--brand-fill)_14%,var(--card))]" : "bg-muted/50"
       } ${className}`}
     >
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -403,7 +401,7 @@ function DashboardRoute() {
                   </span>
                 </div>
                 {methods.length > 0 && (
-                  <div className="flex flex-col justify-end gap-2 sm:border-l sm:border-border sm:pl-4">
+                  <div className="flex flex-col justify-end gap-2 sm:pl-4">
                     <span className="text-muted-foreground">
                       {isToday ? "How today was paid" : "How it was paid"}
                     </span>
@@ -469,12 +467,12 @@ function DashboardRoute() {
           )}
 
           {figures.length > 0 && (
-            <section className="grid divide-border overflow-hidden rounded-xl border border-border bg-card max-sm:divide-y sm:grid-cols-3 sm:max-xl:divide-x xl:grid-cols-1 xl:divide-y">
+            <section className="grid overflow-hidden rounded-xl bg-muted/50 sm:grid-cols-3 xl:grid-cols-1">
               {figures.map((figure) => (
                 <Link
                   key={figure.label}
                   {...figure.link}
-                  className={`group flex flex-col justify-center gap-1 p-4 text-left ${hover}:bg-muted/40`}
+                  className={`group flex flex-col justify-center gap-1 p-4 text-left ${hover}:bg-muted`}
                 >
                   <span className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
                     {figure.label}

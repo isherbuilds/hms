@@ -492,7 +492,7 @@ export function OpdIntakeForm({
           className="group/quote contents"
         >
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-            <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
+            <div className="min-w-0">
               <FormSection title="Patient">
                 <PatientField orgSlug={orgSlug} />
               </FormSection>

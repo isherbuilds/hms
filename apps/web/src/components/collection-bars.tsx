@@ -54,7 +54,7 @@ export function CollectionBars({
       : null;
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg bg-card p-4">
+    <div className="flex flex-col gap-3 pt-2">
       {/* Two fixed lines, so hovering never reflows the switch or the bars. */}
       <div className="flex flex-col gap-1">
         <div className="flex items-center justify-between gap-3">

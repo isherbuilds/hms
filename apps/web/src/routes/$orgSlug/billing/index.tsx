@@ -184,35 +184,29 @@ function BillingIndexRoute() {
       <BillingNav orgSlug={orgSlug} />
       <PageBody>
         {summary ? (
-          <Panel
-            label="Overview"
-            minHeight="min-h-16"
-            action={<span className="tabular-nums">{summary.receiptCount} receipts today</span>}
-          >
-            <dl className="grid grid-cols-2 sm:grid-cols-4 sm:divide-x sm:divide-border">
-              <Stat
-                label="Waiting to be billed"
-                value={formatMoney(summary.toBillTotal, currency)}
-                detail={`${summary.toBillCount} in the building`}
-              />
-              <Stat
-                label="Collected today"
-                value={formatMoney(summary.collectedToday, currency)}
-                detail="All payment methods"
-              />
-              <Stat
-                label="Outstanding"
-                value={formatMoney(summary.outstanding, currency)}
-                detail={`${summary.openCount} open invoices`}
-              />
-              <Stat
-                label="Over 30 days"
-                value={formatMoney(summary.staleTotal, currency)}
-                detail={`${summary.staleCount} awaiting follow-up`}
-                alarm={summary.staleTotal > ZERO}
-              />
-            </dl>
-          </Panel>
+          <dl className="grid grid-cols-2 gap-y-2 sm:grid-cols-4">
+            <Stat
+              label="Waiting to be billed"
+              value={formatMoney(summary.toBillTotal, currency)}
+              detail={`${summary.toBillCount} in the building`}
+            />
+            <Stat
+              label="Collected today"
+              value={formatMoney(summary.collectedToday, currency)}
+              detail={`${summary.receiptCount} receipts today`}
+            />
+            <Stat
+              label="Outstanding"
+              value={formatMoney(summary.outstanding, currency)}
+              detail={`${summary.openCount} open invoices`}
+            />
+            <Stat
+              label="Over 30 days"
+              value={formatMoney(summary.staleTotal, currency)}
+              detail={`${summary.staleCount} awaiting follow-up`}
+              alarm={summary.staleTotal > ZERO}
+            />
+          </dl>
         ) : null}
 
         <ListToolbar>
@@ -243,9 +237,7 @@ function BillingIndexRoute() {
           label="Open money"
           action={
             pending || failure ? null : (
-              <Badge className="tabular-nums" variant={rows.length === 0 ? "muted" : "secondary"}>
-                {rows.length}
-              </Badge>
+              <span className="text-muted-foreground tabular-nums">{rows.length}</span>
             )
           }
           footer={
@@ -384,7 +376,7 @@ function Stat({
   alarm?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-1 border-t border-border p-3 first:border-t-0 sm:border-t-0 nth-2:border-t-0">
+    <div className="flex flex-col gap-1 px-3 py-2">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className={`text-2xl font-medium tabular-nums ${alarm ? "text-destructive" : ""}`}>
         {value}
