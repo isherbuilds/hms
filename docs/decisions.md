@@ -1396,9 +1396,9 @@ to be confirmed by the owner.**
   is superseded by Slice 5's final settlement.
 - **No Credit Notes on `ipd` Invoices yet.** Corrections come from the Admission
   once inpatient returns (Slice 4) and final settlement (Slice 5) exist.
-- **Three-step basis backfill.** Migrations 0014 (nullable columns), 0015
+- **Three-step basis backfill.** Migrations 0013 (nullable columns), 0014
   (hand-authored backfill: counter Pharmacy inclusive, everything else
-  exclusive; `addedTaxTotal` 0 for Pharmacy, `taxTotal` otherwise) and 0016
+  exclusive; `addedTaxTotal` 0 for Pharmacy, `taxTotal` otherwise) and 0015
   (NOT NULL plus the new checks) keep generated and hand-written SQL apart
   (hard rule 4).
 
@@ -1468,7 +1468,7 @@ autonomously; to be confirmed by the owner.** Contract:
 - **No live hold sits on an occupied bed.** Occupancy needs the bed's other holds
   resolved first, so there is no overstay-at-risk state; the occupant is never
   evicted.
-- **From review, migration 0022:** one daily rate per bed type per instant
+- **From review:** one daily rate per bed type per instant
   (`bed_tariffs_org_category_effective_uq`), and an Admission's cancelled check
   runs both ways (cancelled exactly when both `cancelled_at` and `cancel_reason`
   are set).
@@ -1483,7 +1483,7 @@ moved or cancelled, unless an `ipd:correct` holder displaces it with a reason.
 the Patient, Bed and reservation locks are held. A lapsed hold is never judged
 against a backdated admit time; that arrival is a walk-in.
 
-**Amended after PR review 2026-11-13 (migration 0023).** Needs attention lists a
+**Amended after PR review 2026-11-13.** Needs attention lists a
 lapsed request or hold only for seven days after its `holdUntil`; older ones are
 found under all. A walk-in admission is refused while the Patient has a live
 reservation; they are admitted from it, or it is cancelled first. The

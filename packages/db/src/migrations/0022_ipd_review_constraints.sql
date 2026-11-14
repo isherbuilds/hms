@@ -1,3 +1,0 @@
-ALTER TABLE "admissions" DROP CONSTRAINT "admissions_cancelled_check";--> statement-breakpoint
-CREATE UNIQUE INDEX "bed_tariffs_org_category_effective_uq" ON "bed_tariffs" USING btree ("org_id","category_id","effective_from");--> statement-breakpoint
-ALTER TABLE "admissions" ADD CONSTRAINT "admissions_cancelled_check" CHECK (("admissions"."status" = 'cancelled') = ("admissions"."cancelled_at" is not null) and ("admissions"."status" = 'cancelled') = ("admissions"."cancel_reason" is not null));

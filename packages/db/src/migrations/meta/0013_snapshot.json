@@ -1,5 +1,5 @@
 {
-  "id": "12d0ac94-09d7-4d01-bc9c-df69cc25fd36",
+  "id": "4a987036-622c-4b04-8d89-5160f51cd5ad",
   "prevId": "1a391cae-a25a-4ea7-95d9-ff8587d2d35f",
   "version": "7",
   "dialect": "postgresql",
@@ -1815,6 +1815,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "admission_kind": {
+          "name": "admission_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "admission_issue_line_id": {
+          "name": "admission_issue_line_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "catalog_item_id": {
           "name": "catalog_item_id",
           "type": "text",
@@ -1848,6 +1866,12 @@
         },
         "tax_code": {
           "name": "tax_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "price_basis": {
+          "name": "price_basis",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -1947,6 +1971,56 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "charges_org_admission_idx": {
+          "name": "charges_org_admission_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"charges\".\"admission_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "charges_org_admission_issue_line_idx": {
+          "name": "charges_org_admission_issue_line_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "admission_issue_line_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"charges\".\"admission_issue_line_id\" is not null and \"charges\".\"status\" <> 'voided'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -2122,6 +2196,40 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
+        "charges_org_id_admission_id_admissions_org_id_id_fk": {
+          "name": "charges_org_id_admission_id_admissions_org_id_id_fk",
+          "tableFrom": "charges",
+          "tableTo": "admissions",
+          "columnsFrom": [
+            "org_id",
+            "admission_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "charges_org_id_admission_issue_line_id_admission_id_stock_batch_id_admission_pharmacy_issue_lines_org_id_id_admission_id_batch_id_fk": {
+          "name": "charges_org_id_admission_issue_line_id_admission_id_stock_batch_id_admission_pharmacy_issue_lines_org_id_id_admission_id_batch_id_fk",
+          "tableFrom": "charges",
+          "tableTo": "admission_pharmacy_issue_lines",
+          "columnsFrom": [
+            "org_id",
+            "admission_issue_line_id",
+            "admission_id",
+            "stock_batch_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id",
+            "admission_id",
+            "batch_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "charges_org_id_stock_batch_id_stock_batches_org_id_id_fk": {
           "name": "charges_org_id_stock_batch_id_stock_batches_org_id_id_fk",
           "tableFrom": "charges",
@@ -2184,11 +2292,11 @@
         },
         "charges_parent_check": {
           "name": "charges_parent_check",
-          "value": "(\"charges\".\"opd_appointment_id\" is not null and \"charges\".\"pharmacy_sale_id\" is null) or (\"charges\".\"pharmacy_sale_id\" is not null and \"charges\".\"opd_appointment_id\" is null)"
+          "value": "num_nonnulls(\"charges\".\"opd_appointment_id\", \"charges\".\"pharmacy_sale_id\", \"charges\".\"admission_id\") = 1"
         },
         "charges_catalog_item_source_check": {
           "name": "charges_catalog_item_source_check",
-          "value": "(\"charges\".\"catalog_item_id\" is null) = (\"charges\".\"source_type\" = 'pharmacy_batch') and (\"charges\".\"stock_batch_id\" is not null) = (\"charges\".\"source_type\" = 'pharmacy_batch') and (\"charges\".\"source_type\" <> 'pharmacy_batch' or (\"charges\".\"pharmacy_sale_id\" is not null and \"charges\".\"source_id\" is null))"
+          "value": "(\"charges\".\"source_type\" = 'admission') = (\"charges\".\"admission_id\" is not null) and (\"charges\".\"source_type\" = 'admission') = (\"charges\".\"admission_kind\" is not null) and (\"charges\".\"source_type\" <> 'admission' or \"charges\".\"source_id\" is not distinct from \"charges\".\"admission_id\") and (\"charges\".\"admission_issue_line_id\" is not null) = coalesce(\"charges\".\"admission_kind\" = 'pharmacy_issue', false) and (\"charges\".\"stock_batch_id\" is not null) = (\"charges\".\"source_type\" = 'pharmacy_batch' or coalesce(\"charges\".\"admission_kind\" = 'pharmacy_issue', false)) and (\"charges\".\"catalog_item_id\" is null) = (\"charges\".\"stock_batch_id\" is not null) and (\"charges\".\"source_type\" <> 'pharmacy_batch' or (\"charges\".\"pharmacy_sale_id\" is not null and \"charges\".\"source_id\" is null))"
         }
       },
       "isRLSEnabled": false
@@ -3331,6 +3439,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'PH'"
+        },
+        "ipd_invoice_prefix": {
+          "name": "ipd_invoice_prefix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'IP'"
         },
         "receipt_prefix": {
           "name": "receipt_prefix",
@@ -4536,6 +4651,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "patient_id": {
           "name": "patient_id",
           "type": "text",
@@ -4584,6 +4705,12 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
+        },
+        "added_tax_total": {
+          "name": "added_tax_total",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
         },
         "round_off": {
           "name": "round_off",
@@ -4758,6 +4885,28 @@
           "method": "btree",
           "with": {}
         },
+        "invoices_org_admission_idx": {
+          "name": "invoices_org_admission_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"invoices\".\"admission_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "invoices_org_business_date_idx": {
           "name": "invoices_org_business_date_idx",
           "columns": [
@@ -4878,6 +5027,23 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "invoices_org_id_admission_id_patient_id_admissions_org_id_id_patient_id_fk": {
+          "name": "invoices_org_id_admission_id_patient_id_admissions_org_id_id_patient_id_fk",
+          "tableFrom": "invoices",
+          "tableTo": "admissions",
+          "columnsFrom": [
+            "org_id",
+            "admission_id",
+            "patient_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id",
+            "patient_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -4923,7 +5089,7 @@
         },
         "invoices_parent_check": {
           "name": "invoices_parent_check",
-          "value": "(\"invoices\".\"stream\" = 'opd' and \"invoices\".\"opd_appointment_id\" is not null and \"invoices\".\"patient_id\" is not null and \"invoices\".\"pharmacy_sale_id\" is null) or (\"invoices\".\"stream\" = 'pharmacy' and \"invoices\".\"pharmacy_sale_id\" is not null and \"invoices\".\"opd_appointment_id\" is null)"
+          "value": "(\"invoices\".\"stream\" = 'opd' and \"invoices\".\"opd_appointment_id\" is not null and \"invoices\".\"patient_id\" is not null and \"invoices\".\"pharmacy_sale_id\" is null and \"invoices\".\"admission_id\" is null) or (\"invoices\".\"stream\" = 'pharmacy' and \"invoices\".\"pharmacy_sale_id\" is not null and \"invoices\".\"opd_appointment_id\" is null and \"invoices\".\"admission_id\" is null) or (\"invoices\".\"stream\" = 'ipd' and \"invoices\".\"admission_id\" is not null and \"invoices\".\"patient_id\" is not null and \"invoices\".\"opd_appointment_id\" is null and \"invoices\".\"pharmacy_sale_id\" is null)"
         },
         "invoices_total_math_check": {
           "name": "invoices_total_math_check",
@@ -5023,6 +5189,12 @@
         },
         "tax_code": {
           "name": "tax_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "price_basis": {
+          "name": "price_basis",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -6957,7 +7129,7 @@
         },
         "stock_movements_sign_check": {
           "name": "stock_movements_sign_check",
-          "value": "(\"stock_movements\".\"reason\" in ('sale', 'writeoff', 'breakage', 'internal_issue') and \"stock_movements\".\"qty\" < 0) or (\"stock_movements\".\"reason\" in ('opening', 'receipt', 'return') and \"stock_movements\".\"qty\" > 0) or (\"stock_movements\".\"reason\" in ('release', 'quarantine', 'count_correction'))"
+          "value": "(\"stock_movements\".\"reason\" in ('sale', 'writeoff', 'breakage', 'internal_issue', 'admission_issue') and \"stock_movements\".\"qty\" < 0) or (\"stock_movements\".\"reason\" in ('opening', 'receipt', 'return') and \"stock_movements\".\"qty\" > 0) or (\"stock_movements\".\"reason\" in ('release', 'quarantine', 'count_correction'))"
         }
       },
       "isRLSEnabled": false
@@ -7755,6 +7927,289 @@
       },
       "isRLSEnabled": false
     },
+    "public.admission_pharmacy_issue_lines": {
+      "name": "admission_pharmacy_issue_lines",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issue_id": {
+          "name": "issue_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty": {
+          "name": "qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "supply": {
+          "name": "supply",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "admission_pharmacy_issue_lines_org_issue_idx": {
+          "name": "admission_pharmacy_issue_lines_org_issue_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "issue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "admission_pharmacy_issue_lines_org_id_organization_id_fk": {
+          "name": "admission_pharmacy_issue_lines_org_id_organization_id_fk",
+          "tableFrom": "admission_pharmacy_issue_lines",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "admission_pharmacy_issue_lines_org_id_issue_id_admission_id_admission_pharmacy_issues_org_id_id_admission_id_fk": {
+          "name": "admission_pharmacy_issue_lines_org_id_issue_id_admission_id_admission_pharmacy_issues_org_id_id_admission_id_fk",
+          "tableFrom": "admission_pharmacy_issue_lines",
+          "tableTo": "admission_pharmacy_issues",
+          "columnsFrom": [
+            "org_id",
+            "issue_id",
+            "admission_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id",
+            "admission_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "admission_pharmacy_issue_lines_org_id_batch_id_stock_batches_org_id_id_fk": {
+          "name": "admission_pharmacy_issue_lines_org_id_batch_id_stock_batches_org_id_id_fk",
+          "tableFrom": "admission_pharmacy_issue_lines",
+          "tableTo": "stock_batches",
+          "columnsFrom": [
+            "org_id",
+            "batch_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "admission_pharmacy_issue_lines_org_id_admission_batch_unique": {
+          "name": "admission_pharmacy_issue_lines_org_id_admission_batch_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id",
+            "admission_id",
+            "batch_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "admission_pharmacy_issue_lines_qty_check": {
+          "name": "admission_pharmacy_issue_lines_qty_check",
+          "value": "\"admission_pharmacy_issue_lines\".\"qty\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.admission_pharmacy_issues": {
+      "name": "admission_pharmacy_issues",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prescriber_name": {
+          "name": "prescriber_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "issued_by": {
+          "name": "issued_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "admission_pharmacy_issues_org_admission_created_idx": {
+          "name": "admission_pharmacy_issues_org_admission_created_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "admission_pharmacy_issues_org_id_organization_id_fk": {
+          "name": "admission_pharmacy_issues_org_id_organization_id_fk",
+          "tableFrom": "admission_pharmacy_issues",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "admission_pharmacy_issues_issued_by_user_id_fk": {
+          "name": "admission_pharmacy_issues_issued_by_user_id_fk",
+          "tableFrom": "admission_pharmacy_issues",
+          "tableTo": "user",
+          "columnsFrom": [
+            "issued_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "admission_pharmacy_issues_org_id_admission_id_admissions_org_id_id_fk": {
+          "name": "admission_pharmacy_issues_org_id_admission_id_admissions_org_id_id_fk",
+          "tableFrom": "admission_pharmacy_issues",
+          "tableTo": "admissions",
+          "columnsFrom": [
+            "org_id",
+            "admission_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "admission_pharmacy_issues_org_id_id_unique": {
+          "name": "admission_pharmacy_issues_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        },
+        "admission_pharmacy_issues_org_id_admission_unique": {
+          "name": "admission_pharmacy_issues_org_id_admission_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id",
+            "admission_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.admissions": {
       "name": "admissions",
       "schema": "",
@@ -7984,6 +8439,15 @@
             "org_id",
             "id"
           ]
+        },
+        "admissions_org_id_patient_unique": {
+          "name": "admissions_org_id_patient_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id",
+            "patient_id"
+          ]
         }
       },
       "policies": {},
@@ -7998,7 +8462,7 @@
         },
         "admissions_cancelled_check": {
           "name": "admissions_cancelled_check",
-          "value": "(\"admissions\".\"status\" = 'cancelled') = (\"admissions\".\"cancelled_at\" is not null and \"admissions\".\"cancel_reason\" is not null)"
+          "value": "(\"admissions\".\"status\" = 'cancelled') = (\"admissions\".\"cancelled_at\" is not null) and (\"admissions\".\"status\" = 'cancelled') = (\"admissions\".\"cancel_reason\" is not null)"
         },
         "admissions_timeline_check": {
           "name": "admissions_timeline_check",
@@ -8097,6 +8561,332 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.bed_reservations": {
+      "name": "bed_reservations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bed_id": {
+          "name": "bed_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "planned_arrival_at": {
+          "name": "planned_arrival_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "planned_departure_at": {
+          "name": "planned_departure_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hold_until": {
+          "name": "hold_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancel_reason": {
+          "name": "cancel_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "disrupted_reason": {
+          "name": "disrupted_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "bed_reservations_org_arrival_idx": {
+          "name": "bed_reservations_org_arrival_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "planned_arrival_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bed_reservations_org_created_idx": {
+          "name": "bed_reservations_org_created_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bed_reservations_org_bed_status_idx": {
+          "name": "bed_reservations_org_bed_status_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bed_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bed_reservations_org_id_organization_id_fk": {
+          "name": "bed_reservations_org_id_organization_id_fk",
+          "tableFrom": "bed_reservations",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "bed_reservations_created_by_user_id_fk": {
+          "name": "bed_reservations_created_by_user_id_fk",
+          "tableFrom": "bed_reservations",
+          "tableTo": "user",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "bed_reservations_org_id_patient_id_patients_org_id_id_fk": {
+          "name": "bed_reservations_org_id_patient_id_patients_org_id_id_fk",
+          "tableFrom": "bed_reservations",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "org_id",
+            "patient_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "bed_reservations_org_id_category_id_bed_categories_org_id_id_fk": {
+          "name": "bed_reservations_org_id_category_id_bed_categories_org_id_id_fk",
+          "tableFrom": "bed_reservations",
+          "tableTo": "bed_categories",
+          "columnsFrom": [
+            "org_id",
+            "category_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "bed_reservations_org_id_bed_id_beds_org_id_id_fk": {
+          "name": "bed_reservations_org_id_bed_id_beds_org_id_id_fk",
+          "tableFrom": "bed_reservations",
+          "tableTo": "beds",
+          "columnsFrom": [
+            "org_id",
+            "bed_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "bed_reservations_org_id_admission_id_patient_id_admissions_org_id_id_patient_id_fk": {
+          "name": "bed_reservations_org_id_admission_id_patient_id_admissions_org_id_id_patient_id_fk",
+          "tableFrom": "bed_reservations",
+          "tableTo": "admissions",
+          "columnsFrom": [
+            "org_id",
+            "admission_id",
+            "patient_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id",
+            "patient_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "bed_reservations_org_id_id_unique": {
+          "name": "bed_reservations_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        },
+        "bed_reservations_org_id_patient_unique": {
+          "name": "bed_reservations_org_id_patient_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id",
+            "patient_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "bed_reservations_window_check": {
+          "name": "bed_reservations_window_check",
+          "value": "\"bed_reservations\".\"planned_departure_at\" > \"bed_reservations\".\"planned_arrival_at\""
+        },
+        "bed_reservations_hold_check": {
+          "name": "bed_reservations_hold_check",
+          "value": "\"bed_reservations\".\"hold_until\" is null or (\"bed_reservations\".\"hold_until\" > \"bed_reservations\".\"planned_arrival_at\" and \"bed_reservations\".\"hold_until\" <= \"bed_reservations\".\"planned_departure_at\")"
+        },
+        "bed_reservations_held_check": {
+          "name": "bed_reservations_held_check",
+          "value": "\"bed_reservations\".\"status\" not in ('confirmed', 'converted') or (\"bed_reservations\".\"bed_id\" is not null and \"bed_reservations\".\"hold_until\" is not null)"
+        },
+        "bed_reservations_converted_check": {
+          "name": "bed_reservations_converted_check",
+          "value": "(\"bed_reservations\".\"status\" = 'converted') = (\"bed_reservations\".\"admission_id\" is not null)"
+        },
+        "bed_reservations_cancelled_check": {
+          "name": "bed_reservations_cancelled_check",
+          "value": "(\"bed_reservations\".\"status\" = 'cancelled') = (\"bed_reservations\".\"cancel_reason\" is not null)"
+        },
+        "bed_reservations_disrupted_check": {
+          "name": "bed_reservations_disrupted_check",
+          "value": "\"bed_reservations\".\"status\" <> 'disrupted' or \"bed_reservations\".\"disrupted_reason\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.bed_tariffs": {
       "name": "bed_tariffs",
       "schema": "",
@@ -8181,6 +8971,33 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bed_tariffs_org_category_effective_uq": {
+          "name": "bed_tariffs_org_category_effective_uq",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "category_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "effective_from",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -8505,6 +9322,924 @@
       "uniqueConstraints": {
         "wards_org_id_id_unique": {
           "name": "wards_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.equipment_units": {
+      "name": "equipment_units",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "equipment_units_org_name_uq": {
+          "name": "equipment_units_org_name_uq",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"name\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "equipment_units_org_id_organization_id_fk": {
+          "name": "equipment_units_org_id_organization_id_fk",
+          "tableFrom": "equipment_units",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "equipment_units_org_id_id_unique": {
+          "name": "equipment_units_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.resource_blocks": {
+      "name": "resource_blocks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "room_id": {
+          "name": "room_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "equipment_id": {
+          "name": "equipment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "starts_at": {
+          "name": "starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ends_at": {
+          "name": "ends_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "removed_at": {
+          "name": "removed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "resource_blocks_org_room_starts_idx": {
+          "name": "resource_blocks_org_room_starts_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "room_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "resource_blocks_org_equipment_starts_idx": {
+          "name": "resource_blocks_org_equipment_starts_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "equipment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "resource_blocks_org_ends_idx": {
+          "name": "resource_blocks_org_ends_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ends_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "resource_blocks_org_id_organization_id_fk": {
+          "name": "resource_blocks_org_id_organization_id_fk",
+          "tableFrom": "resource_blocks",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "resource_blocks_created_by_user_id_fk": {
+          "name": "resource_blocks_created_by_user_id_fk",
+          "tableFrom": "resource_blocks",
+          "tableTo": "user",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "resource_blocks_org_id_room_id_theatre_rooms_org_id_id_fk": {
+          "name": "resource_blocks_org_id_room_id_theatre_rooms_org_id_id_fk",
+          "tableFrom": "resource_blocks",
+          "tableTo": "theatre_rooms",
+          "columnsFrom": [
+            "org_id",
+            "room_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "resource_blocks_org_id_equipment_id_equipment_units_org_id_id_fk": {
+          "name": "resource_blocks_org_id_equipment_id_equipment_units_org_id_id_fk",
+          "tableFrom": "resource_blocks",
+          "tableTo": "equipment_units",
+          "columnsFrom": [
+            "org_id",
+            "equipment_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "resource_blocks_org_id_id_unique": {
+          "name": "resource_blocks_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "resource_blocks_target_check": {
+          "name": "resource_blocks_target_check",
+          "value": "(\"resource_blocks\".\"room_id\" is null) <> (\"resource_blocks\".\"equipment_id\" is null)"
+        },
+        "resource_blocks_interval_check": {
+          "name": "resource_blocks_interval_check",
+          "value": "\"resource_blocks\".\"ends_at\" > \"resource_blocks\".\"starts_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.surgical_case_equipment": {
+      "name": "surgical_case_equipment",
+      "schema": "",
+      "columns": {
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "case_id": {
+          "name": "case_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "equipment_id": {
+          "name": "equipment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "surgical_case_equipment_org_equipment_idx": {
+          "name": "surgical_case_equipment_org_equipment_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "equipment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "surgical_case_equipment_org_id_organization_id_fk": {
+          "name": "surgical_case_equipment_org_id_organization_id_fk",
+          "tableFrom": "surgical_case_equipment",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "surgical_case_equipment_org_id_case_id_surgical_cases_org_id_id_fk": {
+          "name": "surgical_case_equipment_org_id_case_id_surgical_cases_org_id_id_fk",
+          "tableFrom": "surgical_case_equipment",
+          "tableTo": "surgical_cases",
+          "columnsFrom": [
+            "org_id",
+            "case_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "surgical_case_equipment_org_id_equipment_id_equipment_units_org_id_id_fk": {
+          "name": "surgical_case_equipment_org_id_equipment_id_equipment_units_org_id_id_fk",
+          "tableFrom": "surgical_case_equipment",
+          "tableTo": "equipment_units",
+          "columnsFrom": [
+            "org_id",
+            "equipment_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "surgical_case_equipment_org_id_case_id_equipment_id_pk": {
+          "name": "surgical_case_equipment_org_id_case_id_equipment_id_pk",
+          "columns": [
+            "org_id",
+            "case_id",
+            "equipment_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.surgical_cases": {
+      "name": "surgical_cases",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "practitioner_id": {
+          "name": "practitioner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "procedure_item_id": {
+          "name": "procedure_item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "procedure_name": {
+          "name": "procedure_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "room_id": {
+          "name": "room_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "planned_start_at": {
+          "name": "planned_start_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "planned_end_at": {
+          "name": "planned_end_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prep_minutes": {
+          "name": "prep_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "cleanup_minutes": {
+          "name": "cleanup_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bed_reservation_id": {
+          "name": "bed_reservation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancel_reason": {
+          "name": "cancel_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "disrupted_reason": {
+          "name": "disrupted_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "surgical_cases_org_start_idx": {
+          "name": "surgical_cases_org_start_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "planned_start_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "surgical_cases_org_room_status_idx": {
+          "name": "surgical_cases_org_room_status_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "room_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "surgical_cases_org_practitioner_status_idx": {
+          "name": "surgical_cases_org_practitioner_status_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "practitioner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "surgical_cases_org_id_organization_id_fk": {
+          "name": "surgical_cases_org_id_organization_id_fk",
+          "tableFrom": "surgical_cases",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "surgical_cases_created_by_user_id_fk": {
+          "name": "surgical_cases_created_by_user_id_fk",
+          "tableFrom": "surgical_cases",
+          "tableTo": "user",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "surgical_cases_org_id_patient_id_patients_org_id_id_fk": {
+          "name": "surgical_cases_org_id_patient_id_patients_org_id_id_fk",
+          "tableFrom": "surgical_cases",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "org_id",
+            "patient_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "surgical_cases_org_id_practitioner_id_practitioners_org_id_id_fk": {
+          "name": "surgical_cases_org_id_practitioner_id_practitioners_org_id_id_fk",
+          "tableFrom": "surgical_cases",
+          "tableTo": "practitioners",
+          "columnsFrom": [
+            "org_id",
+            "practitioner_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "surgical_cases_org_id_procedure_item_id_catalog_items_org_id_id_fk": {
+          "name": "surgical_cases_org_id_procedure_item_id_catalog_items_org_id_id_fk",
+          "tableFrom": "surgical_cases",
+          "tableTo": "catalog_items",
+          "columnsFrom": [
+            "org_id",
+            "procedure_item_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "surgical_cases_org_id_room_id_theatre_rooms_org_id_id_fk": {
+          "name": "surgical_cases_org_id_room_id_theatre_rooms_org_id_id_fk",
+          "tableFrom": "surgical_cases",
+          "tableTo": "theatre_rooms",
+          "columnsFrom": [
+            "org_id",
+            "room_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "surgical_cases_org_id_admission_id_patient_id_admissions_org_id_id_patient_id_fk": {
+          "name": "surgical_cases_org_id_admission_id_patient_id_admissions_org_id_id_patient_id_fk",
+          "tableFrom": "surgical_cases",
+          "tableTo": "admissions",
+          "columnsFrom": [
+            "org_id",
+            "admission_id",
+            "patient_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id",
+            "patient_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "surgical_cases_org_id_bed_reservation_id_patient_id_bed_reservations_org_id_id_patient_id_fk": {
+          "name": "surgical_cases_org_id_bed_reservation_id_patient_id_bed_reservations_org_id_id_patient_id_fk",
+          "tableFrom": "surgical_cases",
+          "tableTo": "bed_reservations",
+          "columnsFrom": [
+            "org_id",
+            "bed_reservation_id",
+            "patient_id"
+          ],
+          "columnsTo": [
+            "org_id",
+            "id",
+            "patient_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "surgical_cases_org_id_id_unique": {
+          "name": "surgical_cases_org_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "surgical_cases_interval_check": {
+          "name": "surgical_cases_interval_check",
+          "value": "\"surgical_cases\".\"planned_end_at\" > \"surgical_cases\".\"planned_start_at\""
+        },
+        "surgical_cases_duration_check": {
+          "name": "surgical_cases_duration_check",
+          "value": "\"surgical_cases\".\"planned_end_at\" - \"surgical_cases\".\"planned_start_at\" <= interval '24 hours'"
+        },
+        "surgical_cases_buffers_check": {
+          "name": "surgical_cases_buffers_check",
+          "value": "\"surgical_cases\".\"prep_minutes\" between 0 and 240 and \"surgical_cases\".\"cleanup_minutes\" between 0 and 240"
+        },
+        "surgical_cases_confirmed_room_check": {
+          "name": "surgical_cases_confirmed_room_check",
+          "value": "\"surgical_cases\".\"status\" <> 'confirmed' or \"surgical_cases\".\"room_id\" is not null"
+        },
+        "surgical_cases_cancelled_check": {
+          "name": "surgical_cases_cancelled_check",
+          "value": "(\"surgical_cases\".\"status\" = 'cancelled') = (\"surgical_cases\".\"cancel_reason\" is not null)"
+        },
+        "surgical_cases_disrupted_check": {
+          "name": "surgical_cases_disrupted_check",
+          "value": "\"surgical_cases\".\"status\" <> 'disrupted' or \"surgical_cases\".\"disrupted_reason\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.theatre_rooms": {
+      "name": "theatre_rooms",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "theatre_rooms_org_name_uq": {
+          "name": "theatre_rooms_org_name_uq",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"name\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "theatre_rooms_org_id_organization_id_fk": {
+          "name": "theatre_rooms_org_id_organization_id_fk",
+          "tableFrom": "theatre_rooms",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "theatre_rooms_org_id_id_unique": {
+          "name": "theatre_rooms_org_id_id_unique",
           "nullsNotDistinct": false,
           "columns": [
             "org_id",

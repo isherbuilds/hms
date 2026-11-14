@@ -1,1 +1,0 @@
-ALTER TABLE "admissions" ADD CONSTRAINT "admissions_org_id_patient_unique" UNIQUE("org_id","id","patient_id");

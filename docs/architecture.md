@@ -422,7 +422,7 @@ exclusive lines, so its header CHECK is exact for every stream:
 `grandTotal = subtotal − discountAmount + addedTaxTotal + roundOff`. An `ipd`
 Invoice mixes both bases, is numbered from `invoice:ipd:${fy}` with
 `ipdInvoicePrefix`, and posts the same journal shape as the other streams.
-Migrations 0014–0016 introduced the columns nullable, backfilled them
+Migrations 0013–0015 introduced the columns nullable, backfilled them
 (Pharmacy inclusive, everything else exclusive) and then made them required
 with the new checks (D063).
 
