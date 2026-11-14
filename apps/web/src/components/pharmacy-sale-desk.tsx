@@ -223,7 +223,7 @@ export function PharmacySaleDesk({ orgSlug }: { orgSlug: string }) {
       >
         <fieldset disabled={sell.isPending || readCredit.isPending} className="contents">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-            <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-card">
+            <div className="min-w-0">
               <FormSection title="Buyer">
                 <div className="grid gap-3">
                   {canReadPatients ? (

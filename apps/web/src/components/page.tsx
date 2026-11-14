@@ -345,10 +345,7 @@ function DataRow<T>({
   );
 }
 
-/**
- * One titled band of a full-page form. The card owns the border; the last section
- * drops its own so the card's rounded edge is not cut by a line.
- */
+/** One titled band of a full-page form, separated from the next by a hairline. */
 export function FormSection({
   title,
   description,
@@ -359,7 +356,7 @@ export function FormSection({
   children: ReactNode;
 }) {
   return (
-    <section className="grid gap-3 border-b border-border p-4 last:border-b-0">
+    <section className="grid gap-3 border-b border-border/60 py-4 first:pt-0 last:border-b-0">
       <div className="flex flex-wrap items-baseline gap-x-3">
         <h2 className="font-medium">{title}</h2>
         {description ? <p className="text-muted-foreground">{description}</p> : null}
