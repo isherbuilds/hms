@@ -74,5 +74,6 @@ export function billingPdfFixture({
       refundsTotal: 0n,
       outstanding: total,
     },
+    admission: null,
   };
 }
