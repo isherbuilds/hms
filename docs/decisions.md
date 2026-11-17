@@ -330,7 +330,7 @@ production migration is handled manually by the owner.
 
 **Conditional amendment accepted 2026-10-04 (D056): when IPD ships,**
 Admission Charges use `sourceType = admission`, `sourceId = admissionId` and
-typed bed-review/package/issue-line references with matching Admission parents.
+typed issue-line references with matching Admission parents.
 Services retain catalog identity; medicines retain null catalog and a tenant-scoped
 batch reference. Counter-sale `pharmacy_batch`/null-source-id rules stay intact.
 The same Invoice/accounting path prices both care settings; this does not copy
@@ -339,8 +339,9 @@ Product GST into exempt composite inpatient care without supply classification.
 **Shipped 2026-11-13 with IPD Slice 1:** `sourceType = admission`,
 `sourceId = admissionId`, `admissionKind: service | pharmacy_issue`; a
 `pharmacy_issue` Charge pairs `admissionIssueLineId` with its Admission and
-`stockBatchId` through one composite foreign key. Bed-day and package kinds
-arrive with Slices 3–4.
+`stockBatchId` through one composite foreign key. The `bed_day` kind arrives
+with Slice 4 and keeps its tariff line's catalog identity (D066); packages are
+deferred.
 
 **Context:** The catalog copy duplicated Product names and tax facts without
 providing a service identity for stock goods. Keeping goods separate from
@@ -601,7 +602,7 @@ This preserves D042's vocabulary/zod and append-only migration rules.
 **Shipped 2026-11-13 with IPD Slice 1:** `admission_pharmacy_issues` and
 `admission_pharmacy_issue_lines`, one negative shelf movement per line with
 reason `admission_issue` and source `admission_pharmacy_issue_line`, and one
-pending Admission Charge per line. Inpatient returns arrive with Slice 4.
+pending Admission Charge per line. Inpatient returns arrive with Slice 6.
 
 **Rejected:** keeping the enum checks as a second guard. A check that repeats a
 zod enum fails later and worse — after the transaction, as a 500 instead of a
@@ -970,16 +971,14 @@ command seams are accepted. Retail bed billing uses calendar checkout,
 configurable prospectively by owner/admin, default noon and minimum one day:
 first window ends at checkout on the calendar date after admission, later
 windows checkout-to-checkout; exact-boundary departure starts no new day.
-Transfers split a window's one day by actual segment occupancy, weighted by
-each snapshotted daily tariff, apportioned to paise deterministically. No
-highest-transfer tariff or duplicate full-day charges. This is our chosen policy,
-not an Indian statutory rule or a claim that the reference systems use this
-exact formula; those references establish occupancy/movement traceability.
+This is our chosen policy, not an Indian statutory rule. How a transfer day is
+charged, who posts bed days and how many bills a stay takes are settled in
+[D066](#d066--bed-days-are-derived-bills-repeat-and-a-wrong-discharge-can-be-undone),
+which replaced this entry's pro-rata transfer split and reviewed bed days.
 
-Packages post once on delivery with explicit included/extra quantities and
-real stock trace; deposits remain liabilities. Actual payer/state package rules
-override retail assumptions, including PM-JAY special-case payment and prohibition
-on duplicate beneficiary collection. Arithmetic `priceBasis` is per line;
+Deposits remain liabilities. Retail packages are deferred (D066); actual
+payer/state package rules, including PM-JAY special-case payment and prohibition
+on duplicate beneficiary collection, belong to Claims. Arithmetic `priceBasis` is per line;
 tax follows actual composite/independent supply, not MRP, payer or stream alone.
 Accept **D025, D027, D042 and D049** amendments in place **when IPD ships**:
 typed Admission parent/numbering and mixed bases; services distinct from
@@ -1390,12 +1389,12 @@ to be confirmed by the owner.**
   exempt composite healthcare; an independent line snapshots the Product's own
   GST. Both price at the batch MRP on an inclusive basis (D025, D056). The
   choice is made per line at issue time and never reclassified later.
-- **One Invoice per Admission.** A unique index on `(orgId, admissionId)` holds
-  until Slice 5's supplemental billing. Issue and service posting refuse once
-  the bill exists. `ipd.issueInvoice` needs the Patient ready or departed and
-  is superseded by Slice 5's final settlement.
-- **No Credit Notes on `ipd` Invoices yet.** Corrections come from the Admission
-  once inpatient returns (Slice 4) and final settlement (Slice 5) exist.
+- **One Invoice per Admission, for now.** A unique index on `(orgId, admissionId)`
+  holds until Slice 3 makes the bill repeatable (D066). Until then issue and
+  service posting refuse once the bill exists. `ipd.issueInvoice` needs the
+  Patient ready or departed.
+- **No Credit Notes on `ipd` Invoices yet.** They and inpatient returns arrive
+  together in Slice 6, before any live hospital bills inpatients.
 - **Price basis is derived, not backfilled.** `charges.price_basis` is a
   generated column (`inclusive` exactly when the Charge sells a stock batch)
   and `invoices.added_tax_total` is generated from the header totals, so the
@@ -1431,13 +1430,12 @@ and [OpenMRS billing improvements 2026](https://openmrs.atlassian.net/wiki/space
   posts a Stock Entry on submission, and Marley bills unbilled prescriptions
   from the Sales Invoice. No documented path from the Medication Entry itself to
   an invoice was found, so our typed issue-line Charge is our own design.
-- **One Invoice per Admission stands until Slice 5.** It is this product's
-  choice under D056. ERPNext checks at discharge that services are invoiced; how
-  it handles several invoices per stay was not confirmed.
-- **Corrections come first in the next slice.** Credit Notes on `ipd` Invoices
-  stay refused in Slice 1, and no live hospital bills inpatients until a
-  correction path exists. Credit Notes for service lines on `ipd` Invoices are
-  built before medicine returns. OpenMRS plans refunds as an approved
+- **One Invoice per Admission stood for Slice 1 only.** ERPNext checks at
+  discharge that services are invoiced and takes several invoices per stay; D066
+  adopts the repeatable bill.
+- **No live billing without corrections.** Credit Notes on `ipd` Invoices
+  stay refused until Slice 6, and no live hospital bills inpatients until that
+  correction path exists. OpenMRS plans refunds as an approved
   cancel-paid-bill flow; the decision rests mainly on our own gap.
 
 ### D064 — Bed reservations: holds expire by time, occupied beds are never promised, and displacement is explicit
@@ -1571,3 +1569,47 @@ the same split, so the schedule records neither use nor revenue.
 be there; free-text team fields treated as availability, which check nothing;
 and emergency flags that bypass conflicts, which would double-book silently
 instead of making a coordinator move or cancel the affected cases.
+
+### D066 — Bed days are derived, bills repeat, and a wrong discharge can be undone
+
+**Accepted 2026-11-17 on the owner's instruction (autonomous decision; the owner
+left every open IPD choice to this review); evidence:
+[IPD reference systems](./research/ipd-reference-systems.md), which pins Marley
+Health, OpenMRS, Bahmni, Danphe, Care, GNU Health, Open Hospital and six
+published Indian hospital policies.** Contract:
+[IPD admission to discharge](./specs/ipd-admission-to-discharge.md). It replaces
+D056's pro-rata transfer split, reviewed bed days and package engine, and
+D063's one Invoice per Admission.
+
+- **Bed days are derived, never posted.** A pure function turns occupancy
+  segments into numbered days under D056's calendar checkout. Bed-day Charges
+  are written only inside the bill; `admissions.bedDaysBilled` is the whole
+  record of what has been billed. There is no daily review, no stored running
+  total and no job.
+- **A moved day is charged at the bed type occupied longest**, the later one on
+  a tie. One day, one bed type, no fractions.
+- **The last day is the cashier's call:** full, half or uncharged, with a
+  reason for the last two. There is no automatic half-day or grace band.
+- **A tariff is a short list of daily lines**, so nursing or duty-doctor
+  charges ride with the room instead of being a second mechanism.
+- **The bill repeats.** Each `ipd` bill takes every pending Charge and every
+  unbilled bed day; a stay may have several. Posting stays open after the first.
+- **Deposits are Advance Receipts tagged to the Admission**, applied first to
+  that stay's bills and never to another's. Care is never blocked for money.
+  Cash for one stay is refused at ₹2,00,000.
+- **A discharge can be undone** by owner or admin within 24 hours while the bed
+  is still free. `cancelled` stays terminal.
+- **The stay carries its paper facts:** IPD number, attendant, medico-legal
+  flag, a one-line diagnosis and how the Patient left.
+- **Overlap is a database rule** for closed as well as open stay segments,
+  through exclusion constraints.
+
+**Rejected:** splitting a transfer day by seconds occupied, which no reference
+system or published tariff does and which needed rational shares and remainder
+allocation; a signed review record per bed day, which staff skip and which goes
+stale on every transfer; a package engine with inclusion quantities, which no
+reference system has; one final Invoice with a snapshotted billing end and a
+separate supplemental path, which the repeatable bill makes unnecessary; a
+stored bed status or running balance, the root of the drift bugs found in
+Marley and Care; and service prices by room type or admission without a bed,
+which wait for a hospital that asks.

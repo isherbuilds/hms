@@ -305,11 +305,18 @@ A hospital without a GSTIN cannot add GST to an inpatient bill or issue a
 separately taxed medicine (D063); the demo hospital has none, so its seeded
 inpatient bills carry no GST.
 
-Still owed, in order: Credit Notes for service lines on `ipd` Invoices, before
-any live hospital bills inpatients; then Slices 3–6 (bed-day review, interim
-bill, packages, inpatient returns, deposits and final settlement, IPD reports).
-An Admission takes one Invoice until supplemental billing in Slice 5 (D063).
-The same no-GSTIN rule is not yet applied to OPD or counter Pharmacy.
+On 2026-11-17 Slices 3–7 were replanned from a study of running systems
+([D066](./decisions.md#d066--bed-days-are-derived-bills-repeat-and-a-wrong-discharge-can-be-undone),
+[research](./research/ipd-reference-systems.md)); nothing in them is built.
+Still owed, in order: Slice 3 (IPD number, attendant, medico-legal flag,
+diagnosis, discharge type, undoing a wrong discharge, database overlap
+constraints, a repeatable bill); Slice 4 (tariff lines, derived bed days, the
+running bill, interim bill and estimate); Slice 5 (deposits on the Admission,
+settlement, the cash limit); Slice 6 (inpatient returns and Credit Notes on
+`ipd` Invoices, before any live hospital bills inpatients); Slice 7 (the IPD
+desk report). An Admission takes one Invoice until Slice 3 (D063). Packages
+wait for a pilot hospital that quotes them. The same no-GSTIN rule is not yet
+applied to OPD or counter Pharmacy.
 
 ### [Facility booking and theatre](./specs/facility-booking-and-theatre.md)
 
