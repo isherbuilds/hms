@@ -5,7 +5,7 @@ import { admissions } from "@hms/db/schema/ipd";
 import { payments } from "@hms/db/schema/payments";
 import { refunds } from "@hms/db/schema/refunds";
 import { ORPCError } from "@orpc/server";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 
 import type { PaymentMethod } from "./schemas";
 
@@ -17,9 +17,11 @@ import type { PaymentMethod } from "./schemas";
 export const IPD_CASH_LIMIT = 200_000_00n;
 
 /**
- * Refuses cash that would bring the stay's cash to the limit: its cash deposits and cash
- * Payments on its bills, less cash refunded from either. Takes the Admission lock first
- * (D040), so two cash commands on one stay cannot both pass. Other methods do not count.
+ * Refuses cash that would bring the stay's cash to the limit. The stay's cash is what its
+ * cash deposits and the cash Payments on its bills still hold: each less the cash handed
+ * back from that same receipt or bill. Cash handed back out of money that arrived another
+ * way frees no room for more. Takes the Admission lock first (D040), so two cash commands
+ * on one stay cannot both pass. Other methods do not count.
  */
 export async function requireUnderCashLimit(
   tx: DbTransaction,
@@ -40,20 +42,21 @@ export async function requireUnderCashLimit(
     .where(and(eq(admissions.orgId, orgId), eq(admissions.id, admissionId)))
     .for("update");
 
-  const receiptIds = tx
-    .select({ id: advanceReceipts.id })
-    .from(advanceReceipts)
-    .where(and(eq(advanceReceipts.orgId, orgId), eq(advanceReceipts.admissionId, admissionId)));
+  const cashRefunded = (source: SQL) =>
+    sql`coalesce((select sum(${refunds.amount}) from ${refunds}
+      where ${refunds.orgId} = ${orgId} and ${refunds.method} = 'cash' and ${source}), 0)`;
 
-  const invoiceIds = tx
-    .select({ id: invoices.id })
-    .from(invoices)
-    .where(and(eq(invoices.orgId, orgId), eq(invoices.admissionId, admissionId)));
+  const cashPaid = sql`coalesce((select sum(${payments.amount}) from ${payments}
+    where ${payments.orgId} = ${orgId} and ${payments.method} = 'cash'
+      and ${payments.invoiceId} = ${invoices.id}), 0)`;
 
-  const [[deposited], [paid], [refunded]] = await Promise.all([
+  const [[deposits], [bills]] = await Promise.all([
     tx
       .select({
-        amount: sql<bigint>`coalesce(sum(${advanceReceipts.amount}), 0)::bigint`.mapWith(BigInt),
+        held: sql<bigint>`coalesce(sum(${advanceReceipts.amount}
+          - ${cashRefunded(sql`${refunds.advanceReceiptId} = ${advanceReceipts.id}`)}), 0)::bigint`.mapWith(
+          BigInt,
+        ),
       })
       .from(advanceReceipts)
       .where(
@@ -63,32 +66,20 @@ export async function requireUnderCashLimit(
           eq(advanceReceipts.method, "cash"),
         ),
       ),
+    // A bill paid by card and refunded in cash holds no cash, not less than none.
     tx
-      .select({ amount: sql<bigint>`coalesce(sum(${payments.amount}), 0)::bigint`.mapWith(BigInt) })
-      .from(payments)
-      .where(
-        and(
-          eq(payments.orgId, orgId),
-          inArray(payments.invoiceId, invoiceIds),
-          eq(payments.method, "cash"),
+      .select({
+        held: sql<bigint>`coalesce(sum(greatest(${cashPaid}
+          - ${cashRefunded(sql`${refunds.invoiceId} = ${invoices.id}`)}, 0)), 0)::bigint`.mapWith(
+          BigInt,
         ),
-      ),
-    tx
-      .select({ amount: sql<bigint>`coalesce(sum(${refunds.amount}), 0)::bigint`.mapWith(BigInt) })
-      .from(refunds)
-      .where(
-        and(
-          eq(refunds.orgId, orgId),
-          eq(refunds.method, "cash"),
-          or(inArray(refunds.advanceReceiptId, receiptIds), inArray(refunds.invoiceId, invoiceIds)),
-        ),
-      ),
+      })
+      .from(invoices)
+      .where(and(eq(invoices.orgId, orgId), eq(invoices.admissionId, admissionId))),
   ]);
 
   // SAFETY: an aggregate without GROUP BY returns exactly one row.
-  const net = deposited!.amount + paid!.amount - refunded!.amount;
-  // Cash handed back out of money that came in another way frees no room for more cash.
-  const held = net > 0n ? net : 0n;
+  const held = deposits!.held + bills!.held;
 
   if (held + adding >= IPD_CASH_LIMIT) {
     throw new ORPCError("BAD_REQUEST", {

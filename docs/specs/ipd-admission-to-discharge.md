@@ -122,7 +122,7 @@ Two printables come from the same read. The **interim bill** is labelled "Interi
 
 Nothing blocks care for money. A running bill above the deposit shows **Deposit short by ₹X** on the board and the Admission; that is the whole control.
 
-Cash received for one Admission stays under ₹2,00,000: its cash deposits plus cash Payments on its `ipd` Invoices, less cash refunded from those receipts and Invoices. Other methods are not counted. Three commands check it under the Admission lock and refuse (`BAD_REQUEST`, naming ₹2,00,000) a cash amount that would reach the limit: `billing.recordAdvance` with an `admissionId`, `ipd.issueInvoice`, and `billing.recordPayments` on an `ipd` Invoice. The limit is a constant, not a setting.
+Cash received for one Admission stays under ₹2,00,000: its cash deposits plus cash Payments on its `ipd` Invoices, each less the cash refunded from that same receipt or Invoice. Cash refunded out of money that arrived another way frees no room, and other methods are not counted. Three commands check it under the Admission lock and refuse (`BAD_REQUEST`, naming ₹2,00,000) a cash amount that would reach the limit: `billing.recordAdvance` with an `admissionId`, `ipd.issueInvoice`, and `billing.recordPayments` on an `ipd` Invoice. The limit is a constant, not a setting.
 
 Preserve D029: the bill addresses the Patient and Sponsor remains measurement only. Patient-only IPD ships for self-pay Admissions; the [Claims contract](./cashless-claims.md) adds its allocation to the same `ipd.issueInvoice`.
 

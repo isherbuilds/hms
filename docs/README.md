@@ -339,9 +339,10 @@ stay inside that day is not re-billed and no report lists it; the desk corrects
 it by Credit Note or a posted Service.
 
 For the hospital's accountant, with the cash limit's legal basis: the
-₹2,00,000 limit counts cash taken against the stay (its deposits and Payments on
-its bills, less cash handed back, never below zero). Cash taken as an ordinary
-Patient advance and later applied to the stay's bill as credit is not counted.
+₹2,00,000 limit counts cash taken against the stay: its cash deposits and the
+cash Payments on its bills, each less the cash handed back from that same
+receipt or bill. Cash taken as an ordinary Patient advance and later applied to
+the stay's bill as credit is not counted.
 
 Packages wait for a pilot hospital that quotes them. The no-GSTIN rule (D063) is
 not yet applied to OPD or counter Pharmacy. The legal basis of the ₹2,00,000
