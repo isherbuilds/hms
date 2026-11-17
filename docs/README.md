@@ -334,10 +334,13 @@ deposit and the cash-limit refusal, issue a bill with a discount, deposit and a
 part payment, a second bill, a bill with nothing chargeable, record and undo a
 departure, medicine returns before and after the bill, Credit Notes on bed-day
 and service lines with the refund, the leftover deposit refund, the desk report
-with its XLSX, the checkout setting, and reception's narrower actions. The
-council's last fixes (inline issue refusals, the empty bill, the Patient record's
-deposit refund, the interim bill's facts) were checked by type checks and tests,
-not yet in a browser.
+with its XLSX, the checkout setting, and reception's narrower actions. On
+2026-11-18 the council's fixes were driven the same way: the issue form's cash
+line following a discount, "Use deposit" only for a deposit, inline refusals in
+the deposit, move-bed and undo-departure dialogs, the empty bill, "Deposit short
+by" on the Admission page with or without a deposit, a stay's deposit refunded
+only from its stay, the desk report's print header and the interim bill's facts.
+The phone header now wraps its actions on every page.
 
 Known limit: the desk report checks every discharged stay up to its date,
 because unbilled bed days are derived, not stored. The read grows with history
