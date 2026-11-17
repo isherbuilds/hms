@@ -1554,14 +1554,14 @@ async function moneyTrail(theatre: Theatre, patientIds: string[], admissionId: s
   const day = (offset: number) =>
     new Date(today.getTime() + offset * DAY).toISOString().slice(0, 10);
 
-  // `through` is the clock on an open stay, so the trail keeps only what the bill holds.
-  const bill = await api.ipd.previewInvoice({ orgSlug, admissionId });
+  // `through` is the clock on an open stay; everything else the bill reads is the trail.
+  const { through: _clock, ...bill } = await api.ipd.previewInvoice({ orgSlug, admissionId });
 
   return {
     accounts: await Promise.all(
       patientIds.map((patientId) => api.patient.account({ orgSlug, patientId })),
     ),
-    admissionBill: { pending: bill.pending, issued: bill.issued },
+    admissionBill: bill,
     stockMovements: await api.pharmacy.listMovements({ orgSlug }),
     trialBalance: await api.report.trialBalance({ orgSlug, from: day(-2), to: day(2) }),
   };

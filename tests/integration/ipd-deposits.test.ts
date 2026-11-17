@@ -548,8 +548,9 @@ test("an Admission's deposit never pays an OPD bill, and is not offered there as
   const { patientId, admission } = await hospital.admit(0);
   await hospital.deposit(patientId, admission.id, 5_000_00n);
 
+  // Neither figure the OPD desk reads counts the deposit: it can never be spent there.
   const credit = await api.billing.patientCredit({ orgSlug, patientId, treatmentPlanId: null });
-  expect(credit.usable).toBe(0n);
+  expect(credit).toEqual({ usable: 0n, total: 0n });
 
   const consult = await hospital.createService("OPD dressing", 300_00n);
 
@@ -786,6 +787,34 @@ test("cash deposits that would take one stay to ₹2,00,000 are refused; other m
   // The limit is each stay's own.
   const other = await hospital.admit(1);
   await hospital.deposit(other.patientId, other.admission.id, 150_000_00n);
+});
+
+test("cash handed back out of money that did not come in as cash makes no room under the limit", async () => {
+  const hospital = await createHospital("deposit-cash-limit-refund");
+  const { api, orgSlug } = hospital;
+  const { patientId, admission } = await hospital.admit(0);
+  const byUpi = await hospital.deposit(patientId, admission.id, 150_000_00n, "upi");
+
+  await api.billing.recordAdvanceRefund({
+    orgSlug,
+    advanceReceiptId: byUpi.id,
+    method: "cash",
+    amount: 150_000_00n,
+  });
+
+  // The stay has taken no cash at all, so the whole limit applies to it, and no more.
+  await expectORPCCode(
+    hospital.deposit(patientId, admission.id, 200_000_00n),
+    "BAD_REQUEST",
+    "the whole limit in cash",
+  );
+
+  await hospital.deposit(patientId, admission.id, 199_999_99n);
+  await expectORPCCode(
+    hospital.deposit(patientId, admission.id, 1n),
+    "BAD_REQUEST",
+    "one paisa more",
+  );
 });
 
 test("a cash Payment on the bill, at issue or later, counts toward the same limit", async () => {

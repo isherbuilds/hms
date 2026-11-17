@@ -1069,6 +1069,69 @@ test("a backdated move that would change a billed day is refused; a move now is 
   expect(moved.currentBedId).toBe(beds.i1.id);
 });
 
+test("a departure time inside days already billed is still recorded; the bill is corrected by Credit Note", async () => {
+  const hospital = await createHospital("bed-billed-departure");
+  const { api, orgSlug, beds } = hospital;
+  const { admission } = await hospital.admitAt(beds.g1.id, ist(3, "15:00"));
+  // An hour into the second day, so that day and every later one is billed as ICU.
+  await hospital.transferAt(admission.id, beds.i1.id, ist(2, "13:00"));
+  await hospital.readyAt(admission.id);
+  await hospital.bill(admission.id);
+
+  const ready = await hospital.detail(admission.id);
+  const billed = ready.admission.bedDaysBilled;
+
+  await api.ipd.undoDischargeReady({
+    orgSlug,
+    admissionId: admission.id,
+    expectedRevision: ready.admission.revision,
+    reason: "Ready was marked on the wrong stay",
+  });
+
+  // The Patient really left forty minutes after the move, so the second day was a ward day.
+  const departed = await hospital.departAt(admission.id, ist(2, "13:40"));
+
+  expect(departed.status).toBe("discharged");
+  expect(departed.dischargedAt).toEqual(ist(2, "13:40"));
+
+  // Billed days never move back: what was over-billed is credited, not un-billed.
+  expect((await hospital.detail(admission.id)).admission.bedDaysBilled).toBe(billed);
+  expect((await hospital.preview(admission.id)).bedDays).toEqual({ billed, unbilled: [] });
+});
+
+test("undoing a departure is never refused because its day was billed", async () => {
+  // Checkout sits three hours ahead of now, so the whole stay below is its first bed day.
+  const now = Date.now();
+  const checkoutMinutes = Math.floor(((now + 3 * HOUR + IST_OFFSET) % DAY) / 60_000);
+  const hospital = await createHospital("bed-billed-reopen", { checkoutMinutes });
+  const { api, orgSlug, beds } = hospital;
+  const { admission } = await hospital.admitAt(beds.g1.id, new Date(now - 20 * HOUR));
+  await hospital.transferAt(admission.id, beds.i1.id, new Date(now - 12.5 * HOUR));
+  const discharged = await hospital.departAt(admission.id, new Date(now - 12 * HOUR));
+
+  // Seven and a half hours in the ward against half an hour in ICU: a ward day.
+  const quote = await hospital.preview(admission.id);
+
+  expect(quote.bedDays.unbilled.map((day) => day.categoryName)).toEqual(["General"]);
+  await hospital.bill(admission.id);
+
+  const reopened = await api.ipd.reopen({
+    orgSlug,
+    admissionId: admission.id,
+    expectedRevision: discharged.revision,
+    reason: "The Patient had not left",
+  });
+
+  expect(reopened.status).toBe("admitted");
+  expect(reopened.currentBedId).toBe(beds.i1.id);
+
+  // By the hours now it is an ICU day, but it was billed as a ward day and stays billed.
+  const detail = await hospital.detail(admission.id);
+
+  expect(detail.admission.bedDaysBilled).toBe(1);
+  expect(detail.runningBill).toBe(0n);
+});
+
 // ── Tax follows the Service ─────────────────────────────────────────────────
 
 test("a registered hospital's taxed room line carries its Service's GST on the bill", async () => {
