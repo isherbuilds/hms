@@ -781,12 +781,12 @@ test("service and bed-day lines on an IPD Invoice are credited through the Credi
   );
 });
 
-test("a medicine line on an IPD Invoice is corrected by a return, not a bare Credit Note", async () => {
+test("a medicine line on an IPD Invoice can be credited without a return, and a later return credits only what is left", async () => {
   const hospital = await createHospital("return-credit-medicine");
   const { api, orgSlug } = hospital;
   const batchId = await hospital.stock(10);
   const admission = await hospital.admit(0);
-  await hospital.issue(admission.id, batchId, 2);
+  const issueLineId = await hospital.issue(admission.id, batchId, 2);
   const { invoiceId } = await hospital.billPaid(admission.id);
 
   const medicine = (await hospital.invoiceLineRows(invoiceId)).find(
@@ -795,18 +795,37 @@ test("a medicine line on an IPD Invoice is corrected by a return, not a bare Cre
 
   if (!medicine) throw new Error("expected the medicine's Invoice line");
 
-  await expectORPCCode(
-    api.billing.issueCreditNote({
-      orgSlug,
-      invoiceId,
-      reason: "Medicine not given",
-      lines: [{ invoiceLineId: medicine.id, full: true }],
-    }),
-    "CONFLICT",
-  );
+  // A price correction: money only, so no goods move.
+  const corrected = await api.billing.issueCreditNote({
+    orgSlug,
+    invoiceId,
+    reason: "Billed above the agreed price",
+    lines: [{ invoiceLineId: medicine.id, gross: 200_00n }],
+  });
 
-  expect(await hospital.creditNoteRows()).toEqual([]);
+  expect(corrected.creditNote.total).toBe(200_00n);
   expect(await hospital.onHand(batchId)).toEqual({ shelf: 8, quarantine: 0 });
+
+  // One unit comes back. Its share is ₹112, but only ₹24 of the line is left to credit.
+  const first = await hospital.giveBack(admission.id, [{ issueLineId, qty: 1 }]);
+
+  expect(first.creditNoteId).toBeTruthy();
+  expect((await hospital.creditNoteRows()).map((note) => note.total)).toEqual([200_00n, 24_00n]);
+  expect(await hospital.onHand(batchId)).toEqual({ shelf: 8, quarantine: 1 });
+
+  // The last unit still comes back, though no money is left on the line.
+  const second = await hospital.giveBack(admission.id, [{ issueLineId, qty: 1 }]);
+
+  expect(second.creditNoteId).toBeNull();
+  expect(await hospital.creditNoteRows()).toHaveLength(2);
+  expect(await hospital.onHand(batchId)).toEqual({ shelf: 8, quarantine: 2 });
+  expect(await hospital.issueLine(admission.id, issueLineId)).toMatchObject({
+    qty: 2,
+    returnedQty: 2,
+  });
+
+  const invoice = await api.billing.getInvoice({ orgSlug, invoiceId });
+  expect(invoice.balance.outstanding).toBe(-2n * MRP);
 });
 
 test("the accountant credits an IPD line; the cashier cannot", async () => {

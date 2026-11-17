@@ -1001,6 +1001,7 @@ test("the Admission's issues list their batch, expiry and Charge", async () => {
       qty: 2,
       chargeId: charge!.id,
       chargeStatus: "pending",
+      returnedQty: 0,
     },
   ]);
 });
