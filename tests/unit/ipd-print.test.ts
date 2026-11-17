@@ -2,6 +2,7 @@
 // print the stay's facts, and the discharge slip carries the paper clearances.
 import { expect, test } from "bun:test";
 
+import { depositShortLabel, depositShortfall } from "../../apps/web/src/lib/ipd-deposit";
 import { INTERIM_BILL_TITLE } from "../../apps/web/src/lib/ipd-interim-bill";
 import {
   DISCHARGE_TYPE_LABELS,
@@ -126,4 +127,15 @@ test("the discharge slip carries a signature panel for the paper clearances, the
 
 test("the interim bill says in its title that it is not an Invoice or Receipt", () => {
   expect(INTERIM_BILL_TITLE).toBe("Interim bill — not an Invoice or Receipt");
+});
+
+test("the board says how far the running bill is past the deposit, and nothing when it is covered", () => {
+  expect(depositShortfall(5_000_00n, 3_000_00n)).toBe(2_000_00n);
+  expect(depositShortfall(3_000_00n, 3_000_00n)).toBe(0n);
+  expect(depositShortfall(1_000_00n, 3_000_00n)).toBe(0n);
+
+  expect(depositShortLabel(5_000_00n, 3_000_00n, "INR")).toBe("Deposit short by ₹2,000.00");
+  expect(depositShortLabel(5_000_00n, 0n, "INR")).toBe("Deposit short by ₹5,000.00");
+  expect(depositShortLabel(3_000_00n, 3_000_00n, "INR")).toBeNull();
+  expect(depositShortLabel(0n, 0n, "INR")).toBeNull();
 });

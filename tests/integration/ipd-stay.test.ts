@@ -50,6 +50,13 @@ const DISCHARGE_TYPES = ["normal", "against_advice", "absconded", "referred", "d
 
 type DischargeType = (typeof DISCHARGE_TYPES)[number];
 
+/** The bills this suite issues hold a Charge, so each one issues an Invoice. */
+function invoiced<T extends { invoiceId: string | null }>(result: T): T & { invoiceId: string } {
+  if (result.invoiceId === null) throw new Error("expected the bill to issue an Invoice");
+
+  return { ...result, invoiceId: result.invoiceId };
+}
+
 let phoneSequence = 5_590_000;
 
 async function createHospital(seed: string) {
@@ -992,7 +999,7 @@ test("reopening leaves issued Invoices alone, and what accrues afterwards goes o
   const bill = async () => {
     const preview = await api.ipd.previewInvoice({ orgSlug, admissionId: admission.id });
 
-    return api.ipd.issueInvoice({
+    const issued = await api.ipd.issueInvoice({
       orgSlug,
       admissionId: admission.id,
       expectedChargeRevision: preview.chargeRevision,
@@ -1000,6 +1007,8 @@ test("reopening leaves issued Invoices alone, and what accrues afterwards goes o
       payments: [],
       outstandingReason: "Family settles at the desk",
     });
+
+    return invoiced(issued);
   };
 
   await post();

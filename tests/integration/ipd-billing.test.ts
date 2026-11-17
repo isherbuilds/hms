@@ -93,6 +93,13 @@ function settingsInput(
   };
 }
 
+/** Every bill in this suite holds a Charge, so each one issues an Invoice. */
+function invoiced<T extends { invoiceId: string | null }>(result: T): T & { invoiceId: string } {
+  if (result.invoiceId === null) throw new Error("expected the bill to issue an Invoice");
+
+  return { ...result, invoiceId: result.invoiceId };
+}
+
 let phoneSequence = 5_570_000;
 
 type Hospital = Awaited<ReturnType<typeof createHospital>>;
@@ -321,7 +328,7 @@ async function createHospital(seed: string, options: { gstin?: string } = {}) {
     const client = settlement.client ?? api;
     const preview = await client.ipd.previewInvoice({ orgSlug, admissionId });
 
-    return client.ipd.issueInvoice({
+    const issued = await client.ipd.issueInvoice({
       orgSlug,
       admissionId,
       expectedChargeRevision: preview.chargeRevision,
@@ -331,6 +338,8 @@ async function createHospital(seed: string, options: { gstin?: string } = {}) {
         settlement.outstandingReason ??
         (settlement.payments === undefined ? "Settling with the family later" : undefined),
     });
+
+    return invoiced(issued);
   }
 
   return {
@@ -1267,14 +1276,16 @@ test("the mixed-basis Invoice: exclusive taxed service, bundled and independent 
   const preview = await api.ipd.previewInvoice({ orgSlug, admissionId: admission.id });
   expect(preview.pending.grandTotal).toBe(6_636_00n);
 
-  const result = await api.ipd.issueInvoice({
-    orgSlug,
-    admissionId: admission.id,
-    expectedChargeRevision: preview.chargeRevision,
-    expectedGrandTotal: preview.pending.grandTotal,
-    payments: [],
-    outstandingReason: "Family settles tomorrow",
-  });
+  const result = invoiced(
+    await api.ipd.issueInvoice({
+      orgSlug,
+      admissionId: admission.id,
+      expectedChargeRevision: preview.chargeRevision,
+      expectedGrandTotal: preview.pending.grandTotal,
+      payments: [],
+      outstandingReason: "Family settles tomorrow",
+    }),
+  );
 
   expect(result.receiptIds).toEqual([]);
   expect(result.chargeRevision).toBeGreaterThan(preview.chargeRevision);
@@ -1484,7 +1495,7 @@ test("an unpaid or part-paid Invoice needs an outstanding reason", async () => {
   await expectORPCCode(attempt(1_000_00n), "BAD_REQUEST", "part paid, no reason");
   expect(await db.select().from(invoices).where(eq(invoices.orgId, hospital.orgId))).toEqual([]);
 
-  const result = await attempt(1_000_00n, "Balance after insurer letter");
+  const result = invoiced(await attempt(1_000_00n, "Balance after insurer letter"));
 
   const detail = await hospital.api.billing.getInvoice({
     orgSlug: hospital.orgSlug,
