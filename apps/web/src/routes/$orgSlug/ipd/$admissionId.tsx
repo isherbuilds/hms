@@ -32,6 +32,7 @@ import {
 } from "@/components/ipd-medicines";
 import { DataList, ErrorNote, PageBody, PageHeader, Panel } from "@/components/page";
 import { DISCHARGE_TYPE_LABELS, slipPdfUrl, type SlipKind } from "@/lib/ipd-slips";
+import { depositShortLabel } from "@/lib/ipd-deposit";
 import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney } from "@/lib/money";
 import { currentMinute, useMinuteClock } from "@/lib/minute-clock";
@@ -122,7 +123,8 @@ function AdmissionRoute() {
     );
   }
 
-  const { admission, patient, practitionerName, stays, runningBill } = detail.data;
+  const { admission, patient, practitionerName, stays, runningBill, depositHeld } = detail.data;
+  const depositShort = depositShortLabel(runningBill, depositHeld, currency);
   const current = stays.find((stay) => stay.endedAt === null);
   const active = admission.status === "admitted" || admission.status === "discharge_ready";
 
@@ -263,6 +265,14 @@ function AdmissionRoute() {
             {active && !canReadBill ? (
               <Fact label="Running bill">
                 <span className="tabular-nums">{formatMoney(runningBill, currency)}</span>
+              </Fact>
+            ) : null}
+            {active && !canReadBill ? (
+              <Fact label="Deposit">
+                <span className="block tabular-nums">{formatMoney(depositHeld, currency)}</span>
+                {depositShort ? (
+                  <span className="block font-medium tabular-nums">{depositShort}</span>
+                ) : null}
               </Fact>
             ) : null}
             {admission.readyAt ? (

@@ -24,6 +24,11 @@ import { MoreHorizontalIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import {
+  AdvanceReceiptLink,
+  AdvanceRefundDialog,
+  TakeDepositDialog,
+} from "@/components/advance-form";
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
 import { VoidChargeDialog } from "@/components/opd-billing/void-charge-dialog";
 import { ChosenServices } from "@/components/chosen-services";
@@ -31,9 +36,11 @@ import { ServicePicker, type ServiceLine } from "@/components/opd-service-picker
 import { DataList, ErrorNote, Panel, PanelEmpty } from "@/components/page";
 import { billingPdfUrl } from "@/lib/billing-document";
 import { formatDay } from "@/lib/org-datetime";
+import { depositShortfall } from "@/lib/ipd-deposit";
 import { interimBillPdfUrl } from "@/lib/ipd-interim-bill";
 import { linePriceBasis, mixedRateLabel } from "@/lib/invoice-print";
 import { formatMoney, ZERO } from "@/lib/money";
+import { useCan } from "@/lib/membership";
 import type { WalkInQuote } from "@/lib/opd-service-preview";
 import { orpc } from "@/lib/orpc";
 import { closeOnConflict, errorMessage, hasErrorCode } from "@/lib/orpc-error";
@@ -70,14 +77,17 @@ export function AdmissionBill({
   currency,
 }: {
   orgSlug: string;
-  admission: { id: string; status: AdmissionStatus; chargeRevision: number };
+  admission: { id: string; patientId: string; status: AdmissionStatus; chargeRevision: number };
   canWrite: boolean;
   currency: string;
 }) {
+  const canRefund = useCan(orgSlug, { billing: ["advanceRefund"] });
+
   // The collect overlay holds the bill as it was opened: the cashier settles what they
   // reviewed, and a Charge posted elsewhere blocks it until reopened.
   const [overlay, setOverlay] = useState<
     | { kind: "service" }
+    | { kind: "deposit" }
     | { kind: "collect"; reviewed: Bill; lastDay: LastDay; reason: string | undefined }
     | { kind: "remove"; line: BillLine }
     | null
@@ -145,7 +155,7 @@ export function AdmissionBill({
     );
   }
 
-  const { pending, issued, bedDays } = data;
+  const { pending, issued, bedDays, credit } = data;
   const canAddService = canWrite && admission.status !== "cancelled";
   const inHospital = admission.status === "admitted" || admission.status === "discharge_ready";
   // Issued medicines come back by a return, not a removal.
@@ -155,6 +165,14 @@ export function AdmissionBill({
   const lastUnbilled = unbilledDays.at(-1);
   // Nothing to charge but days to close, such as one uncharged last day.
   const closesDaysOnly = pending.lines.length === 0 && unbilledDays.length > 0;
+  const nothingToBill = pending.lines.length === 0 && unbilledDays.length === 0;
+  const depositShort = depositShortfall(pending.grandTotal, credit.deposit);
+
+  // What the stay still holds once nothing is left to bill goes back to the Patient.
+  const refundable =
+    canRefund &&
+    credit.deposit > ZERO &&
+    (admission.status === "cancelled" || (billable && nothingToBill));
 
   // The revision the bill was read at: a charge posted since moves it, and the server
   // refuses a settlement against the old figure.
@@ -193,6 +211,7 @@ export function AdmissionBill({
     draft: SettlementDraft,
   ) => {
     const collected = draft.payments.reduce((sum, payment) => sum + payment.amount, ZERO);
+    const balance = draft.expectedGrandTotal - draft.applyCredit - collected;
 
     issue.mutate({
       orgSlug,
@@ -201,9 +220,13 @@ export function AdmissionBill({
       expectedGrandTotal: draft.expectedGrandTotal,
       lastDay: chosen.lastDay,
       lastDayReason: chosen.reason,
+      discountAmount: draft.discountAmount,
+      // The one reason the cashier gave covers the discount and any balance alike.
+      discountReason: draft.discountAmount > ZERO ? draft.note : undefined,
+      applyCredit: draft.applyCredit,
       payments: draft.payments,
       // A reason travels only with a balance: a bill paid in full has nothing to explain.
-      outstandingReason: draft.expectedGrandTotal > collected ? draft.note : undefined,
+      outstandingReason: balance > ZERO ? draft.note : undefined,
     });
   };
 
@@ -233,6 +256,14 @@ export function AdmissionBill({
       lastDayReason: reason,
     });
   };
+
+  // Deposits are taken while the Patient is in hospital (the server refuses after).
+  const takeDeposit =
+    canWrite && inHospital ? (
+      <Button variant="outline" onClick={() => setOverlay({ kind: "deposit" })}>
+        Take deposit
+      </Button>
+    ) : null;
 
   const chooseLastDay = (value: LastDay) => {
     setReasonMissing(false);
@@ -373,6 +404,18 @@ export function AdmissionBill({
               <dd className="tabular-nums">{formatMoney(includedTax, currency)}</dd>
             </div>
           )}
+          {credit.deposit === ZERO ? null : (
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">Deposit held</dt>
+              <dd className="tabular-nums">{formatMoney(credit.deposit, currency)}</dd>
+            </div>
+          )}
+          {depositShort === ZERO ? null : (
+            <div className="flex justify-between gap-3 font-medium">
+              <dt>Deposit short by</dt>
+              <dd className="tabular-nums">{formatMoney(depositShort, currency)}</dd>
+            </div>
+          )}
         </dl>
 
         <div className="flex min-w-0 flex-col gap-3 sm:order-1">
@@ -399,6 +442,9 @@ export function AdmissionBill({
               currency={currency}
             />
           ))}
+          {refundable ? (
+            <StayDeposits orgSlug={orgSlug} admission={admission} currency={currency} />
+          ) : null}
           {changed ? (
             <p role="status" className="border-l-2 border-border pl-3">
               The bill changed before it was issued, for example a new bed day began at checkout.
@@ -456,25 +502,30 @@ export function AdmissionBill({
                     Nothing to charge, so no invoice is issued. The day is marked as dealt with.
                   </p>
                 ) : null}
-                <Button
-                  className="self-start"
-                  disabled={stale || bill.isFetching || issue.isPending}
-                  onClick={startIssue}
-                >
-                  {closesDaysOnly ? (
-                    "Mark day as dealt with"
-                  ) : (
-                    <span className="tabular-nums">
-                      Issue invoice {formatMoney(pending.grandTotal, currency)}
-                    </span>
-                  )}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    disabled={stale || bill.isFetching || issue.isPending}
+                    onClick={startIssue}
+                  >
+                    {closesDaysOnly ? (
+                      "Mark day as dealt with"
+                    ) : (
+                      <span className="tabular-nums">
+                        Issue invoice {formatMoney(pending.grandTotal, currency)}
+                      </span>
+                    )}
+                  </Button>
+                  {takeDeposit}
+                </div>
               </div>
             )
           ) : (
-            <p className="text-muted-foreground">
-              The bill is issued once the Patient is ready to leave.
-            </p>
+            <>
+              <p className="text-muted-foreground">
+                The bill is issued once the Patient is ready to leave.
+              </p>
+              {takeDeposit ? <div>{takeDeposit}</div> : null}
+            </>
           )}
         </div>
       </div>
@@ -488,6 +539,9 @@ export function AdmissionBill({
           onClose={close}
         />
       ) : null}
+      {overlay?.kind === "deposit" ? (
+        <TakeDepositDialog orgSlug={orgSlug} admission={admission} onClose={close} />
+      ) : null}
       {overlay?.kind === "remove" && overlay.line.chargeId ? (
         <VoidChargeDialog
           charge={{ id: overlay.line.chargeId, description: overlay.line.description }}
@@ -500,8 +554,11 @@ export function AdmissionBill({
           <SettlementOverlay
             quote={quoteOf(overlay.reviewed)}
             stream="ipd"
-            discountable={false}
-            availableCredit={{ usable: ZERO, total: ZERO }}
+            // This stay's deposit is offered in full; the Patient's other credit by hand.
+            availableCredit={{
+              usable: overlay.reviewed.credit.deposit,
+              total: overlay.reviewed.credit.deposit + overlay.reviewed.credit.other,
+            }}
             description={`${overlay.reviewed.pending.lines.length} item${overlay.reviewed.pending.lines.length === 1 ? "" : "s"} on this admission`}
             label="Issue invoice"
             pending={issue.isPending}
@@ -518,6 +575,57 @@ export function AdmissionBill({
         </ClientOnly>
       ) : null}
     </Panel>
+  );
+}
+
+/**
+ * The stay's receipts that still hold money, each refundable through the existing advance
+ * refund.
+ */
+function StayDeposits({
+  orgSlug,
+  admission,
+  currency,
+}: {
+  orgSlug: string;
+  admission: { id: string; patientId: string };
+  currency: string;
+}) {
+  const [refunding, setRefunding] = useState<{ id: string; remaining: bigint } | null>(null);
+
+  const account = useQuery(
+    orpc.patient.account.queryOptions({ input: { orgSlug, patientId: admission.patientId } }),
+  );
+
+  if (account.error) {
+    return <ErrorNote title="Could not load the deposit receipts" error={account.error} />;
+  }
+
+  const mine =
+    account.data?.advanceReceipts.filter(
+      (receipt) => receipt.admissionId === admission.id && receipt.remaining > ZERO,
+    ) ?? [];
+
+  return (
+    <div className="flex flex-col gap-2">
+      {mine.map((receipt) => (
+        <div key={receipt.id} className="flex flex-wrap items-center gap-3">
+          <AdvanceReceiptLink orgSlug={orgSlug} id={receipt.id} label={receipt.receiptNumber} />
+          <Button variant="outline" onClick={() => setRefunding(receipt)}>
+            <span className="tabular-nums">
+              Refund deposit {formatMoney(receipt.remaining, currency)}
+            </span>
+          </Button>
+        </div>
+      ))}
+      {refunding ? (
+        <AdvanceRefundDialog
+          orgSlug={orgSlug}
+          receipt={refunding}
+          onClose={() => setRefunding(null)}
+        />
+      ) : null}
+    </div>
   );
 }
 

@@ -13,6 +13,7 @@ import {
   tableStyle,
 } from "@/components/pdf/billing-documents";
 import { mixedRateLabel } from "@/lib/invoice-print";
+import { depositShortfall } from "@/lib/ipd-deposit";
 import { INTERIM_BILL_TITLE } from "@/lib/ipd-interim-bill";
 import { formatMoney, ZERO } from "@/lib/money";
 
@@ -28,17 +29,21 @@ const rightHeading = { ...headingCellStyle, textAlign: "right" } as const;
  */
 export function InterimBillDocument({
   bill,
+  depositHeld,
   admissionNumber,
   facts,
   document,
 }: {
   bill: Bill;
+  /** What the stay's deposit still holds, so the paper shows how far the bill has run past it. */
+  depositHeld: bigint;
   admissionNumber: string;
   facts: { label: string; value: string }[];
   document: ComponentProps<typeof DocumentShell>["document"];
 }) {
   const { pending, registered } = bill;
   const currency = document.currency;
+  const short = depositShortfall(pending.grandTotal, depositHeld);
 
   return (
     <DocumentShell
@@ -95,6 +100,10 @@ export function InterimBillDocument({
                 },
               ]),
           { label: "Running bill", value: formatMoney(pending.grandTotal, currency), total: true },
+          { label: "Deposit held", value: formatMoney(depositHeld, currency) },
+          ...(short === ZERO
+            ? []
+            : [{ label: "Deposit short by", value: formatMoney(short, currency) }]),
         ]}
       />
     </DocumentShell>

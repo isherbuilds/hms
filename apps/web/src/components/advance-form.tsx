@@ -9,15 +9,17 @@ import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
 import { OptionCombobox } from "@/components/option-combobox";
 import { PaymentLineFields } from "@/components/payment-lines";
+import { ErrorNote } from "@/components/page";
 import { advancePdfUrl } from "@/lib/billing-document";
 import { orpc } from "@/lib/orpc";
+import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
 import { paymentLineFields } from "@/lib/settlement";
 
 const advanceSchema = paymentLineFields
   .extend({ treatmentPlanId: z.string(), note: z.string().trim().max(500).optional() })
   .superRefine(requirePaymentReference);
 
-const refundSchema = paymentLineFields.superRefine(requirePaymentReference);
+const lineSchema = paymentLineFields.superRefine(requirePaymentReference);
 
 export function AdvanceReceiptLink({
   orgSlug,
@@ -145,6 +147,56 @@ function TakeAdvanceDialog({
   );
 }
 
+/** A deposit for one stay: an Advance Receipt spent only on that stay's bills. */
+export function TakeDepositDialog({
+  orgSlug,
+  admission,
+  onClose,
+}: {
+  orgSlug: string;
+  admission: { id: string; patientId: string };
+  onClose: () => void;
+}) {
+  // A refusal the desk can act on here, such as the stay's cash limit.
+  const [refusal, setRefusal] = useState<string | null>(null);
+
+  return (
+    <FormDialog
+      title="Take deposit"
+      description="Held for this stay and spent only on its bills."
+      submitLabel="Record deposit"
+      schema={lineSchema}
+      defaultValues={{ method: "cash", amount: "", reference: "" }}
+      success="Deposit recorded"
+      onClose={onClose}
+      onSubmit={() => setRefusal(null)}
+      showsInline={(error) => hasErrorCode(error, "BAD_REQUEST")}
+      onError={(error) => {
+        if (hasErrorCode(error, "BAD_REQUEST")) setRefusal(errorMessage(error));
+        else if (hasErrorCode(error, "CONFLICT")) onClose();
+      }}
+      run={(value) =>
+        orpc.billing.recordAdvance.call({
+          orgSlug,
+          patientId: admission.patientId,
+          admissionId: admission.id,
+          method: value.method,
+          amount: value.amount,
+          reference: value.reference || undefined,
+        })
+      }
+      done={(advance) => ({
+        label: `Advance Receipt ${advance.receiptNumber}`,
+        href: advancePdfUrl(orgSlug, advance.id),
+        action: "Print receipt",
+      })}
+    >
+      <PaymentLineFields />
+      {refusal ? <ErrorNote title="The deposit was not recorded" detail={refusal} /> : null}
+    </FormDialog>
+  );
+}
+
 export function AdvanceRefundDialog({
   orgSlug,
   receipt,
@@ -160,7 +212,7 @@ export function AdvanceRefundDialog({
       title="Refund advance"
       description="Return unused patient credit from this receipt."
       submitLabel="Record refund"
-      schema={refundSchema}
+      schema={lineSchema}
       defaultValues={{ method: "cash", amount: formatDecimal(receipt.remaining), reference: "" }}
       success="Refund recorded"
       onClose={onClose}

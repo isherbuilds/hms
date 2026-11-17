@@ -421,6 +421,8 @@ export const patientRouter = {
             currency: advanceReceipts.currency,
             amount: advanceReceipts.amount,
             remaining: advanceRemaining(scope.orgId),
+            // Set on a stay's deposit, which only that stay's desk refunds.
+            admissionId: advanceReceipts.admissionId,
           })
           .from(advanceReceipts)
           .where(

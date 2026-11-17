@@ -309,6 +309,7 @@ export async function renderInterimBillPdf(
       element: (
         <InterimBillDocument
           bill={bill}
+          depositHeld={detail.depositHeld}
           admissionNumber={admission.admissionNumber}
           facts={facts}
           document={{

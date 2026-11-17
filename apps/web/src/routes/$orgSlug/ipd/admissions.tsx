@@ -14,6 +14,7 @@ import {
   PageHeader,
   Panel,
 } from "@/components/page";
+import { depositShortLabel } from "@/lib/ipd-deposit";
 import { useMembership } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
@@ -153,6 +154,32 @@ function AdmissionsRoute() {
                         {formatMoney(item.runningBill, currency)}
                       </span>
                     ),
+                  className: "text-right",
+                },
+                {
+                  head: "Deposit",
+                  // What the stay holds, and how far the running bill has passed it.
+                  cell: (item) => {
+                    const short =
+                      item.status === "cancelled"
+                        ? null
+                        : depositShortLabel(item.runningBill, item.depositHeld, currency);
+
+                    return item.depositHeld === ZERO && !short ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <>
+                        <span className="block whitespace-nowrap tabular-nums">
+                          {formatMoney(item.depositHeld, currency)}
+                        </span>
+                        {short ? (
+                          <span className="block whitespace-nowrap font-medium tabular-nums">
+                            {short}
+                          </span>
+                        ) : null}
+                      </>
+                    );
+                  },
                   className: "text-right",
                 },
                 {

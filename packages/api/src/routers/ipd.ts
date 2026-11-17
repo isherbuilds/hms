@@ -2099,9 +2099,12 @@ export const ipdRouter = {
           },
         },
         discountAmount: input.discountAmount,
-        // The Invoice keeps both reasons; each was required above or by the settlement.
+        // The Invoice keeps both reasons, once when the desk gave one for both; each was
+        // required above or by the settlement.
         note:
-          [input.discountReason, input.outstandingReason].filter(Boolean).join(" · ") || undefined,
+          [...new Set([input.discountReason, input.outstandingReason])]
+            .filter(Boolean)
+            .join(" · ") || undefined,
         settings,
         now,
         fiscalYear,
