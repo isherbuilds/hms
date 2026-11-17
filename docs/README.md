@@ -307,16 +307,37 @@ inpatient bills carry no GST.
 
 On 2026-11-17 Slices 3–7 were replanned from a study of running systems
 ([D066](./decisions.md#d066--bed-days-are-derived-bills-repeat-and-a-wrong-discharge-can-be-undone),
-[research](./research/ipd-reference-systems.md)); nothing in them is built.
-Still owed, in order: Slice 3 (IPD number, attendant, medico-legal flag,
-diagnosis, discharge type, undoing a wrong discharge, database overlap
-constraints, a repeatable bill); Slice 4 (tariff lines, derived bed days, the
-running bill, interim bill and estimate); Slice 5 (deposits on the Admission,
-settlement, the cash limit); Slice 6 (inpatient returns and Credit Notes on
-`ipd` Invoices, before any live hospital bills inpatients); Slice 7 (the IPD
-desk report). An Admission takes one Invoice until Slice 3 (D063). Packages
-wait for a pilot hospital that quotes them. The same no-GSTIN rule is not yet
-applied to OPD or counter Pharmacy.
+[research](./research/ipd-reference-systems.md)) and built the same day:
+
+- Slice 3: IPD number, attendant, medico-legal flag, diagnosis, how the Patient
+  left, editing details, undoing a wrong departure, the database overlap
+  constraints, the admission and discharge slips and a repeatable bill.
+- Slice 4: bed-type tariff lines, the checkout setting, derived bed days, the
+  last-day choice, the running bill, the interim bill and the estimate.
+- Slice 5: deposits on the Admission, discount and deposit at settlement, the
+  leftover refund and the cash limit.
+- Slice 6: ward medicine returns before and after the bill, and Credit Notes on
+  `ipd` Invoices.
+- Slice 7: the IPD desk report with print and XLSX.
+
+They are covered by `tests/integration/ipd-stay.test.ts`,
+`ipd-bed-charges.test.ts`, `ipd-deposits.test.ts`, `ipd-returns.test.ts`,
+`ipd-desk-report.test.ts`, the updated `ipd.test.ts` and `ipd-billing.test.ts`,
+the tenancy guard table, and `tests/unit/bed-days.test.ts`,
+`ipd-estimate.test.ts` and `ipd-print.test.ts`.
+
+Browser verification: pending.
+
+Known limit: the desk report checks every discharged stay up to its date,
+because unbilled bed days are derived, not stored. The read grows with history
+and would exceed PostgreSQL's bind-parameter limit at about 65,000 discharged
+stays. The fix is to narrow the candidates before the bill helper runs.
+
+Packages wait for a pilot hospital that quotes them. The no-GSTIN rule (D063) is
+not yet applied to OPD or counter Pharmacy. The legal basis of the ₹2,00,000
+cash limit and whether a nursing line counts toward the ₹5,000 room-rent
+threshold are unverified
+([defaults](./specs/ipd-admission-to-discharge.md#defaults-chosen-without-a-hospital)).
 
 ### [Facility booking and theatre](./specs/facility-booking-and-theatre.md)
 

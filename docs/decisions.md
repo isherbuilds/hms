@@ -602,7 +602,9 @@ This preserves D042's vocabulary/zod and append-only migration rules.
 **Shipped 2026-11-13 with IPD Slice 1:** `admission_pharmacy_issues` and
 `admission_pharmacy_issue_lines`, one negative shelf movement per line with
 reason `admission_issue` and source `admission_pharmacy_issue_line`, and one
-pending Admission Charge per line. Inpatient returns arrive with Slice 6.
+pending Admission Charge per line. **Shipped 2026-11-17 with Slice 6:**
+`admission_pharmacy_returns` and their lines, one positive quarantine movement
+per batch with reason `return` and source `admission_pharmacy_return`.
 
 **Rejected:** keeping the enum checks as a second guard. A check that repeats a
 zod enum fails later and worse — after the transaction, as a 500 instead of a
@@ -1389,12 +1391,12 @@ to be confirmed by the owner.**
   exempt composite healthcare; an independent line snapshots the Product's own
   GST. Both price at the batch MRP on an inclusive basis (D025, D056). The
   choice is made per line at issue time and never reclassified later.
-- **One Invoice per Admission, for now.** A unique index on `(orgId, admissionId)`
-  holds until Slice 3 makes the bill repeatable (D066). Until then issue and
-  service posting refuse once the bill exists. `ipd.issueInvoice` needs the
-  Patient ready or departed.
-- **No Credit Notes on `ipd` Invoices yet.** They and inpatient returns arrive
-  together in Slice 6, before any live hospital bills inpatients.
+- **One Invoice per Admission held for Slice 1 only.** Slice 3 replaced the
+  unique index on `(orgId, admissionId)` with a plain one and made the bill
+  repeatable (D066); issue and service posting stay open after a bill.
+  `ipd.issueInvoice` still needs the Patient ready or departed.
+- **Credit Notes on `ipd` Invoices arrived with inpatient returns** in Slice 6,
+  before any live hospital bills inpatients.
 - **Price basis is derived, not backfilled.** `charges.price_basis` is a
   generated column (`inclusive` exactly when the Charge sells a stock batch)
   and `invoices.added_tax_total` is generated from the header totals, so the
@@ -1433,10 +1435,10 @@ and [OpenMRS billing improvements 2026](https://openmrs.atlassian.net/wiki/space
 - **One Invoice per Admission stood for Slice 1 only.** ERPNext checks at
   discharge that services are invoiced and takes several invoices per stay; D066
   adopts the repeatable bill.
-- **No live billing without corrections.** Credit Notes on `ipd` Invoices
-  stay refused until Slice 6, and no live hospital bills inpatients until that
-  correction path exists. OpenMRS plans refunds as an approved
-  cancel-paid-bill flow; the decision rests mainly on our own gap.
+- **No live billing without corrections.** No live hospital bills inpatients
+  without a correction path; Slice 6 (built 2026-11-17) supplies it. OpenMRS
+  plans refunds as an approved cancel-paid-bill flow; the decision rests mainly
+  on our own gap.
 
 ### D064 — Bed reservations: holds expire by time, occupied beds are never promised, and displacement is explicit
 

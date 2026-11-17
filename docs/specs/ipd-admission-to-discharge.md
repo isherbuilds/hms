@@ -1,12 +1,12 @@
 # Spec: IPD admission to discharge
 
-Status: active — Slices 1–2 are built (D056, D063, D064). Slices 3–7 were replanned on 2026-11-17 on the owner's instruction after a reference-system study (D066); release to a hospital remains market-gated
+Status: active — Slices 1–7 are built (D056, D063, D064, D066): Slices 1–2 on 2026-11-13, Slices 3–7 on 2026-11-17 after the owner's replan from a reference-system study. Browser verification is owed and release to a hospital remains market-gated
 Authority: Founder request to replan IPD from running systems, keeping the architecture clean, simple and fast; November 2026.
 Supersedes: the October 2026 Slices 3–6 of this spec (reviewed bed days, pro-rata transfer days, the package inclusion engine, the single final Invoice)
 
 ## Problem
 
-A 10–50 bed hospital needs to know which Patient occupies each bed, what the stay has earned, how much deposit remains, and what is missing before discharge. Slices 1–2 give it the bed board, the stay, reservations, inpatient medicine issue, posted services and one `ipd` Invoice. The bed itself is still not charged, a deposit cannot be tied to a stay, a wrong discharge cannot be undone, and the stay carries none of the facts a discharge paper needs.
+A 10–50 bed hospital needs to know which Patient occupies each bed, what the stay has earned, how much deposit remains, and what is missing before discharge. Slices 1–2 gave it the bed board, the stay, reservations, inpatient medicine issue, posted services and one `ipd` Invoice. Before Slices 3–7 the bed itself was not charged, a deposit could not be tied to a stay, a wrong discharge could not be undone, and the stay carried none of the facts a discharge paper needs.
 
 ## Solution
 
@@ -75,31 +75,41 @@ All procedures use `orgProcedure`, explicit `orgSlug`, tenant predicates and sco
 
 ### The stay record
 
-`admissions` gains: `admissionNumber` (a per-Organization, per-financial-year running number from the existing `counter`, key `admission:${fy}`, printed as **IPD No.**), optional `attendantName` and `attendantPhone`, `medicoLegal` with an optional `medicoLegalRef` (police intimation or register number), optional free-text `diagnosis`, and `dischargeType` (`normal | against_advice | absconded | referred | death`), set exactly when the stay is `discharged`. The diagnosis is one line for the bill, the slips and insurer paperwork; it is not a clinical record and there is no coding.
+`admissions` gains: `admissionNumber` (a per-Organization, per-financial-year running number from the existing `counter`, key `admission:${fy}`, stored and printed as **IPD No.** `${fy}/${n}`, such as `2026-27/1`; the financial year is that of the moment of entry, not of a backdated admission time, and the number is taken inside admit after the domain locks, so a refused admit uses none), optional `attendantName` and `attendantPhone`, `medicoLegal` with an optional `medicoLegalRef` (police intimation or register number), optional free-text `diagnosis`, and `dischargeType` (`normal | against_advice | absconded | referred | death`), set exactly when the stay is `discharged` (a check constraint). `medicoLegalRef` is allowed only with `medicoLegal`, also by a check; turning the flag off clears the reference. Text fields are trimmed and an empty one is stored null. The diagnosis is one line for the bill, the slips and insurer paperwork; it is not a clinical record and there is no coding.
 
-`ipd.updateDetails` edits attendant, medico-legal, diagnosis and the consultant on an active stay; a consultant change needs a reason and is audited (D054). `ipd.discharge` requires `dischargeType`.
+`ipd.updateDetails` edits attendant, medico-legal, diagnosis and the consultant on an active stay (`admitted` or `discharge_ready`); an omitted field is left alone and `null` clears one. A consultant change needs a reason and is audited as `ipd.consultant.change` with the old and new Practitioner (D054). `ipd.discharge` requires `dischargeType`.
 
-`ipd.reopen` reverses a discharge recorded in error. It needs `ipd:correct` and a reason, runs within 24 hours of `dischargedAt`, and succeeds only while the last bed has no other occupant and no other Patient's live hold. It reopens the last stay segment, clears `dischargedAt` and `dischargeType`, returns the Admission to `admitted` and lifts the cleaning block placed at departure. Issued Invoices are untouched; whatever accrues afterwards goes on a further bill. Outside those conditions the answer is a new Admission. `cancelled` never reopens.
+`ipd.reopen` reverses a discharge recorded in error. It needs `ipd:correct` and a reason. It is refused (`CONFLICT`, each with its own message) when:
 
-Occupancy gets one stronger guard. Two exclusion constraints on `admission_bed_stays` forbid overlapping intervals for one bed and for one Admission, covering closed as well as open segments: `EXCLUDE USING gist (org_id WITH =, bed_id WITH =, tstzrange(started_at, ended_at) WITH &&)` and the same on `admission_id`. They replace the two partial unique indexes on open stays and make a backdated correction safe at the database. They need `btree_gist` and are hand-authored SQL in their own migration (hard rule 4).
+- the Admission is not `discharged`, or `dischargedAt` is more than 24 hours ago;
+- the last bed is retired, or blocked for anything other than the cleaning block placed at departure;
+- another Patient has used the bed since, or this Patient has a later Admission;
+- another Patient holds a live confirmed reservation on the bed;
+- reopening would change a billed bed day (see [Bed charges](#bed-charges)).
+
+It reopens the last stay segment, clears `dischargedAt`, `dischargeType` and `readyAt`, returns the Admission to `admitted` and lifts the cleaning block. Issued Invoices are untouched; whatever accrues afterwards goes on a further bill. Outside those conditions the answer is a new Admission. `cancelled` never reopens.
+
+Occupancy gets one stronger guard. Two exclusion constraints on `admission_bed_stays` forbid overlapping intervals for one bed and for one Admission, covering closed as well as open segments: `EXCLUDE USING gist (org_id WITH =, bed_id WITH =, tstzrange(started_at, ended_at) WITH &&)` and the same on `admission_id`. They replace the two partial unique indexes on open stays and make a backdated correction safe at the database. The interval is half-open, so a transfer can close one segment and open the next at the same instant; a cancelled Admission's stay is closed at its start, an empty interval that never blocks a later backdated occupancy. They need `btree_gist` and are hand-authored SQL in their own migration (hard rule 4).
+
+The **admission slip** and **discharge slip** print the IPD No., Patient, MRN, consultant, ward and bed, admission time, and the attendant, diagnosis and medico-legal reference when the stay has them; a fact with no value is left out. The discharge slip adds the departure time and how the Patient left, and a signature panel for the paper clearances: discharge summary handed over, ward nurse, pharmacy and billing.
 
 ### Bed charges
 
-A bed type's tariff becomes a short list. `bed_tariffs` keeps the category and `effectiveFrom`; new `bed_tariff_lines` hold `tariffId`, `catalogItemId`, `dailyPrice` and `position`. `setBedTariff` takes one or more lines. A tariff and its lines are never edited, so a stay segment's `tariffId` is the price snapshot; `daily_price` on `admission_bed_stays` and `catalog_item_id`/`daily_price` on `bed_tariffs` are removed. Tax follows each line's Service, and only a hospital with a GSTIN adds GST (D063). The tariff form says once that non-ICU room rent above ₹5,000 a day carries 5% GST on the whole amount, so the hospital sets that rate on the room Service; nothing computes the threshold.
+A bed type's tariff becomes a short list. `bed_tariffs` keeps the category and `effectiveFrom`; new `bed_tariff_lines` hold `tariffId`, `catalogItemId`, `dailyPrice` and `position`. `setBedTariff` takes one to ten lines, each Service at most once, stored in the given order; a Service that charges GST is refused in a hospital without a GSTIN (D063). A tariff and its lines are never edited, so a stay segment's `tariffId` is the price snapshot; `daily_price` on `admission_bed_stays` and `catalog_item_id`/`daily_price` on `bed_tariffs` are removed. Tax follows each line's Service, and only a hospital with a GSTIN adds GST (D063). The tariff form says once that non-ICU room rent above ₹5,000 a day carries 5% GST on the whole amount, so the hospital sets that rate on the room Service; nothing computes the threshold.
 
 `organization_settings.ipdCheckoutMinutes` (default 720) is snapshotted to `admissions.checkoutMinutes` at admit, with the time zone already snapshotted there.
 
 `bedDays(stays, admittedAt, checkoutMinutes, timeZone, through)` in `packages/api/src/lib/bed-days.ts` is a pure function returning numbered days, each with its bed type and tariff. Day 1 runs from admission to checkout on the next local calendar date; each later day runs checkout to checkout. A day counts when the Patient held a bed for any part of it up to `through`. Examples at noon checkout: admitted Monday 11:00 or 15:00 and left Tuesday 12:00 is one day; Tuesday 12:01 is two; admitted and left the same afternoon is one. A day spent five hours in the ward and sixteen in ICU is an ICU day.
 
-`admissions.bedDaysBilled` counts the days already dealt with. Because a bill always takes every unbilled day in order, billed days are a prefix and one integer is the whole record. Bed-day Charges exist only once billed: `admissionKind: bed_day`, the tariff line's `catalogItemId`, quantity in days, and a description carrying the bed type and date range. Consecutive days at one tariff share a line. No pending bed-day Charge ever exists, so there is nothing to invalidate when a transfer changes the answer.
+`admissions.bedDaysBilled` counts the days already dealt with. Because a bill always takes every unbilled day in order, billed days are a prefix and one integer is the whole record. Bed-day Charges exist only once billed: `admissionKind: bed_day`, the tariff line's `catalogItemId`, quantity in days, and a description `{Service} · {bed type} · {date}`, or `{first date} to {last date}` for a run, with ` · half day` on a half day; dates print as `5 Nov 2026`. Consecutive days at one tariff share a line: each run gives one line per tariff line, in tariff order. Price is the tariff's; tax rate, tax code and revenue category are the Service's when the bill is read or issued. A daily line priced ₹0 gives no bill line and writes no Charge. No pending bed-day Charge ever exists, so there is nothing to invalidate when a transfer changes the answer.
 
-A backdated admit time or transfer that would change an already billed day is refused; the correction is a Credit Note.
+A transfer, discharge or reopen, backdated or not, that would change the bed type or tariff of a day already billed is refused (`CONFLICT`); the correction is a Credit Note. Days a change removes are left alone, because billed days never move back.
 
 ### The bill
 
 `ipd.previewInvoice` returns the pending Charges, the unbilled bed days through `through`, the totals and the issued Invoices of the stay. `through` is the current time while `discharge_ready` and `dischargedAt` once `discharged`. It writes nothing.
 
-`ipd.issueInvoice` takes `expectedChargeRevision`, `expectedGrandTotal`, `lastDay: full | half | none` with `lastDayReason` unless full, `discountAmount` under the existing OPD discount rule, `applyCredit`, up to four `payments` and `outstandingReason`. Under the Admission lock it recomputes the bed days, inserts their Charges, issues the `ipd` Invoice through `issueInvoiceTx`, advances `bedDaysBilled`, applies credit and records Payments, all in one transaction. A clock that crossed checkout between preview and issue changes the total and returns `CONFLICT`. Half is each daily line at half price, rounded half up to the paisa. A bill with nothing chargeable, such as a single uncharged last day, issues no Invoice and only advances `bedDaysBilled`, audited with its reason.
+`ipd.issueInvoice` takes `expectedChargeRevision`, `expectedGrandTotal`, `lastDay: full | half | none` with `lastDayReason` unless full, `discountAmount` under the existing OPD discount rule, `applyCredit`, up to four `payments` and `outstandingReason`. Under the Admission lock it recomputes the bed days, inserts their Charges, issues the `ipd` Invoice through `issueInvoiceTx`, advances `bedDaysBilled`, applies credit and records Payments, all in one transaction. A clock that crossed checkout between preview and issue changes the total and returns `CONFLICT`. Half is each daily line at half price, rounded half up to the paisa. A half or uncharged last day is audited as `ipd.lastDay.adjust`. A bill with unbilled bed days but nothing chargeable (an uncharged last day, or only ₹0 lines) issues no Invoice, takes no payment and only advances `bedDaysBilled`. A bill with no pending Charge and no unbilled bed day is refused, and so is a half or uncharged last day when no bed day is unbilled.
 
 The one-Invoice rule goes: the unique index on an Invoice's `admissionId` and `requireUnbilled` are deleted, and services, issues and returns may be posted to any Admission that is not cancelled. An Invoice is still issued only when the Patient is ready to leave or has left; during the stay the hospital collects deposits against a printed interim bill.
 
@@ -109,19 +119,23 @@ Two printables come from the same read. The **interim bill** is labelled "Interi
 
 ### Deposits and settlement
 
-`advance_receipts` gains nullable `admissionId`, mutually exclusive with `treatmentPlanId`. `billing.recordAdvance` accepts it for an active Admission of that Patient; the deposit is the existing immutable Advance Receipt and Patient Advances liability (D035), never a Payment or a balance column. At issue, credit ranks this Admission's receipts first, then the Patient's untagged credit; another Admission's or plan's credit is never spent. The bill screen pre-fills `applyCredit` with all of this Admission's unused deposit up to the amount due. What is left over stays held or goes back through `billing.recordAdvanceRefund`.
+`advance_receipts` gains nullable `admissionId`, mutually exclusive with `treatmentPlanId`. `billing.recordAdvance` accepts it for an active (`admitted` or `discharge_ready`) Admission of that Patient, and the receipt's purpose reads `IPD deposit · IPD No. {number}`; the deposit is the existing immutable Advance Receipt and Patient Advances liability (D035), never a Payment or a balance column. At issue, credit ranks this Admission's receipts first, then the Patient's untagged credit; another Admission's or plan's credit is never spent. No OPD or counter Pharmacy Invoice draws on a receipt tagged to an Admission, and `billing.patientCredit` leaves those receipts out of usable credit. A discount needs a reason and cannot exceed the subtotal; it is spread over the lines by the existing Invoice math. The bill screen pre-fills `applyCredit` with all of this Admission's unused deposit up to the amount due. What is left over stays held or goes back through `billing.recordAdvanceRefund`.
 
 Nothing blocks care for money. A running bill above the deposit shows **Deposit short by ₹X** on the board and the Admission; that is the whole control.
 
-Cash received for one Admission, deposits and bill Payments together less cash refunded, stays under ₹2,00,000. The command that would reach it is refused and says why. The limit is a constant, not a setting.
+Cash received for one Admission stays under ₹2,00,000: its cash deposits plus cash Payments on its `ipd` Invoices, less cash refunded from those receipts and Invoices. Other methods are not counted. Three commands check it under the Admission lock and refuse (`BAD_REQUEST`, naming ₹2,00,000) a cash amount that would reach the limit: `billing.recordAdvance` with an `admissionId`, `ipd.issueInvoice`, and `billing.recordPayments` on an `ipd` Invoice. The limit is a constant, not a setting.
 
 Preserve D029: the bill addresses the Patient and Sponsor remains measurement only. Patient-only IPD ships for self-pay Admissions; the [Claims contract](./cashless-claims.md) adds its allocation to the same `ipd.issueInvoice`.
 
 ### Returns and corrections
 
-`pharmacy.returnFromAdmission` names issue lines and quantities, checks net issued quantity under the Admission lock and moves the goods to quarantine (D041). For a line not yet billed it voids the pending Charge and reposts the remaining quantity through the shared void path. For a billed line it creates a linked Credit Note in the same transaction. Returns cannot grant discounts and never restock by deleting a Charge.
+`pharmacy.returnFromAdmission` names issue lines and quantities, each line once, checks net issued quantity (issued less earlier returns) under the Admission lock and moves the goods to quarantine (D041). For a line not yet billed it voids the pending Charge and reposts the remaining quantity at the same price through the shared void path. For a billed line it creates a linked Credit Note in the same transaction for the returned quantity's share of the line, the last unit taking the exact remainder, and never more than earlier Credit Notes left on the line; a line with nothing left to credit still takes its goods back, with no Credit Note. Billed lines returned together must sit on one Invoice. Returns cannot grant discounts and never restock by deleting a Charge.
 
-Credit Notes open on `ipd` Invoices for service, bed-day and medicine lines, through the existing Credit Note path and grants. A bed day billed in error is corrected this way; `bedDaysBilled` does not move backwards.
+Credit Notes open on `ipd` Invoices for service, bed-day and medicine lines, through the existing Credit Note path and grants. A bare Credit Note on a medicine line corrects money only and moves no goods; the goods come back through a return, which then credits no more than is left on the line. A bed day billed in error is corrected by a Credit Note; `bedDaysBilled` does not move backwards.
+
+### The desk report
+
+`report.ipdDesk({asOf})` lists three exceptions, each linking to its Admission: Patients discharged on or before `asOf` with a pending Charge or an unbilled bed day; `ipd` Invoices dated on or before `asOf` with an outstanding balance, whatever the stay's state; and stays discharged or cancelled on or before `asOf` that still hold deposit. `asOf` decides who is listed, by hospital date; every amount is the current balance, so a row reconciles to its Admission or Invoice today. It is not a historical balance. [Reports](../reports.md#ipd-desk-report) owns the read and its export.
 
 ### Supply classification
 
@@ -129,7 +143,7 @@ Unchanged from D056 and D063. Inpatient healthcare and its naturally bundled med
 
 ### Locks
 
-D040's order holds: Patient (admit only) → OPD Appointment → Admission → Beds by id → Treatment, Charge, Invoice, Product, batch, Advance Receipt. Numbering series are taken after domain locks, invoice then receipt, with the admission series taken inside admit. No new replay keys or automatic retries (D039).
+D040's order holds: Patient (admit only) → OPD Appointment → Admission → Beds by id → Treatment, Charge, Invoice, Product, batch, Advance Receipt. The cash limit locks the Admission before a deposit receipt or an `ipd` Invoice's Payments; a return locks the Admission, then its live Charges, then the Invoice, then the batches. Numbering series are taken after domain locks, invoice then receipt, with the admission series taken inside admit. No new replay keys or automatic retries (D039).
 
 ## Test Seams
 
@@ -141,40 +155,11 @@ Slices are sequential: each touches the Admission schema, `ipd.ts` and the bill.
 
 - [x] Slice 1: Inpatient issue to a mixed-basis Invoice (built 2026-11-13; see the [work registry](../README.md#ipd-admission-to-discharge))
 - [x] Slice 2: Facility, bed board, lifecycle and reservations (built 2026-11-13, D064)
-
-- [ ] Slice 3: The stay record, undo and the repeatable bill
-  - Acceptance: A new Admission gets an IPD number; attendant, medico-legal flag and diagnosis are captured and editable; departure requires how the Patient left. An administrator reopens a discharge inside 24 hours while the bed is free and is refused otherwise. Overlapping stay intervals are rejected by the database for open and closed segments. A stay takes a second `ipd` Invoice for Charges posted after the first, and services can be posted after billing. Admission and discharge slips print the stay facts; the discharge slip carries a signature panel for the paper clearances.
-  - Verify: `bun run check-types`; `bun run test`; `bunx oxlint`; runtime check of admit, discharge with each type, reopen and a second bill at phone and desktop widths.
-  - Owns/Touches: `packages/db/src/schema/ipd.ts`, `invoices.ts`, `packages/db/src/migrations/` (one generated, one hand-authored for the exclusion constraints), `packages/api/src/routers/ipd.ts`, `lib/admission-charges.ts`, `apps/web/src/routes/$orgSlug/ipd/`, `apps/web/src/components/ipd-*.tsx`, `tests/integration/`, `docs/product.md`, `docs/architecture.md`.
-  - Interfaces: `ipd.admit` adds `attendantName?`, `attendantPhone?`, `medicoLegal?`, `medicoLegalRef?`, `diagnosis?`; `ipd.updateDetails({orgSlug,admissionId,expectedRevision,…,practitionerId?,reason?})`; `ipd.discharge` adds `dischargeType`; `ipd.reopen({orgSlug,admissionId,expectedRevision,reason})`; `ipd.previewInvoice` returns `{chargeRevision,pending,issued[]}`.
-
-- [ ] Slice 4: Bed charges and the running bill
-  - Acceptance: A bed type's tariff lists the room and any other daily line. The bill shows bed days by the calendar-checkout rule and the longest-occupied bed type, matching the worked examples; the cashier sets the last day to full, half or uncharged with a reason. Issuing writes the bed-day Charges with the Invoice and a second bill never repeats a day. The board, the admissions list and the Admission show the running bill without any posting. The interim bill and the estimate print.
-  - Verify: `bun run check-types`; `bun run test`; `bun run build --filter=web`; compare three hand-worked stays (same-day, a move, an overstay past checkout) with the bill.
-  - Depends on: Slice 3.
-  - Owns/Touches: `packages/db/src/schema/ipd.ts`, `charges.ts`, `organization-settings.ts`, `packages/api/src/lib/bed-days.ts`, `packages/api/src/routers/ipd.ts`, `apps/web/src/routes/$orgSlug/ipd/`, `apps/web/src/lib/billing-pdf.tsx`, `tests/unit/`, `tests/integration/`, docs.
-  - Interfaces: `ipd.setBedTariff({orgSlug,categoryId,effectiveFrom,lines:[{catalogItemId,dailyPrice}]})`; `ipd.issueInvoice` adds `lastDay`, `lastDayReason?`; `ipd.get`, `ipd.list` and `ipd.bedBoard` add `runningBill`.
-
-- [ ] Slice 5: Deposits and settlement
-  - Acceptance: A deposit taken on an Admission prints as an Advance Receipt and shows beside the running bill, with **Deposit short by ₹X** when it is exceeded. The bill applies this Admission's deposit first and never another's; a discount follows the OPD rule; the remainder is paid, or left outstanding with a reason; leftover deposit is refunded through the existing refund. Cash that would take the stay to ₹2,00,000 is refused.
-  - Verify: `bun run check-types`; `bun run test`; `bun run build --filter=web`; reconcile one deposit, top-up, bill, part-payment and refund example to the journals.
-  - Depends on: Slice 4.
-  - Owns/Touches: `packages/db/src/schema/advance-receipts.ts`, `packages/api/src/routers/billing.ts`, `ipd.ts`, `lib/billing-documents.ts`, `apps/web/src/components/ipd-bill.tsx`, `apps/web/src/lib/settlement.ts`, `tests/integration/`, docs.
-  - Interfaces: `billing.recordAdvance` adds `admissionId?`; `ipd.issueInvoice` adds `applyCredit`, `discountAmount`; `ipd.get`, `ipd.list` and `ipd.bedBoard` add `depositHeld`.
-
-- [ ] Slice 6: Returns and corrections
-  - Acceptance: A return before billing takes the quantity off the running bill and puts the goods in quarantine; a return after billing issues a Credit Note for the same lines. Service and bed-day lines on an `ipd` Invoice can be credited. A return never exceeds what was issued.
-  - Verify: `bun run check-types`; `bun run test`; pharmacist and cashier walkthrough of a part return before and after the bill.
-  - Depends on: Slice 5. No live hospital bills inpatients before this slice.
-  - Owns/Touches: `packages/db/src/schema/ipd.ts`, `packages/api/src/routers/pharmacy.ts`, `billing.ts`, `lib/billing-documents.ts`, `apps/web/src/components/ipd-medicines.tsx`, `tests/integration/`, docs.
-  - Interfaces: `pharmacy.returnFromAdmission({orgSlug,admissionId,expectedChargeRevision,lines:[{issueLineId,qty}],reason}) → {returnId,creditNoteId?,chargeRevision}`; the existing Credit Note procedures accept the `ipd` stream.
-
-- [ ] Slice 7: The IPD desk report
-  - Acceptance: One report lists Patients who left with something unbilled (pending Charges or uncharged days), unpaid `ipd` Invoices, and deposits still held for departed Patients, each linking to its Admission. Screen, print and XLSX agree and reconcile to their sources.
-  - Verify: `bun run check-types`; `bun run test`; `bun run build --filter=web`; `bun run --cwd apps/fumadocs build`; reconcile a sample to the sources by hand.
-  - Depends on: Slice 6.
-  - Owns/Touches: `packages/api/src/routers/report.ts`, `export.ts`, `apps/web/src/routes/$orgSlug/reports/`, `tests/integration/`, `docs/reports.md`, `apps/fumadocs/content/docs/`.
-  - Interfaces: `report.ipdDesk({orgSlug,asOf})` under `report:readFinancial`, with a matching `export.*Xlsx`.
+- [x] Slice 3: The stay record, undo and the repeatable bill (built 2026-11-17, D066; see the [work registry](../README.md#ipd-admission-to-discharge))
+- [x] Slice 4: Bed charges and the running bill (built 2026-11-17, D066)
+- [x] Slice 5: Deposits and settlement (built 2026-11-17, D066)
+- [x] Slice 6: Returns and corrections (built 2026-11-17, D066)
+- [x] Slice 7: The IPD desk report (built 2026-11-17, D066)
 
 ## Defaults chosen without a hospital
 
@@ -184,7 +169,7 @@ Each is ours, taken from the nearest reference practice, and changes only when a
 - One price per Service regardless of room type.
 - A well newborn billed on the mother's Admission.
 - Deposits spent only on the stay's own bills.
-- The estimate's suggested deposit is its total rounded up to the next ₹100.
+- The estimate's suggested deposit is its total rounded up to a multiple of ₹100; a total already on a multiple stays as it is.
 - The ₹2,00,000 cash limit as a refusal. Its basis is believed to be Income Tax Act s.269ST; the hospital's accountant confirms it before release.
 - Whether a separately listed nursing line counts toward the ₹5,000 room-rent threshold is a question for the hospital's tax adviser; the product takes whatever rate the Service carries.
 

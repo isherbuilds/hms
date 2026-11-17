@@ -262,8 +262,9 @@ constraint.
 An Admission Charge has `sourceType = admission`, `sourceId = admissionId` and
 `admissionKind`: a `service` keeps its catalog link; a `pharmacy_issue` has a
 null catalog link and names its `admissionIssueLineId` and `stockBatchId`,
-paired with the issue line's Admission and batch by one composite foreign key.
-`admission_pharmacy_issues` and their lines record the ward issue; each line
+paired with the issue line's Admission and batch by one composite foreign key;
+a `bed_day` keeps the tariff line's catalog link, has no batch, and is written
+only inside the bill. `admission_pharmacy_issues` and their lines record the ward issue; each line
 writes one shelf movement with reason `admission_issue` and source
 `admission_pharmacy_issue_line`, and its own Charge. A ward return
 (`admission_pharmacy_returns` and lines) moves the goods into quarantine with
@@ -271,6 +272,25 @@ source `admission_pharmacy_return`; it voids a pending Charge and reposts the
 rest, or credits a billed one on its Invoice, never more than earlier Credit
 Notes left on the line. Every Charge-set change
 bumps `admissions.chargeRevision`, which the bill compares (D020, D063).
+
+Occupancy is a database rule (D066). `admission_bed_stays` has two exclusion
+constraints (`btree_gist`), one per bed and one per Admission, over the
+half-open `tstzrange(started_at, ended_at)`, so no two segments overlap, closed
+or open; a cancelled stay is an empty interval. One active Admission per Patient
+is a partial unique index on `admissions`. A bed type's price is a
+`bed_tariffs` row and its `bed_tariff_lines`, never edited, so a segment's
+`tariffId` is its price snapshot. `organization_settings.ipdCheckoutMinutes` is
+snapshotted to `admissions.checkoutMinutes` at admit, beside the time zone.
+
+Bed days are a pure function of the segments (`packages/api/src/lib/bed-days.ts`).
+`admissions.bedDaysBilled` counts the billed days. Each bill takes every
+unbilled day in order, so billed days are always a prefix and one integer is
+the whole record. The running bill is a read, not a column: `readRunningBills`
+(`packages/api/src/lib/ipd-bill.ts`) returns it for any number of Admissions in
+four queries, and the bed board, admissions list, Admission, bill preview and
+IPD desk report share it. A deposit is an Advance Receipt with `admission_id`,
+never also a treatment plan, whose composite foreign key proves the Admission
+belongs to the receipt's Patient.
 
 ## Writes and concurrency
 
@@ -334,6 +354,15 @@ keeps its own locks (D040).
   nothing else; the bill locks the pending Charges, then takes the invoice and
   receipt counters. Cancellation keeps the lifecycle lock and refuses once a
   live (non-voided) Charge or any issue exists.
+  The bill recomputes bed days under the Admission lock and compares the total
+  with the reviewed one, so a checkout crossed since the preview refuses. A
+  transfer, discharge or reopen that would re-type or re-price a billed bed day
+  is refused under the same lock. The IPD cash limit locks the Admission before
+  the deposit receipt it creates or the `ipd` Invoice it pays, so two cash
+  commands on one stay serialize; `billing.recordPayments` reads the Invoice's
+  Admission unlocked first, because it never changes. A ward return locks the
+  Admission, then the issue lines' live Charges, then their Invoice, then the
+  batches.
 - **Counters are locks.** A counter row stays locked until commit, which keeps a
   series gapless. One transaction takes series in the order token → invoice →
   receipt; every other command takes a single series.

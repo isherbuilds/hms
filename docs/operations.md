@@ -99,6 +99,13 @@ Rolling releases require migrations compatible with the previous application
 until old instances drain. Use expand-and-contract for destructive production
 changes.
 
+Migration `0015` runs `CREATE EXTENSION IF NOT EXISTS btree_gist` for the IPD
+stay exclusion constraints, so the role that runs migrations must be allowed to
+create that extension, or a superuser creates it first. Migrations `0014`–`0016`
+add required Admission columns with no backfill (pre-production), so they fail
+on a database that already holds Admission rows: a deployed database must hold
+no Admissions when they run.
+
 A release whose migration the previous application cannot run beside (a changed
 money unit, a writer that must advance a new revision) is a coordinated cutover:
 pause financial writes, stop the old web and API instances, apply the migration,
