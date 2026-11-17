@@ -13,6 +13,9 @@ import { ORPCError } from "@orpc/server";
  *   dialog offers, for `theatre:override`, to block anyway and disrupt the cases).
  * - `billed_day` — a backdated move would change a bed day already billed (the move
  *   dialog shows it and keeps the form, so the time can be changed).
+ * - `charges_changed` — the charges or the total moved after the desk reviewed the bill
+ *   (the IPD bill explains it beside the refreshed bill; OPD closes its overlay on any
+ *   CONFLICT).
  *
  * Every other CONFLICT is a plain `ORPCError("CONFLICT")`: the client refetches and
  * shows the server message.
@@ -23,7 +26,8 @@ export type ConflictReason =
   | "stale_record"
   | "bed_held"
   | "case_held"
-  | "billed_day";
+  | "billed_day"
+  | "charges_changed";
 
 /** A clash the operator can act on. Expected, so the server does not log it. */
 export function conflict(reason: ConflictReason, message: string) {

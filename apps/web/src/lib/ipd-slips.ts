@@ -62,7 +62,8 @@ export type Slip = {
 // Paper the ward completes before the Patient goes; the summary stays a paper record.
 const DISCHARGE_CLEARANCES = ["Discharge summary handed over", "Ward nurse", "Pharmacy", "Billing"];
 
-function stayFacts({
+/** Who the Patient is and where they lie: the facts every paper of a stay names. */
+export function stayIdentity({
   admission,
   patient,
   practitionerName,
@@ -70,17 +71,25 @@ function stayFacts({
   wardName,
   timeZone,
 }: SlipInput) {
+  return [
+    { label: "Patient", value: patient.name },
+    { label: "MRN", value: patient.mrn },
+    { label: "Consultant", value: practitionerDisplayName(practitionerName) },
+    { label: "Bed", value: `${wardName} · ${bedLabel}` },
+    { label: "Admitted", value: formatDateTime(admission.admittedAt, timeZone) },
+  ];
+}
+
+function stayFacts(input: SlipInput) {
+  const { admission } = input;
+
   const attendant = [admission.attendantName, admission.attendantPhone]
     .filter((part) => part !== null)
     .join(" · ");
 
   return [
     { label: "IPD No.", value: admission.admissionNumber },
-    { label: "Patient", value: patient.name },
-    { label: "MRN", value: patient.mrn },
-    { label: "Consultant", value: practitionerDisplayName(practitionerName) },
-    { label: "Bed", value: `${wardName} · ${bedLabel}` },
-    { label: "Admitted", value: formatDateTime(admission.admittedAt, timeZone) },
+    ...stayIdentity(input),
     { label: "Attendant", value: attendant },
     { label: "Diagnosis", value: admission.diagnosis ?? "" },
     {

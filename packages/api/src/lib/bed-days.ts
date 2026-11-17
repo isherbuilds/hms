@@ -1,4 +1,4 @@
-import { businessDate, localWallTimeAtOrAfter } from "./business-date";
+import { addDays, businessDate, localWallTimeAtOrAfter } from "./business-date";
 
 export type BedDayStay = {
   startedAt: Date;
@@ -8,12 +8,6 @@ export type BedDayStay = {
 };
 
 export type BedDay = { day: number; date: string; categoryId: string; tariffId: string };
-
-const DAY_MS = 24 * 60 * 60 * 1_000;
-
-function addDays(date: string, days: number): string {
-  return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
-}
 
 /**
  * The instant the hospital's checkout wall time falls on a local calendar date; a

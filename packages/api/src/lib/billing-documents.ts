@@ -15,7 +15,7 @@ import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { advanceRemaining } from "./advance-credit";
 import { businessDate, businessDateAnchor } from "./business-date";
-import { impossible } from "./conflict";
+import { conflict, impossible } from "./conflict";
 import { invoiceBalanceFor } from "./invoice-balance";
 import {
   computeInvoiceLines,
@@ -517,9 +517,7 @@ export async function settleIssuedInvoiceTx(
   const due = args.invoice.grandTotal;
 
   if (due !== args.expectedGrandTotal) {
-    throw new ORPCError("CONFLICT", {
-      message: "The charges changed. Review the invoice and try again",
-    });
+    throw conflict("charges_changed", "The charges changed. Review the invoice and try again");
   }
 
   const collected = args.payments.reduce((sum, payment) => sum + payment.amount, 0n);

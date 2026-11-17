@@ -410,6 +410,8 @@ type ReturnLine = {
   left: number;
   /** The bill the line is on; null before billing. */
   bill: { id: string; number: string } | null;
+  /** When the line was issued, which tells apart two issues of one batch. */
+  issuedAt: string;
 };
 
 const returnSchema = (lines: ReturnLine[]) =>
@@ -471,6 +473,7 @@ export function ReturnMedicinesDialog({
   admission: { id: string; chargeRevision: number };
   onClose: () => void;
 }) {
+  const { timeZone } = useOrgDateTime();
   const issues = useQuery(admissionIssuesQuery(orgSlug, admission.id));
 
   if (!issues.data) return null;
@@ -485,6 +488,7 @@ export function ReturnMedicinesDialog({
         issued: line.qty,
         left: line.qty - line.returnedQty,
         bill: line.bill,
+        issuedAt: formatDateTime(issue.createdAt, timeZone),
       })),
   );
 
@@ -592,7 +596,13 @@ function ReturnLines({ lines }: { lines: ReturnLine[] }) {
             </div>
             <TextField
               name={`lines.${index}.qty`}
-              label={<span className="sr-only">{line.productName} quantity returned</span>}
+              // One batch can be issued more than once: the issue time tells the inputs apart.
+              label={
+                <span className="sr-only">
+                  {line.productName}, batch {line.batchNumber}, issued {line.issuedAt}, quantity
+                  returned
+                </span>
+              }
               type="number"
               min={0}
               max={line.left}

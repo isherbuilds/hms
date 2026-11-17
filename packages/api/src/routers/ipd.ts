@@ -41,7 +41,7 @@ import {
   settleIssuedInvoiceTx,
 } from "../lib/billing-documents";
 import { advanceRemaining, readDepositsHeld } from "../lib/advance-credit";
-import { impossible } from "../lib/conflict";
+import { conflict, impossible } from "../lib/conflict";
 import {
   exclusionViolationConstraint,
   nameConflict,
@@ -142,7 +142,7 @@ function admissionView(row: AdmissionRow, currentBedId: string | null) {
 
 async function lockAdmission(tx: Tx, orgId: string, admissionId: string, expectedRevision: number) {
   const [row] = await tx
-    .select(admissionSelection)
+    .select({ ...admissionSelection, timeZone: admissions.timeZone })
     .from(admissions)
     .where(and(eq(admissions.orgId, orgId), eq(admissions.id, admissionId)))
     .limit(1)
@@ -1365,17 +1365,11 @@ export const ipdRouter = {
         const tariff = await tariffAt(tx, scope.orgId, destination.categoryId, effective.at);
         const now = new Date();
 
-        await requireBilledDaysKept(tx, scope.orgId, row, now, (stays) => [
-          ...stays.map((segment) =>
-            segment.endedAt === null ? { ...segment, endedAt: effective.at } : segment,
-          ),
-          {
-            startedAt: effective.at,
-            endedAt: null,
-            categoryId: destination.categoryId,
-            tariffId: tariff.id,
-          },
-        ]);
+        await requireBilledDaysKept(tx, scope.orgId, row, now, {
+          startedAt: effective.at,
+          categoryId: destination.categoryId,
+          tariffId: tariff.id,
+        });
 
         await tx
           .update(admissionBedStays)
@@ -2047,9 +2041,7 @@ export const ipdRouter = {
         }
 
         if (input.expectedGrandTotal !== 0n) {
-          throw new ORPCError("CONFLICT", {
-            message: "The charges changed. Review the bill and try again",
-          });
+          throw conflict("charges_changed", "The charges changed. Review the bill and try again");
         }
 
         return { invoice: null, payments: [], chargeRevision: await billed(), bedDay };

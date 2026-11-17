@@ -324,9 +324,20 @@ They are covered by `tests/integration/ipd-stay.test.ts`,
 `ipd-bed-charges.test.ts`, `ipd-deposits.test.ts`, `ipd-returns.test.ts`,
 `ipd-desk-report.test.ts`, the updated `ipd.test.ts` and `ipd-billing.test.ts`,
 the tenancy guard table, and `tests/unit/bed-days.test.ts`,
-`ipd-estimate.test.ts` and `ipd-print.test.ts`.
+`ipd-estimate.test.ts`, `ipd-print.test.ts` and `ipd-pdf.test.ts`.
 
-Browser verification: pending.
+Browser verification, 2026-11-17 on the seeded demo hospital at desktop and
+phone width and in dark theme: admit with the stay facts, edit details, the
+running bill and "Deposit short by" on the board, list and Admission, the tariff
+lines form, the estimate, the interim bill, slips and `ipd` Invoice PDFs, take a
+deposit and the cash-limit refusal, issue a bill with a discount, deposit and a
+part payment, a second bill, a bill with nothing chargeable, record and undo a
+departure, medicine returns before and after the bill, Credit Notes on bed-day
+and service lines with the refund, the leftover deposit refund, the desk report
+with its XLSX, the checkout setting, and reception's narrower actions. The
+council's last fixes (inline issue refusals, the empty bill, the Patient record's
+deposit refund, the interim bill's facts) were checked by type checks and tests,
+not yet in a browser.
 
 Known limit: the desk report checks every discharged stay up to its date,
 because unbilled bed days are derived, not stored. The read grows with history
@@ -337,6 +348,15 @@ Known limit: a bill issued before the Patient leaves fixes the bed day in
 progress at that moment's bed type and last-day choice. A later move or a longer
 stay inside that day is not re-billed and no report lists it; the desk corrects
 it by Credit Note or a posted Service.
+
+Known limit: an `ipd` Invoice PDF prints the stay's IPD No., admission and
+departure times and diagnosis as they are now, not as they were when it was
+issued; a snapshot needs columns on the Invoice.
+
+Known limit: a backdated move is checked against the billed days as derived now,
+before and after the move, not against what each bill charged. A move back to the
+bed type a day was billed at, recorded within the ten-minute tolerance, can be
+refused; no money moves either way, and the desk enters the move at a later time.
 
 For the hospital's accountant, with the cash limit's legal basis: the
 ₹2,00,000 limit counts cash taken against the stay: its cash deposits and the

@@ -1,7 +1,6 @@
 import interLatinExtSource from "@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2?inline";
 import devanagariRegularSource from "@fontsource/noto-sans-devanagari/files/noto-sans-devanagari-devanagari-400-normal.woff2?inline";
 import devanagariBoldSource from "@fontsource/noto-sans-devanagari/files/noto-sans-devanagari-devanagari-700-normal.woff2?inline";
-import { practitionerDisplayName } from "@hms/api/lib/labels";
 import { ORPCError } from "@orpc/server";
 import type { ReactElement } from "react";
 import { render } from "takumi-pdf";
@@ -22,7 +21,7 @@ import { InterimBillDocument } from "@/components/pdf/ipd-interim-bill";
 import { SlipDocument } from "@/components/pdf/ipd-slip";
 import { invoiceDocumentTitle } from "@/lib/invoice-print";
 import { INTERIM_BILL_TITLE } from "@/lib/ipd-interim-bill";
-import { admissionSlip, dischargeSlip, type SlipKind } from "@/lib/ipd-slips";
+import { admissionSlip, dischargeSlip, stayIdentity, type SlipKind } from "@/lib/ipd-slips";
 import { formatDateTime } from "@/lib/org-datetime";
 import { siteConfig } from "@/config/site";
 import type { BillingDocumentRequest } from "@/lib/billing-document";
@@ -231,50 +230,54 @@ export async function renderAdvancePdf(data: AdvanceBundle, refundId: string | n
 
 type Client = RouterClient<AppRouter>;
 
-/** An admission's slip on the hospital's letterhead. A discharge slip needs a departure. */
-export async function renderSlipPdf(
-  detail: Awaited<ReturnType<Client["ipd"]["get"]>>,
-  settings: Awaited<ReturnType<Client["settings"]["get"]>>,
-  kind: SlipKind,
-) {
+type StayDetail = Awaited<ReturnType<Client["ipd"]["get"]>>;
+
+type OrgSettings = Awaited<ReturnType<Client["settings"]["get"]>>;
+
+/** What every stay paper prints from: the slip's input, at the bed the Patient is in or
+ * left from, and the hospital's letterhead. */
+function stayPaper(detail: StayDetail, settings: OrgSettings) {
   const { admission, patient, practitionerName, stays } = detail;
+  const bed = stays.at(-1);
+
+  if (!bed) throw new Error(`Admission ${admission.id} has no bed stay`);
+
+  return {
+    input: {
+      admission,
+      patient,
+      practitionerName,
+      bedLabel: bed.bedLabel,
+      wardName: bed.wardName,
+      timeZone: settings.timeZone,
+    },
+    document: {
+      orgLegalName: settings.legalName,
+      orgAddress: settings.address,
+      orgTaxId: settings.taxId,
+      orgGstin: settings.gstin,
+      currency: settings.currency,
+      patientName: patient.name,
+      patientMrn: patient.mrn,
+    },
+  };
+}
+
+/** An admission's slip on the hospital's letterhead. A discharge slip needs a departure. */
+export async function renderSlipPdf(detail: StayDetail, settings: OrgSettings, kind: SlipKind) {
+  const { admission } = detail;
 
   if (admission.status === "cancelled" || (kind === "discharge" && !admission.dischargedAt)) {
     throw new ORPCError("NOT_FOUND", { message: "This stay has no such slip" });
   }
 
-  // The bed the Patient is in, or the one they left from.
-  const bed = stays.at(-1);
-
-  if (!bed) throw new Error(`Admission ${admission.id} has no bed stay`);
-
-  const input = {
-    admission,
-    patient,
-    practitionerName,
-    bedLabel: bed.bedLabel,
-    wardName: bed.wardName,
-    timeZone: settings.timeZone,
-  };
-
+  const { input, document } = stayPaper(detail, settings);
   const slip = kind === "discharge" ? dischargeSlip(input) : admissionSlip(input);
 
   return renderDocument(
     {
       element: (
-        <SlipDocument
-          slip={slip}
-          admissionNumber={admission.admissionNumber}
-          document={{
-            orgLegalName: settings.legalName,
-            orgAddress: settings.address,
-            orgTaxId: settings.taxId,
-            orgGstin: settings.gstin,
-            currency: settings.currency,
-            patientName: patient.name,
-            patientMrn: patient.mrn,
-          }}
-        />
+        <SlipDocument slip={slip} admissionNumber={admission.admissionNumber} document={document} />
       ),
       number: admission.admissionNumber,
       title: slip.title,
@@ -286,26 +289,22 @@ export async function renderSlipPdf(
 
 /** The running bill of a stay still in hospital, printed for the deposit desk. */
 export async function renderInterimBillPdf(
-  detail: Awaited<ReturnType<Client["ipd"]["get"]>>,
+  detail: StayDetail,
   bill: Awaited<ReturnType<Client["ipd"]["previewInvoice"]>>,
-  settings: Awaited<ReturnType<Client["settings"]["get"]>>,
+  settings: OrgSettings,
 ) {
-  const { admission, patient, practitionerName, stays } = detail;
+  const { admission } = detail;
 
   if (admission.status !== "admitted" && admission.status !== "discharge_ready") {
     throw new ORPCError("NOT_FOUND", { message: "Only a stay in hospital has an interim bill" });
   }
 
-  const bed = stays.at(-1);
+  const { input, document } = stayPaper(detail, settings);
 
-  if (!bed) throw new Error(`Admission ${admission.id} has no bed stay`);
-
+  // The IPD No. heads the paper; the attendant and a medico-legal reference stay on the slips.
   const facts = [
-    { label: "Patient", value: patient.name },
-    { label: "MRN", value: patient.mrn },
-    { label: "Consultant", value: practitionerDisplayName(practitionerName) },
-    { label: "Bed", value: `${bed.wardName} ${bed.bedLabel}` },
-    { label: "Admitted", value: formatDateTime(admission.admittedAt, settings.timeZone) },
+    ...stayIdentity(input),
+    ...(admission.diagnosis ? [{ label: "Diagnosis", value: admission.diagnosis }] : []),
     { label: "Charges up to", value: formatDateTime(bill.through, settings.timeZone) },
   ];
 
@@ -317,15 +316,7 @@ export async function renderInterimBillPdf(
           depositHeld={detail.depositHeld}
           admissionNumber={admission.admissionNumber}
           facts={facts}
-          document={{
-            orgLegalName: settings.legalName,
-            orgAddress: settings.address,
-            orgTaxId: settings.taxId,
-            orgGstin: settings.gstin,
-            currency: settings.currency,
-            patientName: patient.name,
-            patientMrn: patient.mrn,
-          }}
+          document={document}
         />
       ),
       number: admission.admissionNumber,

@@ -436,38 +436,41 @@ export async function readRunningBills(
 
 /**
  * Refuses a backdated transfer that would re-type or re-price a day already billed; the
- * correction for a billed day is a Credit Note (D066). `rewrite` turns the stay's segments
- * into what the transfer leaves. A departure is never checked: billed days stay as billed.
+ * correction for a billed day is a Credit Note (D066). `move` is the bed stay the transfer
+ * opens, closing the current one. A departure is never checked: billed days stay as billed.
  */
 export async function requireBilledDaysKept(
   tx: DbTransaction,
   orgId: string,
-  admission: { id: string; bedDaysBilled: number },
+  admission: {
+    id: string;
+    admittedAt: Date;
+    checkoutMinutes: number;
+    timeZone: string;
+    bedDaysBilled: number;
+  },
   through: Date,
-  rewrite: (stays: BedDayStay[]) => BedDayStay[],
+  move: { startedAt: Date; categoryId: string; tariffId: string },
 ) {
   if (admission.bedDaysBilled === 0) return;
 
-  const [[facts], stays] = await Promise.all([
-    tx
-      .select(billAdmissionSelection)
-      .from(admissions)
-      .where(and(eq(admissions.orgId, orgId), eq(admissions.id, admission.id))),
-    readStays(tx, orgId, [admission.id]),
-  ]);
+  const segments = (await readStays(tx, orgId, [admission.id])).get(admission.id) ?? [];
 
-  if (!facts) throw impossible(`locked admission ${admission.id} vanished`);
-
-  const segments = stays.get(admission.id) ?? [];
-
+  // Compares billed days as derived now, before and after: may refuse a move back; moves no money.
   const billedDays = (of: BedDayStay[]) =>
-    bedDays(of, facts.admittedAt, facts.checkoutMinutes, facts.timeZone, through).slice(
+    bedDays(of, admission.admittedAt, admission.checkoutMinutes, admission.timeZone, through).slice(
       0,
       admission.bedDaysBilled,
     );
 
   const was = billedDays(segments);
-  const will = billedDays(rewrite(segments));
+
+  const will = billedDays([
+    ...segments.map((segment) =>
+      segment.endedAt === null ? { ...segment, endedAt: move.startedAt } : segment,
+    ),
+    { ...move, endedAt: null },
+  ]);
 
   const changed = will.some((day, index) => {
     const billed = was[index];

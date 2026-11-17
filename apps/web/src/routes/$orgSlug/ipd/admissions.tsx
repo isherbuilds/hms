@@ -165,10 +165,11 @@ function AdmissionsRoute() {
                   head: "Deposit",
                   // What the stay holds, and how far the running bill has passed it.
                   cell: (item) => {
+                    // Only a stay still in hospital is asked for more deposit.
                     const short =
-                      item.status === "cancelled"
-                        ? null
-                        : depositShortLabel(item.runningBill, item.depositHeld, currency);
+                      item.status === "admitted" || item.status === "discharge_ready"
+                        ? depositShortLabel(item.runningBill, item.depositHeld, currency)
+                        : null;
 
                     return (
                       <>

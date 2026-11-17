@@ -5,7 +5,7 @@ import { ORPCError } from "@orpc/server";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { impossible } from "./conflict";
+import { conflict, impossible } from "./conflict";
 
 export const expectedChargeRevision = z.number().int().nonnegative();
 
@@ -60,9 +60,7 @@ export function requireChargeable(
   }
 
   if (admission.chargeRevision !== rule.expectedChargeRevision) {
-    throw new ORPCError("CONFLICT", {
-      message: "The charges changed. Review the bill and try again",
-    });
+    throw conflict("charges_changed", "The charges changed. Review the bill and try again");
   }
 }
 

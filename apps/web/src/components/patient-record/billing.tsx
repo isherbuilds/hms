@@ -31,6 +31,8 @@ type PatientAccount = {
     currency: string;
     amount: bigint;
     remaining: bigint;
+    /** Set on a stay's deposit, whose Purpose names the stay ("IPD deposit · IPD No. …"). */
+    admissionId: string | null;
   }>;
   /** Vouchers already issued against those receipts, so each one stays reprintable. */
   advanceRefunds: Array<{
@@ -261,8 +263,10 @@ export function PatientBilling({
               ]}
               action={
                 canRefundAdvance
-                  ? (receipt) =>
-                      receipt.remaining > ZERO ? (
+                  ? // A stay's deposit is refunded from that stay's bill, which first settles
+                    // what the stay owes; its Purpose already names the stay.
+                    (receipt) =>
+                      receipt.remaining > ZERO && receipt.admissionId === null ? (
                         <Button size="xs" variant="ghost" onClick={() => setRefundReceipt(receipt)}>
                           Refund
                         </Button>

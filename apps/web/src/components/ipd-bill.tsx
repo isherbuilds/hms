@@ -16,7 +16,6 @@ import {
 import { Input } from "@hms/ui/components/input";
 import { Label } from "@hms/ui/components/label";
 import { NativeSelect } from "@hms/ui/components/native-select";
-import { Separator } from "@hms/ui/components/separator";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { keepPreviousData, useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { ClientOnly } from "@tanstack/react-router";
@@ -29,6 +28,7 @@ import {
   AdvanceRefundDialog,
   TakeDepositDialog,
 } from "@/components/advance-form";
+import { FinancialSummary } from "@/components/opd-financial-summary";
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
 import { InvoiceAccount } from "@/components/opd-billing/invoice-account";
 import { VoidChargeDialog } from "@/components/opd-billing/void-charge-dialog";
@@ -44,7 +44,7 @@ import { useCan } from "@/lib/membership";
 import type { PatientCredit } from "@/lib/patient-credit";
 import type { WalkInQuote } from "@/lib/opd-service-preview";
 import { orpc } from "@/lib/orpc";
-import { closeOnConflict, errorMessage, hasErrorCode } from "@/lib/orpc-error";
+import { closeOnConflict, errorMessage, errorReason, hasErrorCode } from "@/lib/orpc-error";
 
 type AdmissionStatus = "admitted" | "discharge_ready" | "discharged" | "cancelled";
 
@@ -140,14 +140,17 @@ export function AdmissionBill({
         );
         close();
       },
+      // Any refusal closes the reviewed snapshot; only a moved bill says "The bill changed".
       onError: (error) => {
         if (!hasErrorCode(error, "CONFLICT")) return;
-        setChanged(true);
+
+        if (errorReason(error) === "charges_changed") setChanged(true);
         close();
       },
     }),
-    // A changed total is explained beside the refreshed bill, not toasted.
-    meta: { showsInline: (error) => hasErrorCode(error, "CONFLICT") },
+    // A changed total is explained beside the refreshed bill; any other refusal is toasted
+    // in the server's words.
+    meta: { showsInline: (error) => errorReason(error) === "charges_changed" },
   });
 
   if (!data) {
@@ -177,7 +180,8 @@ export function AdmissionBill({
   // Nothing to charge but days to close, such as one uncharged last day.
   const closesDaysOnly = pending.lines.length === 0 && unbilledDays.length > 0;
   const nothingToBill = pending.lines.length === 0 && unbilledDays.length === 0;
-  const depositShort = depositShortfall(pending.grandTotal, credit.deposit);
+  // A stay that has left settles on its bill; a shortfall is a call to collect while in.
+  const depositShort = inHospital ? depositShortfall(pending.grandTotal, credit.deposit) : ZERO;
 
   // What the stay still holds once nothing is left to bill or owed goes back to the Patient.
   const refundable =
@@ -188,7 +192,6 @@ export function AdmissionBill({
   // The revision the bill was read at: a charge posted since moves it, and the server
   // refuses a settlement against the old figure.
   const stale = data.chargeRevision !== admission.chargeRevision;
-  const includedTax = pending.taxTotal - pending.addedTaxTotal;
 
   // The printed Invoice's words, so the screen and the paper read alike.
   const priceLabel = (line: BillLine) => {
@@ -392,42 +395,32 @@ export function AdmissionBill({
       )}
 
       <div className="flex flex-col gap-3 border-t border-border p-3 sm:flex-row sm:items-end sm:justify-between">
-        <dl className="grid w-full gap-1 sm:order-2 sm:max-w-64">
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted-foreground">Subtotal</dt>
-            <dd className="tabular-nums">{formatMoney(pending.subtotal, currency)}</dd>
+        {pending.lines.length === 0 && credit.deposit === ZERO ? null : (
+          <div className="grid w-full gap-2 sm:order-2 sm:max-w-64">
+            {/* "Nothing to bill" above says it once: no zero totals under it. While the
+                Patient is still in, the total is what the stay has run up so far. */}
+            {pending.lines.length === 0 ? null : (
+              <FinancialSummary
+                quote={quoteOf(data)}
+                totalLabel={billable ? "Total" : "Running bill"}
+              />
+            )}
+            {credit.deposit === ZERO ? null : (
+              <dl className="grid gap-2">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Deposit held</dt>
+                  <dd className="tabular-nums">{formatMoney(credit.deposit, currency)}</dd>
+                </div>
+                {depositShort === ZERO ? null : (
+                  <div className="flex justify-between gap-3 font-medium">
+                    <dt>Deposit short by</dt>
+                    <dd className="tabular-nums">{formatMoney(depositShort, currency)}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
           </div>
-          {pending.addedTaxTotal === ZERO ? null : (
-            <div className="flex justify-between gap-3">
-              <dt className="text-muted-foreground">{data.registered ? "GST added" : "Tax"}</dt>
-              <dd className="tabular-nums">{formatMoney(pending.addedTaxTotal, currency)}</dd>
-            </div>
-          )}
-          <Separator />
-          <div className="flex justify-between gap-3 font-medium">
-            {/* While the Patient is still in, the total is what the stay has run up so far. */}
-            <dt>{billable ? "Total" : "Running bill"}</dt>
-            <dd className="tabular-nums">{formatMoney(pending.grandTotal, currency)}</dd>
-          </div>
-          {!data.registered || includedTax === ZERO ? null : (
-            <div className="flex justify-between gap-3 text-muted-foreground">
-              <dt>GST included in MRP</dt>
-              <dd className="tabular-nums">{formatMoney(includedTax, currency)}</dd>
-            </div>
-          )}
-          {credit.deposit === ZERO ? null : (
-            <div className="flex justify-between gap-3">
-              <dt className="text-muted-foreground">Deposit held</dt>
-              <dd className="tabular-nums">{formatMoney(credit.deposit, currency)}</dd>
-            </div>
-          )}
-          {depositShort === ZERO ? null : (
-            <div className="flex justify-between gap-3 font-medium">
-              <dt>Deposit short by</dt>
-              <dd className="tabular-nums">{formatMoney(depositShort, currency)}</dd>
-            </div>
-          )}
-        </dl>
+        )}
 
         <div className="flex min-w-0 flex-col gap-3 sm:order-1">
           {unbilledDays.length > 0 || bedDays.billed > 0 ? (

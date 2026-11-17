@@ -9,10 +9,9 @@ import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
 import { OptionCombobox } from "@/components/option-combobox";
 import { PaymentLineFields } from "@/components/payment-lines";
-import { ErrorNote } from "@/components/page";
 import { advancePdfUrl } from "@/lib/billing-document";
 import { orpc } from "@/lib/orpc";
-import { errorMessage, hasErrorCode } from "@/lib/orpc-error";
+import { hasErrorCode } from "@/lib/orpc-error";
 import { paymentLineFields } from "@/lib/settlement";
 
 const advanceSchema = paymentLineFields
@@ -157,9 +156,6 @@ export function TakeDepositDialog({
   admission: { id: string; patientId: string };
   onClose: () => void;
 }) {
-  // A refusal the desk can act on here, such as the stay's cash limit.
-  const [refusal, setRefusal] = useState<string | null>(null);
-
   return (
     <FormDialog
       title="Take deposit"
@@ -169,12 +165,9 @@ export function TakeDepositDialog({
       defaultValues={{ method: "cash", amount: "", reference: "" }}
       success="Deposit recorded"
       onClose={onClose}
-      onSubmit={() => setRefusal(null)}
+      // A refusal the desk can act on here, such as the stay's cash limit.
       showsInline={(error) => hasErrorCode(error, "BAD_REQUEST")}
-      onError={(error) => {
-        if (hasErrorCode(error, "BAD_REQUEST")) setRefusal(errorMessage(error));
-        else if (hasErrorCode(error, "CONFLICT")) onClose();
-      }}
+      refusalTitle="The deposit was not recorded"
       run={(value) =>
         orpc.billing.recordAdvance.call({
           orgSlug,
@@ -192,7 +185,6 @@ export function TakeDepositDialog({
       })}
     >
       <PaymentLineFields />
-      {refusal ? <ErrorNote title="The deposit was not recorded" detail={refusal} /> : null}
     </FormDialog>
   );
 }

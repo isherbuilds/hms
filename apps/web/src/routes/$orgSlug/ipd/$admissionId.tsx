@@ -128,9 +128,10 @@ function AdmissionRoute() {
   }
 
   const { admission, patient, practitionerName, stays, runningBill, depositHeld } = detail.data;
-  const depositShort = depositShortLabel(runningBill, depositHeld, currency);
   const current = stays.find((stay) => stay.endedAt === null);
   const active = admission.status === "admitted" || admission.status === "discharge_ready";
+  // Only a stay still in hospital is asked for more deposit; one that left settles its bill.
+  const depositShort = active ? depositShortLabel(runningBill, depositHeld, currency) : null;
 
   const open = (kind: DialogKind) =>
     setOpened({ kind, admission: { id: admission.id, revision: admission.revision } });

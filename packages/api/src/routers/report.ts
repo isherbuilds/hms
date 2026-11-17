@@ -45,9 +45,10 @@ import {
 import { z } from "zod";
 
 import { advanceRemaining, readDepositsHeld } from "../lib/advance-credit";
-import { businessDate } from "../lib/business-date";
+import { addDays, businessDate } from "../lib/business-date";
 import { divideHalfUp } from "../core/money";
-import { invoiceBalancesFor, invoiceMovements } from "../lib/invoice-balance";
+import { invoiceMovements } from "../lib/invoice-balance";
+import { calculateInvoiceBalance } from "../lib/invoice-math";
 import { readRunningBills } from "../lib/ipd-bill";
 import { closeExpiredBookings } from "../lib/opd-close";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
@@ -126,10 +127,6 @@ function invoiceSource(row: {
   if (row.admissionId) return { type: "ipd", id: row.admissionId };
 
   return null;
-}
-
-function shiftDate(date: string, days: number): string {
-  return new Date(Date.parse(`${date}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
 type SignalRecord = {
@@ -1020,7 +1017,7 @@ export const reportRouter = {
       const { timeZone } = await readOrgSettings(orgId);
       const generatedAt = new Date();
       const today = businessDate(generatedAt, timeZone);
-      const through = shiftDate(today, input.horizonDays);
+      const through = addDays(today, input.horizonDays);
 
       const stock = await db
         .select({
@@ -1484,6 +1481,10 @@ export const reportRouter = {
             invoiceNumber: invoices.invoiceNumber,
             businessDate: invoices.businessDate,
             grandTotal: invoices.grandTotal,
+            creditTotal: sql`movements.credited`.mapWith(BigInt),
+            paymentsTotal: sql`movements.paid`.mapWith(BigInt),
+            allocationsTotal: sql`movements.allocated`.mapWith(BigInt),
+            refundsTotal: sql`movements.refunded`.mapWith(BigInt),
             ...stayPatient,
           })
           .from(invoices)
@@ -1505,7 +1506,7 @@ export const reportRouter = {
           .orderBy(asc(invoices.businessDate), asc(invoices.createdAt), asc(invoices.id)),
       ]);
 
-      const [runningBills, depositsHeld, balances] = await Promise.all([
+      const [runningBills, depositsHeld] = await Promise.all([
         readRunningBills(
           db,
           orgId,
@@ -1517,12 +1518,11 @@ export const reportRouter = {
           orgId,
           depositStays.map((row) => row.admissionId),
         ),
-        invoiceBalancesFor(db, orgId, invoiceRows),
       ]);
 
       const sum = (amounts: bigint[]) => amounts.reduce((total, amount) => total + amount, 0n);
 
-      // SAFETY: one running bill, deposit and balance per id read.
+      // SAFETY: one running bill and deposit per id read.
       const unbilled = departed
         .map(({ dischargedAt, ...row }) => ({
           ...row,
@@ -1532,13 +1532,19 @@ export const reportRouter = {
         }))
         .filter((row) => row.pendingCharges > 0 || row.unbilledDays > 0);
 
-      const unpaid = invoiceRows
-        .map(({ id, ...row }) => ({
+      const unpaid = invoiceRows.map(
+        ({ id, creditTotal, paymentsTotal, allocationsTotal, refundsTotal, ...row }) => ({
           invoiceId: id,
           ...row,
-          outstanding: balances.get(id)!.outstanding,
-        }))
-        .filter((row) => row.outstanding > 0n);
+          outstanding: calculateInvoiceBalance({
+            grandTotal: row.grandTotal,
+            creditTotal,
+            paymentsTotal,
+            allocationsTotal,
+            refundsTotal,
+          }).outstanding,
+        }),
+      );
 
       const deposits = depositStays
         .map((row) => ({ ...row, depositHeld: depositsHeld.get(row.admissionId)! }))

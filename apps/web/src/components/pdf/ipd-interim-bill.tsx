@@ -25,7 +25,8 @@ const rightHeading = { ...headingCellStyle, textAlign: "right" } as const;
 
 /**
  * The running bill on paper during a stay: everything unbilled through `through`, with a
- * full last day. It takes no number and is neither an Invoice nor a Receipt.
+ * full last day. It takes no number and is neither an Invoice nor a Receipt. The IPD No.
+ * heads the page, so the stay's rows skip it.
  */
 export function InterimBillDocument({
   bill,

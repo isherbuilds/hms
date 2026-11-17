@@ -482,9 +482,8 @@ export function TransferDialog({
   const { timeZone } = useOrgDateTime();
   const board = useQuery(orpc.ipd.bedBoard.queryOptions({ input: { orgSlug } }));
   const hold = useHoldRefusal(onClose);
-  // A backdated move into a billed day is refused; the form stays so the time can change.
-  const [billedDay, setBilledDay] = useState<string | null>(null);
 
+  // A backdated move into a billed day is refused; the form stays so the time can change.
   const isBilledDay = (error: Error) =>
     hasErrorCode(error, "CONFLICT") && errorReason(error) === "billed_day";
 
@@ -503,14 +502,14 @@ export function TransferDialog({
       defaultValues={{ bedId: "", earlierAt: "", reason: "", displace: false, displaceReason: "" }}
       success="Patient moved"
       onClose={onClose}
-      onSubmit={() => setBilledDay(null)}
       onError={(error, value) => {
-        if (isBilledDay(error)) setBilledDay(errorMessage(error));
-        else hold.onError(error, value.bedId, value.displace);
+        if (!isBilledDay(error)) hold.onError(error, value.bedId, value.displace);
       }}
       showsInline={(error, value) =>
         isBilledDay(error) || hold.showsInline(error, value.bedId, value.displace)
       }
+      // A hold refusal reads as inline only until it is recorded, so it shows in MoveRefusal.
+      refusalTitle="The patient has not moved"
       run={(value) => {
         const earlier = earlierFields(value, timeZone);
 
@@ -534,7 +533,6 @@ export function TransferDialog({
         )}
       />
       <EarlierTimeFields orgSlug={orgSlug} label="Moved at" />
-      {billedDay ? <ErrorNote title="The patient has not moved" detail={billedDay} /> : null}
       <MoveRefusal orgSlug={orgSlug} refusalFor={hold.refusalFor} beds={free} />
     </FormDialog>
   );
@@ -831,9 +829,6 @@ export function ReopenDialog({
   admission: AdmissionRef;
   onClose: () => void;
 }) {
-  // The server's refusal (too late, or the bed has moved on) says what to do instead.
-  const [refusal, setRefusal] = useState<string | null>(null);
-
   return (
     <FormDialog
       title="Undo departure"
@@ -843,11 +838,9 @@ export function ReopenDialog({
       defaultValues={{ reason: "" }}
       success="Departure undone"
       onClose={onClose}
-      onSubmit={() => setRefusal(null)}
+      // The server's refusal (too late, or the bed has moved on) says what to do instead.
       showsInline={(error) => hasErrorCode(error, "CONFLICT")}
-      onError={(error) => {
-        if (hasErrorCode(error, "CONFLICT")) setRefusal(errorMessage(error));
-      }}
+      refusalTitle="The departure stays recorded"
       run={({ reason }) =>
         orpc.ipd.reopen.call({
           orgSlug,
@@ -858,7 +851,6 @@ export function ReopenDialog({
       }
     >
       <TextField name="reason" label="What went wrong" autoFocus />
-      {refusal ? <ErrorNote title="The departure stays recorded" detail={refusal} /> : null}
     </FormDialog>
   );
 }

@@ -78,6 +78,11 @@ export function localDateTime(value: string, timeZone: string): Date {
   return instant;
 }
 
+/** A calendar date (YYYY-MM-DD) moved by whole days. */
+export function addDays(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
 export function businessDateAnchor(instant: Date, timeZone: string): Date {
   return new Date(`${businessDate(instant, timeZone)}T00:00:00Z`);
 }
