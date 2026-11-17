@@ -93,6 +93,7 @@ function IpdDeskRoute() {
             onExport={() => download.mutate({ orgSlug, asOf })}
           />
         </div>
+        <p className="text-muted-foreground print:hidden">Amounts are current balances.</p>
 
         {report.isPending ? null : report.isError ? (
           <ErrorNote title="Could not load the IPD desk report" error={report.error} />
@@ -101,6 +102,7 @@ function IpdDeskRoute() {
             <header className="hidden border-b pb-2 print:block">
               <h1 className="text-sm font-medium">IPD desk</h1>
               <p>As of {formatBusinessDate(report.data.asOf)}</p>
+              <p>Balances as at {formatDateTime(report.data.generatedAt, timeZone)}</p>
             </header>
 
             <DeskSection

@@ -405,12 +405,14 @@ export function AdmissionBill({
                 totalLabel={billable ? "Total" : "Running bill"}
               />
             )}
-            {credit.deposit === ZERO ? null : (
+            {credit.deposit === ZERO && depositShort === ZERO ? null : (
               <dl className="grid gap-2">
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Deposit held</dt>
-                  <dd className="tabular-nums">{formatMoney(credit.deposit, currency)}</dd>
-                </div>
+                {credit.deposit === ZERO ? null : (
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted-foreground">Deposit held</dt>
+                    <dd className="tabular-nums">{formatMoney(credit.deposit, currency)}</dd>
+                  </div>
+                )}
                 {depositShort === ZERO ? null : (
                   <div className="flex justify-between gap-3 font-medium">
                     <dt>Deposit short by</dt>
@@ -444,12 +446,7 @@ export function AdmissionBill({
               orgSlug={orgSlug}
               invoiceId={invoiceId}
               canPay={canWrite}
-              // This stay's deposit is offered in full; the Patient's other credit by hand.
-              credit={{
-                usable: credit.deposit,
-                total: credit.deposit + credit.other,
-                label: "Use deposit",
-              }}
+              credit={stayCredit(credit)}
             />
           ))}
           {refundable ? (
@@ -568,12 +565,7 @@ export function AdmissionBill({
           <SettlementOverlay
             quote={quoteOf(overlay.reviewed)}
             stream="ipd"
-            // This stay's deposit is offered in full; the Patient's other credit by hand.
-            availableCredit={{
-              usable: overlay.reviewed.credit.deposit,
-              total: overlay.reviewed.credit.deposit + overlay.reviewed.credit.other,
-              label: "Use deposit",
-            }}
+            availableCredit={stayCredit(overlay.reviewed.credit)}
             description={`${overlay.reviewed.pending.lines.length} item${overlay.reviewed.pending.lines.length === 1 ? "" : "s"} on this admission`}
             label="Issue invoice"
             pending={issue.isPending}
@@ -644,6 +636,16 @@ function StayDeposits({
       ) : null}
     </div>
   );
+}
+
+// This stay's deposit is offered in full; the Patient's other credit by hand. Only a
+// stay that holds a deposit says so; otherwise the default wording names the credit.
+function stayCredit(credit: { deposit: bigint; other: bigint }): PatientCredit {
+  return {
+    usable: credit.deposit,
+    total: credit.deposit + credit.other,
+    label: credit.deposit > ZERO ? "Use deposit" : undefined,
+  };
 }
 
 // An issued bill takes payments, credit notes and refunds through the same card as an OPD visit.

@@ -51,7 +51,6 @@ export function SettlementFields({
   pending: boolean;
   due: bigint;
   problems: SettlementProblem[];
-  /** Omitted where the bill takes no discount, such as an Admission bill. */
   onDiscountChange: (value: string) => void;
   onNoteChange: (value: string) => void;
   onPaymentsChange: (payments: PaymentLineValue[]) => void;

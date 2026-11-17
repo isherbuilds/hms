@@ -6,6 +6,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { conflict, impossible } from "./conflict";
+import { billAdmissionSelection } from "./ipd-bill";
 
 export const expectedChargeRevision = z.number().int().nonnegative();
 
@@ -16,15 +17,8 @@ export const expectedChargeRevision = z.number().int().nonnegative();
 export async function lockAdmissionCharges(tx: DbTransaction, orgId: string, admissionId: string) {
   const [row] = await tx
     .select({
-      id: admissions.id,
-      status: admissions.status,
+      ...billAdmissionSelection,
       chargeRevision: admissions.chargeRevision,
-      // What the bill needs to derive the stay's bed days.
-      admittedAt: admissions.admittedAt,
-      dischargedAt: admissions.dischargedAt,
-      checkoutMinutes: admissions.checkoutMinutes,
-      timeZone: admissions.timeZone,
-      bedDaysBilled: admissions.bedDaysBilled,
       patient: {
         id: patients.id,
         name: patients.name,

@@ -8,7 +8,6 @@ import {
   bedCategories,
   bedTariffLines,
   bedTariffs,
-  type AdmissionStatus,
 } from "@hms/db/schema/ipd";
 import { stockBatches } from "@hms/db/schema/stock-batches";
 import { ORPCError } from "@orpc/server";
@@ -29,16 +28,6 @@ export const LAST_DAY_CHOICES = ["full", "half", "none"] as const;
 type LastDay = (typeof LAST_DAY_CHOICES)[number];
 
 /** What a stay's bill reads from its Admission. */
-type BillAdmission = {
-  id: string;
-  status: AdmissionStatus;
-  admittedAt: Date;
-  dischargedAt: Date | null;
-  checkoutMinutes: number;
-  timeZone: string;
-  bedDaysBilled: number;
-};
-
 export const billAdmissionSelection = {
   id: admissions.id,
   status: admissions.status,
@@ -47,6 +36,10 @@ export const billAdmissionSelection = {
   checkoutMinutes: admissions.checkoutMinutes,
   timeZone: admissions.timeZone,
   bedDaysBilled: admissions.bedDaysBilled,
+};
+
+type BillAdmission = {
+  [K in keyof typeof billAdmissionSelection]: (typeof admissions.$inferSelect)[K];
 };
 
 type BillStay = BedDayStay & { categoryName: string };
@@ -179,11 +172,6 @@ function printedDate(date: string): string {
   return `${day} ${MONTHS[month! - 1]} ${year}`;
 }
 
-/** Rounded half up to the paisa. */
-function halfOf(price: bigint): bigint {
-  return (price + 1n) / 2n;
-}
-
 /**
  * The stay's bed days through `through` and the lines its unbilled ones bill (D066).
  * Unbilled days are cut into runs at one tariff; each run gives one line per tariff
@@ -272,7 +260,13 @@ function bedDayBill(
   }
 
   if (halfDay) {
-    push(halfDay, 1, (line) => halfOf(line.dailyPrice), `${printedDate(halfDay.date)} · half day`);
+    // Half the daily price, rounded half up to the paisa.
+    push(
+      halfDay,
+      1,
+      (line) => (line.dailyPrice + 1n) / 2n,
+      `${printedDate(halfDay.date)} · half day`,
+    );
   }
 
   return {
@@ -442,13 +436,7 @@ export async function readRunningBills(
 export async function requireBilledDaysKept(
   tx: DbTransaction,
   orgId: string,
-  admission: {
-    id: string;
-    admittedAt: Date;
-    checkoutMinutes: number;
-    timeZone: string;
-    bedDaysBilled: number;
-  },
+  admission: Omit<BillAdmission, "status" | "dischargedAt">,
   through: Date,
   move: { startedAt: Date; categoryId: string; tariffId: string },
 ) {

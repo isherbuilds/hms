@@ -183,31 +183,12 @@ function EstimateRoute() {
           <Panel label="Estimate" padded minHeight="">
             {estimate ? (
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <dl className="grid w-full gap-1 sm:order-2 sm:max-w-64">
-                  <div className="flex justify-between gap-3">
-                    <dt className="text-muted-foreground">Bed charges</dt>
-                    <dd className="tabular-nums">{money(estimate.bedCharges)}</dd>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <dt className="text-muted-foreground">Services</dt>
-                    <dd className="tabular-nums">{money(estimate.services)}</dd>
-                  </div>
-                  {estimate.tax === ZERO ? null : (
-                    <div className="flex justify-between gap-3">
-                      <dt className="text-muted-foreground">GST</dt>
-                      <dd className="tabular-nums">{money(estimate.tax)}</dd>
-                    </div>
-                  )}
-                  <Separator />
-                  <div className="flex justify-between gap-3 font-medium">
-                    <dt>Total</dt>
-                    <dd className="tabular-nums">{money(estimate.total)}</dd>
-                  </div>
-                  <div className="flex justify-between gap-3 font-medium">
-                    <dt>Suggested deposit</dt>
-                    <dd className="tabular-nums">{money(estimate.suggestedDeposit)}</dd>
-                  </div>
-                </dl>
+                <EstimateTotals
+                  estimate={estimate}
+                  currency={currency}
+                  print={false}
+                  className="w-full sm:order-2 sm:max-w-64"
+                />
                 <Button className="self-start sm:order-1" onClick={() => window.print()}>
                   Print estimate
                 </Button>
@@ -275,30 +256,12 @@ function EstimateRoute() {
                   ))}
                 </tbody>
               </table>
-              <dl className="mt-3 ml-auto grid w-64 gap-1">
-                <div className="flex justify-between gap-3">
-                  <dt>Bed charges</dt>
-                  <dd className="tabular-nums">{money(estimate.bedCharges)}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt>Services</dt>
-                  <dd className="tabular-nums">{money(estimate.services)}</dd>
-                </div>
-                {estimate.tax === ZERO ? null : (
-                  <div className="flex justify-between gap-3">
-                    <dt>GST</dt>
-                    <dd className="tabular-nums">{money(estimate.tax)}</dd>
-                  </div>
-                )}
-                <div className="flex justify-between gap-3 border-t border-black pt-1 font-bold">
-                  <dt>Estimated total</dt>
-                  <dd className="tabular-nums">{money(estimate.total)}</dd>
-                </div>
-                <div className="flex justify-between gap-3 font-bold">
-                  <dt>Suggested deposit</dt>
-                  <dd className="tabular-nums">{money(estimate.suggestedDeposit)}</dd>
-                </div>
-              </dl>
+              <EstimateTotals
+                estimate={estimate}
+                currency={currency}
+                print
+                className="mt-3 ml-auto w-64"
+              />
               <p className="mt-6">
                 An estimate only. The final bill follows the actual stay, medicines and services.
               </p>
@@ -314,5 +277,52 @@ function EstimateRoute() {
         [data-ipd-estimate] { position: absolute; inset: 0 auto auto 0; width: 100%; }
       }`}</style>
     </>
+  );
+}
+
+/** The estimate's totals: muted labels on screen, bold under a rule on paper. */
+function EstimateTotals({
+  estimate,
+  currency,
+  print,
+  className,
+}: {
+  estimate: ReturnType<typeof estimateStay>;
+  currency: string;
+  print: boolean;
+  className: string;
+}) {
+  const money = (paise: bigint) => formatMoney(paise, currency);
+  const label = print ? undefined : "text-muted-foreground";
+  const strong = print ? "font-bold" : "font-medium";
+
+  return (
+    <dl className={`grid gap-1 ${className}`}>
+      <div className="flex justify-between gap-3">
+        <dt className={label}>Bed charges</dt>
+        <dd className="tabular-nums">{money(estimate.bedCharges)}</dd>
+      </div>
+      <div className="flex justify-between gap-3">
+        <dt className={label}>Services</dt>
+        <dd className="tabular-nums">{money(estimate.services)}</dd>
+      </div>
+      {estimate.tax === ZERO ? null : (
+        <div className="flex justify-between gap-3">
+          <dt className={label}>GST</dt>
+          <dd className="tabular-nums">{money(estimate.tax)}</dd>
+        </div>
+      )}
+      {print ? null : <Separator />}
+      <div
+        className={`flex justify-between gap-3 ${strong} ${print ? "border-t border-black pt-1" : ""}`}
+      >
+        <dt>{print ? "Estimated total" : "Total"}</dt>
+        <dd className="tabular-nums">{money(estimate.total)}</dd>
+      </div>
+      <div className={`flex justify-between gap-3 ${strong}`}>
+        <dt>Suggested deposit</dt>
+        <dd className="tabular-nums">{money(estimate.suggestedDeposit)}</dd>
+      </div>
+    </dl>
   );
 }

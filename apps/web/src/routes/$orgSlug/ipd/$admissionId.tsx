@@ -33,9 +33,7 @@ import {
 } from "@/components/ipd-medicines";
 import { DataList, ErrorNote, PageBody, PageHeader, Panel } from "@/components/page";
 import { DISCHARGE_TYPE_LABELS, slipPdfUrl, type SlipKind } from "@/lib/ipd-slips";
-import { depositShortLabel } from "@/lib/ipd-deposit";
 import { useCan, useMembership } from "@/lib/membership";
-import { formatMoney } from "@/lib/money";
 import { currentMinute, useMinuteClock } from "@/lib/minute-clock";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
@@ -127,11 +125,9 @@ function AdmissionRoute() {
     );
   }
 
-  const { admission, patient, practitionerName, stays, runningBill, depositHeld } = detail.data;
+  const { admission, patient, practitionerName, stays } = detail.data;
   const current = stays.find((stay) => stay.endedAt === null);
   const active = admission.status === "admitted" || admission.status === "discharge_ready";
-  // Only a stay still in hospital is asked for more deposit; one that left settles its bill.
-  const depositShort = active ? depositShortLabel(runningBill, depositHeld, currency) : null;
 
   const open = (kind: DialogKind) =>
     setOpened({ kind, admission: { id: admission.id, revision: admission.revision } });
@@ -267,20 +263,6 @@ function AdmissionRoute() {
               <span className="capitalize">{practitionerDisplayName(practitionerName)}</span>
             </Fact>
             <Fact label="Admitted">{formatDateTime(admission.admittedAt, timeZone)}</Fact>
-            {/* Billing staff read it as the bill's total below; say it once. */}
-            {active && !canReadBill ? (
-              <Fact label="Running bill">
-                <span className="tabular-nums">{formatMoney(runningBill, currency)}</span>
-              </Fact>
-            ) : null}
-            {active && !canReadBill ? (
-              <Fact label="Deposit">
-                <span className="block tabular-nums">{formatMoney(depositHeld, currency)}</span>
-                {depositShort ? (
-                  <span className="block font-medium tabular-nums">{depositShort}</span>
-                ) : null}
-              </Fact>
-            ) : null}
             {admission.readyAt ? (
               <Fact label="Ready to leave">{formatDateTime(admission.readyAt, timeZone)}</Fact>
             ) : null}

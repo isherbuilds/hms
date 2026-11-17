@@ -279,7 +279,7 @@ export async function renderSlipPdf(detail: StayDetail, settings: OrgSettings, k
       element: (
         <SlipDocument slip={slip} admissionNumber={admission.admissionNumber} document={document} />
       ),
-      number: admission.admissionNumber,
+      number: `IPD No. ${admission.admissionNumber}`,
       title: slip.title,
     },
     settings.legalName,
@@ -319,7 +319,7 @@ export async function renderInterimBillPdf(
           document={document}
         />
       ),
-      number: admission.admissionNumber,
+      number: `IPD No. ${admission.admissionNumber}`,
       title: INTERIM_BILL_TITLE,
     },
     settings.legalName,

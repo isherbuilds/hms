@@ -14,7 +14,7 @@ import type { PaymentMethod } from "./schemas";
  * unverified: believed to be Income Tax Act s.269ST, for the hospital's accountant to
  * confirm before release.
  */
-export const IPD_CASH_LIMIT = 200_000_00n;
+const IPD_CASH_LIMIT = 200_000_00n;
 
 /**
  * Refuses cash that would bring the stay's cash to the limit. The stay's cash is what its

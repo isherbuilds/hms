@@ -1,24 +1,42 @@
 const SEARCH_RADIUS_MS = 36 * 60 * 60 * 1_000;
 
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+
+const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
+
 function dateFormatter(timeZone: string): Intl.DateTimeFormat {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
+  let formatter = dateFormatters.get(timeZone);
+
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    dateFormatters.set(timeZone, formatter);
+  }
+
+  return formatter;
 }
 
 function dateTimeFormatter(timeZone: string): Intl.DateTimeFormat {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  });
+  let formatter = dateTimeFormatters.get(timeZone);
+
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+    dateTimeFormatters.set(timeZone, formatter);
+  }
+
+  return formatter;
 }
 
 function localMinuteKey(instant: number, formatter: Intl.DateTimeFormat): string {

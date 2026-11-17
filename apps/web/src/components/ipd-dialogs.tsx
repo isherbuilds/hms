@@ -509,7 +509,7 @@ export function TransferDialog({
         isBilledDay(error) || hold.showsInline(error, value.bedId, value.displace)
       }
       // A hold refusal reads as inline only until it is recorded, so it shows in MoveRefusal.
-      refusalTitle="The patient has not moved"
+      refusalTitle="The Patient has not moved"
       run={(value) => {
         const earlier = earlierFields(value, timeZone);
 
