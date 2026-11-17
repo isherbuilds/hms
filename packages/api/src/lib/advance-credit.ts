@@ -1,6 +1,9 @@
+import type { db } from "@hms/db";
+import type { DbTransaction } from "@hms/db/counter";
 import { advanceAllocations } from "@hms/db/schema/advance-allocations";
+import { advanceReceipts } from "@hms/db/schema/advance-receipts";
 import { refunds } from "@hms/db/schema/refunds";
-import { sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 /**
  * A receipt's unused credit: its amount less allocations and advance refunds. The one
@@ -18,4 +21,28 @@ export function advanceRemaining(orgId: string) {
     - coalesce((select sum(${refunds.amount}) from ${refunds}
         where ${refunds.orgId} = ${orgId}
           and ${refunds.advanceReceiptId} = "advance_receipts"."id"), 0))::bigint`.mapWith(BigInt);
+}
+
+/** The deposit each stay still holds, in one query; a stay without one holds 0. */
+export async function readDepositsHeld(
+  executor: typeof db | DbTransaction,
+  orgId: string,
+  admissionIds: string[],
+): Promise<Map<string, bigint>> {
+  if (admissionIds.length === 0) return new Map();
+
+  const rows = await executor
+    .select({
+      admissionId: advanceReceipts.admissionId,
+      held: sql<bigint>`sum(${advanceRemaining(orgId)})::bigint`.mapWith(BigInt),
+    })
+    .from(advanceReceipts)
+    .where(
+      and(eq(advanceReceipts.orgId, orgId), inArray(advanceReceipts.admissionId, admissionIds)),
+    )
+    .groupBy(advanceReceipts.admissionId);
+
+  const held = new Map(rows.map((row) => [row.admissionId!, row.held]));
+
+  return new Map(admissionIds.map((id) => [id, held.get(id) ?? 0n]));
 }

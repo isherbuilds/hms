@@ -3,6 +3,7 @@ import { db } from "@hms/db";
 import { catalogItems } from "@hms/db/schema/catalog-items";
 import { charges } from "@hms/db/schema/charges";
 import { nextCounter } from "@hms/db/counter";
+import { advanceReceipts } from "@hms/db/schema/advance-receipts";
 import { invoices } from "@hms/db/schema/invoices";
 import {
   ACTIVE_ADMISSION_STATUSES,
@@ -39,6 +40,7 @@ import {
   issueInvoiceTx,
   settleIssuedInvoiceTx,
 } from "../lib/billing-documents";
+import { advanceRemaining, readDepositsHeld } from "../lib/advance-credit";
 import { impossible } from "../lib/conflict";
 import {
   exclusionViolationConstraint,
@@ -63,6 +65,7 @@ import {
   readRunningBills,
   requireBilledDaysKept,
 } from "../lib/ipd-bill";
+import { requireUnderCashLimit } from "../lib/ipd-cash";
 import { orgInput, orgProcedure, requirePermission, type Scope } from "../lib/procedures/factory";
 import { money, pageLimit, paymentLine, reason, shortName } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
@@ -878,12 +881,12 @@ export const ipdRouter = {
 
     const priced = new Set(tariffRows.map((tariff) => tariff.categoryId));
 
-    const runningBills = await readRunningBills(
-      db,
-      orgId,
-      rows.flatMap((row) => (row.admissionId ? [row.admissionId] : [])),
-      now,
-    );
+    const occupied = rows.flatMap((row) => (row.admissionId ? [row.admissionId] : []));
+
+    const [runningBills, depositsHeld] = await Promise.all([
+      readRunningBills(db, orgId, occupied, now),
+      readDepositsHeld(db, orgId, occupied),
+    ]);
 
     return {
       beds: rows.map((row) => {
@@ -898,6 +901,7 @@ export const ipdRouter = {
               mrn: row.mrn!,
               practitionerName: row.practitionerName!,
               runningBill: runningBills.get(row.admissionId)!,
+              depositHeld: depositsHeld.get(row.admissionId)!,
             }
           : null;
 
@@ -999,16 +1003,20 @@ export const ipdRouter = {
 
     const last = items.at(-1);
 
-    const runningBills = await readRunningBills(
-      db,
-      orgId,
-      items.map((item) => item.id),
-      new Date(),
-    );
+    const ids = items.map((item) => item.id);
+
+    const [runningBills, depositsHeld] = await Promise.all([
+      readRunningBills(db, orgId, ids, new Date()),
+      readDepositsHeld(db, orgId, ids),
+    ]);
 
     return {
-      // SAFETY: one running bill per Admission listed.
-      items: items.map((item) => ({ ...item, runningBill: runningBills.get(item.id)! })),
+      // SAFETY: one running bill and one deposit per Admission listed.
+      items: items.map((item) => ({
+        ...item,
+        runningBill: runningBills.get(item.id)!,
+        depositHeld: depositsHeld.get(item.id)!,
+      })),
       nextCursor: hasNextPage && last ? { admittedAt: last.admittedAt, id: last.id } : null,
     };
   }),
@@ -1046,7 +1054,7 @@ export const ipdRouter = {
             throw new ORPCError("NOT_FOUND", { message: "That admission does not exist." });
           }
 
-          const [stays, runningBills] = await Promise.all([
+          const [stays, runningBills, depositsHeld] = await Promise.all([
             tx
               .select({
                 id: admissionBedStays.id,
@@ -1085,6 +1093,7 @@ export const ipdRouter = {
               )
               .orderBy(asc(admissionBedStays.startedAt), asc(admissionBedStays.id)),
             readRunningBills(tx, orgId, [row.id], new Date()),
+            readDepositsHeld(tx, orgId, [row.id]),
           ]);
 
           const { patientName, mrn, practitionerName, ...admission } = row;
@@ -1095,8 +1104,9 @@ export const ipdRouter = {
             patient: { id: admission.patientId, name: patientName, mrn },
             practitionerName,
             stays,
-            // SAFETY: one running bill per Admission read.
+            // SAFETY: one running bill and one deposit per Admission read.
             runningBill: runningBills.get(row.id)!,
+            depositHeld: depositsHeld.get(row.id)!,
           };
         },
         { isolationLevel: "repeatable read", accessMode: "read only" },
@@ -1890,7 +1900,11 @@ export const ipdRouter = {
   // procedures. Bed days are derived here and written as Charges only by the bill.
   previewInvoice: orgProcedure(
     { ipd: ["read"], billing: ["read"] },
-    orgInput.extend({ admissionId: z.string(), lastDay: z.enum(LAST_DAY_CHOICES).default("full") }),
+    orgInput.extend({
+      admissionId: z.string(),
+      lastDay: z.enum(LAST_DAY_CHOICES).default("full"),
+      discountAmount: money.default(0n),
+    }),
   ).handler(async ({ context, input }) => {
     const { orgId } = context.scope;
     const settings = await readOrgSettings(orgId);
@@ -1899,7 +1913,11 @@ export const ipdRouter = {
     return db.transaction(
       async (tx) => {
         const [admission] = await tx
-          .select({ ...billAdmissionSelection, chargeRevision: admissions.chargeRevision })
+          .select({
+            ...billAdmissionSelection,
+            chargeRevision: admissions.chargeRevision,
+            patientId: admissions.patientId,
+          })
           .from(admissions)
           .where(and(eq(admissions.orgId, orgId), eq(admissions.id, input.admissionId)))
           .limit(1);
@@ -1908,8 +1926,11 @@ export const ipdRouter = {
           throw new ORPCError("NOT_FOUND", { message: "That admission does not exist." });
         }
 
-        const [bill, issued] = await Promise.all([
-          readPendingBill(tx, orgId, admission, input.lastDay, now),
+        const remaining = advanceRemaining(orgId);
+        const ofThisStay = eq(advanceReceipts.admissionId, admission.id);
+
+        const [bill, issued, [credit]] = await Promise.all([
+          readPendingBill(tx, orgId, admission, input.lastDay, input.discountAmount, now),
           tx
             .select({
               invoiceId: invoices.id,
@@ -1920,6 +1941,29 @@ export const ipdRouter = {
             .from(invoices)
             .where(and(eq(invoices.orgId, orgId), eq(invoices.admissionId, input.admissionId)))
             .orderBy(asc(invoices.createdAt), asc(invoices.id)),
+          // What the bill may draw on: this stay's deposit, then credit tagged to nothing.
+          tx
+            .select({
+              deposit:
+                sql<bigint>`coalesce(sum(${remaining}) filter (where ${ofThisStay}), 0)::bigint`.mapWith(
+                  BigInt,
+                ),
+              other:
+                sql<bigint>`coalesce(sum(${remaining}) filter (where ${advanceReceipts.admissionId} is null), 0)::bigint`.mapWith(
+                  BigInt,
+                ),
+            })
+            .from(advanceReceipts)
+            .where(
+              and(
+                eq(advanceReceipts.orgId, orgId),
+                eq(advanceReceipts.patientId, admission.patientId),
+                or(
+                  ofThisStay,
+                  and(isNull(advanceReceipts.admissionId), isNull(advanceReceipts.treatmentPlanId)),
+                ),
+              ),
+            ),
         ]);
 
         return {
@@ -1928,6 +1972,8 @@ export const ipdRouter = {
           registered: Boolean(settings.gstin),
           ...bill,
           issued,
+          // SAFETY: an aggregate without GROUP BY returns exactly one row.
+          credit: credit!,
         };
       },
       { isolationLevel: "repeatable read", accessMode: "read only" },
@@ -1944,12 +1990,20 @@ export const ipdRouter = {
         // The cashier's call on the last unbilled day; anything but full needs a reason.
         lastDay: z.enum(LAST_DAY_CHOICES).default("full"),
         lastDayReason: reason.optional(),
+        discountAmount: money.default(0n),
+        discountReason: reason.optional(),
+        // Drawn from this stay's deposit first, then the Patient's untagged credit.
+        applyCredit: money.default(0n),
         payments: z.array(paymentLine).max(4).default([]),
         outstandingReason: reason.optional(),
       })
       .refine((value) => value.lastDay === "full" || value.lastDayReason !== undefined, {
         message: "Give a reason for the last day.",
         path: ["lastDayReason"],
+      })
+      .refine((value) => value.discountAmount === 0n || value.discountReason !== undefined, {
+        message: "Add a reason for the discount",
+        path: ["discountReason"],
       }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
@@ -1964,6 +2018,8 @@ export const ipdRouter = {
         message: "Mark the Patient ready for discharge before issuing the bill.",
         expectedChargeRevision: input.expectedChargeRevision,
       });
+
+      await requireUnderCashLimit(tx, scope.orgId, admission.id, input.payments);
 
       const bedDay = await readBedDayBill(tx, scope.orgId, admission, input.lastDay, now);
 
@@ -2013,7 +2069,7 @@ export const ipdRouter = {
         bedDay.unbilled.length > 0 &&
         !(await hasPendingCharges(tx, scope.orgId, admission.id))
       ) {
-        if (input.payments.length > 0) {
+        if (input.payments.length > 0 || input.applyCredit > 0n || input.discountAmount > 0n) {
           throw new ORPCError("BAD_REQUEST", { message: "There is nothing to collect." });
         }
 
@@ -2042,8 +2098,10 @@ export const ipdRouter = {
             guardian: guardian ? `${guardian.relation} ${guardian.name}` : null,
           },
         },
-        discountAmount: 0n,
-        note: input.outstandingReason,
+        discountAmount: input.discountAmount,
+        // The Invoice keeps both reasons; each was required above or by the settlement.
+        note:
+          [input.discountReason, input.outstandingReason].filter(Boolean).join(" · ") || undefined,
         settings,
         now,
         fiscalYear,
@@ -2055,7 +2113,7 @@ export const ipdRouter = {
         invoice: issued.invoice,
         expectedGrandTotal: input.expectedGrandTotal,
         payments: input.payments,
-        applyCredit: 0n,
+        applyCredit: input.applyCredit,
         outstandingReason: input.outstandingReason,
         settings,
         now,

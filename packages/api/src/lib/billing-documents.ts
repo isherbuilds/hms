@@ -11,7 +11,7 @@ import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { payments } from "@hms/db/schema/payments";
 import { refunds } from "@hms/db/schema/refunds";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { advanceRemaining } from "./advance-credit";
 import { businessDate, businessDateAnchor } from "./business-date";
@@ -60,6 +60,7 @@ export type LockedInvoice = {
   patientId: string | null;
   stream: InvoiceStream;
   treatmentPlanId: string | null;
+  admissionId: string | null;
 };
 
 /** The OPD Appointment is a left join: a pharmacy invoice has no appointment. */
@@ -77,6 +78,7 @@ export async function lockInvoice(
       patientId: invoices.patientId,
       stream: invoices.stream,
       treatmentPlanId: opdAppointments.treatmentPlanId,
+      admissionId: invoices.admissionId,
     })
     .from(invoices)
     .leftJoin(
@@ -116,6 +118,16 @@ async function applyPatientCreditTx(
     });
   }
 
+  // A stay's deposit pays only that stay's bills (D066): an `ipd` Invoice draws on its
+  // own Admission's receipts and untagged credit, and no other Invoice on any deposit.
+  const spendable =
+    invoice.admissionId === null
+      ? isNull(advanceReceipts.admissionId)
+      : or(
+          eq(advanceReceipts.admissionId, invoice.admissionId),
+          and(isNull(advanceReceipts.admissionId), isNull(advanceReceipts.treatmentPlanId)),
+        );
+
   // Lock in one stable order, then read balances in a new statement: under READ COMMITTED
   // only a statement that starts after the lock sees allocations committed while it waited.
   // Credit only shrinks, so a receipt already spent in this snapshot is never locked.
@@ -126,6 +138,7 @@ async function applyPatientCreditTx(
       and(
         eq(advanceReceipts.orgId, scope.orgId),
         eq(advanceReceipts.patientId, patientId),
+        spendable,
         sql`${advanceRemaining(scope.orgId)} > 0`,
       ),
     )
@@ -136,6 +149,7 @@ async function applyPatientCreditTx(
     .select({
       id: advanceReceipts.id,
       treatmentPlanId: advanceReceipts.treatmentPlanId,
+      admissionId: advanceReceipts.admissionId,
       remaining: advanceRemaining(scope.orgId),
     })
     .from(advanceReceipts)
@@ -157,15 +171,19 @@ async function applyPatientCreditTx(
     throw new ORPCError("CONFLICT", { message: "That credit is no longer available." });
   }
 
-  // This visit's plan first, then untagged credit, and another plan's advance only last:
-  // money taken for one course is never the first to pay for something else. The sort
-  // is stable, so each group stays oldest-first.
-  const rank = (receipt: { treatmentPlanId: string | null }) =>
-    receipt.treatmentPlanId === invoice.treatmentPlanId
-      ? 0
-      : receipt.treatmentPlanId === null
-        ? 1
-        : 2;
+  // This stay's deposit or this visit's plan first, then untagged credit, and another
+  // plan's advance only last: money taken for one course is never the first to pay for
+  // something else. The sort is stable, so each group stays oldest-first.
+  const rank = (receipt: { treatmentPlanId: string | null; admissionId: string | null }) =>
+    invoice.admissionId !== null
+      ? receipt.admissionId === invoice.admissionId
+        ? 0
+        : 1
+      : receipt.treatmentPlanId === invoice.treatmentPlanId
+        ? 0
+        : receipt.treatmentPlanId === null
+          ? 1
+          : 2;
 
   receipts.sort((first, second) => rank(first) - rank(second));
 

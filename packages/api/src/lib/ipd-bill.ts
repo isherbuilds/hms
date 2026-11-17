@@ -16,7 +16,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { bedDays, type BedDay, type BedDayStay } from "./bed-days";
 import { impossible } from "./conflict";
-import { computeInvoiceLines } from "./invoice-math";
+import { computeInvoiceLines, InvoiceDiscountExceededError } from "./invoice-math";
 
 type Executor = typeof db | DbTransaction;
 
@@ -324,8 +324,11 @@ export async function readBedDayBill(
 type PendingRow =
   Awaited<ReturnType<typeof readPendingCharges>> extends Map<string, (infer Row)[]> ? Row : never;
 
-/** Pending Charges first, then the bed-day lines: the order the Invoice writes them. */
-function billLines(pending: PendingRow[], bedLines: BedDayLine[]) {
+/**
+ * Pending Charges first, then the bed-day lines: the order the Invoice writes them, so
+ * the discount spreads over the lines as it will on the Invoice.
+ */
+function billLines(pending: PendingRow[], bedLines: BedDayLine[], discountAmount: bigint) {
   const rows = [
     ...pending,
     ...bedLines.map((line) => ({
@@ -344,7 +347,14 @@ function billLines(pending: PendingRow[], bedLines: BedDayLine[]) {
     })),
   ];
 
-  const computed = computeInvoiceLines<string | null>(rows, 0n, { roundToRupee: false });
+  let computed: ReturnType<typeof computeInvoiceLines<string | null>>;
+
+  try {
+    computed = computeInvoiceLines<string | null>(rows, discountAmount, { roundToRupee: false });
+  } catch (error) {
+    if (!(error instanceof InvoiceDiscountExceededError)) throw error;
+    throw new ORPCError("BAD_REQUEST", { message: "The discount cannot exceed the bill." });
+  }
 
   return { rows, computed };
 }
@@ -355,6 +365,7 @@ export async function readPendingBill(
   orgId: string,
   admission: BillAdmission,
   lastDay: LastDay,
+  discountAmount: bigint,
   now: Date,
 ) {
   const [pending, bedDay] = await Promise.all([
@@ -362,7 +373,11 @@ export async function readPendingBill(
     readBedDayBill(executor, orgId, admission, lastDay, now),
   ]);
 
-  const { rows, computed } = billLines(pending.get(admission.id) ?? [], bedDay.lines);
+  const { rows, computed } = billLines(
+    pending.get(admission.id) ?? [],
+    bedDay.lines,
+    discountAmount,
+  );
 
   return {
     through: bedDay.through,
@@ -415,7 +430,7 @@ export async function readRunningBills(
   return new Map(
     rows.map((admission) => {
       const bedDay = bedDayBill(admission, stays.get(admission.id) ?? [], tariffLines, "full", now);
-      const { computed } = billLines(pending.get(admission.id) ?? [], bedDay.lines);
+      const { computed } = billLines(pending.get(admission.id) ?? [], bedDay.lines, 0n);
 
       return [admission.id, computed.grandTotal];
     }),

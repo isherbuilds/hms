@@ -7,6 +7,7 @@ import { creditNoteLines } from "@hms/db/schema/credit-note-lines";
 import { creditNotes } from "@hms/db/schema/credit-notes";
 import { invoiceLines } from "@hms/db/schema/invoice-lines";
 import { invoices } from "@hms/db/schema/invoices";
+import { ACTIVE_ADMISSION_STATUSES, admissions } from "@hms/db/schema/ipd";
 import { patients } from "@hms/db/schema/patients";
 import { guardianLabel } from "@hms/db/schema/patient-relations";
 import { payments } from "@hms/db/schema/payments";
@@ -34,6 +35,7 @@ import {
 } from "../lib/billing-documents";
 import { bumpChargeRevision, lockAdmissionCharges } from "../lib/admission-charges";
 import { impossible } from "../lib/conflict";
+import { requireUnderCashLimit } from "../lib/ipd-cash";
 import { invoiceBalanceFor, invoiceBalancesFor } from "../lib/invoice-balance";
 import { voidPendingCharges } from "../lib/opd-close";
 import { planLabel } from "../lib/treatment-label";
@@ -259,12 +261,18 @@ export const billingRouter = {
       .extend({
         patientId: z.string(),
         treatmentPlanId: z.string().optional(),
+        // A deposit for this stay, spent only on its bills.
+        admissionId: z.string().optional(),
         method: paymentLine.shape.method,
         amount: positiveMoney,
         reference: paymentLine.shape.reference,
         note,
       })
-      .superRefine(requirePaymentReference),
+      .superRefine(requirePaymentReference)
+      .refine((value) => !(value.treatmentPlanId && value.admissionId), {
+        message: "An advance is for a treatment plan or a stay, not both.",
+        path: ["admissionId"],
+      }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
 
@@ -324,6 +332,32 @@ export const billingRouter = {
         throw new ORPCError("CONFLICT", { message: "That treatment plan is no longer available." });
       }
 
+      // Locked before the receipt (D040): a stay's cash is counted under this lock.
+      const stay = input.admissionId
+        ? await tx
+            .select({ id: admissions.id, admissionNumber: admissions.admissionNumber })
+            .from(admissions)
+            .where(
+              and(
+                eq(admissions.orgId, scope.orgId),
+                eq(admissions.id, input.admissionId),
+                eq(admissions.patientId, patient.id),
+                inArray(admissions.status, ACTIVE_ADMISSION_STATUSES),
+              ),
+            )
+            .limit(1)
+            .for("update")
+            .then((rows) => rows[0])
+        : undefined;
+
+      if (input.admissionId && !stay) {
+        throw new ORPCError("CONFLICT", { message: "That stay can no longer take a deposit." });
+      }
+
+      if (stay) {
+        await requireUnderCashLimit(tx, scope.orgId, stay.id, [input]);
+      }
+
       const sequence = await nextCounter(tx, scope.orgId, `advance:${fiscalYear}`);
       const receiptNumber = documentNumber(settings.advanceReceiptPrefix, fiscalYear, sequence);
 
@@ -334,11 +368,14 @@ export const billingRouter = {
           orgId: scope.orgId,
           patientId: patient.id,
           treatmentPlanId: plan?.id ?? null,
+          admissionId: stay?.id ?? null,
           method: input.method,
           amount: input.amount,
           reference: input.reference ?? null,
           note: input.note ?? null,
-          purpose: plan?.label ?? "Future services",
+          purpose: stay
+            ? `IPD deposit · IPD No. ${stay.admissionNumber}`
+            : (plan?.label ?? "Future services"),
           receiptNumber,
           fiscalYear,
           businessDate: businessDate(now, settings.timeZone),
@@ -395,7 +432,11 @@ export const billingRouter = {
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const remaining = advanceRemaining(scope.orgId);
-    const untagged = isNull(advanceReceipts.treatmentPlanId);
+
+    const untagged = and(
+      isNull(advanceReceipts.treatmentPlanId),
+      isNull(advanceReceipts.admissionId),
+    );
 
     const usableReceipt =
       input.treatmentPlanId === null
@@ -403,7 +444,8 @@ export const billingRouter = {
         : or(untagged, eq(advanceReceipts.treatmentPlanId, input.treatmentPlanId));
 
     // `usable` is what the desk offers on this bill: untagged credit plus this plan's
-    // own advance. Another plan's advance stays out of the default (it is spent last).
+    // own advance. Another plan's advance stays out of the default (it is spent last);
+    // a stay's deposit is never spent outside that stay's bills.
     const [credit] = await db
       .select({
         total: sql<bigint>`coalesce(sum(${remaining}), 0)`.mapWith(BigInt),
@@ -529,6 +571,18 @@ export const billingRouter = {
     const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
 
     const recorded = await db.transaction(async (tx) => {
+      // An `ipd` Invoice's cash counts toward its stay's limit; the Admission is locked
+      // before the Invoice (D040). The Invoice's stay never changes, so it is read unlocked.
+      const [target] = await tx
+        .select({ admissionId: invoices.admissionId })
+        .from(invoices)
+        .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.id, input.invoiceId)))
+        .limit(1);
+
+      if (target?.admissionId) {
+        await requireUnderCashLimit(tx, scope.orgId, target.admissionId, input.payments);
+      }
+
       return recordPaymentsTx(tx, {
         scope,
         invoiceId: input.invoiceId,
