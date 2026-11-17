@@ -742,6 +742,20 @@ test("reopening is a correction: reception is refused, and a reason is required"
   expect((await hospital.detail(admission.id)).admission.status).toBe("discharged");
 });
 
+/**
+ * Undoing a departure is refused with CONFLICT and a message of its own for each cause in
+ * the spec's list: past the 24-hour window, the bed gone out of use, the bed or Patient
+ * moved on since, or the bed held for another Patient.
+ */
+async function expectReopenRefused(promise: Promise<unknown>, cause: RegExp) {
+  const refusal = await promise.then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+
+  expect(refusal).toMatchObject({ code: "CONFLICT", message: expect.stringMatching(cause) });
+}
+
 test("a discharge is reopened within 24 hours and not after", async () => {
   const hospital = await createHospital("stay-reopen-window");
   const { api, orgSlug } = hospital;
@@ -751,15 +765,14 @@ test("a discharge is reopened within 24 hours and not after", async () => {
   const late = await hospital.admit(0, { admittedAt: hoursAgo(40), ...backdated });
   const lateDischarge = await hospital.depart(late.admission.id, "normal", hoursAgo(25));
 
-  await expectORPCCode(
+  await expectReopenRefused(
     api.ipd.reopen({
       orgSlug,
       admissionId: late.admission.id,
       expectedRevision: lateDischarge.revision,
       reason: "More than a day later",
     }),
-    "CONFLICT",
-    "25 hours after departure",
+    /24 hours/,
   );
 
   expect((await hospital.detail(late.admission.id)).admission.status).toBe("discharged");
@@ -786,14 +799,14 @@ test("reopening is refused once the bed has another occupant", async () => {
   await hospital.releaseBed(beds[0]!.id);
   const next = await hospital.admit(0);
 
-  await expectORPCCode(
+  await expectReopenRefused(
     api.ipd.reopen({
       orgSlug,
       admissionId: admission.id,
       expectedRevision: discharged.revision,
       reason: "The bed is taken",
     }),
-    "CONFLICT",
+    /since/i,
   );
 
   expect((await hospital.detail(admission.id)).admission).toMatchObject({
@@ -815,14 +828,14 @@ test("reopening is refused once another Patient used the bed, even after they le
   await hospital.depart(next.admission.id);
   await hospital.releaseBed(beds[0]!.id);
 
-  await expectORPCCode(
+  await expectReopenRefused(
     api.ipd.reopen({
       orgSlug,
       admissionId: admission.id,
       expectedRevision: discharged.revision,
       reason: "The bed was used since",
     }),
-    "CONFLICT",
+    /since/i,
   );
 
   expect((await hospital.detail(admission.id)).admission.status).toBe("discharged");
@@ -862,14 +875,14 @@ test("reopening is refused while the bed is held for another Patient", async () 
 
   expect(held.status).toBe("confirmed");
 
-  await expectORPCCode(
+  await expectReopenRefused(
     api.ipd.reopen({
       orgSlug,
       admissionId: admission.id,
       expectedRevision: discharged.revision,
       reason: "The bed is promised to someone else",
     }),
-    "CONFLICT",
+    /held|reserv/i,
   );
 
   expect((await hospital.detail(admission.id)).admission.status).toBe("discharged");
@@ -884,15 +897,14 @@ test("reopening is refused when the bed was blocked for another reason or taken 
   await hospital.releaseBed(beds[0]!.id);
   await api.ipd.blockBed({ orgSlug, bedId: beds[0]!.id, reason: "Broken side rail" });
 
-  await expectORPCCode(
+  await expectReopenRefused(
     api.ipd.reopen({
       orgSlug,
       admissionId: first.admission.id,
       expectedRevision: firstDischarge.revision,
       reason: "The bed is under repair",
     }),
-    "CONFLICT",
-    "a bed blocked for repair",
+    /no longer available|blocked|out of use|retired/i,
   );
 
   expect((await hospital.boardBed(beds[0]!.id)).blockedReason).toBe("Broken side rail");
@@ -902,15 +914,14 @@ test("reopening is refused when the bed was blocked for another reason or taken 
   await hospital.releaseBed(beds[1]!.id);
   await api.ipd.setBedActive({ orgSlug, bedId: beds[1]!.id, active: false });
 
-  await expectORPCCode(
+  await expectReopenRefused(
     api.ipd.reopen({
       orgSlug,
       admissionId: second.admission.id,
       expectedRevision: secondDischarge.revision,
       reason: "The bed is out of use",
     }),
-    "CONFLICT",
-    "a bed taken out of use",
+    /no longer available|blocked|out of use|retired/i,
   );
 });
 
@@ -927,14 +938,14 @@ test("reopening is refused when the Patient has since been admitted again", asyn
     bedId: beds[1]!.id,
   });
 
-  await expectORPCCode(
+  await expectReopenRefused(
     api.ipd.reopen({
       orgSlug,
       admissionId: admission.id,
       expectedRevision: discharged.revision,
       reason: "Already back in another bed",
     }),
-    "CONFLICT",
+    /since/i,
   );
 
   expect((await hospital.detail(admission.id)).admission.status).toBe("discharged");
