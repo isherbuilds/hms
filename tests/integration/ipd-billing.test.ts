@@ -89,6 +89,7 @@ function settingsInput(
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
     unbilledAlertHours: 1,
+    ipdCheckoutMinutes: 720,
   };
 }
 
@@ -125,11 +126,11 @@ async function createHospital(seed: string, options: { gstin?: string } = {}) {
 
   const ward = await api.ipd.createWard({ orgSlug, name: "General" });
   const category = await api.ipd.createBedCategory({ orgSlug, name: "General bed" });
+  // A ₹0 room writes no bed-day Charge, so these bills hold only what a test posts.
   await api.ipd.setBedTariff({
     orgSlug,
     categoryId: category.id,
-    catalogItemId: roomService.id,
-    dailyPrice: 1_000_00n,
+    lines: [{ catalogItemId: roomService.id, dailyPrice: 0n }],
     effectiveFrom: new Date(Date.now() - 24 * 30 * HOUR),
   });
 

@@ -1436,8 +1436,7 @@ async function createWard(theatre: Theatre) {
   await api.ipd.setBedTariff({
     orgSlug,
     categoryId: category.id,
-    catalogItemId: roomService.id,
-    dailyPrice: 1_000_00n,
+    lines: [{ catalogItemId: roomService.id, dailyPrice: 1_000_00n }],
     effectiveFrom: fromNow(-30 * DAY),
   });
 
@@ -1555,11 +1554,14 @@ async function moneyTrail(theatre: Theatre, patientIds: string[], admissionId: s
   const day = (offset: number) =>
     new Date(today.getTime() + offset * DAY).toISOString().slice(0, 10);
 
+  // `through` is the clock on an open stay, so the trail keeps only what the bill holds.
+  const bill = await api.ipd.previewInvoice({ orgSlug, admissionId });
+
   return {
     accounts: await Promise.all(
       patientIds.map((patientId) => api.patient.account({ orgSlug, patientId })),
     ),
-    admissionBill: await api.ipd.previewInvoice({ orgSlug, admissionId }),
+    admissionBill: { pending: bill.pending, issued: bill.issued },
     stockMovements: await api.pharmacy.listMovements({ orgSlug }),
     trialBalance: await api.report.trialBalance({ orgSlug, from: day(-2), to: day(2) }),
   };

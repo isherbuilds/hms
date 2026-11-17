@@ -80,8 +80,7 @@ async function createHospital(seed: string) {
     await api.ipd.setBedTariff({
       orgSlug,
       categoryId,
-      catalogItemId: roomService.id,
-      dailyPrice: 1_000_00n,
+      lines: [{ catalogItemId: roomService.id, dailyPrice: 1_000_00n }],
       effectiveFrom: fromNow(-30 * DAY),
     });
   }

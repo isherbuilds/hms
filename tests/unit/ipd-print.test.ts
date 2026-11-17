@@ -2,6 +2,7 @@
 // print the stay's facts, and the discharge slip carries the paper clearances.
 import { expect, test } from "bun:test";
 
+import { INTERIM_BILL_TITLE } from "../../apps/web/src/lib/ipd-interim-bill";
 import {
   DISCHARGE_TYPE_LABELS,
   admissionSlip,
@@ -121,4 +122,8 @@ test("the discharge slip carries a signature panel for the paper clearances, the
   expect(slip.signatures.length).toBeGreaterThanOrEqual(3);
   expect(new Set(slip.signatures).size).toBe(slip.signatures.length);
   expect(slip.signatures.some((line) => /summary/i.test(line))).toBe(true);
+});
+
+test("the interim bill says in its title that it is not an Invoice or Receipt", () => {
+  expect(INTERIM_BILL_TITLE).toBe("Interim bill — not an Invoice or Receipt");
 });

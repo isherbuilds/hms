@@ -54,6 +54,7 @@ async function createPharmacyFixture(seed: string) {
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
     unbilledAlertHours: 1,
+    ipdCheckoutMinutes: 720,
   });
 
   async function createMedicine(

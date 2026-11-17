@@ -77,6 +77,7 @@ test("desk money and dashboard collections are scoped, concurrent, and revoke wi
     orgSlug: one.slug,
     ...settings,
     unbilledAlertHours: 1,
+    ipdCheckoutMinutes: 720,
   });
 
   const patient = await api.patient.register({
@@ -297,6 +298,7 @@ const GUARDED_CALLS = {
       fiscalYearStartMonth: 4,
       followUpValidityDays: 14,
       unbilledAlertHours: 24,
+      ipdCheckoutMinutes: 720,
     }),
   "audit.list": (api, claim) => api.audit.list({ ...claim }),
   "file.list": (api, claim) => api.file.list({ ...claim }),
@@ -678,8 +680,7 @@ const GUARDED_CALLS = {
     api.ipd.setBedTariff({
       ...claim,
       categoryId: "missing",
-      catalogItemId: "missing",
-      dailyPrice: 1n,
+      lines: [{ catalogItemId: "missing", dailyPrice: 1n }],
       effectiveFrom: new Date(),
     }),
   "ipd.createBed": (api, claim) =>
@@ -1286,6 +1287,7 @@ async function createScopedInvoice(
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
     unbilledAlertHours: 24,
+    ipdCheckoutMinutes: 720,
   });
 
   const patient = await api.patient.register({

@@ -79,6 +79,7 @@ async function createHospital(seed: string) {
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
     unbilledAlertHours: 1,
+    ipdCheckoutMinutes: 720,
   });
 
   const roomService = await api.catalog.create({
@@ -121,8 +122,7 @@ async function createHospital(seed: string) {
   await api.ipd.setBedTariff({
     orgSlug,
     categoryId: category.id,
-    catalogItemId: roomService.id,
-    dailyPrice: 1_000_00n,
+    lines: [{ catalogItemId: roomService.id, dailyPrice: 1_000_00n }],
     effectiveFrom: hoursAgo(24 * 60),
   });
 

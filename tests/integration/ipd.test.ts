@@ -74,8 +74,7 @@ async function createHospital(seed: string) {
   await api.ipd.setBedTariff({
     orgSlug,
     categoryId: category.id,
-    catalogItemId: roomService.id,
-    dailyPrice: 1_000_00n,
+    lines: [{ catalogItemId: roomService.id, dailyPrice: 1_000_00n }],
     effectiveFrom: hoursAgo(24 * 30),
   });
 
@@ -154,7 +153,9 @@ test("the owner sets up wards, categories, tariffs and beds, and the board shows
 
   expect(facility.wards.map((ward) => ward.name)).toEqual(["General"]);
   expect(facility.categories.map((category) => category.name)).toEqual(["General bed"]);
-  expect(facility.categories[0]!.currentTariff?.dailyPrice).toBe(1_000_00n);
+  expect(facility.categories[0]!.currentTariff?.lines.map((line) => line.dailyPrice)).toEqual([
+    1_000_00n,
+  ]);
   expect(facility.beds.map((bed) => bed.label).sort()).toEqual(["G-1", "G-2", "G-3"]);
 
   const bed = await boardBed(hospital, hospital.beds[0].id);
@@ -200,8 +201,7 @@ test("only owner and admin manage the facility; reception, cashier and pharmacis
       api.ipd.setBedTariff({
         orgSlug,
         categoryId: category.id,
-        catalogItemId: roomService.id,
-        dailyPrice: 1n,
+        lines: [{ catalogItemId: roomService.id, dailyPrice: 1n }],
         effectiveFrom: new Date(),
       }),
       "FORBIDDEN",
@@ -232,8 +232,7 @@ test("facility references from another organization are NOT_FOUND", async () => 
     api.ipd.setBedTariff({
       orgSlug,
       categoryId: category.id,
-      catalogItemId: other.roomService.id,
-      dailyPrice: 500_00n,
+      lines: [{ catalogItemId: other.roomService.id, dailyPrice: 500_00n }],
       effectiveFrom: new Date(),
     }),
     "NOT_FOUND",
@@ -254,17 +253,16 @@ test("tariff changes are audited and apply only to new occupancy segments", asyn
 
   const { admission } = await admit(hospital, beds[0].id, "Tariff Patient");
 
-  await api.ipd.setBedTariff({
+  const raised = await api.ipd.setBedTariff({
     orgSlug,
     categoryId: category.id,
-    catalogItemId: roomService.id,
-    dailyPrice: 1_500_00n,
+    lines: [{ catalogItemId: roomService.id, dailyPrice: 1_500_00n }],
     effectiveFrom: new Date(),
   });
 
   const before = await api.ipd.get({ orgSlug, admissionId: admission.id });
   expect(before.stays).toHaveLength(1);
-  expect(before.stays[0]!.dailyPrice).toBe(1_000_00n);
+  expect(before.stays[0]!.tariffId).not.toBe(raised.id);
 
   await api.ipd.transferBed({
     orgSlug,
@@ -274,7 +272,7 @@ test("tariff changes are audited and apply only to new occupancy segments", asyn
   });
 
   const after = await api.ipd.get({ orgSlug, admissionId: admission.id });
-  expect(after.stays.map((stay) => stay.dailyPrice)).toEqual([1_000_00n, 1_500_00n]);
+  expect(after.stays.map((stay) => stay.tariffId)).toEqual([before.stays[0]!.tariffId, raised.id]);
 
   const entries = await auditEntries(hospital, "ipd.tariff.set");
   expect(entries.length).toBe(2);
@@ -307,8 +305,7 @@ test("a bed without a current tariff cannot take an admission", async () => {
   await api.ipd.setBedTariff({
     orgSlug,
     categoryId: unpriced.id,
-    catalogItemId: hospital.roomService.id,
-    dailyPrice: 900_00n,
+    lines: [{ catalogItemId: hospital.roomService.id, dailyPrice: 900_00n }],
     effectiveFrom: new Date(Date.now() + 24 * HOUR),
   });
 
@@ -1327,15 +1324,17 @@ test("one bed type cannot have two rates starting at the same instant", async ()
   const hospital = await createHospital("ipd-tariff-instant");
   const { api, orgSlug, category, roomService } = hospital;
 
-  const rate = {
+  const effectiveFrom = new Date(Date.now() + HOUR);
+
+  const rate = (dailyPrice: bigint) => ({
     orgSlug,
     categoryId: category.id,
-    catalogItemId: roomService.id,
-    effectiveFrom: new Date(Date.now() + HOUR),
-  };
+    lines: [{ catalogItemId: roomService.id, dailyPrice }],
+    effectiveFrom,
+  });
 
-  await api.ipd.setBedTariff({ ...rate, dailyPrice: 1_200_00n });
-  await expectORPCCode(api.ipd.setBedTariff({ ...rate, dailyPrice: 1_300_00n }), "CONFLICT");
+  await api.ipd.setBedTariff(rate(1_200_00n));
+  await expectORPCCode(api.ipd.setBedTariff(rate(1_300_00n)), "CONFLICT");
 });
 
 test("the database refuses a cancellation time or reason on an Admission that was not cancelled", async () => {
