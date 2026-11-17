@@ -15,6 +15,7 @@ import {
 
 import { orgIdColumn, user } from "./auth";
 import { catalogItems } from "./catalog-items";
+import { creditNotes } from "./credit-notes";
 import { patients } from "./patients";
 import { practitioners } from "./practitioners";
 import { stockBatches } from "./stock-batches";
@@ -380,6 +381,7 @@ export const admissionPharmacyIssueLines = pgTable(
   },
   (table) => [
     check("admission_pharmacy_issue_lines_qty_check", sql`${table.qty} > 0`),
+    unique("admission_pharmacy_issue_lines_org_id_id_unique").on(table.orgId, table.id),
     index("admission_pharmacy_issue_lines_org_issue_idx").on(table.orgId, table.issueId),
     unique("admission_pharmacy_issue_lines_org_id_admission_batch_unique").on(
       table.orgId,
@@ -399,6 +401,60 @@ export const admissionPharmacyIssueLines = pgTable(
       columns: [table.orgId, table.batchId],
       foreignColumns: [stockBatches.orgId, stockBatches.id],
     }),
+  ],
+);
+
+// Ward medicine given back. The goods go to quarantine (D041); a pending Charge is
+// voided and reposted for what remains, and a billed one is credited by `creditNoteId`.
+// What an issue line still holds is its quantity less the sum of its return lines.
+export const admissionPharmacyReturns = pgTable(
+  "admission_pharmacy_returns",
+  {
+    id: text("id").primaryKey(),
+    orgId: orgIdColumn(),
+    admissionId: text("admission_id").notNull(),
+    reason: text("reason").notNull(),
+    creditNoteId: text("credit_note_id"),
+    returnedBy: text("returned_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique("admission_pharmacy_returns_org_id_id_unique").on(table.orgId, table.id),
+    foreignKey({
+      columns: [table.orgId, table.admissionId],
+      foreignColumns: [admissions.orgId, admissions.id],
+    }),
+    foreignKey({
+      columns: [table.orgId, table.creditNoteId],
+      foreignColumns: [creditNotes.orgId, creditNotes.id],
+    }),
+    index("admission_pharmacy_returns_org_admission_idx").on(table.orgId, table.admissionId),
+  ],
+);
+
+export const admissionPharmacyReturnLines = pgTable(
+  "admission_pharmacy_return_lines",
+  {
+    id: text("id").primaryKey(),
+    orgId: orgIdColumn(),
+    returnId: text("return_id").notNull(),
+    issueLineId: text("issue_line_id").notNull(),
+    qty: integer("qty").notNull(),
+  },
+  (table) => [
+    check("admission_pharmacy_return_lines_qty_check", sql`${table.qty} > 0`),
+    foreignKey({
+      columns: [table.orgId, table.returnId],
+      foreignColumns: [admissionPharmacyReturns.orgId, admissionPharmacyReturns.id],
+    }),
+    foreignKey({
+      columns: [table.orgId, table.issueLineId],
+      foreignColumns: [admissionPharmacyIssueLines.orgId, admissionPharmacyIssueLines.id],
+    }),
+    // A return line's cap sums the earlier returns of its issue line.
+    index("admission_pharmacy_return_lines_org_issue_line_idx").on(table.orgId, table.issueLineId),
   ],
 );
 

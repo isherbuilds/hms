@@ -679,10 +679,10 @@ export const billingRouter = {
           throw new ORPCError("CONFLICT", {
             message: "Pharmacy invoices are corrected by a return.",
           });
+        // Service, bed-day and medicine lines alike (D066). A credit on a medicine line
+        // corrects money only; the goods come back through `pharmacy.returnFromAdmission`.
         case "ipd":
-          throw new ORPCError("CONFLICT", {
-            message: "Inpatient bills are corrected from the admission",
-          });
+          break;
       }
 
       const posted = await postCreditNoteTx(tx, {

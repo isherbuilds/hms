@@ -1,0 +1,1 @@
+ALTER TABLE "admission_pharmacy_issue_lines" ADD CONSTRAINT "admission_pharmacy_issue_lines_org_id_id_unique" UNIQUE("org_id","id");

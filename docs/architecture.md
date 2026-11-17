@@ -265,7 +265,11 @@ null catalog link and names its `admissionIssueLineId` and `stockBatchId`,
 paired with the issue line's Admission and batch by one composite foreign key.
 `admission_pharmacy_issues` and their lines record the ward issue; each line
 writes one shelf movement with reason `admission_issue` and source
-`admission_pharmacy_issue_line`, and its own Charge. Every Charge-set change
+`admission_pharmacy_issue_line`, and its own Charge. A ward return
+(`admission_pharmacy_returns` and lines) moves the goods into quarantine with
+source `admission_pharmacy_return`; it voids a pending Charge and reposts the
+rest, or credits a billed one on its Invoice, never more than earlier Credit
+Notes left on the line. Every Charge-set change
 bumps `admissions.chargeRevision`, which the bill compares (D020, D063).
 
 ## Writes and concurrency

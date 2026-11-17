@@ -41,6 +41,7 @@ const STOCK_MOVEMENT_SOURCES = [
   "pharmacy_return",
   "adjustment",
   "admission_pharmacy_issue_line",
+  "admission_pharmacy_return",
 ] as const;
 
 export type StockMovementSource = (typeof STOCK_MOVEMENT_SOURCES)[number];

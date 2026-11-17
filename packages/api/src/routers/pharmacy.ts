@@ -11,6 +11,8 @@ import {
   ADMISSION_ISSUE_SUPPLIES,
   admissionPharmacyIssueLines,
   admissionPharmacyIssues,
+  admissionPharmacyReturnLines,
+  admissionPharmacyReturns,
 } from "@hms/db/schema/ipd";
 import { products } from "@hms/db/schema/products";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
@@ -46,6 +48,7 @@ import {
 } from "../lib/billing-documents";
 import { businessDate } from "../lib/business-date";
 import { impossible } from "../lib/conflict";
+import { voidPendingCharges } from "../lib/opd-close";
 import { invoiceBalanceFor } from "../lib/invoice-balance";
 import { calculateInvoiceBalance } from "../lib/invoice-math";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
@@ -57,6 +60,7 @@ import {
   pageLimit,
   personName,
   phone,
+  reason,
   resolveDayRange,
   shortName,
 } from "../lib/schemas";
@@ -162,6 +166,129 @@ async function requireShelfStock(
       });
     }
   }
+}
+
+type LineMoney = { taxableValue: bigint; taxAmount: bigint; gross: bigint };
+
+/** What earlier Credit Notes on one Invoice took off each of these lines. */
+async function priorCreditsByLine(
+  tx: DbTransaction,
+  orgId: string,
+  invoiceId: string,
+  invoiceLineIds: readonly string[],
+) {
+  const rows = await tx
+    .select({
+      invoiceLineId: creditNoteLines.invoiceLineId,
+      taxableValue: creditNoteLines.taxableValue,
+      taxAmount: creditNoteLines.taxAmount,
+      gross: creditNoteLines.gross,
+    })
+    .from(creditNoteLines)
+    .innerJoin(
+      creditNotes,
+      and(eq(creditNotes.orgId, orgId), eq(creditNotes.id, creditNoteLines.creditNoteId)),
+    )
+    .where(
+      and(
+        eq(creditNoteLines.orgId, orgId),
+        eq(creditNotes.invoiceId, invoiceId),
+        inArray(creditNoteLines.invoiceLineId, [...invoiceLineIds]),
+      ),
+    );
+
+  const creditedByLine = new Map<string, LineMoney>();
+
+  for (const line of rows) {
+    const credited = creditedByLine.get(line.invoiceLineId) ?? {
+      taxableValue: 0n,
+      taxAmount: 0n,
+      gross: 0n,
+    };
+
+    credited.taxableValue += line.taxableValue;
+    credited.taxAmount += line.taxAmount;
+    credited.gross += line.gross;
+    creditedByLine.set(line.invoiceLineId, credited);
+  }
+
+  return creditedByLine;
+}
+
+/**
+ * The credit for `qty` units coming back on an invoice line, `returnedBefore` of which
+ * came back earlier. The last unit takes the exact remainder, so a full return reverses
+ * the line's taxable, tax and gross to the paisa.
+ */
+function returnedUnitsCredit(
+  source: LineMoney & { qty: number },
+  prior: LineMoney | undefined,
+  returnedBefore: number,
+  qty: number,
+): LineMoney {
+  if (returnedBefore + qty === source.qty) {
+    return {
+      taxableValue: source.taxableValue - (prior?.taxableValue ?? 0n),
+      taxAmount: source.taxAmount - (prior?.taxAmount ?? 0n),
+      gross: source.gross - (prior?.gross ?? 0n),
+    };
+  }
+
+  const share = BigInt(qty);
+  const sold = BigInt(source.qty);
+  const gross = divideHalfUp(source.gross * share, sold);
+  const taxableValue = divideHalfUp(source.taxableValue * share, sold);
+
+  return { taxableValue, taxAmount: gross - taxableValue, gross };
+}
+
+/**
+ * A return credits its units' share of the line, never more than earlier Credit Notes,
+ * a bare price correction among them, left on it.
+ */
+function cappedAtRemainder(
+  credit: LineMoney,
+  source: LineMoney,
+  prior: LineMoney | undefined,
+): LineMoney {
+  const remaining = {
+    taxableValue: source.taxableValue - (prior?.taxableValue ?? 0n),
+    taxAmount: source.taxAmount - (prior?.taxAmount ?? 0n),
+    gross: source.gross - (prior?.gross ?? 0n),
+  };
+
+  return credit.gross > remaining.gross ? remaining : credit;
+}
+
+/** Returned goods go to quarantine, never back to the shelf (D041): one movement per batch. */
+async function quarantineReturn(
+  tx: DbTransaction,
+  args: {
+    scope: { orgId: string; userId: string };
+    now: Date;
+    sourceType: "pharmacy_return" | "admission_pharmacy_return";
+    sourceId: string;
+    lines: ReadonlyArray<{ batchId: string; qty: number }>;
+  },
+) {
+  const returning = aggregateByBatch(args.lines);
+
+  await lockBatchStock(tx, args.scope.orgId, [...returning.keys()]);
+
+  await insertStockMovements(tx, {
+    orgId: args.scope.orgId,
+    userId: args.scope.userId,
+    now: args.now,
+    rows: [...returning].map(([batchId, qty]) => ({
+      batchId,
+      bucket: "quarantine" as const,
+      qty,
+      reason: "return" as const,
+      sourceType: args.sourceType,
+      sourceId: args.sourceId,
+      note: null,
+    })),
+  });
 }
 
 export const pharmacyRouter = {
@@ -566,6 +693,28 @@ export const pharmacyRouter = {
   ).handler(async ({ context, input }) => {
     const { orgId } = context.scope;
 
+    const returned = db
+      .select({
+        issueLineId: admissionPharmacyReturnLines.issueLineId,
+        qty: sql<number>`sum(${admissionPharmacyReturnLines.qty})::int`.as("returned_qty"),
+      })
+      .from(admissionPharmacyReturnLines)
+      .innerJoin(
+        admissionPharmacyReturns,
+        and(
+          eq(admissionPharmacyReturns.orgId, orgId),
+          eq(admissionPharmacyReturns.id, admissionPharmacyReturnLines.returnId),
+        ),
+      )
+      .where(
+        and(
+          eq(admissionPharmacyReturnLines.orgId, orgId),
+          eq(admissionPharmacyReturns.admissionId, input.admissionId),
+        ),
+      )
+      .groupBy(admissionPharmacyReturnLines.issueLineId)
+      .as("returned");
+
     const rows = await db
       .select({
         issueId: admissionPharmacyIssues.id,
@@ -579,6 +728,7 @@ export const pharmacyRouter = {
           batchNumber: stockBatches.batchNumber,
           expiryDate: stockBatches.expiryDate,
           qty: admissionPharmacyIssueLines.qty,
+          returnedQty: sql<number>`coalesce(${returned.qty}, 0)`.mapWith(Number),
           chargeId: charges.id,
           chargeStatus: charges.status,
         },
@@ -608,6 +758,7 @@ export const pharmacyRouter = {
           ne(charges.status, "voided"),
         ),
       )
+      .leftJoin(returned, eq(returned.issueLineId, admissionPharmacyIssueLines.id))
       .where(
         and(
           eq(admissionPharmacyIssues.orgId, orgId),
@@ -628,6 +779,317 @@ export const pharmacyRouter = {
         return { id, createdAt, prescriberName, issuedByName, lines: lines.map((row) => row.line) };
       }),
     };
+  }),
+
+  // A ward return puts the goods in quarantine. A pending Charge is voided and the rest
+  // reposted at the same price; a billed one is credited on its Invoice. Never a discount.
+  returnFromAdmission: orgProcedure(
+    { ipd: ["read"], pharmacy: ["returnAdmission"] },
+    orgInput.extend({
+      admissionId: z.string(),
+      expectedChargeRevision,
+      lines: z
+        .array(z.object({ issueLineId: z.string(), qty: z.number().int().positive() }))
+        .min(1),
+      reason,
+    }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+    const issueLineIds = input.lines.map((line) => line.issueLineId);
+
+    if (new Set(issueLineIds).size !== issueLineIds.length) {
+      throw new ORPCError("BAD_REQUEST", { message: "Return each issued medicine once" });
+    }
+
+    const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
+    const returnId = Bun.randomUUIDv7();
+    const creditNoteId = Bun.randomUUIDv7();
+
+    const result = await db.transaction(async (tx) => {
+      const admission = await lockAdmissionCharges(tx, scope.orgId, input.admissionId);
+
+      requireChargeable(admission, {
+        allowed: ["admitted", "discharge_ready", "discharged"],
+        message: "Medicines cannot be returned from a cancelled admission.",
+        expectedChargeRevision: input.expectedChargeRevision,
+      });
+
+      // Every return of an issue line is written under this Admission lock, so the sums
+      // are current. An issue line has at most one live Charge, locked before its Invoice.
+      const [issued, live, returned] = await Promise.all([
+        tx
+          .select({
+            id: admissionPharmacyIssueLines.id,
+            batchId: admissionPharmacyIssueLines.batchId,
+            qty: admissionPharmacyIssueLines.qty,
+          })
+          .from(admissionPharmacyIssueLines)
+          .where(
+            and(
+              eq(admissionPharmacyIssueLines.orgId, scope.orgId),
+              eq(admissionPharmacyIssueLines.admissionId, admission.id),
+              inArray(admissionPharmacyIssueLines.id, issueLineIds),
+            ),
+          ),
+        tx
+          .select({
+            charge: {
+              id: charges.id,
+              issueLineId: charges.admissionIssueLineId,
+              status: charges.status,
+              invoiceId: charges.invoiceId,
+              qty: charges.qty,
+              description: charges.description,
+              unitPrice: charges.unitPrice,
+              priceUnits: charges.priceUnits,
+              taxRatePercent: charges.taxRatePercent,
+              taxCode: charges.taxCode,
+              revenueCategory: charges.revenueCategory,
+            },
+            invoiceLine: {
+              id: invoiceLines.id,
+              qty: invoiceLines.qty,
+              taxableValue: invoiceLines.taxableValue,
+              taxAmount: invoiceLines.taxAmount,
+              gross: invoiceLines.gross,
+            },
+          })
+          .from(charges)
+          .leftJoin(
+            invoiceLines,
+            and(eq(invoiceLines.orgId, scope.orgId), eq(invoiceLines.chargeId, charges.id)),
+          )
+          .where(
+            and(
+              eq(charges.orgId, scope.orgId),
+              eq(charges.admissionId, admission.id),
+              inArray(charges.admissionIssueLineId, issueLineIds),
+              ne(charges.status, "voided"),
+            ),
+          )
+          .orderBy(asc(charges.id))
+          .for("update", { of: charges }),
+        tx
+          .select({
+            issueLineId: admissionPharmacyReturnLines.issueLineId,
+            qty: sql<number>`sum(${admissionPharmacyReturnLines.qty})::int`,
+          })
+          .from(admissionPharmacyReturnLines)
+          .where(
+            and(
+              eq(admissionPharmacyReturnLines.orgId, scope.orgId),
+              inArray(admissionPharmacyReturnLines.issueLineId, issueLineIds),
+            ),
+          )
+          .groupBy(admissionPharmacyReturnLines.issueLineId),
+      ]);
+
+      if (issued.length !== issueLineIds.length) {
+        throw new ORPCError("NOT_FOUND", {
+          message: "That medicine was not issued to this admission.",
+        });
+      }
+
+      const issuedById = new Map(issued.map((line) => [line.id, line]));
+      const liveByLine = new Map(live.map((row) => [row.charge.issueLineId, row]));
+      const returnedByLine = new Map(returned.map((row) => [row.issueLineId, row.qty]));
+
+      const lines = input.lines.map((line) => {
+        const issue = issuedById.get(line.issueLineId);
+
+        if (!issue) throw impossible(`issue line ${line.issueLineId} vanished after its read`);
+
+        const left = issue.qty - (returnedByLine.get(issue.id) ?? 0);
+
+        if (line.qty > left) {
+          throw new ORPCError("BAD_REQUEST", {
+            message:
+              left === 0
+                ? "This medicine has already been returned in full"
+                : `Only ${left} of this medicine is left to return`,
+          });
+        }
+
+        const row = liveByLine.get(issue.id);
+
+        // A pending Charge holds exactly what is left; a billed one never less.
+        if (
+          !row ||
+          (row.charge.status === "pending" && row.charge.qty !== left) ||
+          (row.charge.status === "invoiced" && (!row.invoiceLine || row.invoiceLine.qty < left))
+        ) {
+          throw impossible(`issue line ${issue.id} does not match its live charge`);
+        }
+
+        return { ...line, batchId: issue.batchId, left, ...row };
+      });
+
+      const pending = lines.filter((line) => line.charge.status === "pending");
+
+      const billed = lines.flatMap(({ charge, invoiceLine, left, qty }) =>
+        charge.status === "invoiced" && charge.invoiceId && invoiceLine
+          ? [{ invoiceId: charge.invoiceId, invoiceLine, left, qty }]
+          : [],
+      );
+
+      const invoiceIds = new Set(billed.map((line) => line.invoiceId));
+
+      if (invoiceIds.size > 1) {
+        throw new ORPCError("BAD_REQUEST", {
+          message: "Return medicines from one bill at a time",
+        });
+      }
+
+      if (pending.length > 0) {
+        const voided = await voidPendingCharges({
+          tx,
+          orgId: scope.orgId,
+          where: inArray(
+            charges.id,
+            pending.map((line) => line.charge.id),
+          ),
+          reason: input.reason,
+          now,
+        });
+
+        if (voided.length !== pending.length) throw impossible("locked pending charge moved");
+
+        const reposted = pending
+          .filter((line) => line.left > line.qty)
+          .map(({ charge, left, qty, batchId }) => ({
+            id: Bun.randomUUIDv7(),
+            orgId: scope.orgId,
+            admissionId: admission.id,
+            admissionKind: "pharmacy_issue" as const,
+            admissionIssueLineId: charge.issueLineId,
+            catalogItemId: null,
+            description: charge.description,
+            unitPrice: charge.unitPrice,
+            priceUnits: charge.priceUnits,
+            taxRatePercent: charge.taxRatePercent,
+            taxCode: charge.taxCode,
+            revenueCategory: charge.revenueCategory,
+            qty: left - qty,
+            sourceType: "admission" as const,
+            sourceId: admission.id,
+            stockBatchId: batchId,
+            status: "pending" as const,
+            createdBy: scope.userId,
+            createdAt: now,
+            updatedAt: now,
+          }));
+
+        if (reposted.length > 0) await tx.insert(charges).values(reposted);
+      }
+
+      const [invoiceId] = invoiceIds;
+      let creditNote: Awaited<ReturnType<typeof postCreditNoteTx>> | null = null;
+
+      if (invoiceId) {
+        // The Invoice lock holds off a bare Credit Note on these lines, so the earlier
+        // credits read next are the ones this return is measured against.
+        await lockInvoice(tx, scope.orgId, invoiceId);
+
+        const prior = await priorCreditsByLine(
+          tx,
+          scope.orgId,
+          invoiceId,
+          billed.map((line) => line.invoiceLine.id),
+        );
+
+        const moneyLines: CreditNoteLineRequest[] = billed
+          .map(({ invoiceLine, left, qty }) => {
+            const credited = prior.get(invoiceLine.id);
+
+            return {
+              invoiceLineId: invoiceLine.id,
+              ...cappedAtRemainder(
+                returnedUnitsCredit(invoiceLine, credited, invoiceLine.qty - left, qty),
+                invoiceLine,
+                credited,
+              ),
+            };
+          })
+          .filter((line) => line.gross > 0n);
+
+        if (moneyLines.length > 0) {
+          creditNote = await postCreditNoteTx(tx, {
+            scope,
+            invoiceId,
+            reason: input.reason,
+            lines: moneyLines,
+            roundOff: 0n,
+            settings,
+            now,
+            fiscalYear,
+            creditNoteId,
+          });
+        }
+      }
+
+      await tx.insert(admissionPharmacyReturns).values({
+        id: returnId,
+        orgId: scope.orgId,
+        admissionId: admission.id,
+        reason: input.reason,
+        creditNoteId: creditNote ? creditNoteId : null,
+        returnedBy: scope.userId,
+        createdAt: now,
+      });
+
+      await tx.insert(admissionPharmacyReturnLines).values(
+        lines.map((line) => ({
+          id: Bun.randomUUIDv7(),
+          orgId: scope.orgId,
+          returnId,
+          issueLineId: line.issueLineId,
+          qty: line.qty,
+        })),
+      );
+
+      await quarantineReturn(tx, {
+        scope,
+        now,
+        sourceType: "admission_pharmacy_return",
+        sourceId: returnId,
+        lines,
+      });
+
+      return {
+        creditNote,
+        chargeRevision: await bumpChargeRevision(tx, scope.orgId, admission.id),
+      };
+    });
+
+    const returnedCreditNoteId = result.creditNote ? creditNoteId : null;
+
+    audit({
+      action: "pharmacy.returnFromAdmission",
+      actorId: scope.userId,
+      orgId: scope.orgId,
+      target: `admissionPharmacyReturn:${returnId}`,
+      meta: {
+        admissionId: input.admissionId,
+        reason: input.reason,
+        lines: input.lines,
+        creditNoteId: returnedCreditNoteId,
+      },
+    });
+
+    if (result.creditNote) {
+      audit({
+        action: "creditNote.issue",
+        actorId: scope.userId,
+        orgId: scope.orgId,
+        target: `creditNote:${creditNoteId}`,
+        meta: {
+          creditNoteNumber: result.creditNote.creditNote.creditNoteNumber,
+          total: formatDecimal(result.creditNote.creditNote.total),
+        },
+      });
+    }
+
+    return { returnId, creditNoteId: returnedCreditNoteId, chargeRevision: result.chargeRevision };
   }),
 
   returnSale: orgProcedure(
@@ -670,7 +1132,7 @@ export const pharmacyRouter = {
     const result = await db.transaction(async (tx) => {
       const invoice = await lockInvoice(tx, scope.orgId, sale.invoiceId);
 
-      const [sourceLines, priorReturns, priorCredits, [priorCredit]] = await Promise.all([
+      const [sourceLines, priorReturns, creditedByLine, [priorCredit]] = await Promise.all([
         tx
           .select({
             id: invoiceLines.id,
@@ -708,28 +1170,7 @@ export const pharmacyRouter = {
             ),
           )
           .groupBy(pharmacyReturnLines.invoiceLineId),
-        tx
-          .select({
-            invoiceLineId: creditNoteLines.invoiceLineId,
-            taxableValue: creditNoteLines.taxableValue,
-            taxAmount: creditNoteLines.taxAmount,
-            gross: creditNoteLines.gross,
-          })
-          .from(creditNoteLines)
-          .innerJoin(
-            creditNotes,
-            and(
-              eq(creditNotes.orgId, scope.orgId),
-              eq(creditNotes.id, creditNoteLines.creditNoteId),
-            ),
-          )
-          .where(
-            and(
-              eq(creditNoteLines.orgId, scope.orgId),
-              eq(creditNotes.invoiceId, sale.invoiceId),
-              inArray(creditNoteLines.invoiceLineId, requestedIds),
-            ),
-          ),
+        priorCreditsByLine(tx, scope.orgId, sale.invoiceId, requestedIds),
         tx
           .select({ total: sql`coalesce(sum(${creditNotes.total}), 0)::bigint`.mapWith(BigInt) })
           .from(creditNotes)
@@ -749,24 +1190,6 @@ export const pharmacyRouter = {
       const requestedQtyByLine = new Map(input.lines.map((line) => [line.invoiceLineId, line.qty]));
       const returnedQtyByLine = new Map(priorReturns.map((row) => [row.invoiceLineId, row.qty]));
 
-      const creditedByLine = new Map<
-        string,
-        { taxableValue: bigint; taxAmount: bigint; gross: bigint }
-      >();
-
-      for (const line of priorCredits) {
-        const credited = creditedByLine.get(line.invoiceLineId) ?? {
-          taxableValue: 0n,
-          taxAmount: 0n,
-          gross: 0n,
-        };
-
-        credited.taxableValue += line.taxableValue;
-        credited.taxAmount += line.taxAmount;
-        credited.gross += line.gross;
-        creditedByLine.set(line.invoiceLineId, credited);
-      }
-
       const computed = input.lines.map((line) => {
         const source = sourceById.get(line.invoiceLineId);
 
@@ -780,29 +1203,12 @@ export const pharmacyRouter = {
           });
         }
 
-        const prior = creditedByLine.get(source.id) ?? {
-          taxableValue: 0n,
-          taxAmount: 0n,
-          gross: 0n,
-        };
-
-        // The last returnable unit takes the exact remainder, so a full return reverses
-        // the line's taxable, tax and gross to the paisa.
-        const credited =
-          alreadyReturned + line.qty === source.qty
-            ? {
-                taxableValue: source.taxableValue - prior.taxableValue,
-                taxAmount: source.taxAmount - prior.taxAmount,
-                gross: source.gross - prior.gross,
-              }
-            : (() => {
-                const share = BigInt(line.qty);
-                const sold = BigInt(source.qty);
-                const gross = divideHalfUp(source.gross * share, sold);
-                const taxableValue = divideHalfUp(source.taxableValue * share, sold);
-
-                return { taxableValue, taxAmount: gross - taxableValue, gross };
-              })();
+        const credited = returnedUnitsCredit(
+          source,
+          creditedByLine.get(source.id),
+          alreadyReturned,
+          line.qty,
+        );
 
         if (source.batchId === null) throw impossible(`pharmacy charge ${source.id} has no batch`);
 
@@ -830,10 +1236,6 @@ export const pharmacyRouter = {
       // Cap a partial return at the invoice balance; the final return absorbs
       // any round-off not already carried by earlier credit notes.
       const roundOff = fullyReturned || excess < 0n ? excess : 0n;
-
-      const returning = aggregateByBatch(computed);
-
-      await lockBatchStock(tx, scope.orgId, [...returning.keys()]);
 
       const creditNote =
         moneyLines.length > 0 || roundOff > 0n
@@ -874,19 +1276,12 @@ export const pharmacyRouter = {
         })),
       );
 
-      await insertStockMovements(tx, {
-        orgId: scope.orgId,
-        userId: scope.userId,
+      await quarantineReturn(tx, {
+        scope,
         now,
-        rows: [...returning].map(([batchId, qty]) => ({
-          batchId,
-          bucket: "quarantine" as const,
-          qty,
-          reason: "return" as const,
-          sourceType: "pharmacy_return" as const,
-          sourceId: returnId,
-          note: null,
-        })),
+        sourceType: "pharmacy_return",
+        sourceId: returnId,
+        lines: computed,
       });
 
       if (!input.refund) return { creditNote, refund: null };
