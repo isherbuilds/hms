@@ -35,7 +35,7 @@ const EXPIRY_YEAR = new Date().getUTCFullYear() + 3;
 
 let phoneSequence = 5_620_000;
 
-async function createHospital(seed: string) {
+async function createHospital(seed: string, options: { gstin?: string } = {}) {
   const owner = await createTestUser(`${seed}-owner`);
   const organization = await createOrganization(owner, seed);
   const orgSlug = organization.slug;
@@ -46,8 +46,8 @@ async function createHospital(seed: string) {
     orgSlug,
     legalName: `${seed} Hospital`,
     address: `${seed} Address`,
-    taxId: "",
-    gstin: "",
+    taxId: options.gstin ? "GSTIN-TEST" : "",
+    gstin: options.gstin ?? "",
     drugLicence20: "",
     drugLicence21: "",
     currency: "INR",
@@ -104,8 +104,8 @@ async function createHospital(seed: string) {
     );
   }
 
-  /** A received batch of `qty` units at ₹112.00 each. */
-  async function stock(qty: number) {
+  /** A received batch of `qty` units at `mrp` each, ₹112.00 unless given. */
+  async function stock(qty: number, mrp = MRP) {
     const product = await api.pharmacy.createProduct({
       orgSlug,
       name: `${seed} Medicine ${uniqueSuffix()}`,
@@ -130,7 +130,7 @@ async function createHospital(seed: string) {
           productId: product.productId,
           batchNumber: `B-${uniqueSuffix()}`,
           expiryDate: `${EXPIRY_YEAR}-12`,
-          mrp: MRP,
+          mrp,
           pricedPer: "unit",
           cost: { freeQty: 0, rate: 0n, discountPercent: "0", gstPercent: "0" },
           qty,
@@ -180,12 +180,17 @@ async function createHospital(seed: string) {
   }
 
   /** Issues one batch line and returns its issue line id. */
-  async function issue(admissionId: string, batchId: string, qty: number) {
+  async function issue(
+    admissionId: string,
+    batchId: string,
+    qty: number,
+    supply?: "bundled" | "independent",
+  ) {
     await api.pharmacy.issueToAdmission({
       orgSlug,
       admissionId,
       expectedChargeRevision: await revision(admissionId),
-      lines: [{ batchId, qty }],
+      lines: [{ batchId, qty, supply }],
     });
 
     const { issues } = await api.pharmacy.listAdmissionIssues({ orgSlug, admissionId });
@@ -311,7 +316,12 @@ async function createHospital(seed: string) {
 
   async function creditLines(creditNoteId: string) {
     return db
-      .select({ invoiceLineId: creditNoteLines.invoiceLineId, gross: creditNoteLines.gross })
+      .select({
+        invoiceLineId: creditNoteLines.invoiceLineId,
+        taxableValue: creditNoteLines.taxableValue,
+        taxAmount: creditNoteLines.taxAmount,
+        gross: creditNoteLines.gross,
+      })
       .from(creditNoteLines)
       .where(and(eq(creditNoteLines.orgId, orgId), eq(creditNoteLines.creditNoteId, creditNoteId)));
   }
@@ -826,6 +836,56 @@ test("a medicine line on an IPD Invoice can be credited without a return, and a 
 
   const invoice = await api.billing.getInvoice({ orgSlug, invoiceId });
   expect(invoice.balance.outstanding).toBe(-2n * MRP);
+});
+
+test("a part return after a price correction on a taxed medicine line credits no more tax or taxable value than is left", async () => {
+  const hospital = await createHospital("return-credit-taxed", { gstin: "27ABCDE1234F1Z5" });
+  const { api, orgSlug } = hospital;
+  // Four tablets at ₹10.00 MRP with 12% GST inside: taxable ₹35.71, tax ₹4.29.
+  const batchId = await hospital.stock(10, 10_00n);
+  const admission = await hospital.admit(0);
+  const issueLineId = await hospital.issue(admission.id, batchId, 4, "independent");
+  const { invoiceId } = await hospital.billPaid(admission.id);
+
+  const medicine = (await hospital.invoiceLineRows(invoiceId)).find(
+    (line) => line.admissionKind === "pharmacy_issue",
+  );
+
+  if (!medicine) throw new Error("expected the medicine's Invoice line");
+
+  const [line] = await db
+    .select()
+    .from(invoiceLines)
+    .where(and(eq(invoiceLines.orgId, hospital.orgId), eq(invoiceLines.id, medicine.id)));
+
+  if (!line) throw new Error("expected the Invoice line");
+
+  expect(line).toMatchObject({ gross: 40_00n, taxableValue: 35_71n, taxAmount: 4_29n });
+
+  // A ₹30 price correction leaves ₹10.00 on the line: taxable ₹8.92, tax ₹1.08.
+  await api.billing.issueCreditNote({
+    orgSlug,
+    invoiceId,
+    reason: "Billed above the agreed price",
+    lines: [{ invoiceLineId: medicine.id, gross: 30_00n }],
+  });
+
+  // One tablet comes back. Its share is ₹10.00, all that is left, so the return credits
+  // exactly what is left and is not refused over a paisa of rounding.
+  const returned = await hospital.giveBack(admission.id, [{ issueLineId, qty: 1 }]);
+
+  expect(returned.creditNoteId).toBeTruthy();
+  expect(await hospital.onHand(batchId)).toEqual({ shelf: 6, quarantine: 1 });
+
+  const credited = (
+    await Promise.all(
+      (await hospital.creditNoteRows()).map((note) => hospital.creditLines(note.id)),
+    )
+  ).flat();
+
+  expect(credited.reduce((sum, entry) => sum + entry.gross, 0n)).toBe(40_00n);
+  expect(credited.reduce((sum, entry) => sum + entry.taxableValue, 0n)).toBe(35_71n);
+  expect(credited.reduce((sum, entry) => sum + entry.taxAmount, 0n)).toBe(4_29n);
 });
 
 test("the accountant credits an IPD line; the cashier cannot", async () => {

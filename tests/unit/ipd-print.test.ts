@@ -110,7 +110,7 @@ test("the discharge slip says when and how the Patient left, for every discharge
   expect([...labels].every((label) => label.trim() !== "")).toBe(true);
 });
 
-test("the discharge slip carries a signature panel for the paper clearances, the summary among them", () => {
+test("the discharge slip carries a signature panel for the four paper clearances", () => {
   const slip = dischargeSlip({
     ...stay,
     admission: {
@@ -120,9 +120,13 @@ test("the discharge slip carries a signature panel for the paper clearances, the
     },
   });
 
-  expect(slip.signatures.length).toBeGreaterThanOrEqual(3);
-  expect(new Set(slip.signatures).size).toBe(slip.signatures.length);
-  expect(slip.signatures.some((line) => /summary/i.test(line))).toBe(true);
+  // The four paper clearances, each signed once: summary handed over, ward nurse,
+  // pharmacy and billing.
+  expect(slip.signatures).toHaveLength(4);
+
+  for (const clearance of [/summary/i, /nurse/i, /pharmacy/i, /billing/i]) {
+    expect(slip.signatures.filter((line) => clearance.test(line))).toHaveLength(1);
+  }
 });
 
 test("the interim bill says in its title that it is not an Invoice or Receipt", () => {
