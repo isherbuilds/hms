@@ -1,4 +1,3 @@
-import { DECIMAL_PATTERN, parseDecimal } from "@hms/api/core/money";
 import { localDateTime } from "@hms/api/lib/business-date";
 import { practitionerDisplayName } from "@hms/api/lib/labels";
 import { Badge } from "@hms/ui/components/badge";
@@ -6,7 +5,7 @@ import { Checkbox } from "@hms/ui/components/checkbox";
 import { FormControl, FormField, FormItem, FormLabel } from "@hms/ui/components/form";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { useQuery } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import {
   useFormContext,
   useWatch,
@@ -922,86 +921,6 @@ export function BedCategoryDialog({ orgSlug, onClose }: { orgSlug: string; onClo
       run={({ name }) => orpc.ipd.createBedCategory.call({ orgSlug, name })}
     >
       <TextField name="name" label="Name" autoFocus />
-    </FormDialog>
-  );
-}
-
-const tariffSchema = z.object({
-  catalogItemId: z.string().min(1, "Choose the billed service"),
-  dailyPrice: z
-    .string()
-    .regex(DECIMAL_PATTERN, "Amount like 1500 or 1500.00")
-    .transform(parseDecimal),
-  effectiveFrom: z.string().min(1, "Choose when the rate starts"),
-});
-
-export function TariffDialog({
-  orgSlug,
-  category,
-  services,
-  servicesFooter,
-  onClose,
-}: {
-  orgSlug: string;
-  category: { id: string; name: string };
-  services: { id: string; name: string }[];
-  /** Loads the next page of services, so every one can be chosen. */
-  servicesFooter: ReactNode;
-  onClose: () => void;
-}) {
-  const { timeZone } = useOrgDateTime();
-
-  return (
-    <FormDialog
-      title={`Daily rate for ${category.name}`}
-      description="A new rate applies to beds taken from its start; current stays keep their rate."
-      submitLabel="Save rate"
-      schema={tariffSchema}
-      defaultValues={{
-        catalogItemId: "",
-        dailyPrice: "",
-        effectiveFrom: localInputValue(new Date(), timeZone),
-      }}
-      success="Daily rate saved"
-      onClose={onClose}
-      run={(value) =>
-        orpc.ipd.setBedTariff.call({
-          orgSlug,
-          categoryId: category.id,
-          lines: [{ catalogItemId: value.catalogItemId, dailyPrice: value.dailyPrice }],
-          effectiveFrom: localDateTime(value.effectiveFrom, timeZone),
-        })
-      }
-    >
-      <ControlledField
-        name="catalogItemId"
-        label="Billed as"
-        render={(field) => (
-          <FormControl>
-            <NativeSelect {...field}>
-              <option value="">Choose a service</option>
-              {services.map((service) => (
-                <option key={service.id} value={service.id}>
-                  {service.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </FormControl>
-        )}
-      />
-      {servicesFooter}
-      <TextField
-        name="dailyPrice"
-        label="Daily rate"
-        inputMode="decimal"
-        className="tabular-nums"
-      />
-      <TextField
-        name="effectiveFrom"
-        label="Starts"
-        type="datetime-local"
-        className="tabular-nums"
-      />
     </FormDialog>
   );
 }

@@ -71,13 +71,13 @@ const documentStyle: CSSProperties = {
   lineHeight: 1.45,
 };
 
-const tableStyle: CSSProperties = {
+export const tableStyle: CSSProperties = {
   borderCollapse: "collapse",
   marginTop: 8,
   width: "100%",
 };
 
-const headingCellStyle: CSSProperties = {
+export const headingCellStyle: CSSProperties = {
   backgroundColor: colors.panel,
   borderBottom: `1px solid ${colors.border}`,
   color: colors.muted,
@@ -88,7 +88,7 @@ const headingCellStyle: CSSProperties = {
   textTransform: "uppercase",
 };
 
-const cellStyle: CSSProperties = {
+export const cellStyle: CSSProperties = {
   borderBottom: `1px solid ${colors.border}`,
   padding: "7px 6px",
   verticalAlign: "top",
@@ -217,7 +217,11 @@ export function Details({
   );
 }
 
-function SummaryBox({ rows }: { rows: Array<{ label: string; value: string; total?: boolean }> }) {
+export function SummaryBox({
+  rows,
+}: {
+  rows: Array<{ label: string; value: string; total?: boolean }>;
+}) {
   return (
     <div
       style={{

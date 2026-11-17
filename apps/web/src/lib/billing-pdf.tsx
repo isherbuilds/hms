@@ -1,6 +1,7 @@
 import interLatinExtSource from "@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2?inline";
 import devanagariRegularSource from "@fontsource/noto-sans-devanagari/files/noto-sans-devanagari-devanagari-400-normal.woff2?inline";
 import devanagariBoldSource from "@fontsource/noto-sans-devanagari/files/noto-sans-devanagari-devanagari-700-normal.woff2?inline";
+import { practitionerDisplayName } from "@hms/api/lib/labels";
 import { ORPCError } from "@orpc/server";
 import type { ReactElement } from "react";
 import { render } from "takumi-pdf";
@@ -17,9 +18,12 @@ import {
   ReceiptDocument,
   RefundDocument,
 } from "@/components/pdf/billing-documents";
+import { InterimBillDocument } from "@/components/pdf/ipd-interim-bill";
 import { SlipDocument } from "@/components/pdf/ipd-slip";
 import { invoiceDocumentTitle } from "@/lib/invoice-print";
+import { INTERIM_BILL_TITLE } from "@/lib/ipd-interim-bill";
 import { admissionSlip, dischargeSlip, type SlipKind } from "@/lib/ipd-slips";
+import { formatDateTime } from "@/lib/org-datetime";
 import { siteConfig } from "@/config/site";
 import type { BillingDocumentRequest } from "@/lib/billing-document";
 import type { AppRouter } from "@hms/api/routers/index";
@@ -269,6 +273,57 @@ export async function renderSlipPdf(
       ),
       number: admission.admissionNumber,
       title: slip.title,
+    },
+    settings.legalName,
+    false,
+  );
+}
+
+/** The running bill of a stay still in hospital, printed for the deposit desk. */
+export async function renderInterimBillPdf(
+  detail: Awaited<ReturnType<Client["ipd"]["get"]>>,
+  bill: Awaited<ReturnType<Client["ipd"]["previewInvoice"]>>,
+  settings: Awaited<ReturnType<Client["settings"]["get"]>>,
+) {
+  const { admission, patient, practitionerName, stays } = detail;
+
+  if (admission.status !== "admitted" && admission.status !== "discharge_ready") {
+    throw new ORPCError("NOT_FOUND", { message: "Only a stay in hospital has an interim bill" });
+  }
+
+  const bed = stays.at(-1);
+
+  if (!bed) throw new Error(`Admission ${admission.id} has no bed stay`);
+
+  const facts = [
+    { label: "Patient", value: patient.name },
+    { label: "MRN", value: patient.mrn },
+    { label: "Consultant", value: practitionerDisplayName(practitionerName) },
+    { label: "Bed", value: `${bed.wardName} ${bed.bedLabel}` },
+    { label: "Admitted", value: formatDateTime(admission.admittedAt, settings.timeZone) },
+    { label: "Charges up to", value: formatDateTime(bill.through, settings.timeZone) },
+  ];
+
+  return renderDocument(
+    {
+      element: (
+        <InterimBillDocument
+          bill={bill}
+          admissionNumber={admission.admissionNumber}
+          facts={facts}
+          document={{
+            orgLegalName: settings.legalName,
+            orgAddress: settings.address,
+            orgTaxId: settings.taxId,
+            orgGstin: settings.gstin,
+            currency: settings.currency,
+            patientName: patient.name,
+            patientMrn: patient.mrn,
+          }}
+        />
+      ),
+      number: admission.admissionNumber,
+      title: INTERIM_BILL_TITLE,
     },
     settings.legalName,
     false,

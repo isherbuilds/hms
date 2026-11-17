@@ -62,6 +62,24 @@ const formSchema = settingsFields
 const wallTime = (minutes: number) =>
   `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 
+// Every half hour of the day, plus a saved time between them so it is never lost.
+const HALF_HOURS = Array.from({ length: 48 }, (_, index) => wallTime(index * 30));
+
+const checkoutChoices = (current: string) =>
+  HALF_HOURS.includes(current) ? HALF_HOURS : [...HALF_HOURS, current].toSorted();
+
+// "12:00 noon", "9:30 am": the desk reads a clock, not minutes after midnight.
+function clockLabel(time: string) {
+  const hours = Number(time.slice(0, 2));
+  const minutes = Number(time.slice(3));
+
+  if (hours === 12 && minutes === 0) return "12:00 noon";
+
+  if (hours === 0 && minutes === 0) return "12:00 midnight";
+
+  return `${hours % 12 || 12}:${String(minutes).padStart(2, "0")} ${hours < 12 ? "am" : "pm"}`;
+}
+
 function toFormValues(settings: SettingsFields) {
   return {
     ...settings,
@@ -287,7 +305,7 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                 Visit defaults
               </h2>
               <p className="max-w-xs leading-relaxed text-muted-foreground">
-                Follow-up eligibility and reminders for unbilled visits.
+                Follow-up eligibility, reminders for unbilled visits, and when a bed day ends.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 md:col-span-2">
@@ -309,12 +327,21 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                 step={1}
                 description="Checked-in visits with older charges appear as unbilled."
               />
-              <TextField
+              <ControlledField
                 name="ipdCheckoutMinutes"
-                label="Bed-day checkout"
-                type="time"
-                className="tabular-nums"
-                description="A bed day ends at this time; a later departure starts another day."
+                label="Bed-day checkout time"
+                description="A bed day ends at this time. A change applies to new admissions only."
+                render={(field) => (
+                  <FormControl>
+                    <NativeSelect {...field} className="tabular-nums">
+                      {checkoutChoices(field.value).map((time) => (
+                        <option key={time} value={time}>
+                          {clockLabel(time)}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </FormControl>
+                )}
               />
             </div>
           </section>

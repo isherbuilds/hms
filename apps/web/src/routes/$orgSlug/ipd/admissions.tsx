@@ -14,6 +14,8 @@ import {
   PageHeader,
   Panel,
 } from "@/components/page";
+import { useMembership } from "@/lib/membership";
+import { formatMoney, ZERO } from "@/lib/money";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
@@ -56,6 +58,7 @@ function AdmissionsRoute() {
   const { orgSlug } = Route.useParams();
   const { state } = Route.useSearch();
   const { timeZone } = useOrgDateTime();
+  const currency = useMembership(orgSlug, (membership) => membership.currency);
   const admissions = useInfiniteQuery(admissionsQuery(orgSlug, state));
   const items = admissions.data?.pages.flatMap((page) => page.items) ?? [];
 
@@ -137,6 +140,20 @@ function AdmissionsRoute() {
                       {formatDateTime(item.admittedAt, timeZone)}
                     </span>
                   ),
+                },
+                {
+                  head: "Running bill",
+                  // A stay that ended shows only what is still unbilled.
+                  cell: (item) =>
+                    item.status === "cancelled" ||
+                    (item.status === "discharged" && item.runningBill === ZERO) ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <span className="whitespace-nowrap tabular-nums">
+                        {formatMoney(item.runningBill, currency)}
+                      </span>
+                    ),
+                  className: "text-right",
                 },
                 {
                   head: "Status",

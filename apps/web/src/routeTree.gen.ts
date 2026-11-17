@@ -40,6 +40,7 @@ import { Route as OrgSlugBillingRefundsRouteImport } from './routes/$orgSlug/bil
 import { Route as OrgSlugIpdIndexRouteImport } from './routes/$orgSlug/ipd/index'
 import { Route as OrgSlugIpdAdmissionIdRouteImport } from './routes/$orgSlug/ipd/$admissionId'
 import { Route as OrgSlugIpdAdmissionsRouteImport } from './routes/$orgSlug/ipd/admissions'
+import { Route as OrgSlugIpdEstimateRouteImport } from './routes/$orgSlug/ipd/estimate'
 import { Route as OrgSlugIpdFacilityRouteImport } from './routes/$orgSlug/ipd/facility'
 import { Route as OrgSlugIpdReservationsRouteImport } from './routes/$orgSlug/ipd/reservations'
 import { Route as OrgSlugOpdIndexRouteImport } from './routes/$orgSlug/opd/index'
@@ -83,6 +84,7 @@ import { Route as OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRouteImport } f
 import { Route as OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRouteImport } from './routes/$orgSlug/billing/invoices.$invoiceId_.refund.$refundId'
 import { Route as ApiOrgSlugBillingAdvancesAdvanceIdPdfRouteImport } from './routes/api.$orgSlug.billing.advances.$advanceId.pdf'
 import { Route as ApiOrgSlugBillingInvoicesInvoiceIdPdfRouteImport } from './routes/api.$orgSlug.billing.invoices.$invoiceId.pdf'
+import { Route as ApiOrgSlugIpdAdmissionsAdmissionIdInterimBillRouteImport } from './routes/api.$orgSlug.ipd.admissions.$admissionId.interim-bill'
 import { Route as ApiOrgSlugIpdAdmissionsAdmissionIdSlipRouteImport } from './routes/api.$orgSlug.ipd.admissions.$admissionId.slip'
 
 const IndexRoute = IndexRouteImport.update({
@@ -238,6 +240,11 @@ const OrgSlugIpdAdmissionIdRoute = OrgSlugIpdAdmissionIdRouteImport.update({
 const OrgSlugIpdAdmissionsRoute = OrgSlugIpdAdmissionsRouteImport.update({
   id: '/admissions',
   path: '/admissions',
+  getParentRoute: () => OrgSlugIpdRouteRoute,
+} as any)
+const OrgSlugIpdEstimateRoute = OrgSlugIpdEstimateRouteImport.update({
+  id: '/estimate',
+  path: '/estimate',
   getParentRoute: () => OrgSlugIpdRouteRoute,
 } as any)
 const OrgSlugIpdFacilityRoute = OrgSlugIpdFacilityRouteImport.update({
@@ -478,6 +485,12 @@ const ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute =
     path: '/api/$orgSlug/billing/invoices/$invoiceId/pdf',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiOrgSlugIpdAdmissionsAdmissionIdInterimBillRoute =
+  ApiOrgSlugIpdAdmissionsAdmissionIdInterimBillRouteImport.update({
+    id: '/api/$orgSlug/ipd/admissions/$admissionId/interim-bill',
+    path: '/api/$orgSlug/ipd/admissions/$admissionId/interim-bill',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute =
   ApiOrgSlugIpdAdmissionsAdmissionIdSlipRouteImport.update({
     id: '/api/$orgSlug/ipd/admissions/$admissionId/slip',
@@ -517,6 +530,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/billing/refunds': typeof OrgSlugBillingRefundsRoute
   '/$orgSlug/ipd/$admissionId': typeof OrgSlugIpdAdmissionIdRoute
   '/$orgSlug/ipd/admissions': typeof OrgSlugIpdAdmissionsRoute
+  '/$orgSlug/ipd/estimate': typeof OrgSlugIpdEstimateRoute
   '/$orgSlug/ipd/facility': typeof OrgSlugIpdFacilityRoute
   '/$orgSlug/ipd/reservations': typeof OrgSlugIpdReservationsRoute
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
@@ -560,6 +574,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/billing/invoices/$invoiceId/refund/$refundId': typeof OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
   '/api/$orgSlug/billing/advances/$advanceId/pdf': typeof ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute
   '/api/$orgSlug/billing/invoices/$invoiceId/pdf': typeof ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute
+  '/api/$orgSlug/ipd/admissions/$admissionId/interim-bill': typeof ApiOrgSlugIpdAdmissionsAdmissionIdInterimBillRoute
   '/api/$orgSlug/ipd/admissions/$admissionId/slip': typeof ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute
 }
 export interface FileRoutesByTo {
@@ -587,6 +602,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/billing/refunds': typeof OrgSlugBillingRefundsRoute
   '/$orgSlug/ipd/$admissionId': typeof OrgSlugIpdAdmissionIdRoute
   '/$orgSlug/ipd/admissions': typeof OrgSlugIpdAdmissionsRoute
+  '/$orgSlug/ipd/estimate': typeof OrgSlugIpdEstimateRoute
   '/$orgSlug/ipd/facility': typeof OrgSlugIpdFacilityRoute
   '/$orgSlug/ipd/reservations': typeof OrgSlugIpdReservationsRoute
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
@@ -630,6 +646,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/billing/invoices/$invoiceId/refund/$refundId': typeof OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
   '/api/$orgSlug/billing/advances/$advanceId/pdf': typeof ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute
   '/api/$orgSlug/billing/invoices/$invoiceId/pdf': typeof ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute
+  '/api/$orgSlug/ipd/admissions/$admissionId/interim-bill': typeof ApiOrgSlugIpdAdmissionsAdmissionIdInterimBillRoute
   '/api/$orgSlug/ipd/admissions/$admissionId/slip': typeof ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute
 }
 export interface FileRoutesById {
@@ -665,6 +682,7 @@ export interface FileRoutesById {
   '/$orgSlug/billing/refunds': typeof OrgSlugBillingRefundsRoute
   '/$orgSlug/ipd/$admissionId': typeof OrgSlugIpdAdmissionIdRoute
   '/$orgSlug/ipd/admissions': typeof OrgSlugIpdAdmissionsRoute
+  '/$orgSlug/ipd/estimate': typeof OrgSlugIpdEstimateRoute
   '/$orgSlug/ipd/facility': typeof OrgSlugIpdFacilityRoute
   '/$orgSlug/ipd/reservations': typeof OrgSlugIpdReservationsRoute
   '/$orgSlug/opd/new': typeof OrgSlugOpdNewRoute
@@ -708,6 +726,7 @@ export interface FileRoutesById {
   '/$orgSlug/billing/invoices/$invoiceId_/refund/$refundId': typeof OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
   '/api/$orgSlug/billing/advances/$advanceId/pdf': typeof ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute
   '/api/$orgSlug/billing/invoices/$invoiceId/pdf': typeof ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute
+  '/api/$orgSlug/ipd/admissions/$admissionId/interim-bill': typeof ApiOrgSlugIpdAdmissionsAdmissionIdInterimBillRoute
   '/api/$orgSlug/ipd/admissions/$admissionId/slip': typeof ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute
 }
 export interface FileRouteTypes {
@@ -744,6 +763,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/billing/refunds'
     | '/$orgSlug/ipd/$admissionId'
     | '/$orgSlug/ipd/admissions'
+    | '/$orgSlug/ipd/estimate'
     | '/$orgSlug/ipd/facility'
     | '/$orgSlug/ipd/reservations'
     | '/$orgSlug/opd/new'
@@ -787,6 +807,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
     | '/api/$orgSlug/billing/advances/$advanceId/pdf'
     | '/api/$orgSlug/billing/invoices/$invoiceId/pdf'
+    | '/api/$orgSlug/ipd/admissions/$admissionId/interim-bill'
     | '/api/$orgSlug/ipd/admissions/$admissionId/slip'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -814,6 +835,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/billing/refunds'
     | '/$orgSlug/ipd/$admissionId'
     | '/$orgSlug/ipd/admissions'
+    | '/$orgSlug/ipd/estimate'
     | '/$orgSlug/ipd/facility'
     | '/$orgSlug/ipd/reservations'
     | '/$orgSlug/opd/new'
@@ -857,6 +879,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
     | '/api/$orgSlug/billing/advances/$advanceId/pdf'
     | '/api/$orgSlug/billing/invoices/$invoiceId/pdf'
+    | '/api/$orgSlug/ipd/admissions/$admissionId/interim-bill'
     | '/api/$orgSlug/ipd/admissions/$admissionId/slip'
   id:
     | '__root__'
@@ -891,6 +914,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/billing/refunds'
     | '/$orgSlug/ipd/$admissionId'
     | '/$orgSlug/ipd/admissions'
+    | '/$orgSlug/ipd/estimate'
     | '/$orgSlug/ipd/facility'
     | '/$orgSlug/ipd/reservations'
     | '/$orgSlug/opd/new'
@@ -934,6 +958,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/billing/invoices/$invoiceId_/refund/$refundId'
     | '/api/$orgSlug/billing/advances/$advanceId/pdf'
     | '/api/$orgSlug/billing/invoices/$invoiceId/pdf'
+    | '/api/$orgSlug/ipd/admissions/$admissionId/interim-bill'
     | '/api/$orgSlug/ipd/admissions/$admissionId/slip'
   fileRoutesById: FileRoutesById
 }
@@ -957,6 +982,7 @@ export interface RootRouteChildren {
   ChangelogIndexRoute: typeof ChangelogIndexRoute
   ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute: typeof ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute
   ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute: typeof ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute
+  ApiOrgSlugIpdAdmissionsAdmissionIdInterimBillRoute: typeof ApiOrgSlugIpdAdmissionsAdmissionIdInterimBillRoute
   ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute: typeof ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute
 }
 
@@ -1177,6 +1203,13 @@ declare module '@tanstack/react-router' {
       path: '/admissions'
       fullPath: '/$orgSlug/ipd/admissions'
       preLoaderRoute: typeof OrgSlugIpdAdmissionsRouteImport
+      parentRoute: typeof OrgSlugIpdRouteRoute
+    }
+    '/$orgSlug/ipd/estimate': {
+      id: '/$orgSlug/ipd/estimate'
+      path: '/estimate'
+      fullPath: '/$orgSlug/ipd/estimate'
+      preLoaderRoute: typeof OrgSlugIpdEstimateRouteImport
       parentRoute: typeof OrgSlugIpdRouteRoute
     }
     '/$orgSlug/ipd/facility': {
@@ -1480,6 +1513,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOrgSlugBillingInvoicesInvoiceIdPdfRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/$orgSlug/ipd/admissions/$admissionId/interim-bill': {
+      id: '/api/$orgSlug/ipd/admissions/$admissionId/interim-bill'
+      path: '/api/$orgSlug/ipd/admissions/$admissionId/interim-bill'
+      fullPath: '/api/$orgSlug/ipd/admissions/$admissionId/interim-bill'
+      preLoaderRoute: typeof ApiOrgSlugIpdAdmissionsAdmissionIdInterimBillRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/$orgSlug/ipd/admissions/$admissionId/slip': {
       id: '/api/$orgSlug/ipd/admissions/$admissionId/slip'
       path: '/api/$orgSlug/ipd/admissions/$admissionId/slip'
@@ -1493,6 +1533,7 @@ declare module '@tanstack/react-router' {
 interface OrgSlugIpdRouteRouteChildren {
   OrgSlugIpdAdmissionIdRoute: typeof OrgSlugIpdAdmissionIdRoute
   OrgSlugIpdAdmissionsRoute: typeof OrgSlugIpdAdmissionsRoute
+  OrgSlugIpdEstimateRoute: typeof OrgSlugIpdEstimateRoute
   OrgSlugIpdFacilityRoute: typeof OrgSlugIpdFacilityRoute
   OrgSlugIpdReservationsRoute: typeof OrgSlugIpdReservationsRoute
   OrgSlugIpdIndexRoute: typeof OrgSlugIpdIndexRoute
@@ -1501,6 +1542,7 @@ interface OrgSlugIpdRouteRouteChildren {
 const OrgSlugIpdRouteRouteChildren: OrgSlugIpdRouteRouteChildren = {
   OrgSlugIpdAdmissionIdRoute: OrgSlugIpdAdmissionIdRoute,
   OrgSlugIpdAdmissionsRoute: OrgSlugIpdAdmissionsRoute,
+  OrgSlugIpdEstimateRoute: OrgSlugIpdEstimateRoute,
   OrgSlugIpdFacilityRoute: OrgSlugIpdFacilityRoute,
   OrgSlugIpdReservationsRoute: OrgSlugIpdReservationsRoute,
   OrgSlugIpdIndexRoute: OrgSlugIpdIndexRoute,
@@ -1699,6 +1741,8 @@ const rootRouteChildren: RootRouteChildren = {
     ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute,
   ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute:
     ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute,
+  ApiOrgSlugIpdAdmissionsAdmissionIdInterimBillRoute:
+    ApiOrgSlugIpdAdmissionsAdmissionIdInterimBillRoute,
   ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute:
     ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute,
 }

@@ -6,7 +6,8 @@ import { toast } from "sonner";
 
 import { appHead } from "@/config/site";
 import { useConfirm } from "@/components/confirm-dialog";
-import { BedCategoryDialog, BedDialog, TariffDialog, WardDialog } from "@/components/ipd-dialogs";
+import { BedCategoryDialog, BedDialog, WardDialog } from "@/components/ipd-dialogs";
+import { TariffDialog } from "@/components/ipd-tariff-dialog";
 import { DataList, ListState, LoadMore, PageBody, PageHeader, Panel } from "@/components/page";
 import { useMembership } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
@@ -130,10 +131,22 @@ function FacilityRoute() {
                 columns={[
                   { head: "Bed type", cell: (category) => category.name, mobile: "title" },
                   {
-                    head: "Billed as",
+                    head: "Charged each day",
                     cell: (category) =>
-                      category.currentTariff?.lines.map((line) => line.serviceName).join(", ") ??
-                      "—",
+                      category.currentTariff ? (
+                        <ul className="flex flex-col">
+                          {category.currentTariff.lines.map((line) => (
+                            <li key={line.catalogItemId} className="flex justify-between gap-3">
+                              <span className="min-w-0">{line.serviceName}</span>
+                              <span className="tabular-nums">
+                                {formatMoney(line.dailyPrice, currency)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        "—"
+                      ),
                   },
                   {
                     head: "Since",
@@ -147,7 +160,7 @@ function FacilityRoute() {
                       ),
                   },
                   {
-                    head: "Daily rate",
+                    head: "Per day",
                     cell: (category) =>
                       category.currentTariff ? (
                         <span className="tabular-nums">

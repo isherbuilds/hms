@@ -33,6 +33,7 @@ import {
 import { DataList, ErrorNote, PageBody, PageHeader, Panel } from "@/components/page";
 import { DISCHARGE_TYPE_LABELS, slipPdfUrl, type SlipKind } from "@/lib/ipd-slips";
 import { useCan, useMembership } from "@/lib/membership";
+import { formatMoney } from "@/lib/money";
 import { currentMinute, useMinuteClock } from "@/lib/minute-clock";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
@@ -103,8 +104,6 @@ function AdmissionRoute() {
   const now = useMinuteClock(Route.useLoaderData().now);
   const detail = useQuery(admissionQuery(orgSlug, admissionId));
 
-  const bill = useQuery({ ...admissionBillQuery(orgSlug, admissionId), enabled: canReadBill });
-
   if (!detail.data) {
     return (
       <>
@@ -123,7 +122,7 @@ function AdmissionRoute() {
     );
   }
 
-  const { admission, patient, practitionerName, stays } = detail.data;
+  const { admission, patient, practitionerName, stays, runningBill } = detail.data;
   const current = stays.find((stay) => stay.endedAt === null);
   const active = admission.status === "admitted" || admission.status === "discharge_ready";
 
@@ -260,6 +259,12 @@ function AdmissionRoute() {
               <span className="capitalize">{practitionerDisplayName(practitionerName)}</span>
             </Fact>
             <Fact label="Admitted">{formatDateTime(admission.admittedAt, timeZone)}</Fact>
+            {/* Billing staff read it as the bill's total below; say it once. */}
+            {active && !canReadBill ? (
+              <Fact label="Running bill">
+                <span className="tabular-nums">{formatMoney(runningBill, currency)}</span>
+              </Fact>
+            ) : null}
             {admission.readyAt ? (
               <Fact label="Ready to leave">{formatDateTime(admission.readyAt, timeZone)}</Fact>
             ) : null}
@@ -352,7 +357,6 @@ function AdmissionRoute() {
           <AdmissionBill
             orgSlug={orgSlug}
             admission={admission}
-            bill={bill}
             canWrite={canWriteBill}
             currency={currency}
           />

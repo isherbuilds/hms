@@ -14,29 +14,47 @@ import {
   DropdownMenuTrigger,
 } from "@hms/ui/components/dropdown-menu";
 import { Input } from "@hms/ui/components/input";
+import { Label } from "@hms/ui/components/label";
+import { NativeSelect } from "@hms/ui/components/native-select";
 import { Separator } from "@hms/ui/components/separator";
 import { SubmitButton } from "@hms/ui/components/submit-button";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { ClientOnly, Link } from "@tanstack/react-router";
-import { MoreHorizontalIcon, Trash2Icon } from "lucide-react";
+import { MoreHorizontalIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
 import { VoidChargeDialog } from "@/components/opd-billing/void-charge-dialog";
+import { ChosenServices } from "@/components/chosen-services";
 import { ServicePicker, type ServiceLine } from "@/components/opd-service-picker";
 import { DataList, ErrorNote, Panel, PanelEmpty } from "@/components/page";
 import { billingPdfUrl } from "@/lib/billing-document";
+import { formatDay } from "@/lib/org-datetime";
+import { interimBillPdfUrl } from "@/lib/ipd-interim-bill";
 import { linePriceBasis, mixedRateLabel } from "@/lib/invoice-print";
 import { formatMoney, ZERO } from "@/lib/money";
 import type { WalkInQuote } from "@/lib/opd-service-preview";
 import { orpc } from "@/lib/orpc";
-import { closeOnConflict, errorMessage } from "@/lib/orpc-error";
+import { closeOnConflict, errorMessage, hasErrorCode } from "@/lib/orpc-error";
 
 type AdmissionStatus = "admitted" | "discharge_ready" | "discharged" | "cancelled";
 
-export const admissionBillQuery = (orgSlug: string, admissionId: string) =>
-  orpc.ipd.previewInvoice.queryOptions({ input: { orgSlug, admissionId } });
+const LAST_DAYS = ["full", "half", "none"] as const;
+
+type LastDay = (typeof LAST_DAYS)[number];
+
+const LAST_DAY_LABELS: Record<LastDay, string> = {
+  full: "Full",
+  half: "Half",
+  none: "Don't charge",
+};
+
+export const admissionBillQuery = (
+  orgSlug: string,
+  admissionId: string,
+  lastDay: LastDay = "full",
+) => orpc.ipd.previewInvoice.queryOptions({ input: { orgSlug, admissionId, lastDay } });
 
 export const issuedInvoiceQuery = (orgSlug: string, invoiceId: string) =>
   orpc.billing.getInvoice.queryOptions({ input: { orgSlug, invoiceId } });
@@ -48,13 +66,11 @@ type BillLine = Bill["pending"]["lines"][number];
 export function AdmissionBill({
   orgSlug,
   admission,
-  bill,
   canWrite,
   currency,
 }: {
   orgSlug: string;
   admission: { id: string; status: AdmissionStatus; chargeRevision: number };
-  bill: { data?: Bill; isError: boolean; error: unknown };
   canWrite: boolean;
   currency: string;
 }) {
@@ -62,23 +78,56 @@ export function AdmissionBill({
   // reviewed, and a Charge posted elsewhere blocks it until reopened.
   const [overlay, setOverlay] = useState<
     | { kind: "service" }
-    | { kind: "collect"; reviewed: Bill }
+    | { kind: "collect"; reviewed: Bill; lastDay: LastDay; reason: string | undefined }
     | { kind: "remove"; line: BillLine }
     | null
   >(null);
 
+  // The cashier's call on the last day belongs to the bill it was made on: any change to
+  // the stay's charges, an issued bill among them, returns it to a full day.
+  const [choice, setChoice] = useState<{ lastDay: LastDay; reason: string; revision: number }>({
+    lastDay: "full",
+    reason: "",
+    revision: -1,
+  });
+
+  const [reasonMissing, setReasonMissing] = useState(false);
+
+  // The total moved between review and issue, such as a bed day starting at checkout.
+  const [changed, setChanged] = useState(false);
+
+  const billable = admission.status === "discharge_ready" || admission.status === "discharged";
+
+  const lastDay =
+    billable && choice.revision === admission.chargeRevision ? choice.lastDay : "full";
+
+  const bill = useQuery({
+    ...admissionBillQuery(orgSlug, admission.id, lastDay),
+    placeholderData: keepPreviousData,
+  });
+
   const close = () => setOverlay(null);
   const data = bill.data;
 
-  const issue = useMutation(
-    orpc.ipd.issueInvoice.mutationOptions({
-      onSuccess: () => {
-        toast.success("Invoice issued");
+  const issue = useMutation({
+    ...orpc.ipd.issueInvoice.mutationOptions({
+      onSuccess: (result) => {
+        toast.success(
+          result.invoiceId
+            ? "Invoice issued"
+            : "Last day marked as dealt with. Nothing to charge, so no invoice was issued.",
+        );
         close();
       },
-      onError: closeOnConflict(close),
+      onError: (error) => {
+        if (!hasErrorCode(error, "CONFLICT")) return;
+        setChanged(true);
+        close();
+      },
     }),
-  );
+    // A changed total is explained beside the refreshed bill, not toasted.
+    meta: { showsInline: (error) => hasErrorCode(error, "CONFLICT") },
+  });
 
   if (!data) {
     return (
@@ -96,12 +145,16 @@ export function AdmissionBill({
     );
   }
 
-  const { pending, issued } = data;
+  const { pending, issued, bedDays } = data;
   const canAddService = canWrite && admission.status !== "cancelled";
+  const inHospital = admission.status === "admitted" || admission.status === "discharge_ready";
   // Issued medicines come back by a return, not a removal.
   const removable = (line: BillLine) => canWrite && line.admissionKind === "service";
-
-  const billable = admission.status === "discharge_ready" || admission.status === "discharged";
+  const unbilledDays = bedDays.unbilled;
+  const firstUnbilled = unbilledDays.at(0);
+  const lastUnbilled = unbilledDays.at(-1);
+  // Nothing to charge but days to close, such as one uncharged last day.
+  const closesDaysOnly = pending.lines.length === 0 && unbilledDays.length > 0;
 
   // The revision the bill was read at: a charge posted since moves it, and the server
   // refuses a settlement against the old figure.
@@ -134,7 +187,11 @@ export function AdmissionBill({
     grandTotal: reviewed.pending.grandTotal,
   });
 
-  const settle = (reviewed: Bill, draft: SettlementDraft) => {
+  const settle = (
+    reviewed: Bill,
+    chosen: { lastDay: LastDay; reason: string | undefined },
+    draft: SettlementDraft,
+  ) => {
     const collected = draft.payments.reduce((sum, payment) => sum + payment.amount, ZERO);
 
     issue.mutate({
@@ -142,10 +199,44 @@ export function AdmissionBill({
       admissionId: admission.id,
       expectedChargeRevision: reviewed.chargeRevision,
       expectedGrandTotal: draft.expectedGrandTotal,
+      lastDay: chosen.lastDay,
+      lastDayReason: chosen.reason,
       payments: draft.payments,
       // A reason travels only with a balance: a bill paid in full has nothing to explain.
       outstandingReason: draft.expectedGrandTotal > collected ? draft.note : undefined,
     });
+  };
+
+  const startIssue = () => {
+    const reason = lastDay === "full" ? undefined : choice.reason.trim();
+
+    if (reason === "") {
+      setReasonMissing(true);
+
+      return;
+    }
+
+    setChanged(false);
+
+    if (!closesDaysOnly) {
+      setOverlay({ kind: "collect", reviewed: data, lastDay, reason });
+
+      return;
+    }
+
+    issue.mutate({
+      orgSlug,
+      admissionId: admission.id,
+      expectedChargeRevision: data.chargeRevision,
+      expectedGrandTotal: pending.grandTotal,
+      lastDay,
+      lastDayReason: reason,
+    });
+  };
+
+  const chooseLastDay = (value: LastDay) => {
+    setReasonMissing(false);
+    setChoice({ lastDay: value, reason: choice.reason, revision: admission.chargeRevision });
   };
 
   return (
@@ -153,11 +244,29 @@ export function AdmissionBill({
       label="Bill"
       minHeight=""
       action={
-        canAddService ? (
-          <Button size="xs" variant="outline" onClick={() => setOverlay({ kind: "service" })}>
-            Add service
-          </Button>
-        ) : undefined
+        <div className="flex items-center gap-2">
+          {inHospital ? (
+            <Button
+              size="xs"
+              variant="ghost"
+              nativeButton={false}
+              render={
+                <a
+                  href={interimBillPdfUrl(orgSlug, admission.id)}
+                  target="_blank"
+                  rel="noreferrer"
+                />
+              }
+            >
+              Print interim bill
+            </Button>
+          ) : null}
+          {canAddService ? (
+            <Button size="xs" variant="outline" onClick={() => setOverlay({ kind: "service" })}>
+              Add service
+            </Button>
+          ) : null}
+        </div>
       }
     >
       {pending.lines.length === 0 ? (
@@ -254,7 +363,8 @@ export function AdmissionBill({
           )}
           <Separator />
           <div className="flex justify-between gap-3 font-medium">
-            <dt>Total</dt>
+            {/* While the Patient is still in, the total is what the stay has run up so far. */}
+            <dt>{billable ? "Total" : "Running bill"}</dt>
             <dd className="tabular-nums">{formatMoney(pending.grandTotal, currency)}</dd>
           </div>
           {!data.registered || includedTax === ZERO ? null : (
@@ -265,7 +375,22 @@ export function AdmissionBill({
           )}
         </dl>
 
-        <div className="flex flex-col gap-3 sm:order-1">
+        <div className="flex min-w-0 flex-col gap-3 sm:order-1">
+          {unbilledDays.length > 0 || bedDays.billed > 0 ? (
+            <p className="text-muted-foreground tabular-nums">
+              {firstUnbilled && lastUnbilled ? (
+                <>
+                  Bed days to bill: {unbilledDays.length} (
+                  {firstUnbilled === lastUnbilled
+                    ? formatDay(lastUnbilled.date)
+                    : `${formatDay(firstUnbilled.date)} to ${formatDay(lastUnbilled.date)}`}
+                  ){bedDays.billed > 0 ? ` · ${bedDays.billed} already billed` : null}
+                </>
+              ) : (
+                `All ${bedDays.billed} bed day${bedDays.billed === 1 ? "" : "s"} billed`
+              )}
+            </p>
+          ) : null}
           {issued.map(({ invoiceId }) => (
             <IssuedInvoice
               key={invoiceId}
@@ -274,16 +399,77 @@ export function AdmissionBill({
               currency={currency}
             />
           ))}
+          {changed ? (
+            <p role="status" className="border-l-2 border-border pl-3">
+              The bill changed before it was issued, for example a new bed day began at checkout.
+              This is the current bill: check the total and issue again.
+            </p>
+          ) : null}
           {!canWrite || admission.status === "cancelled" ? null : billable ? (
-            pending.lines.length === 0 ? null : (
-              <Button
-                disabled={stale}
-                onClick={() => setOverlay({ kind: "collect", reviewed: data })}
-              >
-                <span className="tabular-nums">
-                  Issue invoice {formatMoney(pending.grandTotal, currency)}
-                </span>
-              </Button>
+            pending.lines.length === 0 && unbilledDays.length === 0 ? null : (
+              <div className="flex flex-col gap-3">
+                {lastUnbilled ? (
+                  <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="last-day">Last day, {formatDay(lastUnbilled.date)}</Label>
+                      <NativeSelect
+                        id="last-day"
+                        value={lastDay}
+                        onChange={(event) => {
+                          const value = LAST_DAYS.find((each) => each === event.target.value);
+
+                          if (value) chooseLastDay(value);
+                        }}
+                      >
+                        {LAST_DAYS.map((value) => (
+                          <option key={value} value={value}>
+                            {LAST_DAY_LABELS[value]}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </div>
+                    {lastDay === "full" ? null : (
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="last-day-reason">Reason</Label>
+                        <Input
+                          id="last-day-reason"
+                          value={choice.reason}
+                          maxLength={500}
+                          aria-invalid={reasonMissing || undefined}
+                          aria-describedby={reasonMissing ? "last-day-reason-error" : undefined}
+                          onChange={(event) => {
+                            setReasonMissing(false);
+                            setChoice({ ...choice, reason: event.target.value });
+                          }}
+                        />
+                        {reasonMissing ? (
+                          <p id="last-day-reason-error" className="text-destructive">
+                            Say why the last day is {lastDay === "half" ? "half" : "not"} charged
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+                {closesDaysOnly ? (
+                  <p className="text-muted-foreground">
+                    Nothing to charge, so no invoice is issued. The day is marked as dealt with.
+                  </p>
+                ) : null}
+                <Button
+                  className="self-start"
+                  disabled={stale || bill.isFetching || issue.isPending}
+                  onClick={startIssue}
+                >
+                  {closesDaysOnly ? (
+                    "Mark day as dealt with"
+                  ) : (
+                    <span className="tabular-nums">
+                      Issue invoice {formatMoney(pending.grandTotal, currency)}
+                    </span>
+                  )}
+                </Button>
+              </div>
             )
           ) : (
             <p className="text-muted-foreground">
@@ -327,7 +513,7 @@ export function AdmissionBill({
             onOpenChange={(open) => {
               if (!open) close();
             }}
-            onConfirm={(draft) => settle(overlay.reviewed, draft)}
+            onConfirm={(draft) => settle(overlay.reviewed, overlay, draft)}
           />
         </ClientOnly>
       ) : null}
@@ -422,14 +608,6 @@ function AddServiceDialog({
     }),
   );
 
-  const commitQty = (line: ServiceLine, input: HTMLInputElement) => {
-    const qty = Math.max(1, Math.trunc(input.valueAsNumber) || 1);
-    input.value = String(qty);
-    setLines((current) =>
-      current.map((each) => (each.catalogItemId === line.catalogItemId ? { ...each, qty } : each)),
-    );
-  };
-
   return (
     <ClientOnly fallback={null}>
       <Dialog open onOpenChange={(open) => (open || post.isPending ? undefined : onClose())}>
@@ -466,52 +644,12 @@ function AddServiceDialog({
                 taxedBillable={registered}
                 onAdd={(line) => setLines((current) => [...current, line])}
               />
-              {lines.length > 0 ? (
-                <ul className="grid gap-2">
-                  {lines.map((line) => (
-                    <li
-                      key={line.catalogItemId}
-                      className="grid grid-cols-[minmax(0,1fr)_4.5rem_auto] items-center gap-2"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate">{line.name}</span>
-                        <span className="text-muted-foreground tabular-nums">
-                          {formatMoney(line.unitPrice, currency)}
-                          {registered && Number(line.taxRatePercent) > 0 ? " + GST" : ""}
-                        </span>
-                      </span>
-                      <Input
-                        key={`${line.catalogItemId}:${line.qty}`}
-                        type="number"
-                        min={1}
-                        step={1}
-                        defaultValue={line.qty}
-                        aria-label={`${line.name} quantity`}
-                        className="tabular-nums"
-                        onBlur={(event) => commitQty(line, event.currentTarget)}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter") return;
-                          event.preventDefault();
-                          commitQty(line, event.currentTarget);
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        size="icon-xs"
-                        variant="destructive"
-                        aria-label={`Remove ${line.name}`}
-                        onClick={() =>
-                          setLines((current) =>
-                            current.filter((each) => each.catalogItemId !== line.catalogItemId),
-                          )
-                        }
-                      >
-                        <Trash2Icon />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
+              <ChosenServices
+                lines={lines}
+                onChange={setLines}
+                currency={currency}
+                registered={registered}
+              />
               {post.error ? (
                 <p role="alert" className="border-l-2 border-destructive pl-3 text-destructive">
                   {errorMessage(post.error, "Could not add the services")}

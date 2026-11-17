@@ -19,7 +19,8 @@ import {
   BlockBedDialog,
 } from "@/components/ipd-dialogs";
 import { ListState, PageBody, PageHeader, Panel } from "@/components/page";
-import { useCan } from "@/lib/membership";
+import { useCan, useMembership } from "@/lib/membership";
+import { formatMoney } from "@/lib/money";
 import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
@@ -165,6 +166,7 @@ function BedTile({
   onBlock: () => void;
 }) {
   const { timeZone } = useOrgDateTime();
+  const currency = useMembership(orgSlug, (membership) => membership.currency);
   const canAdmit = useCan(orgSlug, { ipd: ["create"] });
   const canUpdate = useCan(orgSlug, { ipd: ["update"] });
 
@@ -202,6 +204,10 @@ function BedTile({
           <span className="truncate text-muted-foreground">
             <span className="font-mono">{admission.mrn}</span> · since{" "}
             {formatDateTime(admission.admittedAt, timeZone)}
+          </span>
+          <span className="tabular-nums">
+            <span className="text-muted-foreground">Running bill</span>{" "}
+            {formatMoney(admission.runningBill, currency)}
           </span>
           <BedHolds holds={bed.holds} />
         </Link>
