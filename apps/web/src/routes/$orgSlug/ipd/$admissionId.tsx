@@ -29,6 +29,7 @@ import {
   AdmissionMedicines,
   admissionIssuesQuery,
   IssueMedicinesDialog,
+  ReturnMedicinesDialog,
 } from "@/components/ipd-medicines";
 import { DataList, ErrorNote, PageBody, PageHeader, Panel } from "@/components/page";
 import { DISCHARGE_TYPE_LABELS, slipPdfUrl, type SlipKind } from "@/lib/ipd-slips";
@@ -96,10 +97,13 @@ function AdmissionRoute() {
   const canUpdate = useCan(orgSlug, { ipd: ["update"] });
   const canCorrect = useCan(orgSlug, { ipd: ["correct"] });
   const canIssue = useCan(orgSlug, { pharmacy: ["issueAdmission"] });
+  const canReturn = useCan(orgSlug, { pharmacy: ["returnAdmission"] });
   const canReadIssues = useCan(orgSlug, { pharmacy: ["read"] });
   const canReadBill = useCan(orgSlug, { billing: ["read"] });
   const canWriteBill = useCan(orgSlug, { billing: ["write"] });
   const [opened, setOpened] = useState<OpenDialog | null>(null);
+  // The return is checked against the charges as they were when the form opened.
+  const [returning, setReturning] = useState<{ id: string; chargeRevision: number } | null>(null);
   const issuing = Route.useSearch().issue === 1;
   const navigate = Route.useNavigate();
   const now = useMinuteClock(Route.useLoaderData().now);
@@ -353,6 +357,11 @@ function AdmissionRoute() {
           <AdmissionMedicines
             orgSlug={orgSlug}
             admissionId={admission.id}
+            onReturn={
+              canReturn && admission.status !== "cancelled"
+                ? () => setReturning({ id: admission.id, chargeRevision: admission.chargeRevision })
+                : undefined
+            }
             action={
               issuable ? (
                 <Button size="xs" variant="outline" onClick={() => setIssuing(true)}>
@@ -378,6 +387,14 @@ function AdmissionRoute() {
           orgSlug={orgSlug}
           admission={admission}
           onClose={() => setIssuing(false)}
+        />
+      ) : null}
+
+      {returning?.id === admission.id ? (
+        <ReturnMedicinesDialog
+          orgSlug={orgSlug}
+          admission={returning}
+          onClose={() => setReturning(null)}
         />
       ) : null}
 

@@ -45,8 +45,8 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   defaultValues: DefaultValues<z.input<T>>;
   success: string;
   run: (value: z.output<T>) => Promise<R>;
-  /** Keeps the dialog open on success, showing the document the call produced. */
-  done?: (result: R) => Printed;
+  /** Keeps the dialog open on success, showing the document the call produced, if any. */
+  done?: (result: R) => Printed | null;
   onClose: () => void;
   /** Replaces closing on CONFLICT, for a dialog that shows a refusal and offers a way on. */
   onError?: (error: Error, value: z.output<T>) => void;
@@ -68,7 +68,9 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
       ? { showsInline: (error, value) => showsInline(error, value as z.output<T>) }
       : undefined,
     onSuccess: (result) => {
-      if (done) setPrinted(done(result));
+      const printable = done?.(result) ?? null;
+
+      if (printable) setPrinted(printable);
       else onClose();
       toast.success(success);
     },

@@ -12,15 +12,21 @@ import { Field, FieldError, FieldLabel } from "@hms/ui/components/field";
 import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { ClientOnly } from "@tanstack/react-router";
+import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
+import { ClientOnly, useRouter } from "@tanstack/react-router";
 import { Trash2Icon } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { useFormContext, useFormState } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 
+import { FormDialog } from "@/components/form-dialog";
+import { TextField } from "@/components/form-fields";
+import { admissionBillQuery, issuedInvoiceQuery } from "@/components/ipd-bill";
 import { DataList, ListState, Panel } from "@/components/page";
 import { PharmacyBatchPicker, type SaleLine } from "@/components/pharmacy-batch-picker";
-import { useMembership } from "@/lib/membership";
+import { numberText } from "@/lib/form-schema";
+import { useCan, useMembership } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
 import { formatBusinessDate, formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
@@ -48,11 +54,14 @@ export function AdmissionMedicines({
   orgSlug,
   admissionId,
   action,
+  onReturn,
 }: {
   orgSlug: string;
   admissionId: string;
   /** The issue button, when this member may issue to this Admission now. */
   action?: ReactNode;
+  /** Opens the return form, when this member may take medicine back from this Admission. */
+  onReturn?: () => void;
 }) {
   const { timeZone } = useOrgDateTime();
   const issues = useQuery(admissionIssuesQuery(orgSlug, admissionId));
@@ -61,8 +70,25 @@ export function AdmissionMedicines({
     issue.lines.map((line) => ({ ...line, issue })),
   );
 
+  const returnable = onReturn && rows.some((row) => row.qty > row.returnedQty);
+
   return (
-    <Panel label="Medicines issued" action={action} minHeight="">
+    <Panel
+      label="Medicines issued"
+      action={
+        returnable ? (
+          <div className="flex items-center gap-2">
+            <Button size="xs" variant="outline" onClick={onReturn}>
+              Return
+            </Button>
+            {action}
+          </div>
+        ) : (
+          action
+        )
+      }
+      minHeight=""
+    >
       <ListState
         query={issues}
         errorTitle="Could not load medicines issued"
@@ -91,7 +117,14 @@ export function AdmissionMedicines({
             },
             {
               head: "Qty",
-              cell: (row) => <span className="tabular-nums">{row.qty}</span>,
+              cell: (row) => (
+                <span className="tabular-nums md:whitespace-nowrap">
+                  {row.qty}
+                  {row.returnedQty > 0 ? (
+                    <span className="text-muted-foreground"> · {row.returnedQty} returned</span>
+                  ) : null}
+                </span>
+              ),
               className: "text-right",
               mobile: "title",
             },
@@ -367,5 +400,253 @@ export function IssueMedicinesDialog({
         </DialogContent>
       </Dialog>
     </ClientOnly>
+  );
+}
+
+type ReturnLine = {
+  issueLineId: string;
+  productName: string;
+  batchNumber: string;
+  issued: number;
+  left: number;
+  /** The bill the line is on; null before billing, undefined when unknown to this member. */
+  bill: { id: string; number: string } | null | undefined;
+};
+
+const returnSchema = (lines: ReturnLine[]) =>
+  z
+    .object({
+      lines: z.array(
+        z.object({ qty: numberText(z.number().int("Whole units only").min(0, "Not below 0")) }),
+      ),
+      reason: z.string().trim().min(1, "Say why the medicine came back").max(500),
+    })
+    .superRefine((value, context) => {
+      value.lines.forEach((line, index) => {
+        const left = lines[index]?.left ?? 0;
+
+        if (line.qty > left) {
+          context.addIssue({
+            code: "custom",
+            path: ["lines", index, "qty"],
+            message: `Only ${left} left to return`,
+          });
+        }
+      });
+
+      if (!value.lines.some((line) => line.qty > 0)) {
+        context.addIssue({
+          code: "custom",
+          path: ["lines"],
+          message: "Enter how many came back on at least one line",
+        });
+
+        return;
+      }
+
+      // The server takes one bill per return, so the form says so before it is asked.
+      const bills = new Set(
+        value.lines.flatMap((line, index) => {
+          const bill = lines[index]?.bill;
+
+          return line.qty > 0 && bill ? [bill.number] : [];
+        }),
+      );
+
+      if (bills.size > 1) {
+        context.addIssue({
+          code: "custom",
+          path: ["lines"],
+          message: `These medicines are on different bills (${[...bills].join(", ")}). Return the ones on one bill now, then the others.`,
+        });
+      }
+    });
+
+// Mounted per open: the quantities start at zero and the charge revision is the one opened on.
+export function ReturnMedicinesDialog({
+  orgSlug,
+  admission,
+  onClose,
+}: {
+  orgSlug: string;
+  admission: { id: string; chargeRevision: number };
+  onClose: () => void;
+}) {
+  const canReadBill = useCan(orgSlug, { billing: ["read"] });
+  const issues = useQuery(admissionIssuesQuery(orgSlug, admission.id));
+
+  const bill = useQuery({
+    ...admissionBillQuery(orgSlug, admission.id),
+    enabled: canReadBill,
+  });
+
+  // A billed line names its bill by its Charge, so a mixed choice is caught on the form.
+  const invoices = useQueries({
+    queries: (bill.data?.issued ?? []).map(({ invoiceId }) =>
+      issuedInvoiceQuery(orgSlug, invoiceId),
+    ),
+  });
+
+  if (
+    !issues.data ||
+    (canReadBill && (bill.isPending || invoices.some((each) => each.isPending)))
+  ) {
+    return null;
+  }
+
+  const billByCharge = new Map(
+    invoices.flatMap(({ data }) =>
+      data
+        ? data.lines.map(
+            (line) =>
+              [line.chargeId, { id: data.invoice.id, number: data.invoice.invoiceNumber }] as const,
+          )
+        : [],
+    ),
+  );
+
+  const lines: ReturnLine[] = issues.data.issues.flatMap((issue) =>
+    issue.lines
+      .filter((line) => line.qty > line.returnedQty)
+      .map((line) => ({
+        issueLineId: line.id,
+        productName: line.productName,
+        batchNumber: line.batchNumber,
+        issued: line.qty,
+        left: line.qty - line.returnedQty,
+        bill:
+          line.chargeStatus === "invoiced"
+            ? line.chargeId && canReadBill
+              ? billByCharge.get(line.chargeId)
+              : undefined
+            : null,
+      })),
+  );
+
+  return <ReturnForm orgSlug={orgSlug} admission={admission} lines={lines} onClose={onClose} />;
+}
+
+function ReturnForm({
+  orgSlug,
+  admission,
+  lines: opened,
+  onClose,
+}: {
+  orgSlug: string;
+  admission: { id: string; chargeRevision: number };
+  lines: ReturnLine[];
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  // The rows the form opened with: a refresh behind it must not move a typed quantity
+  // onto another medicine. The server checks what is left when it is sent.
+  const [lines] = useState(opened);
+  const anyBilled = lines.some((line) => line.bill !== null);
+  const anyUnbilled = lines.some((line) => line.bill === null);
+
+  return (
+    <FormDialog
+      title="Return medicine"
+      description={
+        <>
+          Returned medicine goes to quarantine, not back on the shelf.
+          {anyUnbilled ? " Medicine not yet billed comes off the bill." : null}
+          {anyBilled ? " Medicine already billed gets a credit note on its bill." : null}
+        </>
+      }
+      submitLabel="Return"
+      success="Medicine returned"
+      schema={returnSchema(lines)}
+      defaultValues={{ lines: lines.map(() => ({ qty: "0" })), reason: "" }}
+      contentClassName="sm:max-w-xl"
+      onClose={onClose}
+      run={async (value) => {
+        const chosen = lines.flatMap((line, index) => {
+          const qty = value.lines[index]?.qty ?? 0;
+
+          return qty > 0 ? [{ ...line, qty }] : [];
+        });
+
+        const result = await orpc.pharmacy.returnFromAdmission.call({
+          orgSlug,
+          admissionId: admission.id,
+          expectedChargeRevision: admission.chargeRevision,
+          lines: chosen.map(({ issueLineId, qty }) => ({ issueLineId, qty })),
+          reason: value.reason,
+        });
+
+        return { ...result, invoiceId: chosen.find((line) => line.bill)?.bill?.id };
+      }}
+      done={({ creditNoteId, invoiceId }) =>
+        creditNoteId && invoiceId
+          ? {
+              label: "The credit note",
+              href: router.buildLocation({
+                to: "/$orgSlug/billing/invoices/$invoiceId/credit-note/$creditNoteId",
+                params: { orgSlug, invoiceId, creditNoteId },
+              }).href,
+              action: "Print credit note",
+            }
+          : null
+      }
+    >
+      <ReturnLines lines={lines} />
+      <TextField name="reason" label="Reason" />
+    </FormDialog>
+  );
+}
+
+function ReturnLines({ lines }: { lines: ReturnLine[] }) {
+  const { control } = useFormContext<z.input<ReturnType<typeof returnSchema>>>();
+  const linesError = useFormState({ control, name: "lines" }).errors.lines?.root?.message;
+
+  return (
+    <>
+      <ul className="grid">
+        {lines.map((line, index) => (
+          <li
+            key={line.issueLineId}
+            className="grid grid-cols-[minmax(0,1fr)_6rem] items-start gap-3 border-b border-border/60 py-2 last:border-b-0"
+          >
+            <div className="min-w-0">
+              <p className="font-medium capitalize">{line.productName}</p>
+              <p className="text-muted-foreground">
+                <span className="font-mono">{line.batchNumber}</span> ·{" "}
+                <span className="tabular-nums">
+                  {line.left === line.issued
+                    ? `${line.issued} issued`
+                    : `${line.left} of ${line.issued} left`}
+                </span>{" "}
+                ·{" "}
+                {line.bill === null ? (
+                  "not billed yet"
+                ) : line.bill ? (
+                  <>
+                    on bill <span className="font-mono">{line.bill.number}</span>
+                  </>
+                ) : (
+                  "billed"
+                )}
+              </p>
+            </div>
+            <TextField
+              name={`lines.${index}.qty`}
+              label={<span className="sr-only">{line.productName} quantity returned</span>}
+              type="number"
+              min={0}
+              max={line.left}
+              step={1}
+              inputMode="numeric"
+              className="tabular-nums"
+            />
+          </li>
+        ))}
+      </ul>
+      {linesError ? (
+        <p role="alert" className="text-destructive">
+          {linesError}
+        </p>
+      ) : null}
+    </>
   );
 }

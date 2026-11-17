@@ -19,7 +19,7 @@ import { NativeSelect } from "@hms/ui/components/native-select";
 import { Separator } from "@hms/ui/components/separator";
 import { SubmitButton } from "@hms/ui/components/submit-button";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
-import { ClientOnly, Link } from "@tanstack/react-router";
+import { ClientOnly } from "@tanstack/react-router";
 import { MoreHorizontalIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -30,17 +30,18 @@ import {
   TakeDepositDialog,
 } from "@/components/advance-form";
 import { SettlementOverlay, type SettlementDraft } from "@/components/opd-settlement-overlay";
+import { InvoiceAccount } from "@/components/opd-billing/invoice-account";
 import { VoidChargeDialog } from "@/components/opd-billing/void-charge-dialog";
 import { ChosenServices } from "@/components/chosen-services";
 import { ServicePicker, type ServiceLine } from "@/components/opd-service-picker";
 import { DataList, ErrorNote, Panel, PanelEmpty } from "@/components/page";
-import { billingPdfUrl } from "@/lib/billing-document";
 import { formatDay } from "@/lib/org-datetime";
 import { depositShortfall } from "@/lib/ipd-deposit";
 import { interimBillPdfUrl } from "@/lib/ipd-interim-bill";
 import { linePriceBasis, mixedRateLabel } from "@/lib/invoice-print";
 import { formatMoney, ZERO } from "@/lib/money";
 import { useCan } from "@/lib/membership";
+import type { PatientCredit } from "@/lib/patient-credit";
 import type { WalkInQuote } from "@/lib/opd-service-preview";
 import { orpc } from "@/lib/orpc";
 import { closeOnConflict, errorMessage, hasErrorCode } from "@/lib/orpc-error";
@@ -439,7 +440,9 @@ export function AdmissionBill({
               key={invoiceId}
               orgSlug={orgSlug}
               invoiceId={invoiceId}
-              currency={currency}
+              canPay={canWrite}
+              // This stay's deposit is offered in full; the Patient's other credit by hand.
+              credit={{ usable: credit.deposit, total: credit.deposit + credit.other }}
             />
           ))}
           {refundable ? (
@@ -629,15 +632,19 @@ function StayDeposits({
   );
 }
 
+// An issued bill takes payments, credit notes and refunds through the same card as an OPD visit.
 function IssuedInvoice({
   orgSlug,
   invoiceId,
-  currency,
+  canPay,
+  credit,
 }: {
   orgSlug: string;
   invoiceId: string;
-  currency: string;
+  canPay: boolean;
+  credit: PatientCredit;
 }) {
+  const canCredit = useCan(orgSlug, { billing: ["creditNote"] });
   const invoice = useQuery(issuedInvoiceQuery(orgSlug, invoiceId));
 
   if (!invoice.data) {
@@ -646,47 +653,30 @@ function IssuedInvoice({
     ) : null;
   }
 
-  const { balance } = invoice.data;
-  const paid = balance.paymentsTotal + balance.allocationsTotal;
+  const { invoice: header, balance, payments, creditNotes, refunds } = invoice.data;
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <div>
-        <Link
-          to="/$orgSlug/billing/invoices/$invoiceId"
-          params={{ orgSlug, invoiceId }}
-          className="font-mono font-medium underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
-        >
-          {invoice.data.invoice.invoiceNumber}
-        </Link>
-        <p className="tabular-nums text-muted-foreground">
-          Paid {formatMoney(paid, currency)}
-          {balance.outstanding > ZERO ? null : " · settled"}
-        </p>
-        {balance.outstanding > ZERO ? (
-          <p className="font-medium tabular-nums">
-            Outstanding {formatMoney(balance.outstanding, currency)}
-          </p>
-        ) : null}
-      </div>
-      <Button
-        variant="outline"
-        nativeButton={false}
-        render={
-          <a
-            href={billingPdfUrl({
-              orgSlug,
-              invoiceId,
-              request: { kind: "invoice", documentId: null, layout: "a4" },
-            })}
-            target="_blank"
-            rel="noreferrer"
-          />
-        }
-      >
-        Print
-      </Button>
-    </div>
+    <InvoiceAccount
+      orgSlug={orgSlug}
+      invoice={{
+        id: header.id,
+        patientId: header.patientId,
+        invoiceNumber: header.invoiceNumber,
+        currency: header.currency,
+        grandTotal: header.grandTotal,
+        paymentsTotal: balance.paymentsTotal,
+        allocationsTotal: balance.allocationsTotal,
+        outstanding: balance.outstanding,
+        receipts: payments.map((payment) => ({ id: payment.id, number: payment.receiptNumber })),
+        creditNotes: creditNotes.map((note) => ({ id: note.id, number: note.creditNoteNumber })),
+        refunds: refunds.map((refund) => ({ id: refund.id, number: refund.refundNumber })),
+      }}
+      treatmentPlanId={null}
+      canCredit={canCredit}
+      canPay={canPay}
+      stayCredit={credit}
+      medicineCreditNote="Crediting a medicine corrects the amount only; the medicine itself comes back through Return under Medicines issued."
+    />
   );
 }
 
