@@ -482,6 +482,11 @@ export function TransferDialog({
   const { timeZone } = useOrgDateTime();
   const board = useQuery(orpc.ipd.bedBoard.queryOptions({ input: { orgSlug } }));
   const hold = useHoldRefusal(onClose);
+  // A backdated move into a billed day is refused; the form stays so the time can change.
+  const [billedDay, setBilledDay] = useState<string | null>(null);
+
+  const isBilledDay = (error: Error) =>
+    hasErrorCode(error, "CONFLICT") && errorReason(error) === "billed_day";
 
   const free = (board.data?.beds ?? []).filter(
     (bed) => bed.status === "available" && bed.id !== currentBedId,
@@ -498,8 +503,14 @@ export function TransferDialog({
       defaultValues={{ bedId: "", earlierAt: "", reason: "", displace: false, displaceReason: "" }}
       success="Patient moved"
       onClose={onClose}
-      onError={(error, value) => hold.onError(error, value.bedId, value.displace)}
-      showsInline={(error, value) => hold.showsInline(error, value.bedId, value.displace)}
+      onSubmit={() => setBilledDay(null)}
+      onError={(error, value) => {
+        if (isBilledDay(error)) setBilledDay(errorMessage(error));
+        else hold.onError(error, value.bedId, value.displace);
+      }}
+      showsInline={(error, value) =>
+        isBilledDay(error) || hold.showsInline(error, value.bedId, value.displace)
+      }
       run={(value) => {
         const earlier = earlierFields(value, timeZone);
 
@@ -523,6 +534,7 @@ export function TransferDialog({
         )}
       />
       <EarlierTimeFields orgSlug={orgSlug} label="Moved at" />
+      {billedDay ? <ErrorNote title="The patient has not moved" detail={billedDay} /> : null}
       <MoveRefusal orgSlug={orgSlug} refusalFor={hold.refusalFor} beds={free} />
     </FormDialog>
   );

@@ -305,7 +305,7 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                 Visit defaults
               </h2>
               <p className="max-w-xs leading-relaxed text-muted-foreground">
-                Follow-up eligibility, reminders for unbilled visits, and when a bed day ends.
+                Follow-up eligibility and reminders for unbilled visits.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 md:col-span-2">
@@ -327,6 +327,22 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                 step={1}
                 description="Checked-in visits with older charges appear as unbilled."
               />
+            </div>
+          </section>
+
+          <section
+            aria-labelledby="inpatient"
+            className="grid gap-4 border-t border-border pt-6 md:grid-cols-3"
+          >
+            <div className="flex flex-col gap-1">
+              <h2 id="inpatient" className="min-h-6 text-xs text-muted-foreground">
+                Inpatient
+              </h2>
+              <p className="max-w-xs leading-relaxed text-muted-foreground">
+                How an admitted patient's bed is charged.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 md:col-span-2">
               <ControlledField
                 name="ipdCheckoutMinutes"
                 label="Bed-day checkout time"

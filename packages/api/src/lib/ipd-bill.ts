@@ -15,8 +15,12 @@ import { ORPCError } from "@orpc/server";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { bedDays, type BedDay, type BedDayStay } from "./bed-days";
-import { impossible } from "./conflict";
-import { computeInvoiceLines, InvoiceDiscountExceededError } from "./invoice-math";
+import { conflict, impossible } from "./conflict";
+import {
+  type ChargeInput,
+  computeInvoiceLines,
+  InvoiceDiscountExceededError,
+} from "./invoice-math";
 
 type Executor = typeof db | DbTransaction;
 
@@ -98,13 +102,7 @@ async function readStays(executor: Executor, orgId: string, admissionIds: string
     )
     .orderBy(asc(admissionBedStays.startedAt), asc(admissionBedStays.id));
 
-  const byAdmission = new Map<string, BillStay[]>();
-
-  for (const { admissionId, ...stay } of rows) {
-    byAdmission.set(admissionId, [...(byAdmission.get(admissionId) ?? []), stay]);
-  }
-
-  return byAdmission;
+  return Map.groupBy(rows, (row) => row.admissionId);
 }
 
 /** Price is the tariff's; tax and revenue category are the Service's as the bill is read. */
@@ -133,13 +131,7 @@ async function readTariffLines(executor: Executor, orgId: string, tariffIds: str
           .where(and(eq(bedTariffLines.orgId, orgId), inArray(bedTariffLines.tariffId, tariffIds)))
           .orderBy(asc(bedTariffLines.tariffId), asc(bedTariffLines.position));
 
-  const byTariff = new Map<string, TariffLine[]>();
-
-  for (const { tariffId, ...line } of rows) {
-    byTariff.set(tariffId, [...(byTariff.get(tariffId) ?? []), line]);
-  }
-
-  return byTariff;
+  return Map.groupBy(rows, (row) => row.tariffId);
 }
 
 // Ordered by (createdAt, id): the leftover subtotal paisa must land on the same line
@@ -175,14 +167,7 @@ async function readPendingCharges(executor: Executor, orgId: string, admissionId
     )
     .orderBy(asc(charges.createdAt), asc(charges.id));
 
-  const byAdmission = new Map<string, Omit<(typeof rows)[number], "admissionId">[]>();
-
-  for (const { admissionId, ...row } of rows) {
-    // SAFETY: filtered on admissionId above.
-    byAdmission.set(admissionId!, [...(byAdmission.get(admissionId!) ?? []), row]);
-  }
-
-  return byAdmission;
+  return Map.groupBy(rows, (row) => row.admissionId);
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -321,14 +306,15 @@ export async function readBedDayBill(
   return bedDayBill(admission, stays.get(admission.id) ?? [], tariffLines, lastDay, now);
 }
 
-type PendingRow =
-  Awaited<ReturnType<typeof readPendingCharges>> extends Map<string, (infer Row)[]> ? Row : never;
-
 /**
  * Pending Charges first, then the bed-day lines: the order the Invoice writes them, so
  * the discount spreads over the lines as it will on the Invoice.
  */
-function billLines(pending: PendingRow[], bedLines: BedDayLine[], discountAmount: bigint) {
+export function billLines<Row extends ChargeInput<string | null>>(
+  pending: Row[],
+  bedLines: BedDayLine[],
+  discountAmount: bigint,
+) {
   const rows = [
     ...pending,
     ...bedLines.map((line) => ({
@@ -493,9 +479,9 @@ export async function requireBilledDaysKept(
   });
 
   if (changed) {
-    throw new ORPCError("CONFLICT", {
-      message:
-        "That would change a bed day already billed. Correct the bill with a Credit Note instead.",
-    });
+    throw conflict(
+      "billed_day",
+      "That would change a bed day already billed. Correct the bill with a Credit Note instead.",
+    );
   }
 }

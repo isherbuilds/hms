@@ -12,7 +12,7 @@ import { Field, FieldError, FieldLabel } from "@hms/ui/components/field";
 import { Input } from "@hms/ui/components/input";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { SubmitButton } from "@hms/ui/components/submit-button";
-import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ClientOnly, useRouter } from "@tanstack/react-router";
 import { Trash2Icon } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -22,11 +22,10 @@ import { z } from "zod";
 
 import { FormDialog } from "@/components/form-dialog";
 import { TextField } from "@/components/form-fields";
-import { admissionBillQuery, issuedInvoiceQuery } from "@/components/ipd-bill";
 import { DataList, ListState, Panel } from "@/components/page";
 import { PharmacyBatchPicker, type SaleLine } from "@/components/pharmacy-batch-picker";
 import { numberText } from "@/lib/form-schema";
-import { useCan, useMembership } from "@/lib/membership";
+import { useMembership } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
 import { formatBusinessDate, formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
@@ -409,8 +408,8 @@ type ReturnLine = {
   batchNumber: string;
   issued: number;
   left: number;
-  /** The bill the line is on; null before billing, undefined when unknown to this member. */
-  bill: { id: string; number: string } | null | undefined;
+  /** The bill the line is on; null before billing. */
+  bill: { id: string; number: string } | null;
 };
 
 const returnSchema = (lines: ReturnLine[]) =>
@@ -472,38 +471,9 @@ export function ReturnMedicinesDialog({
   admission: { id: string; chargeRevision: number };
   onClose: () => void;
 }) {
-  const canReadBill = useCan(orgSlug, { billing: ["read"] });
   const issues = useQuery(admissionIssuesQuery(orgSlug, admission.id));
 
-  const bill = useQuery({
-    ...admissionBillQuery(orgSlug, admission.id),
-    enabled: canReadBill,
-  });
-
-  // A billed line names its bill by its Charge, so a mixed choice is caught on the form.
-  const invoices = useQueries({
-    queries: (bill.data?.issued ?? []).map(({ invoiceId }) =>
-      issuedInvoiceQuery(orgSlug, invoiceId),
-    ),
-  });
-
-  if (
-    !issues.data ||
-    (canReadBill && (bill.isPending || invoices.some((each) => each.isPending)))
-  ) {
-    return null;
-  }
-
-  const billByCharge = new Map(
-    invoices.flatMap(({ data }) =>
-      data
-        ? data.lines.map(
-            (line) =>
-              [line.chargeId, { id: data.invoice.id, number: data.invoice.invoiceNumber }] as const,
-          )
-        : [],
-    ),
-  );
+  if (!issues.data) return null;
 
   const lines: ReturnLine[] = issues.data.issues.flatMap((issue) =>
     issue.lines
@@ -514,12 +484,7 @@ export function ReturnMedicinesDialog({
         batchNumber: line.batchNumber,
         issued: line.qty,
         left: line.qty - line.returnedQty,
-        bill:
-          line.chargeStatus === "invoiced"
-            ? line.chargeId && canReadBill
-              ? billByCharge.get(line.chargeId)
-              : undefined
-            : null,
+        bill: line.bill,
       })),
   );
 
@@ -613,19 +578,15 @@ function ReturnLines({ lines }: { lines: ReturnLine[] }) {
               <p className="text-muted-foreground">
                 <span className="font-mono">{line.batchNumber}</span> ·{" "}
                 <span className="tabular-nums">
-                  {line.left === line.issued
-                    ? `${line.issued} issued`
-                    : `${line.left} of ${line.issued} left`}
+                  {line.left} of {line.issued} left
                 </span>{" "}
                 ·{" "}
-                {line.bill === null ? (
-                  "not billed yet"
-                ) : line.bill ? (
+                {line.bill ? (
                   <>
                     on bill <span className="font-mono">{line.bill.number}</span>
                   </>
                 ) : (
-                  "billed"
+                  "not billed yet"
                 )}
               </p>
             </div>

@@ -93,22 +93,18 @@ export function SettlementOverlay({
   const [discount, setDiscount] = useState("");
   const [note, setNote] = useState("");
 
-  // Credit is applied unless the cashier says otherwise; cash covers what is left.
-  const seededCredit =
-    availableCredit.usable < quote.grandTotal ? availableCredit.usable : quote.grandTotal;
-
   // Null until the cashier types, so the field follows the post-discount cap. A seeded
   // string would sit above that cap the moment a discount is entered and block the submit.
   const [credit, setCredit] = useState<string | null>(null);
 
-  const [payments, setPayments] = useState<PaymentLine[]>(() => [
-    {
-      id: 1,
-      method: "cash",
-      amount: formatDecimal(quote.grandTotal - seededCredit),
-      reference: "",
-    },
+  const [lines, setLines] = useState<PaymentLine[]>([
+    { id: 1, method: "cash", amount: "", reference: "" },
   ]);
+
+  // Credit is applied unless the cashier says otherwise; the cash line covers what is left
+  // and follows it through a discount or a credit change, until the cashier types an
+  // amount or splits the payment.
+  const [followsDue, setFollowsDue] = useState(true);
 
   // Quiet problems stay quiet until the operator has tried to confirm.
   const [attempted, setAttempted] = useState(false);
@@ -138,6 +134,19 @@ export function SettlementOverlay({
   const appliedCredit = creditInvalid ? ZERO : parsedCredit;
 
   const due = discounted.grandTotal - appliedCredit;
+
+  const payments = followsDue
+    ? lines.map((line) => ({ ...line, amount: formatDecimal(due) }))
+    : lines;
+
+  const changePayments = (next: PaymentLine[]) => {
+    const amountTouched =
+      next.length !== payments.length ||
+      next.some((line, index) => line.amount !== payments[index]?.amount);
+
+    if (amountTouched) setFollowsDue(false);
+    setLines(next);
+  };
 
   const problems = settlementProblems({
     due,
@@ -201,7 +210,10 @@ export function SettlementOverlay({
               htmlFor="settlement-credit"
             >
               <span>
-                <span className="font-medium text-foreground">Use advance credit</span> ·{" "}
+                <span className="font-medium text-foreground">
+                  {availableCredit.label ?? "Use advance credit"}
+                </span>{" "}
+                ·{" "}
                 <span className="tabular-nums">
                   {creditAvailableLabel(availableCredit, quote.currency)}
                 </span>
@@ -234,7 +246,7 @@ export function SettlementOverlay({
             problems={problems}
             onDiscountChange={setDiscount}
             onNoteChange={setNote}
-            onPaymentsChange={setPayments}
+            onPaymentsChange={changePayments}
           />
         </div>
       </div>

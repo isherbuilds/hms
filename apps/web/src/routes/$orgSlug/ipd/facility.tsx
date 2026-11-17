@@ -132,15 +132,18 @@ function FacilityRoute() {
                   { head: "Bed type", cell: (category) => category.name, mobile: "title" },
                   {
                     head: "Charged each day",
+                    // One line's price is the day's total, so it shows once, under Per day.
                     cell: (category) =>
                       category.currentTariff ? (
                         <ul className="flex flex-col">
-                          {category.currentTariff.lines.map((line) => (
+                          {category.currentTariff.lines.map((line, _, lines) => (
                             <li key={line.catalogItemId} className="flex justify-between gap-3">
                               <span className="min-w-0">{line.serviceName}</span>
-                              <span className="tabular-nums">
-                                {formatMoney(line.dailyPrice, currency)}
-                              </span>
+                              {lines.length > 1 ? (
+                                <span className="tabular-nums">
+                                  {formatMoney(line.dailyPrice, currency)}
+                                </span>
+                              ) : null}
                             </li>
                           ))}
                         </ul>

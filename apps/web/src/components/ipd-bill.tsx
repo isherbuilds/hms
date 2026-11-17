@@ -18,7 +18,7 @@ import { Label } from "@hms/ui/components/label";
 import { NativeSelect } from "@hms/ui/components/native-select";
 import { Separator } from "@hms/ui/components/separator";
 import { SubmitButton } from "@hms/ui/components/submit-button";
-import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { ClientOnly } from "@tanstack/react-router";
 import { MoreHorizontalIcon } from "lucide-react";
 import { useState } from "react";
@@ -117,6 +117,16 @@ export function AdmissionBill({
     placeholderData: keepPreviousData,
   });
 
+  // An issued bill still owed draws on the deposit first, so none of it is left over yet.
+  // The same queries feed each issued bill's card below.
+  const issuedOwed = useQueries({
+    queries: (bill.data?.issued ?? []).map(({ invoiceId }) =>
+      issuedInvoiceQuery(orgSlug, invoiceId),
+    ),
+    combine: (results) =>
+      results.some((result) => !result.data || result.data.balance.outstanding > ZERO),
+  });
+
   const close = () => setOverlay(null);
   const data = bill.data;
 
@@ -169,11 +179,11 @@ export function AdmissionBill({
   const nothingToBill = pending.lines.length === 0 && unbilledDays.length === 0;
   const depositShort = depositShortfall(pending.grandTotal, credit.deposit);
 
-  // What the stay still holds once nothing is left to bill goes back to the Patient.
+  // What the stay still holds once nothing is left to bill or owed goes back to the Patient.
   const refundable =
     canRefund &&
     credit.deposit > ZERO &&
-    (admission.status === "cancelled" || (billable && nothingToBill));
+    (admission.status === "cancelled" || (billable && nothingToBill && !issuedOwed));
 
   // The revision the bill was read at: a charge posted since moves it, and the server
   // refuses a settlement against the old figure.
@@ -431,7 +441,7 @@ export function AdmissionBill({
                   ){bedDays.billed > 0 ? ` · ${bedDays.billed} already billed` : null}
                 </>
               ) : (
-                `All ${bedDays.billed} bed day${bedDays.billed === 1 ? "" : "s"} billed`
+                "Bed days up to date"
               )}
             </p>
           ) : null}
@@ -442,7 +452,11 @@ export function AdmissionBill({
               invoiceId={invoiceId}
               canPay={canWrite}
               // This stay's deposit is offered in full; the Patient's other credit by hand.
-              credit={{ usable: credit.deposit, total: credit.deposit + credit.other }}
+              credit={{
+                usable: credit.deposit,
+                total: credit.deposit + credit.other,
+                label: "Use deposit",
+              }}
             />
           ))}
           {refundable ? (
@@ -455,7 +469,11 @@ export function AdmissionBill({
             </p>
           ) : null}
           {!canWrite || admission.status === "cancelled" ? null : billable ? (
-            pending.lines.length === 0 && unbilledDays.length === 0 ? null : (
+            nothingToBill ? (
+              takeDeposit ? (
+                <div>{takeDeposit}</div>
+              ) : null
+            ) : (
               <div className="flex flex-col gap-3">
                 {lastUnbilled ? (
                   <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
@@ -561,6 +579,7 @@ export function AdmissionBill({
             availableCredit={{
               usable: overlay.reviewed.credit.deposit,
               total: overlay.reviewed.credit.deposit + overlay.reviewed.credit.other,
+              label: "Use deposit",
             }}
             description={`${overlay.reviewed.pending.lines.length} item${overlay.reviewed.pending.lines.length === 1 ? "" : "s"} on this admission`}
             label="Issue invoice"
@@ -625,6 +644,8 @@ function StayDeposits({
         <AdvanceRefundDialog
           orgSlug={orgSlug}
           receipt={refunding}
+          title="Refund deposit"
+          description="Return what is left of this deposit to the Patient."
           onClose={() => setRefunding(null)}
         />
       ) : null}

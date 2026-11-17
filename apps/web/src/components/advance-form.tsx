@@ -200,17 +200,22 @@ export function TakeDepositDialog({
 export function AdvanceRefundDialog({
   orgSlug,
   receipt,
+  title = "Refund advance",
+  description = "Return unused patient credit from this receipt.",
   onClose,
 }: {
   orgSlug: string;
   /** The receipt as the desk saw it when it chose Refund. */
   receipt: { id: string; remaining: bigint };
+  /** An Admission's deposit is refunded under its own name. */
+  title?: string;
+  description?: string;
   onClose: () => void;
 }) {
   return (
     <FormDialog
-      title="Refund advance"
-      description="Return unused patient credit from this receipt."
+      title={title}
+      description={description}
       submitLabel="Record refund"
       schema={lineSchema}
       defaultValues={{ method: "cash", amount: formatDecimal(receipt.remaining), reference: "" }}

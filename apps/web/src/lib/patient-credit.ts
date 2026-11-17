@@ -7,9 +7,10 @@ import { orpc } from "@/lib/orpc";
 
 /**
  * Credit read when a settlement opens. `usable` is offered by default; `total` is
- * the amount the cashier may choose. `null` means the read failed.
+ * the amount the cashier may choose. `null` means the read failed. `label` names it
+ * where it is not advance credit, such as an Admission's deposit.
  */
-export type PatientCredit = { usable: bigint; total: bigint };
+export type PatientCredit = { usable: bigint; total: bigint; label?: string };
 
 export async function openingCredit(
   queryClient: QueryClient,

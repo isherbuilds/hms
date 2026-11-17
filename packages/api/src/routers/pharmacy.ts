@@ -28,7 +28,7 @@ import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
-import { divideHalfUp, formatDecimal } from "../core/money";
+import { formatDecimal } from "../core/money";
 import {
   admissionIssueDescription,
   bumpChargeRevision,
@@ -64,6 +64,7 @@ import {
   resolveDayRange,
   shortName,
 } from "../lib/schemas";
+import { creditsByLine, returnedUnitsCredit } from "../lib/return-credit";
 import { readOrgSettings } from "../lib/settings-cache";
 import { insertStockMovements, lockBatchStock } from "../lib/stock";
 import { pharmacyStockRouter } from "./pharmacy-stock";
@@ -168,8 +169,6 @@ async function requireShelfStock(
   }
 }
 
-type LineMoney = { taxableValue: bigint; taxAmount: bigint; gross: bigint };
-
 /** What earlier Credit Notes on one Invoice took off each of these lines. */
 async function priorCreditsByLine(
   tx: DbTransaction,
@@ -197,67 +196,7 @@ async function priorCreditsByLine(
       ),
     );
 
-  const creditedByLine = new Map<string, LineMoney>();
-
-  for (const line of rows) {
-    const credited = creditedByLine.get(line.invoiceLineId) ?? {
-      taxableValue: 0n,
-      taxAmount: 0n,
-      gross: 0n,
-    };
-
-    credited.taxableValue += line.taxableValue;
-    credited.taxAmount += line.taxAmount;
-    credited.gross += line.gross;
-    creditedByLine.set(line.invoiceLineId, credited);
-  }
-
-  return creditedByLine;
-}
-
-/**
- * The credit for `qty` units coming back on an invoice line, `returnedBefore` of which
- * came back earlier. The last unit takes the exact remainder, so a full return reverses
- * the line's taxable, tax and gross to the paisa.
- */
-function returnedUnitsCredit(
-  source: LineMoney & { qty: number },
-  prior: LineMoney | undefined,
-  returnedBefore: number,
-  qty: number,
-): LineMoney {
-  if (returnedBefore + qty === source.qty) {
-    return {
-      taxableValue: source.taxableValue - (prior?.taxableValue ?? 0n),
-      taxAmount: source.taxAmount - (prior?.taxAmount ?? 0n),
-      gross: source.gross - (prior?.gross ?? 0n),
-    };
-  }
-
-  const share = BigInt(qty);
-  const sold = BigInt(source.qty);
-  const gross = divideHalfUp(source.gross * share, sold);
-  const taxableValue = divideHalfUp(source.taxableValue * share, sold);
-
-  return { taxableValue, taxAmount: gross - taxableValue, gross };
-}
-
-/**
- * A return credits its units' share of the line, never more than earlier Credit Notes,
- * a bare price correction among them, left on it.
- */
-function cappedAtRemainder(
-  credit: LineMoney,
-  source: LineMoney,
-  prior: LineMoney | undefined,
-): LineMoney {
-  const remaining = {
-    taxableValue: source.taxableValue - (prior?.taxableValue ?? 0n),
-    taxAmount: source.taxAmount - (prior?.taxAmount ?? 0n),
-    gross: source.gross - (prior?.gross ?? 0n),
-  };
-
-  return credit.gross > remaining.gross ? remaining : credit;
+  return creditsByLine(rows);
 }
 
 /** Returned goods go to quarantine, never back to the shelf (D041): one movement per batch. */
@@ -732,6 +671,7 @@ export const pharmacyRouter = {
           chargeId: charges.id,
           chargeStatus: charges.status,
         },
+        bill: { id: invoices.id, number: invoices.invoiceNumber },
       })
       .from(admissionPharmacyIssues)
       .innerJoin(user, eq(user.id, admissionPharmacyIssues.issuedBy))
@@ -758,6 +698,7 @@ export const pharmacyRouter = {
           ne(charges.status, "voided"),
         ),
       )
+      .leftJoin(invoices, and(eq(invoices.orgId, orgId), eq(invoices.id, charges.invoiceId)))
       .leftJoin(returned, eq(returned.issueLineId, admissionPharmacyIssueLines.id))
       .where(
         and(
@@ -776,7 +717,14 @@ export const pharmacyRouter = {
         // A group always holds the row that created it.
         const { createdAt, prescriberName, issuedByName } = lines[0]!;
 
-        return { id, createdAt, prescriberName, issuedByName, lines: lines.map((row) => row.line) };
+        // A billed line names its bill, so the return form can keep a return to one bill.
+        return {
+          id,
+          createdAt,
+          prescriberName,
+          issuedByName,
+          lines: lines.map(({ line, bill }) => ({ ...line, bill })),
+        };
       }),
     };
   }),
@@ -983,13 +931,23 @@ export const pharmacyRouter = {
       }
 
       const [invoiceId] = invoiceIds;
+
+      // A return locks the Invoice, then the batches; the Credit Note's number is taken
+      // after both. The Invoice lock holds off a bare Credit Note on these lines, so the
+      // earlier credits read below are the ones this return is measured against.
+      if (invoiceId) await lockInvoice(tx, scope.orgId, invoiceId);
+
+      await quarantineReturn(tx, {
+        scope,
+        now,
+        sourceType: "admission_pharmacy_return",
+        sourceId: returnId,
+        lines,
+      });
+
       let creditNote: Awaited<ReturnType<typeof postCreditNoteTx>> | null = null;
 
       if (invoiceId) {
-        // The Invoice lock holds off a bare Credit Note on these lines, so the earlier
-        // credits read next are the ones this return is measured against.
-        await lockInvoice(tx, scope.orgId, invoiceId);
-
         const prior = await priorCreditsByLine(
           tx,
           scope.orgId,
@@ -998,18 +956,15 @@ export const pharmacyRouter = {
         );
 
         const moneyLines: CreditNoteLineRequest[] = billed
-          .map(({ invoiceLine, left, qty }) => {
-            const credited = prior.get(invoiceLine.id);
-
-            return {
-              invoiceLineId: invoiceLine.id,
-              ...cappedAtRemainder(
-                returnedUnitsCredit(invoiceLine, credited, invoiceLine.qty - left, qty),
-                invoiceLine,
-                credited,
-              ),
-            };
-          })
+          .map(({ invoiceLine, left, qty }) => ({
+            invoiceLineId: invoiceLine.id,
+            ...returnedUnitsCredit(
+              invoiceLine,
+              prior.get(invoiceLine.id),
+              invoiceLine.qty - left,
+              qty,
+            ),
+          }))
           .filter((line) => line.gross > 0n);
 
         if (moneyLines.length > 0) {
@@ -1046,14 +1001,6 @@ export const pharmacyRouter = {
           qty: line.qty,
         })),
       );
-
-      await quarantineReturn(tx, {
-        scope,
-        now,
-        sourceType: "admission_pharmacy_return",
-        sourceId: returnId,
-        lines,
-      });
 
       return {
         creditNote,
@@ -1237,6 +1184,15 @@ export const pharmacyRouter = {
       // any round-off not already carried by earlier credit notes.
       const roundOff = fullyReturned || excess < 0n ? excess : 0n;
 
+      // The Invoice, locked first, then the batches; the Credit Note number comes after.
+      await quarantineReturn(tx, {
+        scope,
+        now,
+        sourceType: "pharmacy_return",
+        sourceId: returnId,
+        lines: computed,
+      });
+
       const creditNote =
         moneyLines.length > 0 || roundOff > 0n
           ? await postCreditNoteTx(tx, {
@@ -1275,14 +1231,6 @@ export const pharmacyRouter = {
           gross: line.gross,
         })),
       );
-
-      await quarantineReturn(tx, {
-        scope,
-        now,
-        sourceType: "pharmacy_return",
-        sourceId: returnId,
-        lines: computed,
-      });
 
       if (!input.refund) return { creditNote, refund: null };
 

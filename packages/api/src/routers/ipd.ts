@@ -417,31 +417,30 @@ export const ipdRouter = {
       currentTariffLines(orgId),
     ]);
 
-    type CurrentTariff = {
-      id: string;
-      effectiveFrom: Date;
-      lines: {
-        catalogItemId: string;
-        serviceName: string;
-        dailyPrice: bigint;
-        taxRatePercent: string;
-      }[];
-    };
-
-    const currentTariff = new Map<string, CurrentTariff>();
-
-    for (const { tariffId, categoryId, effectiveFrom, ...line } of tariffRows) {
-      const tariff = currentTariff.get(categoryId) ?? { id: tariffId, effectiveFrom, lines: [] };
-      tariff.lines.push(line);
-      currentTariff.set(categoryId, tariff);
-    }
+    const tariffLinesByCategory = Map.groupBy(tariffRows, (row) => row.categoryId);
 
     return {
       wards: wardRows,
-      categories: categoryRows.map((category) => ({
-        ...category,
-        currentTariff: currentTariff.get(category.id) ?? null,
-      })),
+      categories: categoryRows.map((category) => {
+        const lines = tariffLinesByCategory.get(category.id) ?? [];
+        const [first] = lines;
+
+        return {
+          ...category,
+          currentTariff: first
+            ? {
+                id: first.tariffId,
+                effectiveFrom: first.effectiveFrom,
+                lines: lines.map(({ catalogItemId, serviceName, dailyPrice, taxRatePercent }) => ({
+                  catalogItemId,
+                  serviceName,
+                  dailyPrice,
+                  taxRatePercent,
+                })),
+              }
+            : null,
+        };
+      }),
       beds: bedRows,
     };
   }),
@@ -599,10 +598,7 @@ export const ipdRouter = {
       })
       .catch((error: unknown) => nameConflict(error, "A rate starting at that time"));
 
-    const lines = input.lines.map((line) => ({
-      catalogItemId: line.catalogItemId,
-      dailyPrice: line.dailyPrice,
-    }));
+    const { lines } = input;
 
     audit({
       action: "ipd.tariff.set",

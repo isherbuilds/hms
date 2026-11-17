@@ -5,6 +5,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { formatBusinessDate } from "@/lib/business-date";
 import { formatDecimal } from "@hms/api/core/money";
 import { formatMoney, ZERO } from "@/lib/money";
+import { formatDateTime } from "@/lib/org-datetime";
 import { methodLabel } from "@/lib/settlement";
 import { gstStateLabel } from "@hms/api/lib/gst-state";
 import {
@@ -23,6 +24,8 @@ export type AdvanceBundle = Awaited<
 >;
 
 type Invoice = InvoiceBundle["invoice"];
+
+type Stay = NonNullable<InvoiceBundle["admission"]>;
 
 type Payment = InvoiceBundle["payments"][number];
 
@@ -294,13 +297,27 @@ function TaxSummary({
   );
 }
 
+/** The stay an ipd Invoice bills; a fact the stay does not have is left out. */
+function stayRows(stay: Stay) {
+  return [
+    { label: "IPD No.", value: stay.admissionNumber },
+    { label: "Admitted", value: formatDateTime(stay.admittedAt, stay.timeZone) },
+    ...(stay.dischargedAt
+      ? [{ label: "Left", value: formatDateTime(stay.dischargedAt, stay.timeZone) }]
+      : []),
+    ...(stay.diagnosis ? [{ label: "Diagnosis", value: stay.diagnosis }] : []),
+  ];
+}
+
 export function InvoiceDocument({
   invoice,
   lines,
+  admission,
   layout,
 }: {
   invoice: Invoice;
   lines: InvoiceBundle["lines"];
+  admission: InvoiceBundle["admission"];
   layout: "a4" | "thermal";
 }) {
   const currency = invoice.currency;
@@ -445,6 +462,12 @@ export function InvoiceDocument({
             <div style={{ color: colors.muted }}>{invoice.patientAddress.replace(/\n/g, ", ")}</div>
           ) : null}
         </div>
+        {admission ? (
+          <div style={{ flex: 1 }}>
+            <SectionTitle>Stay</SectionTitle>
+            <Details rows={stayRows(admission)} />
+          </div>
+        ) : null}
       </section>
 
       <SectionTitle>Items</SectionTitle>

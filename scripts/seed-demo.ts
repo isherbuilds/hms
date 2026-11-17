@@ -1,7 +1,8 @@
-import { divideHalfUp, formatDecimal, parseDecimal } from "@hms/api/core/money";
+import { formatDecimal, parseDecimal } from "@hms/api/core/money";
 import { admissionIssueDescription } from "@hms/api/lib/admission-charges";
 import { businessDate } from "@hms/api/lib/business-date";
-import { readBedDayBill } from "@hms/api/lib/ipd-bill";
+import { billLines, readBedDayBill } from "@hms/api/lib/ipd-bill";
+import { creditsByLine, type LineMoney, returnedUnitsCredit } from "@hms/api/lib/return-credit";
 import {
   computeInvoiceLines,
   documentNumber,
@@ -2049,8 +2050,6 @@ function postWardServices(
   admission.chargeRevision = (admission.chargeRevision ?? 0) + 1;
 }
 
-type SeedLineMoney = { taxableValue: bigint; taxAmount: bigint; gross: bigint };
-
 /**
  * A ward return as `pharmacy.returnFromAdmission` writes it: the goods go to quarantine,
  * a pending Charge is voided and the rest reposted at the same price, and a billed one
@@ -2064,7 +2063,7 @@ function returnFromWard(
   reason: string,
 ) {
   const returnId = id("ward-return");
-  const credits: (SeedLineMoney & { invoiceLineId: string; invoiceId: string })[] = [];
+  const credits: (LineMoney & { invoiceLineId: string; invoiceId: string })[] = [];
 
   const returning = lines.map((line) => {
     const issue = issueLineRows.find((row) => row.id === line.issueLineId);
@@ -2117,40 +2116,12 @@ function returnFromWard(
     } else {
       const source = invoiceLineRows.find((row) => row.chargeId === charge.id)!;
 
-      const prior = creditNoteLineRows
-        .filter((row) => row.invoiceLineId === source.id)
-        .reduce(
-          (sum, row) => ({
-            taxableValue: sum.taxableValue + row.taxableValue,
-            taxAmount: sum.taxAmount + row.taxAmount,
-            gross: sum.gross + row.gross,
-          }),
-          { taxableValue: 0n, taxAmount: 0n, gross: 0n },
-        );
-
-      const remaining = {
-        taxableValue: source.taxableValue - prior.taxableValue,
-        taxAmount: source.taxAmount - prior.taxAmount,
-        gross: source.gross - prior.gross,
-      };
-
-      const returnedBeforeOnLine = source.qty - left;
-      let credit: SeedLineMoney;
-
-      if (returnedBeforeOnLine + line.qty === source.qty) {
-        credit = remaining;
-      } else {
-        const gross = divideHalfUp(source.gross * BigInt(line.qty), BigInt(source.qty));
-
-        const taxableValue = divideHalfUp(
-          source.taxableValue * BigInt(line.qty),
-          BigInt(source.qty),
-        );
-
-        credit = { taxableValue, taxAmount: gross - taxableValue, gross };
-      }
-
-      if (credit.gross > remaining.gross) credit = remaining;
+      const credit = returnedUnitsCredit(
+        source,
+        creditsByLine(creditNoteLineRows).get(source.id),
+        source.qty - left,
+        line.qty,
+      );
 
       if (credit.gross > 0n) {
         credits.push({ ...credit, invoiceLineId: source.id, invoiceId: charge.invoiceId! });
@@ -2170,7 +2141,7 @@ function returnFromWard(
     creditNoteId = id("cn");
     const day = businessDate(returnedAt, ipdTimeZone);
 
-    const sum = (key: keyof SeedLineMoney) =>
+    const sum = (key: keyof LineMoney) =>
       credits.reduce((total, credit) => total + credit[key], 0n);
 
     creditNoteRows.push({
@@ -2517,19 +2488,7 @@ async function billStay(tx: DbTransaction, admission: SeedAdmission, settle: Sta
 async function runningBill(tx: DbTransaction, admission: SeedAdmission) {
   const bedDay = await readBedDayBill(tx, orgId, billFacts(admission, false), "full", now);
 
-  return computeInvoiceLines<string | null>(
-    [
-      ...pendingOf(admission).map(invoiceInput),
-      ...bedDay.lines.map((line) => ({
-        ...line,
-        chargeId: null,
-        priceUnits: 1,
-        priceBasis: "exclusive" as const,
-      })),
-    ],
-    0n,
-    { roundToRupee: false },
-  ).grandTotal;
+  return billLines(pendingOf(admission).map(invoiceInput), bedDay.lines, 0n).computed.grandTotal;
 }
 
 const depositHeld = (admission: SeedAdmission) =>

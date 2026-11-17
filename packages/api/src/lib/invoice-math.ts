@@ -31,7 +31,7 @@ export function calculateInvoiceBalance({
 }
 
 // An IPD bed-day line has no Charge until the bill writes it, so its preview id is null.
-type ChargeInput<Id extends string | null = string> = {
+export type ChargeInput<Id extends string | null = string> = {
   chargeId: Id;
   description: string;
   qty: number;

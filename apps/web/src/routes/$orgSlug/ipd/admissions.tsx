@@ -144,16 +144,21 @@ function AdmissionsRoute() {
                 },
                 {
                   head: "Running bill",
-                  // A stay that ended shows only what is still unbilled.
-                  cell: (item) =>
-                    item.status === "cancelled" ||
-                    (item.status === "discharged" && item.runningBill === ZERO) ? (
-                      <span className="text-muted-foreground">—</span>
-                    ) : (
-                      <span className="whitespace-nowrap tabular-nums">
-                        {formatMoney(item.runningBill, currency)}
-                      </span>
-                    ),
+                  // A stay that ended shows only what is still unbilled. The compact row
+                  // has no column heads, so it names its amounts.
+                  cell: (item) => (
+                    <>
+                      <span className="md:hidden">Bill </span>
+                      {item.status === "cancelled" ||
+                      (item.status === "discharged" && item.runningBill === ZERO) ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <span className="whitespace-nowrap tabular-nums">
+                          {formatMoney(item.runningBill, currency)}
+                        </span>
+                      )}
+                    </>
+                  ),
                   className: "text-right",
                 },
                 {
@@ -165,17 +170,19 @@ function AdmissionsRoute() {
                         ? null
                         : depositShortLabel(item.runningBill, item.depositHeld, currency);
 
-                    return item.depositHeld === ZERO && !short ? (
-                      <span className="text-muted-foreground">—</span>
-                    ) : (
+                    return (
                       <>
-                        <span className="block whitespace-nowrap tabular-nums">
+                        <span className="whitespace-nowrap tabular-nums md:block">
+                          <span className="md:hidden">Deposit </span>
                           {formatMoney(item.depositHeld, currency)}
                         </span>
                         {short ? (
-                          <span className="block whitespace-nowrap font-medium tabular-nums">
-                            {short}
-                          </span>
+                          <>
+                            <span className="md:hidden"> · </span>
+                            <span className="whitespace-nowrap font-medium tabular-nums md:block">
+                              {short}
+                            </span>
+                          </>
                         ) : null}
                       </>
                     );

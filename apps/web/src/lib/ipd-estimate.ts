@@ -1,4 +1,4 @@
-import { divideHalfUp, parseDecimal } from "@hms/api/core/money";
+import { computeInvoiceLines } from "@hms/api/lib/invoice-math";
 
 // The suggested deposit rounds the estimate up to the next ₹100 (in paise), a default
 // chosen without a hospital.
@@ -6,8 +6,8 @@ const DEPOSIT_STEP = 10_000n;
 
 /**
  * A pre-admission estimate, computed in the browser and stored nowhere: every daily
- * line of the bed type's tariff for the expected days, plus the chosen Services. Tax is
- * per line, rounded half up to the paisa; without a GSTIN no GST is added (D063).
+ * line of the bed type's tariff for the expected days, plus the chosen Services, priced
+ * by the bill's own line math. Without a GSTIN no GST is added (D063).
  */
 export function estimateStay(input: {
   days: number;
@@ -15,38 +15,46 @@ export function estimateStay(input: {
   services: { unitPrice: bigint; taxRatePercent: string; qty: number }[];
   registered: boolean;
 }) {
-  type Line = { amount: bigint; taxRatePercent: string };
+  const line = (
+    kind: "bed" | "service",
+    qty: number,
+    unitPrice: bigint,
+    taxRatePercent: string,
+  ) => ({
+    chargeId: kind,
+    description: kind,
+    qty,
+    unitPrice,
+    priceUnits: 1,
+    taxRatePercent: input.registered ? taxRatePercent : "0",
+    taxCode: null,
+    priceBasis: "exclusive" as const,
+  });
 
-  const days = BigInt(input.days);
+  const priced = computeInvoiceLines(
+    [
+      ...input.tariffLines.map((tariff) =>
+        line("bed", input.days, tariff.dailyPrice, tariff.taxRatePercent),
+      ),
+      ...input.services.map((service) =>
+        line("service", service.qty, service.unitPrice, service.taxRatePercent),
+      ),
+    ],
+    0n,
+    { roundToRupee: false },
+  );
 
-  const sum = (lines: Line[], of: (line: Line) => bigint) =>
-    lines.reduce((total, line) => total + of(line), 0n);
+  const subtotal = (kind: "bed" | "service") =>
+    priced.lines
+      .filter((each) => each.chargeId === kind)
+      .reduce((total, each) => total + each.lineSubtotal, 0n);
 
-  const tariff = input.tariffLines.map((line) => ({
-    amount: line.dailyPrice * days,
-    taxRatePercent: line.taxRatePercent,
-  }));
-
-  const chosen = input.services.map((line) => ({
-    amount: line.unitPrice * BigInt(line.qty),
-    taxRatePercent: line.taxRatePercent,
-  }));
-
-  const bedCharges = sum(tariff, (line) => line.amount);
-  const services = sum(chosen, (line) => line.amount);
-
-  const tax = input.registered
-    ? sum([...tariff, ...chosen], (line) =>
-        divideHalfUp(line.amount * parseDecimal(line.taxRatePercent), 10_000n),
-      )
-    : 0n;
-
-  const total = bedCharges + services + tax;
+  const total = priced.grandTotal;
 
   return {
-    bedCharges,
-    services,
-    tax,
+    bedCharges: subtotal("bed"),
+    services: subtotal("service"),
+    tax: priced.taxTotal,
     total,
     suggestedDeposit: ((total + DEPOSIT_STEP - 1n) / DEPOSIT_STEP) * DEPOSIT_STEP,
   };

@@ -107,7 +107,12 @@ function findDocument(data: InvoiceBundle, request: BillingDocumentRequest) {
     case "invoice":
       return {
         element: (
-          <InvoiceDocument invoice={data.invoice} lines={data.lines} layout={request.layout} />
+          <InvoiceDocument
+            invoice={data.invoice}
+            lines={data.lines}
+            admission={data.admission}
+            layout={request.layout}
+          />
         ),
         number: data.invoice.invoiceNumber,
         title: invoiceDocumentTitle(data.invoice, data.lines),

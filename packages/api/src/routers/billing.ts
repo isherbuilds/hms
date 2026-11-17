@@ -967,9 +967,24 @@ export const billingRouter = {
 
     // `user` is the global auth table: attribution only; the org predicate stays on `invoices`.
     const [row] = await db
-      .select({ invoice: invoices, issuedByName: user.name })
+      .select({
+        invoice: invoices,
+        issuedByName: user.name,
+        // The stay an ipd Invoice bills, printed on it; null for every other Invoice.
+        admission: {
+          admissionNumber: admissions.admissionNumber,
+          admittedAt: admissions.admittedAt,
+          dischargedAt: admissions.dischargedAt,
+          diagnosis: admissions.diagnosis,
+          timeZone: admissions.timeZone,
+        },
+      })
       .from(invoices)
       .innerJoin(user, eq(user.id, invoices.issuedBy))
+      .leftJoin(
+        admissions,
+        and(eq(admissions.orgId, scope.orgId), eq(admissions.id, invoices.admissionId)),
+      )
       .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.id, input.invoiceId)))
       .limit(1);
 
@@ -1060,6 +1075,7 @@ export const billingRouter = {
       creditNotes: notesWithLines,
       refunds: invoiceRefunds,
       balance,
+      admission: row.admission,
     };
   }),
 };
