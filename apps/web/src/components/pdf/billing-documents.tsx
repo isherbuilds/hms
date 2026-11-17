@@ -57,7 +57,7 @@ function registrationRows(gstin: string) {
 
 const personName = { textTransform: "capitalize" } as const;
 
-const colors = {
+export const colors = {
   ink: "#18181b",
   muted: "#71717a",
   border: "#d4d4d8",
@@ -94,7 +94,7 @@ const cellStyle: CSSProperties = {
   verticalAlign: "top",
 };
 
-function DocumentShell({
+export function DocumentShell({
   document,
   title,
   number,
@@ -173,7 +173,7 @@ function DocumentShell({
   );
 }
 
-function SectionTitle({ children }: { children: ReactNode }) {
+export function SectionTitle({ children }: { children: ReactNode }) {
   return (
     <h2
       style={{
@@ -189,7 +189,7 @@ function SectionTitle({ children }: { children: ReactNode }) {
   );
 }
 
-function Details({
+export function Details({
   rows,
   roomy = false,
 }: {

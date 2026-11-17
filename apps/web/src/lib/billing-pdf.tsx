@@ -17,9 +17,13 @@ import {
   ReceiptDocument,
   RefundDocument,
 } from "@/components/pdf/billing-documents";
+import { SlipDocument } from "@/components/pdf/ipd-slip";
 import { invoiceDocumentTitle } from "@/lib/invoice-print";
+import { admissionSlip, dischargeSlip, type SlipKind } from "@/lib/ipd-slips";
 import { siteConfig } from "@/config/site";
 import type { BillingDocumentRequest } from "@/lib/billing-document";
+import type { AppRouter } from "@hms/api/routers/index";
+import type { RouterClient } from "@orpc/server";
 
 const PAGE_MARGIN = { bottom: 46, left: 44, right: 44, top: 40 };
 
@@ -212,6 +216,61 @@ export async function renderAdvancePdf(data: AdvanceBundle, refundId: string | n
           title: advanceReceiptTitle(receipt),
         },
     receipt.orgLegalName,
+    false,
+  );
+}
+
+type Client = RouterClient<AppRouter>;
+
+/** An admission's slip on the hospital's letterhead. A discharge slip needs a departure. */
+export async function renderSlipPdf(
+  detail: Awaited<ReturnType<Client["ipd"]["get"]>>,
+  settings: Awaited<ReturnType<Client["settings"]["get"]>>,
+  kind: SlipKind,
+) {
+  const { admission, patient, practitionerName, stays } = detail;
+
+  if (admission.status === "cancelled" || (kind === "discharge" && !admission.dischargedAt)) {
+    throw new ORPCError("NOT_FOUND", { message: "This stay has no such slip" });
+  }
+
+  // The bed the Patient is in, or the one they left from.
+  const bed = stays.at(-1);
+
+  if (!bed) throw new Error(`Admission ${admission.id} has no bed stay`);
+
+  const input = {
+    admission,
+    patient,
+    practitionerName,
+    bedLabel: bed.bedLabel,
+    wardName: bed.wardName,
+    timeZone: settings.timeZone,
+  };
+
+  const slip = kind === "discharge" ? dischargeSlip(input) : admissionSlip(input);
+
+  return renderDocument(
+    {
+      element: (
+        <SlipDocument
+          slip={slip}
+          admissionNumber={admission.admissionNumber}
+          document={{
+            orgLegalName: settings.legalName,
+            orgAddress: settings.address,
+            orgTaxId: settings.taxId,
+            orgGstin: settings.gstin,
+            currency: settings.currency,
+            patientName: patient.name,
+            patientMrn: patient.mrn,
+          }}
+        />
+      ),
+      number: admission.admissionNumber,
+      title: slip.title,
+    },
+    settings.legalName,
     false,
   );
 }

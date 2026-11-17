@@ -19,7 +19,9 @@ import {
   AdmissionStatusBadge,
   CancelAdmissionDialog,
   DischargeDialog,
+  EditDetailsDialog,
   ReadyDialog,
+  ReopenDialog,
   TransferDialog,
   UndoReadyDialog,
 } from "@/components/ipd-dialogs";
@@ -29,7 +31,9 @@ import {
   IssueMedicinesDialog,
 } from "@/components/ipd-medicines";
 import { DataList, ErrorNote, PageBody, PageHeader, Panel } from "@/components/page";
+import { DISCHARGE_TYPE_LABELS, slipPdfUrl, type SlipKind } from "@/lib/ipd-slips";
 import { useCan, useMembership } from "@/lib/membership";
+import { currentMinute, useMinuteClock } from "@/lib/minute-clock";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
@@ -70,11 +74,16 @@ export const Route = createFileRoute("/$orgSlug/ipd/$admissionId")({
             )
         : null,
     ]).catch(() => {});
+
+    return { now: currentMinute() };
   },
   component: AdmissionRoute,
 });
 
-type DialogKind = "transfer" | "ready" | "discharge" | "undo" | "cancel";
+type DialogKind = "transfer" | "ready" | "discharge" | "undo" | "cancel" | "details" | "reopen";
+
+// The server refuses to undo a departure after this long.
+const REOPEN_WINDOW_MS = 24 * 60 * 60 * 1_000;
 
 // A dialog acts on the Admission as it was when it opened, never a newer refresh.
 type OpenDialog = { kind: DialogKind; admission: { id: string; revision: number } };
@@ -92,6 +101,7 @@ function AdmissionRoute() {
   const [opened, setOpened] = useState<OpenDialog | null>(null);
   const issuing = Route.useSearch().issue === 1;
   const navigate = Route.useNavigate();
+  const now = useMinuteClock(Route.useLoaderData().now);
   const detail = useQuery(admissionQuery(orgSlug, admissionId));
 
   const bill = useQuery({ ...admissionBillQuery(orgSlug, admissionId), enabled: canReadBill });
@@ -135,47 +145,84 @@ function AdmissionRoute() {
 
   const issuable = canIssue && canReadIssues && active;
 
+  const discharged = admission.status === "discharged";
+
+  const reopenable =
+    canCorrect &&
+    discharged &&
+    admission.dischargedAt !== null &&
+    now - admission.dischargedAt.getTime() < REOPEN_WINDOW_MS;
+
+  const slip = (kind: SlipKind) => (
+    <a href={slipPdfUrl(orgSlug, admission.id, kind)} target="_blank" rel="noreferrer" />
+  );
+
   return (
     <>
       <PageHeader
         title="Admission"
+        description={
+          <>
+            IPD No. <span className="font-mono">{admission.admissionNumber}</span>
+          </>
+        }
         action={
-          active && canUpdate ? (
+          admission.status === "cancelled" ? undefined : (
             <>
-              <Button variant="outline" onClick={() => open("transfer")}>
-                Move bed
-              </Button>
-              {admission.status === "admitted" ? (
-                <Button onClick={() => open("ready")}>Ready to leave</Button>
-              ) : (
-                <Button onClick={() => open("discharge")}>Record departure</Button>
-              )}
-              {admission.status === "discharge_ready" || canCorrect ? (
-                <ClientOnly fallback={null}>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={<Button variant="ghost" size="icon" />}
-                      aria-label="More actions"
-                    >
-                      <MoreHorizontalIcon />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="min-w-44">
-                      {admission.status === "discharge_ready" ? (
-                        <DropdownMenuItem onClick={() => open("undo")}>
-                          Not leaving yet
-                        </DropdownMenuItem>
-                      ) : null}
-                      {canCorrect ? (
-                        <DropdownMenuItem variant="destructive" onClick={() => open("cancel")}>
-                          Cancel admission
-                        </DropdownMenuItem>
-                      ) : null}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </ClientOnly>
+              {active && canUpdate ? (
+                <>
+                  <Button variant="outline" onClick={() => open("transfer")}>
+                    Move bed
+                  </Button>
+                  {admission.status === "admitted" ? (
+                    <Button onClick={() => open("ready")}>Ready to leave</Button>
+                  ) : (
+                    <Button onClick={() => open("discharge")}>Record departure</Button>
+                  )}
+                </>
               ) : null}
+              {discharged ? (
+                <Button variant="outline" nativeButton={false} render={slip("discharge")}>
+                  Print discharge slip
+                </Button>
+              ) : null}
+              <ClientOnly fallback={null}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={<Button variant="ghost" size="icon" />}
+                    aria-label="More actions"
+                  >
+                    <MoreHorizontalIcon />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-44">
+                    <DropdownMenuItem render={slip("admission")}>
+                      Print admission slip
+                    </DropdownMenuItem>
+                    {active && canUpdate ? (
+                      <DropdownMenuItem onClick={() => open("details")}>
+                        Edit details
+                      </DropdownMenuItem>
+                    ) : null}
+                    {admission.status === "discharge_ready" && canUpdate ? (
+                      <DropdownMenuItem onClick={() => open("undo")}>
+                        Not leaving yet
+                      </DropdownMenuItem>
+                    ) : null}
+                    {reopenable ? (
+                      <DropdownMenuItem onClick={() => open("reopen")}>
+                        Undo departure
+                      </DropdownMenuItem>
+                    ) : null}
+                    {active && canUpdate && canCorrect ? (
+                      <DropdownMenuItem variant="destructive" onClick={() => open("cancel")}>
+                        Cancel admission
+                      </DropdownMenuItem>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </ClientOnly>
             </>
-          ) : undefined
+          )
         }
       />
       <IpdTabs orgSlug={orgSlug} />
@@ -219,6 +266,31 @@ function AdmissionRoute() {
             ) : null}
             {admission.dischargedAt ? (
               <Fact label="Left">{formatDateTime(admission.dischargedAt, timeZone)}</Fact>
+            ) : null}
+            {admission.dischargeType ? (
+              <Fact label="How the Patient left">
+                {DISCHARGE_TYPE_LABELS[admission.dischargeType]}
+              </Fact>
+            ) : null}
+            {admission.attendantName || admission.attendantPhone ? (
+              <Fact label="Attendant">
+                {admission.attendantName ? (
+                  <span className="capitalize">{admission.attendantName}</span>
+                ) : null}
+                {admission.attendantName && admission.attendantPhone ? " · " : null}
+                {admission.attendantPhone ? (
+                  <a
+                    href={`tel:${admission.attendantPhone}`}
+                    className="tabular-nums underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                  >
+                    {admission.attendantPhone}
+                  </a>
+                ) : null}
+              </Fact>
+            ) : null}
+            {admission.diagnosis ? <Fact label="Diagnosis">{admission.diagnosis}</Fact> : null}
+            {admission.medicoLegal ? (
+              <Fact label="Medico-legal">{admission.medicoLegalRef ?? "Yes"}</Fact>
             ) : null}
             {admission.cancelledAt ? (
               <Fact label="Cancelled">
@@ -321,6 +393,17 @@ function AdmissionRoute() {
       ) : null}
       {ref && dialog === "cancel" ? (
         <CancelAdmissionDialog orgSlug={orgSlug} admission={ref} onClose={close} />
+      ) : null}
+      {ref && dialog === "details" ? (
+        <EditDetailsDialog
+          orgSlug={orgSlug}
+          admission={ref}
+          details={{ ...admission, practitionerName }}
+          onClose={close}
+        />
+      ) : null}
+      {ref && dialog === "reopen" ? (
+        <ReopenDialog orgSlug={orgSlug} admission={ref} onClose={close} />
       ) : null}
     </>
   );

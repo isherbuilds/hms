@@ -19,7 +19,7 @@ import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
 import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
 import { ErrorNote } from "@/components/page";
-import { DISCHARGE_TYPE_LABELS, DISCHARGE_TYPES } from "@/lib/ipd-slips";
+import { DISCHARGE_TYPE_LABELS, DISCHARGE_TYPES, slipPdfUrl } from "@/lib/ipd-slips";
 import { useCan } from "@/lib/membership";
 import { formatDateTime, localInputValue, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
@@ -219,12 +219,75 @@ function displaceInput(value: { displace: boolean; displaceReason: string }) {
   return value.displace ? { reason: value.displaceReason } : undefined;
 }
 
+// The stay's own facts, asked at admission and editable while the Patient is in.
+// Blank means not known; the server stores it as no answer.
+const stayFields = {
+  attendantName: z.string().trim().max(200, "Keep the name under 200 characters"),
+  attendantPhone: z.string().trim().max(20, "Keep the phone under 20 characters"),
+  diagnosis: z.string().trim().max(500, "Keep the diagnosis under 500 characters"),
+  medicoLegal: z.boolean(),
+  medicoLegalRef: z.string().trim().max(200, "Keep the reference under 200 characters"),
+};
+
+type StayFacts = { [K in keyof typeof stayFields]: z.output<(typeof stayFields)[K]> };
+
+function stayInput(value: StayFacts) {
+  return {
+    attendantName: value.attendantName,
+    attendantPhone: value.attendantPhone,
+    diagnosis: value.diagnosis,
+    medicoLegal: value.medicoLegal,
+    // A reference belongs to the flag; unticking it drops the reference.
+    medicoLegalRef: value.medicoLegal ? value.medicoLegalRef : "",
+  };
+}
+
+function StayFactsFields() {
+  const medicoLegal = useWatch<{ medicoLegal: boolean }, "medicoLegal">({ name: "medicoLegal" });
+
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <TextField name="attendantName" label="Attendant" autoComplete="off" />
+        <TextField
+          name="attendantPhone"
+          label="Attendant phone"
+          type="tel"
+          inputMode="tel"
+          autoComplete="off"
+          className="tabular-nums"
+        />
+      </div>
+      <TextField name="diagnosis" label="Diagnosis" autoComplete="off" />
+      <FormField
+        name="medicoLegal"
+        render={({ field }) => (
+          <FormItem className="flex items-center gap-2">
+            <FormControl>
+              <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+            </FormControl>
+            <FormLabel>Medico-legal case</FormLabel>
+          </FormItem>
+        )}
+      />
+      {medicoLegal ? (
+        <TextField
+          name="medicoLegalRef"
+          label="Police intimation or MLC number"
+          autoComplete="off"
+        />
+      ) : null}
+    </>
+  );
+}
+
 const admitSchema = z
   .object({
     patient: z
       .custom<SelectedPatient | null>()
       .refine((patient): patient is SelectedPatient => patient !== null, "Choose the Patient"),
     practitionerId: z.string().min(1, "Choose the admitting doctor"),
+    ...stayFields,
     ...earlierTime,
     ...displaceFields,
   })
@@ -267,6 +330,11 @@ export function AdmitDialog({
       defaultValues={{
         patient: reservation?.patient ?? null,
         practitionerId: "",
+        attendantName: "",
+        attendantPhone: "",
+        diagnosis: "",
+        medicoLegal: false,
+        medicoLegalRef: "",
         earlierAt: "",
         reason: "",
         displace: false,
@@ -289,8 +357,14 @@ export function AdmitDialog({
           reservationId: reservation?.id,
           expectedReservationRevision: reservation?.revision,
           displace: displaceInput(value),
+          ...stayInput(value),
         });
       }}
+      done={(admission) => ({
+        label: `IPD No. ${admission.admissionNumber}`,
+        href: slipPdfUrl(orgSlug, admission.id, "admission"),
+        action: "Print admission slip",
+      })}
     >
       {reservation ? null : (
         <ControlledField
@@ -317,6 +391,7 @@ export function AdmitDialog({
           </FormControl>
         )}
       />
+      <StayFactsFields />
       <EarlierTimeFields orgSlug={orgSlug} label="Admitted at" />
       <HoldRefusal
         orgSlug={orgSlug}
@@ -623,6 +698,156 @@ export function CancelAdmissionDialog({
       }
     >
       <TextField name="reason" label="What went wrong" autoFocus />
+    </FormDialog>
+  );
+}
+
+function editDetailsSchema(currentPractitionerId: string) {
+  return z
+    .object({
+      practitionerId: z.string().min(1, "Choose the doctor"),
+      reason: z.string().trim().max(500, "Keep it under 500 characters"),
+      ...stayFields,
+    })
+    .superRefine((value, context) => {
+      if (value.practitionerId !== currentPractitionerId && !value.reason) {
+        context.addIssue({
+          code: "custom",
+          path: ["reason"],
+          message: "Give a reason for changing the doctor",
+        });
+      }
+    });
+}
+
+type StayDetails = {
+  practitionerId: string;
+  practitionerName: string;
+  attendantName: string | null;
+  attendantPhone: string | null;
+  diagnosis: string | null;
+  medicoLegal: boolean;
+  medicoLegalRef: string | null;
+};
+
+function ChangeDoctorReason({ currentPractitionerId }: { currentPractitionerId: string }) {
+  const practitionerId = useWatch<{ practitionerId: string }, "practitionerId">({
+    name: "practitionerId",
+  });
+
+  return practitionerId === currentPractitionerId ? null : (
+    <TextField name="reason" label="Reason for changing the doctor" />
+  );
+}
+
+export function EditDetailsDialog({
+  orgSlug,
+  admission,
+  details,
+  onClose,
+}: {
+  orgSlug: string;
+  admission: AdmissionRef;
+  /** The stay as it was when the dialog opened. */
+  details: StayDetails;
+  onClose: () => void;
+}) {
+  const practitioners = useQuery(orpc.staff.listPractitioners.queryOptions({ input: { orgSlug } }));
+  const current = details.practitionerId;
+
+  return (
+    <FormDialog
+      title="Edit details"
+      description="Changing the doctor is recorded with its reason."
+      submitLabel="Save details"
+      schema={editDetailsSchema(current)}
+      defaultValues={{
+        practitionerId: current,
+        reason: "",
+        attendantName: details.attendantName ?? "",
+        attendantPhone: details.attendantPhone ?? "",
+        diagnosis: details.diagnosis ?? "",
+        medicoLegal: details.medicoLegal,
+        medicoLegalRef: details.medicoLegalRef ?? "",
+      }}
+      success="Details saved"
+      onClose={onClose}
+      run={(value) => {
+        const changed = value.practitionerId !== current;
+
+        return orpc.ipd.updateDetails.call({
+          orgSlug,
+          admissionId: admission.id,
+          expectedRevision: admission.revision,
+          practitionerId: changed ? value.practitionerId : undefined,
+          reason: changed ? value.reason : undefined,
+          ...stayInput(value),
+        });
+      }}
+    >
+      <ControlledField
+        name="practitionerId"
+        label="Doctor"
+        render={(field) => (
+          <FormControl>
+            <NativeSelect {...field} disabled={practitioners.isPending}>
+              {(practitioners.data ?? []).some(
+                (practitioner) => practitioner.id === current,
+              ) ? null : (
+                <option value={current}>{practitionerDisplayName(details.practitionerName)}</option>
+              )}
+              {(practitioners.data ?? []).map((practitioner) => (
+                <option key={practitioner.id} value={practitioner.id}>
+                  {practitionerDisplayName(practitioner.name)}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormControl>
+        )}
+      />
+      <ChangeDoctorReason currentPractitionerId={current} />
+      <StayFactsFields />
+    </FormDialog>
+  );
+}
+
+export function ReopenDialog({
+  orgSlug,
+  admission,
+  onClose,
+}: {
+  orgSlug: string;
+  admission: AdmissionRef;
+  onClose: () => void;
+}) {
+  // The server's refusal (too late, or the bed has moved on) says what to do instead.
+  const [refusal, setRefusal] = useState<string | null>(null);
+
+  return (
+    <FormDialog
+      title="Undo departure"
+      description="Only for a departure recorded by mistake. The Patient goes back to the same bed. Bills already issued stay as they are."
+      submitLabel="Undo departure"
+      schema={reasonSchema}
+      defaultValues={{ reason: "" }}
+      success="Departure undone"
+      onClose={onClose}
+      onSubmit={() => setRefusal(null)}
+      showsInline={(error) => hasErrorCode(error, "CONFLICT")}
+      onError={(error) => {
+        if (hasErrorCode(error, "CONFLICT")) setRefusal(errorMessage(error));
+      }}
+      run={({ reason }) =>
+        orpc.ipd.reopen.call({
+          orgSlug,
+          admissionId: admission.id,
+          expectedRevision: admission.revision,
+          reason,
+        })
+      }
+    >
+      <TextField name="reason" label="What went wrong" autoFocus />
+      {refusal ? <ErrorNote title="The departure stays recorded" detail={refusal} /> : null}
     </FormDialog>
   );
 }

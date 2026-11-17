@@ -105,6 +105,12 @@ function AdmissionsRoute() {
                   ),
                 },
                 {
+                  head: "IPD No.",
+                  cell: (item) => (
+                    <span className="font-mono whitespace-nowrap">{item.admissionNumber}</span>
+                  ),
+                },
+                {
                   head: "Bed",
                   cell: (item) =>
                     item.bedLabel ? (

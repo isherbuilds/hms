@@ -83,6 +83,7 @@ import { Route as OrgSlugBillingInvoicesInvoiceIdReceiptPaymentIdRouteImport } f
 import { Route as OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRouteImport } from './routes/$orgSlug/billing/invoices.$invoiceId_.refund.$refundId'
 import { Route as ApiOrgSlugBillingAdvancesAdvanceIdPdfRouteImport } from './routes/api.$orgSlug.billing.advances.$advanceId.pdf'
 import { Route as ApiOrgSlugBillingInvoicesInvoiceIdPdfRouteImport } from './routes/api.$orgSlug.billing.invoices.$invoiceId.pdf'
+import { Route as ApiOrgSlugIpdAdmissionsAdmissionIdSlipRouteImport } from './routes/api.$orgSlug.ipd.admissions.$admissionId.slip'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -477,6 +478,12 @@ const ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute =
     path: '/api/$orgSlug/billing/invoices/$invoiceId/pdf',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute =
+  ApiOrgSlugIpdAdmissionsAdmissionIdSlipRouteImport.update({
+    id: '/api/$orgSlug/ipd/admissions/$admissionId/slip',
+    path: '/api/$orgSlug/ipd/admissions/$admissionId/slip',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -553,6 +560,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/billing/invoices/$invoiceId/refund/$refundId': typeof OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
   '/api/$orgSlug/billing/advances/$advanceId/pdf': typeof ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute
   '/api/$orgSlug/billing/invoices/$invoiceId/pdf': typeof ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute
+  '/api/$orgSlug/ipd/admissions/$admissionId/slip': typeof ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -622,6 +630,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/billing/invoices/$invoiceId/refund/$refundId': typeof OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
   '/api/$orgSlug/billing/advances/$advanceId/pdf': typeof ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute
   '/api/$orgSlug/billing/invoices/$invoiceId/pdf': typeof ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute
+  '/api/$orgSlug/ipd/admissions/$admissionId/slip': typeof ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -699,6 +708,7 @@ export interface FileRoutesById {
   '/$orgSlug/billing/invoices/$invoiceId_/refund/$refundId': typeof OrgSlugBillingInvoicesInvoiceIdRefundRefundIdRoute
   '/api/$orgSlug/billing/advances/$advanceId/pdf': typeof ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute
   '/api/$orgSlug/billing/invoices/$invoiceId/pdf': typeof ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute
+  '/api/$orgSlug/ipd/admissions/$admissionId/slip': typeof ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -777,6 +787,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
     | '/api/$orgSlug/billing/advances/$advanceId/pdf'
     | '/api/$orgSlug/billing/invoices/$invoiceId/pdf'
+    | '/api/$orgSlug/ipd/admissions/$admissionId/slip'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -846,6 +857,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/billing/invoices/$invoiceId/refund/$refundId'
     | '/api/$orgSlug/billing/advances/$advanceId/pdf'
     | '/api/$orgSlug/billing/invoices/$invoiceId/pdf'
+    | '/api/$orgSlug/ipd/admissions/$admissionId/slip'
   id:
     | '__root__'
     | '/'
@@ -922,6 +934,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/billing/invoices/$invoiceId_/refund/$refundId'
     | '/api/$orgSlug/billing/advances/$advanceId/pdf'
     | '/api/$orgSlug/billing/invoices/$invoiceId/pdf'
+    | '/api/$orgSlug/ipd/admissions/$admissionId/slip'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -944,6 +957,7 @@ export interface RootRouteChildren {
   ChangelogIndexRoute: typeof ChangelogIndexRoute
   ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute: typeof ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute
   ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute: typeof ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute
+  ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute: typeof ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1466,6 +1480,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOrgSlugBillingInvoicesInvoiceIdPdfRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/$orgSlug/ipd/admissions/$admissionId/slip': {
+      id: '/api/$orgSlug/ipd/admissions/$admissionId/slip'
+      path: '/api/$orgSlug/ipd/admissions/$admissionId/slip'
+      fullPath: '/api/$orgSlug/ipd/admissions/$admissionId/slip'
+      preLoaderRoute: typeof ApiOrgSlugIpdAdmissionsAdmissionIdSlipRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -1678,6 +1699,8 @@ const rootRouteChildren: RootRouteChildren = {
     ApiOrgSlugBillingAdvancesAdvanceIdPdfRoute,
   ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute:
     ApiOrgSlugBillingInvoicesInvoiceIdPdfRoute,
+  ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute:
+    ApiOrgSlugIpdAdmissionsAdmissionIdSlipRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

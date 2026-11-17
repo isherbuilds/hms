@@ -26,6 +26,13 @@ export const DISCHARGE_TYPE_LABELS = {
   death: "Death",
 } satisfies Record<DischargeType, string>;
 
+export type SlipKind = "admission" | "discharge";
+
+/** The slip as a PDF, opened in a new tab like every other printed document. */
+export function slipPdfUrl(orgSlug: string, admissionId: string, kind: SlipKind): string {
+  return `/api/${encodeURIComponent(orgSlug)}/ipd/admissions/${encodeURIComponent(admissionId)}/slip?${new URLSearchParams({ kind })}`;
+}
+
 export type SlipInput = {
   admission: Pick<
     AdmissionView,
