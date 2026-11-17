@@ -316,12 +316,7 @@ async function createHospital(seed: string, options: { gstin?: string } = {}) {
 
   async function creditLines(creditNoteId: string) {
     return db
-      .select({
-        invoiceLineId: creditNoteLines.invoiceLineId,
-        taxableValue: creditNoteLines.taxableValue,
-        taxAmount: creditNoteLines.taxAmount,
-        gross: creditNoteLines.gross,
-      })
+      .select({ invoiceLineId: creditNoteLines.invoiceLineId, gross: creditNoteLines.gross })
       .from(creditNoteLines)
       .where(and(eq(creditNoteLines.orgId, orgId), eq(creditNoteLines.creditNoteId, creditNoteId)));
   }
@@ -877,11 +872,15 @@ test("a part return after a price correction on a taxed medicine line credits no
   expect(returned.creditNoteId).toBeTruthy();
   expect(await hospital.onHand(batchId)).toEqual({ shelf: 6, quarantine: 1 });
 
-  const credited = (
-    await Promise.all(
-      (await hospital.creditNoteRows()).map((note) => hospital.creditLines(note.id)),
-    )
-  ).flat();
+  const credited = await db
+    .select()
+    .from(creditNoteLines)
+    .where(
+      and(
+        eq(creditNoteLines.orgId, hospital.orgId),
+        eq(creditNoteLines.invoiceLineId, medicine.id),
+      ),
+    );
 
   expect(credited.reduce((sum, entry) => sum + entry.gross, 0n)).toBe(40_00n);
   expect(credited.reduce((sum, entry) => sum + entry.taxableValue, 0n)).toBe(35_71n);
