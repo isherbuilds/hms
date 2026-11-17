@@ -15,7 +15,20 @@ export function SlipDocument({
 }) {
   return (
     <DocumentShell document={document} title={slip.title} number={`IPD No. ${admissionNumber}`}>
-      <Details roomy rows={slip.facts.filter((fact) => fact.label !== "IPD No.")} />
+      <Details
+        roomy
+        rows={slip.facts
+          .filter((fact) => fact.label !== "IPD No.")
+          .map((fact) =>
+            // Patient names are stored lower-case and capitalised wherever they print.
+            fact.label === "Patient"
+              ? {
+                  ...fact,
+                  value: <span style={{ textTransform: "capitalize" }}>{fact.value}</span>,
+                }
+              : fact,
+          )}
+      />
       {slip.signatures.length > 0 ? (
         <section style={{ breakInside: "avoid", marginTop: 24 }}>
           <SectionTitle>Clearances</SectionTitle>

@@ -333,6 +333,16 @@ because unbilled bed days are derived, not stored. The read grows with history
 and would exceed PostgreSQL's bind-parameter limit at about 65,000 discharged
 stays. The fix is to narrow the candidates before the bill helper runs.
 
+Known limit: a bill issued before the Patient leaves fixes the bed day in
+progress at that moment's bed type and last-day choice. A later move or a longer
+stay inside that day is not re-billed and no report lists it; the desk corrects
+it by Credit Note or a posted Service.
+
+For the hospital's accountant, with the cash limit's legal basis: the
+₹2,00,000 limit counts cash taken against the stay (its deposits and Payments on
+its bills, less cash handed back, never below zero). Cash taken as an ordinary
+Patient advance and later applied to the stay's bill as credit is not counted.
+
 Packages wait for a pilot hospital that quotes them. The no-GSTIN rule (D063) is
 not yet applied to OPD or counter Pharmacy. The legal basis of the ₹2,00,000
 cash limit and whether a nursing line counts toward the ₹5,000 room-rent

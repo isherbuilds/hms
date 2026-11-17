@@ -433,10 +433,7 @@ export const billingRouter = {
     const { scope } = context;
     const remaining = advanceRemaining(scope.orgId);
 
-    const untagged = and(
-      isNull(advanceReceipts.treatmentPlanId),
-      isNull(advanceReceipts.admissionId),
-    );
+    const untagged = isNull(advanceReceipts.treatmentPlanId);
 
     const usableReceipt =
       input.treatmentPlanId === null
@@ -444,8 +441,8 @@ export const billingRouter = {
         : or(untagged, eq(advanceReceipts.treatmentPlanId, input.treatmentPlanId));
 
     // `usable` is what the desk offers on this bill: untagged credit plus this plan's
-    // own advance. Another plan's advance stays out of the default (it is spent last);
-    // a stay's deposit is never spent outside that stay's bills.
+    // own advance. Another plan's advance stays out of the default (it is spent last).
+    // A stay's deposit is never spent outside that stay's bills, so it is in neither figure.
     const [credit] = await db
       .select({
         total: sql<bigint>`coalesce(sum(${remaining}), 0)`.mapWith(BigInt),
@@ -456,7 +453,11 @@ export const billingRouter = {
       .from(patients)
       .leftJoin(
         advanceReceipts,
-        and(eq(advanceReceipts.orgId, scope.orgId), eq(advanceReceipts.patientId, patients.id)),
+        and(
+          eq(advanceReceipts.orgId, scope.orgId),
+          eq(advanceReceipts.patientId, patients.id),
+          isNull(advanceReceipts.admissionId),
+        ),
       )
       .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, input.patientId)))
       .groupBy(patients.id);

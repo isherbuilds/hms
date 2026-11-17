@@ -86,7 +86,9 @@ export async function requireUnderCashLimit(
   ]);
 
   // SAFETY: an aggregate without GROUP BY returns exactly one row.
-  const held = deposited!.amount + paid!.amount - refunded!.amount;
+  const net = deposited!.amount + paid!.amount - refunded!.amount;
+  // Cash handed back out of money that came in another way frees no room for more cash.
+  const held = net > 0n ? net : 0n;
 
   if (held + adding >= IPD_CASH_LIMIT) {
     throw new ORPCError("BAD_REQUEST", {

@@ -147,7 +147,8 @@ function AdmissionRoute() {
   const setIssuing = (open: boolean) =>
     void navigate({ search: open ? { issue: 1 } : {}, replace: true });
 
-  const issuable = canIssue && canReadIssues && active;
+  // A ward issue entered late still reaches the bill, so only a cancelled stay refuses one.
+  const issuable = canIssue && canReadIssues && admission.status !== "cancelled";
 
   const discharged = admission.status === "discharged";
 

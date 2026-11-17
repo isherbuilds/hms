@@ -449,16 +449,16 @@ export async function readRunningBills(
 }
 
 /**
- * Refuses a change of occupancy that would re-type or re-price a day already billed;
- * the correction for a billed day is a Credit Note (D066). `rewrite` turns the stay's
- * segments into what the change leaves; `before` and `after` end the occupancy either
- * side of it. Days the change removes are left alone: billed days never move back.
+ * Refuses a backdated transfer that would re-type or re-price a day already billed; the
+ * correction for a billed day is a Credit Note (D066). `rewrite` turns the stay's segments
+ * into what the transfer leaves. A departure is never checked: billed days stay as billed.
  */
 export async function requireBilledDaysKept(
   tx: DbTransaction,
   orgId: string,
   admission: { id: string; bedDaysBilled: number },
-  change: { before: Date; after: Date; rewrite: (stays: BedDayStay[]) => BedDayStay[] },
+  through: Date,
+  rewrite: (stays: BedDayStay[]) => BedDayStay[],
 ) {
   if (admission.bedDaysBilled === 0) return;
 
@@ -474,14 +474,14 @@ export async function requireBilledDaysKept(
 
   const segments = stays.get(admission.id) ?? [];
 
-  const billedDays = (of: BedDayStay[], through: Date) =>
+  const billedDays = (of: BedDayStay[]) =>
     bedDays(of, facts.admittedAt, facts.checkoutMinutes, facts.timeZone, through).slice(
       0,
       admission.bedDaysBilled,
     );
 
-  const was = billedDays(segments, change.before);
-  const will = billedDays(change.rewrite(segments), change.after);
+  const was = billedDays(segments);
+  const will = billedDays(rewrite(segments));
 
   const changed = will.some((day, index) => {
     const billed = was[index];

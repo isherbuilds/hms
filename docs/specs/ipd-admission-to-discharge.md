@@ -84,8 +84,7 @@ All procedures use `orgProcedure`, explicit `orgSlug`, tenant predicates and sco
 - the Admission is not `discharged`, or `dischargedAt` is more than 24 hours ago;
 - the last bed is retired, or blocked for anything other than the cleaning block placed at departure;
 - another Patient has used the bed since, or this Patient has a later Admission;
-- another Patient holds a live confirmed reservation on the bed;
-- reopening would change a billed bed day (see [Bed charges](#bed-charges)).
+- another Patient holds a live confirmed reservation on the bed.
 
 It reopens the last stay segment, clears `dischargedAt`, `dischargeType` and `readyAt`, returns the Admission to `admitted` and lifts the cleaning block. Issued Invoices are untouched; whatever accrues afterwards goes on a further bill. Outside those conditions the answer is a new Admission. `cancelled` never reopens.
 
@@ -103,7 +102,7 @@ A bed type's tariff becomes a short list. `bed_tariffs` keeps the category and `
 
 `admissions.bedDaysBilled` counts the days already dealt with. Because a bill always takes every unbilled day in order, billed days are a prefix and one integer is the whole record. Bed-day Charges exist only once billed: `admissionKind: bed_day`, the tariff line's `catalogItemId`, quantity in days, and a description `{Service} · {bed type} · {date}`, or `{first date} to {last date}` for a run, with ` · half day` on a half day; dates print as `5 Nov 2026`. Consecutive days at one tariff share a line: each run gives one line per tariff line, in tariff order. Price is the tariff's; tax rate, tax code and revenue category are the Service's when the bill is read or issued. A daily line priced ₹0 gives no bill line and writes no Charge. No pending bed-day Charge ever exists, so there is nothing to invalidate when a transfer changes the answer.
 
-A transfer, discharge or reopen, backdated or not, that would change the bed type or tariff of a day already billed is refused (`CONFLICT`); the correction is a Credit Note. Days a change removes are left alone, because billed days never move back.
+A backdated transfer that would change the bed type or tariff of a day already billed is refused (`CONFLICT`); the correction is a Credit Note. A departure, or an undone departure, is never refused for it: the time the Patient left is recorded as it happened and billed days stay as billed, because they never move back. A bill issued before the Patient leaves therefore fixes the day in progress at the bed type and last-day choice of that moment; a later move or a longer stay within that day is corrected by Credit Note or a posted Service.
 
 ### The bill
 
@@ -170,7 +169,7 @@ Each is ours, taken from the nearest reference practice, and changes only when a
 - A well newborn billed on the mother's Admission.
 - Deposits spent only on the stay's own bills.
 - The estimate's suggested deposit is its total rounded up to a multiple of ₹100; a total already on a multiple stays as it is.
-- The ₹2,00,000 cash limit as a refusal. Its basis is believed to be Income Tax Act s.269ST; the hospital's accountant confirms it before release.
+- The ₹2,00,000 cash limit as a refusal. Its basis is believed to be Income Tax Act s.269ST; the hospital's accountant confirms it before release, including whether cash taken as an ordinary Patient advance and later applied to the stay's bill should count (today it does not).
 - Whether a separately listed nursing line counts toward the ₹5,000 room-rent threshold is a question for the hospital's tax adviser; the product takes whatever rate the Service carries.
 
 ## Out of Scope

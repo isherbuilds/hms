@@ -356,8 +356,8 @@ keeps its own locks (D040).
   live (non-voided) Charge or any issue exists.
   The bill recomputes bed days under the Admission lock and compares the total
   with the reviewed one, so a checkout crossed since the preview refuses. A
-  transfer, discharge or reopen that would re-type or re-price a billed bed day
-  is refused under the same lock. The IPD cash limit locks the Admission before
+  backdated transfer that would re-type or re-price a billed bed day is refused
+  under the same lock. The IPD cash limit locks the Admission before
   the deposit receipt it creates or the `ipd` Invoice it pays, so two cash
   commands on one stay serialize; `billing.recordPayments` reads the Invoice's
   Admission unlocked first, because it never changes. A ward return locks the

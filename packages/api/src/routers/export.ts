@@ -402,14 +402,15 @@ export const exportRouter = {
         { header: "MRN", key: "mrn", width: 16 },
       ];
 
-      const leftColumn = { header: "Left", key: "left", width: 22 };
+      // A stay in the deposits sheet may have been cancelled, so it ended rather than left.
+      const endColumn = (header: string) => ({ header, key: "left", width: 22 });
 
       return xlsxFile(`ipd-desk-${input.asOf}.xlsx`, [
         {
           name: "Left unbilled",
           columns: [
             ...stayColumns,
-            leftColumn,
+            endColumn("Left"),
             { header: "Pending charges", key: "pendingCharges", width: 16 },
             { header: "Unbilled days", key: "unbilledDays", width: 14 },
             { header: "Amount", key: "amount", width: 16 },
@@ -453,7 +454,7 @@ export const exportRouter = {
           name: "Deposits held",
           columns: [
             ...stayColumns,
-            leftColumn,
+            endColumn("Stay ended"),
             { header: "Deposit held", key: "depositHeld", width: 16 },
           ],
           rows: [

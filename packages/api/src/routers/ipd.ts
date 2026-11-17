@@ -1369,21 +1369,17 @@ export const ipdRouter = {
         const tariff = await tariffAt(tx, scope.orgId, destination.categoryId, effective.at);
         const now = new Date();
 
-        await requireBilledDaysKept(tx, scope.orgId, row, {
-          before: now,
-          after: now,
-          rewrite: (stays) => [
-            ...stays.map((segment) =>
-              segment.endedAt === null ? { ...segment, endedAt: effective.at } : segment,
-            ),
-            {
-              startedAt: effective.at,
-              endedAt: null,
-              categoryId: destination.categoryId,
-              tariffId: tariff.id,
-            },
-          ],
-        });
+        await requireBilledDaysKept(tx, scope.orgId, row, now, (stays) => [
+          ...stays.map((segment) =>
+            segment.endedAt === null ? { ...segment, endedAt: effective.at } : segment,
+          ),
+          {
+            startedAt: effective.at,
+            endedAt: null,
+            categoryId: destination.categoryId,
+            tariffId: tariff.id,
+          },
+        ]);
 
         await tx
           .update(admissionBedStays)
@@ -1513,15 +1509,6 @@ export const ipdRouter = {
           message: "That time is before the Patient was ready to leave.",
         });
       }
-
-      await requireBilledDaysKept(tx, scope.orgId, row, {
-        before: new Date(),
-        after: effective.at,
-        rewrite: (stays) =>
-          stays.map((segment) =>
-            segment.endedAt === null ? { ...segment, endedAt: effective.at } : segment,
-          ),
-      });
 
       await lockBeds(tx, scope.orgId, [stay.bedId]);
 
@@ -1749,16 +1736,6 @@ export const ipdRouter = {
           if (held) {
             throw refused("That bed is held for another Patient. Admit the Patient again.");
           }
-
-          await requireBilledDaysKept(tx, scope.orgId, row, {
-            before: row.dischargedAt!,
-            after: now,
-            // The last segment, which this reopens, is the latest to start.
-            rewrite: (stays) =>
-              stays.map((segment, index) =>
-                index === stays.length - 1 ? { ...segment, endedAt: null } : segment,
-              ),
-          });
 
           await tx
             .update(admissionBedStays)
