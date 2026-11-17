@@ -9,7 +9,7 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { BedCategoryDialog, BedDialog, TariffDialog, WardDialog } from "@/components/ipd-dialogs";
 import { DataList, ListState, LoadMore, PageBody, PageHeader, Panel } from "@/components/page";
 import { useMembership } from "@/lib/membership";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
@@ -131,7 +131,9 @@ function FacilityRoute() {
                   { head: "Bed type", cell: (category) => category.name, mobile: "title" },
                   {
                     head: "Billed as",
-                    cell: (category) => category.currentTariff?.serviceName ?? "—",
+                    cell: (category) =>
+                      category.currentTariff?.lines.map((line) => line.serviceName).join(", ") ??
+                      "—",
                   },
                   {
                     head: "Since",
@@ -149,7 +151,13 @@ function FacilityRoute() {
                     cell: (category) =>
                       category.currentTariff ? (
                         <span className="tabular-nums">
-                          {formatMoney(category.currentTariff.dailyPrice, currency)}
+                          {formatMoney(
+                            category.currentTariff.lines.reduce(
+                              (sum, line) => sum + line.dailyPrice,
+                              ZERO,
+                            ),
+                            currency,
+                          )}
                         </span>
                       ) : (
                         <span className="text-destructive">No rate: beds cannot be taken</span>

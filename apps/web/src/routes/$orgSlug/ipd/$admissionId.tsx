@@ -34,7 +34,6 @@ import { DataList, ErrorNote, PageBody, PageHeader, Panel } from "@/components/p
 import { DISCHARGE_TYPE_LABELS, slipPdfUrl, type SlipKind } from "@/lib/ipd-slips";
 import { useCan, useMembership } from "@/lib/membership";
 import { currentMinute, useMinuteClock } from "@/lib/minute-clock";
-import { formatMoney } from "@/lib/money";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
@@ -328,13 +327,7 @@ function AdmissionRoute() {
                   </span>
                 ),
               },
-              {
-                head: "Daily rate",
-                cell: (stay) => (
-                  <span className="tabular-nums">{formatMoney(stay.dailyPrice, currency)}</span>
-                ),
-                className: "text-right",
-              },
+              { head: "Bed type", cell: (stay) => stay.categoryName },
             ]}
             rows={stays}
             rowKey={(stay) => stay.id}

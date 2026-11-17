@@ -19,6 +19,12 @@ export async function lockAdmissionCharges(tx: DbTransaction, orgId: string, adm
       id: admissions.id,
       status: admissions.status,
       chargeRevision: admissions.chargeRevision,
+      // What the bill needs to derive the stay's bed days.
+      admittedAt: admissions.admittedAt,
+      dischargedAt: admissions.dischargedAt,
+      checkoutMinutes: admissions.checkoutMinutes,
+      timeZone: admissions.timeZone,
+      bedDaysBilled: admissions.bedDaysBilled,
       patient: {
         id: patients.id,
         name: patients.name,

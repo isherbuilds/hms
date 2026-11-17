@@ -120,6 +120,8 @@ export function AdmissionBill({
     currency,
     lines: reviewed.pending.lines.map((line) => ({
       ...line,
+      // A bed-day line has no Charge until the bill writes it.
+      chargeId: line.chargeId ?? line.description,
       source: "service" as const,
       category: line.admissionKind ?? "service",
     })),
@@ -208,7 +210,7 @@ export function AdmissionBill({
             },
           ]}
           rows={pending.lines}
-          rowKey={(line) => line.chargeId}
+          rowKey={(line) => line.chargeId ?? line.description}
           wrap
           action={
             pending.lines.some(removable)
@@ -300,7 +302,7 @@ export function AdmissionBill({
           onClose={close}
         />
       ) : null}
-      {overlay?.kind === "remove" ? (
+      {overlay?.kind === "remove" && overlay.line.chargeId ? (
         <VoidChargeDialog
           charge={{ id: overlay.line.chargeId, description: overlay.line.description }}
           orgSlug={orgSlug}

@@ -968,8 +968,7 @@ export function TariffDialog({
         orpc.ipd.setBedTariff.call({
           orgSlug,
           categoryId: category.id,
-          catalogItemId: value.catalogItemId,
-          dailyPrice: value.dailyPrice,
+          lines: [{ catalogItemId: value.catalogItemId, dailyPrice: value.dailyPrice }],
           effectiveFrom: localDateTime(value.effectiveFrom, timeZone),
         })
       }

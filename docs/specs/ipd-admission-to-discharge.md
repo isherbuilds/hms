@@ -184,6 +184,7 @@ Each is ours, taken from the nearest reference practice, and changes only when a
 - One price per Service regardless of room type.
 - A well newborn billed on the mother's Admission.
 - Deposits spent only on the stay's own bills.
+- The estimate's suggested deposit is its total rounded up to the next ₹100.
 - The ₹2,00,000 cash limit as a refusal. Its basis is believed to be Income Tax Act s.269ST; the hospital's accountant confirms it before release.
 - Whether a separately listed nursing line counts toward the ₹5,000 room-rent threshold is a question for the hospital's tax adviser; the product takes whatever rate the Service carries.
 

@@ -40,7 +40,11 @@ export function businessDate(instant: Date, timeZone: string): string {
   return dateFormatter(timeZone).format(instant);
 }
 
-export function localDateTime(value: string, timeZone: string): Date {
+/**
+ * The first instant whose local wall time is `value` or later: the wall time itself, or
+ * the end of a daylight-saving gap that skips it.
+ */
+export function localWallTimeAtOrAfter(value: string, timeZone: string): Date {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
     throw new Error(`Invalid local date and time ${value}`);
   }
@@ -61,11 +65,17 @@ export function localDateTime(value: string, timeZone: string): Date {
     else atOrAfter = candidate;
   }
 
-  if (localMinuteKey(atOrAfter, formatter) !== value) {
+  return new Date(atOrAfter);
+}
+
+export function localDateTime(value: string, timeZone: string): Date {
+  const instant = localWallTimeAtOrAfter(value, timeZone);
+
+  if (localMinute(instant, timeZone) !== value) {
     throw new Error(`Local date and time ${value} does not exist in ${timeZone}`);
   }
 
-  return new Date(atOrAfter);
+  return instant;
 }
 
 export function businessDateAnchor(instant: Date, timeZone: string): Date {

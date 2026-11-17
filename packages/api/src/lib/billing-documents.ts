@@ -311,7 +311,7 @@ export async function issueInvoiceTx(
     });
   }
 
-  let computed: ReturnType<typeof computeInvoiceLines>;
+  let computed: ReturnType<typeof computeInvoiceLines<string>>;
 
   try {
     computed = computeInvoiceLines(pendingCharges, args.discountAmount, {

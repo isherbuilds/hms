@@ -29,6 +29,7 @@ import {
   admissions,
   bedCategories,
   bedReservations,
+  bedTariffLines,
   bedTariffs,
   beds,
   wards,
@@ -1721,10 +1722,17 @@ const tariffRows = ipdServices.map((service, index) => ({
   id: id("tariff"),
   orgId,
   categoryId: bedCategoryRows[index]!.id,
-  catalogItemId: ipdItems[index]!.id,
-  dailyPrice: parseDecimal(service.price),
   effectiveFrom: hoursAgo(24 * 120),
   createdBy: userId,
+}));
+
+const tariffLineRows = ipdServices.map((service, index) => ({
+  id: id("tariffline"),
+  orgId,
+  tariffId: tariffRows[index]!.id,
+  catalogItemId: ipdItems[index]!.id,
+  dailyPrice: parseDecimal(service.price),
+  position: 0,
 }));
 
 type SeedBed = typeof beds.$inferInsert & { id: string };
@@ -1782,6 +1790,7 @@ function ipdAdmission(
     cancelledAt: end.status === "cancelled" ? last.to : null,
     cancelReason: end.status === "cancelled" ? "Admitted under the wrong Patient" : null,
     timeZone: ipdTimeZone,
+    checkoutMinutes: settings.ipdCheckoutMinutes,
     revision:
       stays.length -
       1 +
@@ -1801,7 +1810,6 @@ function ipdAdmission(
       admissionId,
       bedId: stay.bed.id,
       tariffId: tariff.id,
-      dailyPrice: tariff.dailyPrice,
       startedAt: stay.from,
       // A cancelled Admission occupied nothing: its stay is an empty interval.
       endedAt: end.status === "cancelled" ? stay.from : stay.to,
@@ -2505,6 +2513,7 @@ const seeding = db.transaction(async (tx) => {
     admissionPharmacyIssues,
     admissionBedStays,
     admissions,
+    bedTariffLines,
     bedTariffs,
     beds,
     bedCategories,
@@ -2636,6 +2645,7 @@ const seeding = db.transaction(async (tx) => {
   await insertAll(bedCategories, bedCategoryRows);
   await insertAll(beds, bedRows);
   await insertAll(bedTariffs, tariffRows);
+  await insertAll(bedTariffLines, tariffLineRows);
   await insertAll(admissions, admissionRows);
   await insertAll(admissionBedStays, stayRows);
   await insertAll(bedReservations, reservationRows);

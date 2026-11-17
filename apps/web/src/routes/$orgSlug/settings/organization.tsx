@@ -15,7 +15,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute, useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useFormContext, useFormState } from "react-hook-form";
-import type { z } from "zod";
+import { z } from "zod";
 
 import { appHead } from "@/config/site";
 import { numberText } from "@/lib/form-schema";
@@ -50,8 +50,17 @@ const formSchema = settingsFields
     fiscalYearStartMonth: numberText(settingsFields.shape.fiscalYearStartMonth),
     followUpValidityDays: numberText(settingsFields.shape.followUpValidityDays),
     unbilledAlertHours: numberText(settingsFields.shape.unbilledAlertHours),
+    // Typed as a wall time, stored as minutes after midnight.
+    ipdCheckoutMinutes: z
+      .string()
+      .regex(/^\d{2}:\d{2}$/, "Enter a time")
+      .transform((time) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3)))
+      .pipe(settingsFields.shape.ipdCheckoutMinutes),
   })
   .superRefine(settingsRules);
+
+const wallTime = (minutes: number) =>
+  `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 
 function toFormValues(settings: SettingsFields) {
   return {
@@ -59,6 +68,7 @@ function toFormValues(settings: SettingsFields) {
     fiscalYearStartMonth: String(settings.fiscalYearStartMonth),
     followUpValidityDays: String(settings.followUpValidityDays),
     unbilledAlertHours: String(settings.unbilledAlertHours),
+    ipdCheckoutMinutes: wallTime(settings.ipdCheckoutMinutes),
   };
 }
 
@@ -298,6 +308,13 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                 max={168}
                 step={1}
                 description="Checked-in visits with older charges appear as unbilled."
+              />
+              <TextField
+                name="ipdCheckoutMinutes"
+                label="Bed-day checkout"
+                type="time"
+                className="tabular-nums"
+                description="A bed day ends at this time; a later departure starts another day."
               />
             </div>
           </section>
