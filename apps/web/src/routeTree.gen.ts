@@ -60,6 +60,7 @@ import { Route as OrgSlugReportsBalanceSheetRouteImport } from './routes/$orgSlu
 import { Route as OrgSlugReportsDailyCollectionsRouteImport } from './routes/$orgSlug/reports/daily-collections'
 import { Route as OrgSlugReportsGstRouteImport } from './routes/$orgSlug/reports/gst'
 import { Route as OrgSlugReportsInvoiceRegisterRouteImport } from './routes/$orgSlug/reports/invoice-register'
+import { Route as OrgSlugReportsIpdDeskRouteImport } from './routes/$orgSlug/reports/ipd-desk'
 import { Route as OrgSlugReportsOpdRegisterRouteImport } from './routes/$orgSlug/reports/opd-register'
 import { Route as OrgSlugReportsRevenueControlRouteImport } from './routes/$orgSlug/reports/revenue-control'
 import { Route as OrgSlugReportsTrialBalanceRouteImport } from './routes/$orgSlug/reports/trial-balance'
@@ -349,6 +350,11 @@ const OrgSlugReportsInvoiceRegisterRoute =
     path: '/reports/invoice-register',
     getParentRoute: () => OrgSlugRouteRoute,
   } as any)
+const OrgSlugReportsIpdDeskRoute = OrgSlugReportsIpdDeskRouteImport.update({
+  id: '/reports/ipd-desk',
+  path: '/reports/ipd-desk',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
 const OrgSlugReportsOpdRegisterRoute =
   OrgSlugReportsOpdRegisterRouteImport.update({
     id: '/reports/opd-register',
@@ -544,6 +550,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/reports/daily-collections': typeof OrgSlugReportsDailyCollectionsRoute
   '/$orgSlug/reports/gst': typeof OrgSlugReportsGstRoute
   '/$orgSlug/reports/invoice-register': typeof OrgSlugReportsInvoiceRegisterRoute
+  '/$orgSlug/reports/ipd-desk': typeof OrgSlugReportsIpdDeskRoute
   '/$orgSlug/reports/opd-register': typeof OrgSlugReportsOpdRegisterRoute
   '/$orgSlug/reports/revenue-control': typeof OrgSlugReportsRevenueControlRoute
   '/$orgSlug/reports/trial-balance': typeof OrgSlugReportsTrialBalanceRoute
@@ -616,6 +623,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/reports/daily-collections': typeof OrgSlugReportsDailyCollectionsRoute
   '/$orgSlug/reports/gst': typeof OrgSlugReportsGstRoute
   '/$orgSlug/reports/invoice-register': typeof OrgSlugReportsInvoiceRegisterRoute
+  '/$orgSlug/reports/ipd-desk': typeof OrgSlugReportsIpdDeskRoute
   '/$orgSlug/reports/opd-register': typeof OrgSlugReportsOpdRegisterRoute
   '/$orgSlug/reports/revenue-control': typeof OrgSlugReportsRevenueControlRoute
   '/$orgSlug/reports/trial-balance': typeof OrgSlugReportsTrialBalanceRoute
@@ -696,6 +704,7 @@ export interface FileRoutesById {
   '/$orgSlug/reports/daily-collections': typeof OrgSlugReportsDailyCollectionsRoute
   '/$orgSlug/reports/gst': typeof OrgSlugReportsGstRoute
   '/$orgSlug/reports/invoice-register': typeof OrgSlugReportsInvoiceRegisterRoute
+  '/$orgSlug/reports/ipd-desk': typeof OrgSlugReportsIpdDeskRoute
   '/$orgSlug/reports/opd-register': typeof OrgSlugReportsOpdRegisterRoute
   '/$orgSlug/reports/revenue-control': typeof OrgSlugReportsRevenueControlRoute
   '/$orgSlug/reports/trial-balance': typeof OrgSlugReportsTrialBalanceRoute
@@ -777,6 +786,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/reports/daily-collections'
     | '/$orgSlug/reports/gst'
     | '/$orgSlug/reports/invoice-register'
+    | '/$orgSlug/reports/ipd-desk'
     | '/$orgSlug/reports/opd-register'
     | '/$orgSlug/reports/revenue-control'
     | '/$orgSlug/reports/trial-balance'
@@ -849,6 +859,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/reports/daily-collections'
     | '/$orgSlug/reports/gst'
     | '/$orgSlug/reports/invoice-register'
+    | '/$orgSlug/reports/ipd-desk'
     | '/$orgSlug/reports/opd-register'
     | '/$orgSlug/reports/revenue-control'
     | '/$orgSlug/reports/trial-balance'
@@ -928,6 +939,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/reports/daily-collections'
     | '/$orgSlug/reports/gst'
     | '/$orgSlug/reports/invoice-register'
+    | '/$orgSlug/reports/ipd-desk'
     | '/$orgSlug/reports/opd-register'
     | '/$orgSlug/reports/revenue-control'
     | '/$orgSlug/reports/trial-balance'
@@ -1345,6 +1357,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugReportsInvoiceRegisterRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/$orgSlug/reports/ipd-desk': {
+      id: '/$orgSlug/reports/ipd-desk'
+      path: '/reports/ipd-desk'
+      fullPath: '/$orgSlug/reports/ipd-desk'
+      preLoaderRoute: typeof OrgSlugReportsIpdDeskRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
     '/$orgSlug/reports/opd-register': {
       id: '/$orgSlug/reports/opd-register'
       path: '/reports/opd-register'
@@ -1666,6 +1685,7 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugReportsDailyCollectionsRoute: typeof OrgSlugReportsDailyCollectionsRoute
   OrgSlugReportsGstRoute: typeof OrgSlugReportsGstRoute
   OrgSlugReportsInvoiceRegisterRoute: typeof OrgSlugReportsInvoiceRegisterRoute
+  OrgSlugReportsIpdDeskRoute: typeof OrgSlugReportsIpdDeskRoute
   OrgSlugReportsOpdRegisterRoute: typeof OrgSlugReportsOpdRegisterRoute
   OrgSlugReportsRevenueControlRoute: typeof OrgSlugReportsRevenueControlRoute
   OrgSlugReportsTrialBalanceRoute: typeof OrgSlugReportsTrialBalanceRoute
@@ -1699,6 +1719,7 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugReportsDailyCollectionsRoute: OrgSlugReportsDailyCollectionsRoute,
   OrgSlugReportsGstRoute: OrgSlugReportsGstRoute,
   OrgSlugReportsInvoiceRegisterRoute: OrgSlugReportsInvoiceRegisterRoute,
+  OrgSlugReportsIpdDeskRoute: OrgSlugReportsIpdDeskRoute,
   OrgSlugReportsOpdRegisterRoute: OrgSlugReportsOpdRegisterRoute,
   OrgSlugReportsRevenueControlRoute: OrgSlugReportsRevenueControlRoute,
   OrgSlugReportsTrialBalanceRoute: OrgSlugReportsTrialBalanceRoute,

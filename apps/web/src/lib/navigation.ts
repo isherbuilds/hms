@@ -201,6 +201,7 @@ type ReportLink = NavEntry<
   | "/$orgSlug/reports/opd-register"
   | "/$orgSlug/reports/invoice-register"
   | "/$orgSlug/reports/revenue-control"
+  | "/$orgSlug/reports/ipd-desk"
 > & { icon: LucideIcon; description: string };
 
 export const REPORT_LINKS: readonly ReportLink[] = [
@@ -210,6 +211,14 @@ export const REPORT_LINKS: readonly ReportLink[] = [
     description:
       "Billed revenue by stream, doctor and category, review signals, and expiry exposure.",
     icon: ListChecksIcon,
+    permission: { report: ["readFinancial"] },
+  },
+  {
+    to: "/$orgSlug/reports/ipd-desk",
+    label: "IPD desk",
+    description:
+      "Patients who left with something unbilled, unpaid IPD bills, and deposits still held.",
+    icon: BedDoubleIcon,
     permission: { report: ["readFinancial"] },
   },
   {
