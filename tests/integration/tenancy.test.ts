@@ -787,6 +787,8 @@ const GUARDED_CALLS = {
       payments: [],
       outstandingReason: "Guarded-call tenant probe",
     }),
+  "report.ipdDesk": (api, claim) => api.report.ipdDesk({ ...claim, asOf: "2026-11-17" }),
+  "export.ipdDeskXlsx": (api, claim) => api.export.ipdDeskXlsx({ ...claim, asOf: "2026-11-17" }),
   "theatre.resources": (api, claim) => api.theatre.resources({ ...claim }),
   "theatre.createRoom": (api, claim) =>
     api.theatre.createRoom({ ...claim, name: "Intrusion", kind: "operating_theatre" }),
