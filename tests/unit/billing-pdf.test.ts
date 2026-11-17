@@ -24,6 +24,7 @@ test("advance receipt and refund voucher render from the stored receipt snapshot
     orgId: "org-1",
     patientId: "patient-1",
     treatmentPlanId: "plan-1",
+    admissionId: null,
     method: "cash",
     amount: 300_00n,
     reference: null,

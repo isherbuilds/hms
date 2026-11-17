@@ -670,6 +670,14 @@ const GUARDED_CALLS = {
       expectedChargeRevision: 0,
       lines: [{ batchId: "missing", qty: 1 }],
     }),
+  "pharmacy.returnFromAdmission": (api, claim) =>
+    api.pharmacy.returnFromAdmission({
+      ...claim,
+      admissionId: "missing",
+      expectedChargeRevision: 0,
+      lines: [{ issueLineId: "missing", qty: 1 }],
+      reason: "Guarded-call tenant probe",
+    }),
   "pharmacy.listAdmissionIssues": (api, claim) =>
     api.pharmacy.listAdmissionIssues({ ...claim, admissionId: "missing" }),
   "ipd.facility": (api, claim) => api.ipd.facility({ ...claim }),
