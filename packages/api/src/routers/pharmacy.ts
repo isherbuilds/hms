@@ -458,9 +458,9 @@ export const pharmacyRouter = {
     const result = await db.transaction(async (tx) => {
       const admission = await lockAdmissionCharges(tx, scope.orgId, input.admissionId);
 
-      await requireChargeable(tx, scope.orgId, admission, {
-        allowed: ["admitted", "discharge_ready"],
-        message: "Medicines are issued only while the Patient is in the ward.",
+      requireChargeable(admission, {
+        allowed: ["admitted", "discharge_ready", "discharged"],
+        message: "Medicines cannot be issued to a cancelled admission.",
         expectedChargeRevision: input.expectedChargeRevision,
       });
 

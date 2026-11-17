@@ -32,11 +32,7 @@ import {
   recordPaymentsTx,
   settleIssuedInvoiceTx,
 } from "../lib/billing-documents";
-import {
-  bumpChargeRevision,
-  lockAdmissionCharges,
-  requireUnbilled,
-} from "../lib/admission-charges";
+import { bumpChargeRevision, lockAdmissionCharges } from "../lib/admission-charges";
 import { impossible } from "../lib/conflict";
 import { invoiceBalanceFor, invoiceBalancesFor } from "../lib/invoice-balance";
 import { voidPendingCharges } from "../lib/opd-close";
@@ -213,7 +209,6 @@ export const billingRouter = {
           });
         }
 
-        await requireUnbilled(tx, scope.orgId, admission.id);
         await bumpChargeRevision(tx, scope.orgId, admission.id);
       } else if (candidate?.appointmentId) {
         await tx

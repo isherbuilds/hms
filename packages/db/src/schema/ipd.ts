@@ -145,6 +145,16 @@ export const ENDED_ADMISSION_STATUSES = [
   "cancelled",
 ] as const satisfies readonly AdmissionStatus[];
 
+export const DISCHARGE_TYPES = [
+  "normal",
+  "against_advice",
+  "absconded",
+  "referred",
+  "death",
+] as const;
+
+export type DischargeType = (typeof DISCHARGE_TYPES)[number];
+
 // An inpatient stay with its own lifecycle (D013/D019): not an Encounter or Visit.
 export const admissions = pgTable(
   "admissions",
@@ -153,12 +163,22 @@ export const admissions = pgTable(
     orgId: orgIdColumn(),
     patientId: text("patient_id").notNull(),
     practitionerId: text("practitioner_id").notNull(),
+    // Printed as IPD No.: `${fiscalYear}/${n}` from the `admission:${fiscalYear}` counter.
+    admissionNumber: text("admission_number").notNull(),
     status: text("status", { enum: ADMISSION_STATUSES }).notNull(),
     admittedAt: timestamp("admitted_at", { withTimezone: true }).notNull(),
     readyAt: timestamp("ready_at", { withTimezone: true }),
     dischargedAt: timestamp("discharged_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     cancelReason: text("cancel_reason"),
+    attendantName: text("attendant_name"),
+    attendantPhone: text("attendant_phone"),
+    medicoLegal: boolean("medico_legal").notNull().default(false),
+    // Police intimation or register number.
+    medicoLegalRef: text("medico_legal_ref"),
+    // One line for the bill, the slips and insurer paperwork; not a clinical record.
+    diagnosis: text("diagnosis"),
+    dischargeType: text("discharge_type", { enum: DISCHARGE_TYPES }),
     // Snapshotted so later setting changes never re-time a stay.
     timeZone: text("time_zone").notNull(),
     // Optimistic lifecycle version: every state change or transfer advances it.
@@ -181,6 +201,14 @@ export const admissions = pgTable(
       sql`(${table.status} = 'discharged') = (${table.dischargedAt} is not null)`,
     ),
     check(
+      "admissions_discharge_type_check",
+      sql`(${table.status} = 'discharged') = (${table.dischargeType} is not null)`,
+    ),
+    check(
+      "admissions_medico_legal_ref_check",
+      sql`${table.medicoLegal} or ${table.medicoLegalRef} is null`,
+    ),
+    check(
       "admissions_cancelled_check",
       sql`(${table.status} = 'cancelled') = (${table.cancelledAt} is not null) and (${table.status} = 'cancelled') = (${table.cancelReason} is not null)`,
     ),
@@ -189,6 +217,7 @@ export const admissions = pgTable(
       sql`(${table.readyAt} is null or ${table.readyAt} >= ${table.admittedAt}) and (${table.dischargedAt} is null or ${table.dischargedAt} >= coalesce(${table.readyAt}, ${table.admittedAt}))`,
     ),
     unique("admissions_org_id_id_unique").on(table.orgId, table.id),
+    uniqueIndex("admissions_org_number_uq").on(table.orgId, table.admissionNumber),
     // Lets an ipd Invoice prove its patient is the Admission's patient.
     unique("admissions_org_id_patient_unique").on(table.orgId, table.id, table.patientId),
     foreignKey({
@@ -212,7 +241,9 @@ export const admissions = pgTable(
 );
 
 // Occupancy history: a transfer closes one stay and opens the next at the same
-// instant. A stay snapshots the tariff it started under.
+// instant. A stay snapshots the tariff it started under. Two exclusion constraints,
+// hand-authored in migration 0015, forbid overlapping `[startedAt, endedAt)` intervals
+// per bed and per Admission; a cancelled Admission's stay is an empty interval.
 export const admissionBedStays = pgTable(
   "admission_bed_stays",
   {
@@ -248,12 +279,6 @@ export const admissionBedStays = pgTable(
       columns: [table.orgId, table.tariffId],
       foreignColumns: [bedTariffs.orgId, bedTariffs.id],
     }),
-    uniqueIndex("admission_bed_stays_org_bed_open_uq")
-      .on(table.orgId, table.bedId)
-      .where(sql`${table.endedAt} is null`),
-    uniqueIndex("admission_bed_stays_org_admission_open_uq")
-      .on(table.orgId, table.admissionId)
-      .where(sql`${table.endedAt} is null`),
     index("admission_bed_stays_org_bed_started_idx").on(table.orgId, table.bedId, table.startedAt),
     index("admission_bed_stays_org_admission_started_idx").on(
       table.orgId,

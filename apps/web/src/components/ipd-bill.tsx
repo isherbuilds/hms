@@ -43,7 +43,7 @@ export const issuedInvoiceQuery = (orgSlug: string, invoiceId: string) =>
 
 type Bill = Awaited<ReturnType<typeof orpc.ipd.previewInvoice.call>>;
 
-type BillLine = Bill["lines"][number];
+type BillLine = Bill["pending"]["lines"][number];
 
 export function AdmissionBill({
   orgSlug,
@@ -96,17 +96,17 @@ export function AdmissionBill({
     );
   }
 
-  const issued = data.invoiceId !== null;
-  const canAddService = canWrite && !issued && admission.status !== "cancelled";
+  const { pending, issued } = data;
+  const canAddService = canWrite && admission.status !== "cancelled";
   // Issued medicines come back by a return, not a removal.
-  const removable = (line: BillLine) => canWrite && !issued && line.admissionKind === "service";
+  const removable = (line: BillLine) => canWrite && line.admissionKind === "service";
 
   const billable = admission.status === "discharge_ready" || admission.status === "discharged";
 
   // The revision the bill was read at: a charge posted since moves it, and the server
   // refuses a settlement against the old figure.
   const stale = data.chargeRevision !== admission.chargeRevision;
-  const includedTax = data.taxTotal - data.addedTaxTotal;
+  const includedTax = pending.taxTotal - pending.addedTaxTotal;
 
   // The printed Invoice's words, so the screen and the paper read alike.
   const priceLabel = (line: BillLine) => {
@@ -118,18 +118,18 @@ export function AdmissionBill({
 
   const quoteOf = (reviewed: Bill): WalkInQuote => ({
     currency,
-    lines: reviewed.lines.map((line) => ({
+    lines: reviewed.pending.lines.map((line) => ({
       ...line,
       source: "service" as const,
       category: line.admissionKind ?? "service",
     })),
-    subtotal: reviewed.subtotal,
+    subtotal: reviewed.pending.subtotal,
     discountAmount: ZERO,
-    taxTotal: reviewed.taxTotal,
-    addedTaxTotal: reviewed.addedTaxTotal,
+    taxTotal: reviewed.pending.taxTotal,
+    addedTaxTotal: reviewed.pending.addedTaxTotal,
     registered: reviewed.registered,
-    roundOff: reviewed.roundOff,
-    grandTotal: reviewed.grandTotal,
+    roundOff: reviewed.pending.roundOff,
+    grandTotal: reviewed.pending.grandTotal,
   });
 
   const settle = (reviewed: Bill, draft: SettlementDraft) => {
@@ -158,8 +158,8 @@ export function AdmissionBill({
         ) : undefined
       }
     >
-      {data.lines.length === 0 ? (
-        <PanelEmpty>Nothing charged yet</PanelEmpty>
+      {pending.lines.length === 0 ? (
+        <PanelEmpty>Nothing to bill</PanelEmpty>
       ) : (
         <DataList
           columns={[
@@ -207,11 +207,11 @@ export function AdmissionBill({
               mobile: "title",
             },
           ]}
-          rows={data.lines}
+          rows={pending.lines}
           rowKey={(line) => line.chargeId}
           wrap
           action={
-            data.lines.some(removable)
+            pending.lines.some(removable)
               ? (line) =>
                   removable(line) ? (
                     <ClientOnly fallback={<span className="inline-block size-6" />}>
@@ -242,18 +242,18 @@ export function AdmissionBill({
         <dl className="grid w-full gap-1 sm:order-2 sm:max-w-64">
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Subtotal</dt>
-            <dd className="tabular-nums">{formatMoney(data.subtotal, currency)}</dd>
+            <dd className="tabular-nums">{formatMoney(pending.subtotal, currency)}</dd>
           </div>
-          {data.addedTaxTotal === ZERO ? null : (
+          {pending.addedTaxTotal === ZERO ? null : (
             <div className="flex justify-between gap-3">
               <dt className="text-muted-foreground">{data.registered ? "GST added" : "Tax"}</dt>
-              <dd className="tabular-nums">{formatMoney(data.addedTaxTotal, currency)}</dd>
+              <dd className="tabular-nums">{formatMoney(pending.addedTaxTotal, currency)}</dd>
             </div>
           )}
           <Separator />
           <div className="flex justify-between gap-3 font-medium">
             <dt>Total</dt>
-            <dd className="tabular-nums">{formatMoney(data.grandTotal, currency)}</dd>
+            <dd className="tabular-nums">{formatMoney(pending.grandTotal, currency)}</dd>
           </div>
           {!data.registered || includedTax === ZERO ? null : (
             <div className="flex justify-between gap-3 text-muted-foreground">
@@ -263,18 +263,26 @@ export function AdmissionBill({
           )}
         </dl>
 
-        <div className="sm:order-1">
-          {data.invoiceId !== null ? (
-            <IssuedInvoice orgSlug={orgSlug} invoiceId={data.invoiceId} currency={currency} />
-          ) : !canWrite || admission.status === "cancelled" ? null : billable ? (
-            <Button
-              disabled={data.lines.length === 0 || stale}
-              onClick={() => setOverlay({ kind: "collect", reviewed: data })}
-            >
-              <span className="tabular-nums">
-                Issue invoice {formatMoney(data.grandTotal, currency)}
-              </span>
-            </Button>
+        <div className="flex flex-col gap-3 sm:order-1">
+          {issued.map(({ invoiceId }) => (
+            <IssuedInvoice
+              key={invoiceId}
+              orgSlug={orgSlug}
+              invoiceId={invoiceId}
+              currency={currency}
+            />
+          ))}
+          {!canWrite || admission.status === "cancelled" ? null : billable ? (
+            pending.lines.length === 0 ? null : (
+              <Button
+                disabled={stale}
+                onClick={() => setOverlay({ kind: "collect", reviewed: data })}
+              >
+                <span className="tabular-nums">
+                  Issue invoice {formatMoney(pending.grandTotal, currency)}
+                </span>
+              </Button>
+            )
           ) : (
             <p className="text-muted-foreground">
               The bill is issued once the Patient is ready to leave.
@@ -306,7 +314,7 @@ export function AdmissionBill({
             stream="ipd"
             discountable={false}
             availableCredit={{ usable: ZERO, total: ZERO }}
-            description={`${overlay.reviewed.lines.length} item${overlay.reviewed.lines.length === 1 ? "" : "s"} on this admission`}
+            description={`${overlay.reviewed.pending.lines.length} item${overlay.reviewed.pending.lines.length === 1 ? "" : "s"} on this admission`}
             label="Issue invoice"
             pending={issue.isPending}
             blockedReason={

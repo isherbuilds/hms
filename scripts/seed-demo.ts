@@ -1770,12 +1770,15 @@ function ipdAdmission(
   const admission = {
     id: admissionId,
     orgId,
+    // Numbered in admission order inside the seed transaction.
+    admissionNumber: "",
     patientId: patient.id,
     practitionerId: doctor.id,
     status: end.status,
     admittedAt: stays[0]!.from,
     readyAt: end.readyAt ?? null,
     dischargedAt: end.status === "discharged" ? last.to : null,
+    dischargeType: end.status === "discharged" ? ("normal" as const) : null,
     cancelledAt: end.status === "cancelled" ? last.to : null,
     cancelReason: end.status === "cancelled" ? "Admitted under the wrong Patient" : null,
     timeZone: ipdTimeZone,
@@ -1800,7 +1803,8 @@ function ipdAdmission(
       tariffId: tariff.id,
       dailyPrice: tariff.dailyPrice,
       startedAt: stay.from,
-      endedAt: stay.to,
+      // A cancelled Admission occupied nothing: its stay is an empty interval.
+      endedAt: end.status === "cancelled" ? stay.from : stay.to,
       createdBy: userId,
       createdAt: stay.from,
     });
@@ -2561,6 +2565,14 @@ const seeding = db.transaction(async (tx) => {
 
     if (!pharmacy && !patient) throw new Error(`Seed invoice ${invoice.id} has no patient`);
     invoice.patientMrn = patient?.mrn ?? null;
+  }
+
+  for (const admission of [...admissionRows].sort(
+    (a, b) => a.admittedAt.getTime() - b.admittedAt.getTime(),
+  )) {
+    const fiscalYear = fyOf(businessDate(admission.admittedAt, settings.timeZone));
+    const sequence = await nextCounter(tx, orgId, `admission:${fiscalYear}`);
+    admission.admissionNumber = `${fiscalYear}/${sequence}`;
   }
 
   for (const payment of [...paymentRows].sort((a, b) => issued(a) - issued(b))) {

@@ -2,10 +2,11 @@ import { authorize } from "@hms/auth/access";
 import { db } from "@hms/db";
 import { catalogItems } from "@hms/db/schema/catalog-items";
 import { charges } from "@hms/db/schema/charges";
-import { invoiceLines } from "@hms/db/schema/invoice-lines";
+import { nextCounter } from "@hms/db/counter";
 import { invoices } from "@hms/db/schema/invoices";
 import {
   ACTIVE_ADMISSION_STATUSES,
+  DISCHARGE_TYPES,
   ENDED_ADMISSION_STATUSES,
   admissionBedStays,
   admissionPharmacyIssues,
@@ -22,7 +23,7 @@ import { patients } from "@hms/db/schema/patients";
 import { practitioners } from "@hms/db/schema/practitioners";
 import { stockBatches } from "@hms/db/schema/stock-batches";
 import { ORPCError } from "@orpc/server";
-import { and, asc, desc, eq, gt, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
@@ -32,7 +33,6 @@ import {
   expectedChargeRevision,
   lockAdmissionCharges,
   requireChargeable,
-  requireUnbilled,
 } from "../lib/admission-charges";
 import {
   billingDocumentContext,
@@ -40,7 +40,11 @@ import {
   settleIssuedInvoiceTx,
 } from "../lib/billing-documents";
 import { impossible } from "../lib/conflict";
-import { nameConflict, uniqueViolationConstraint } from "../lib/db-errors";
+import {
+  exclusionViolationConstraint,
+  nameConflict,
+  uniqueViolationConstraint,
+} from "../lib/db-errors";
 import {
   assertUnoccupied,
   auditDisruptions,
@@ -97,6 +101,7 @@ const effectiveInput = {
 
 const admissionSelection = {
   id: admissions.id,
+  admissionNumber: admissions.admissionNumber,
   patientId: admissions.patientId,
   practitionerId: admissions.practitionerId,
   status: admissions.status,
@@ -105,6 +110,12 @@ const admissionSelection = {
   dischargedAt: admissions.dischargedAt,
   cancelledAt: admissions.cancelledAt,
   cancelReason: admissions.cancelReason,
+  attendantName: admissions.attendantName,
+  attendantPhone: admissions.attendantPhone,
+  medicoLegal: admissions.medicoLegal,
+  medicoLegalRef: admissions.medicoLegalRef,
+  diagnosis: admissions.diagnosis,
+  dischargeType: admissions.dischargeType,
   revision: admissions.revision,
   chargeRevision: admissions.chargeRevision,
 };
@@ -246,6 +257,8 @@ async function tariffAt(tx: Tx, orgId: string, categoryId: string, at: Date) {
   return tariff;
 }
 
+// The database backs the occupancy checks: an active stay per Patient is a unique
+// index, overlapping stay intervals are exclusion constraints.
 function occupancyConflict(error: unknown): never {
   const constraint = uniqueViolationConstraint(error);
 
@@ -256,6 +269,10 @@ function occupancyConflict(error: unknown): never {
           ? "This Patient is already admitted."
           : "That bed was just taken on another screen.",
     });
+  }
+
+  if (exclusionViolationConstraint(error) !== undefined) {
+    throw new ORPCError("CONFLICT", { message: "That bed was just taken on another screen." });
   }
 
   throw error;
@@ -311,6 +328,26 @@ const transitionInput = orgInput.extend({
   admissionId: z.string(),
   expectedRevision: z.number().int().nonnegative(),
 });
+
+// Trimmed; an empty answer is stored as no answer.
+const stayText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .transform((value) => value || null);
+
+const stayFacts = {
+  attendantName: stayText(200),
+  attendantPhone: stayText(20),
+  medicoLegalRef: stayText(200),
+  diagnosis: stayText(500),
+};
+
+const MEDICO_LEGAL_REF_NEEDS_FLAG = "A medico-legal reference needs the medico-legal flag.";
+
+// A discharge recorded in error may be undone for this long.
+const REOPEN_WINDOW_MS = 24 * 60 * 60 * 1_000;
 
 const ADMISSION_STATES = {
   current: ACTIVE_ADMISSION_STATUSES,
@@ -817,6 +854,7 @@ export const ipdRouter = {
     const items = await db
       .select({
         id: admissions.id,
+        admissionNumber: admissions.admissionNumber,
         status: admissions.status,
         admittedAt: admissions.admittedAt,
         readyAt: admissions.readyAt,
@@ -963,18 +1001,27 @@ export const ipdRouter = {
         // Arrival against a confirmed hold converts it in the same transaction.
         reservationId: z.string().optional(),
         expectedReservationRevision: z.number().int().nonnegative().optional(),
+        attendantName: stayFacts.attendantName.optional(),
+        attendantPhone: stayFacts.attendantPhone.optional(),
+        medicoLegal: z.boolean().default(false),
+        medicoLegalRef: stayFacts.medicoLegalRef.optional(),
+        diagnosis: stayFacts.diagnosis.optional(),
         ...displaceInput,
       })
       .refine(
         (value) =>
           (value.reservationId === undefined) === (value.expectedReservationRevision === undefined),
         { message: "A reservation needs its expected revision.", path: ["reservationId"] },
-      ),
+      )
+      .refine((value) => value.medicoLegal || !value.medicoLegalRef, {
+        message: MEDICO_LEGAL_REF_NEEDS_FLAG,
+        path: ["medicoLegalRef"],
+      }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const effective = effectiveTime(scope, input.admittedAt, input.reason);
     requireDisplaceGrant(scope, input.displace);
-    const { timeZone } = await readOrgSettings(scope.orgId);
+    const { settings, fiscalYear } = await billingDocumentContext(scope.orgId);
 
     await requireInScope(
       db
@@ -1085,6 +1132,8 @@ export const ipdRouter = {
 
         const tariff = await tariffAt(tx, scope.orgId, bed.categoryId, effective.at);
 
+        // After the domain locks, so a refused admit takes no number.
+        const sequence = await nextCounter(tx, scope.orgId, `admission:${fiscalYear}`);
         const id = Bun.randomUUIDv7();
 
         const [created] = await tx
@@ -1092,11 +1141,17 @@ export const ipdRouter = {
           .values({
             id,
             orgId: scope.orgId,
+            admissionNumber: `${fiscalYear}/${sequence}`,
             patientId: input.patientId,
             practitionerId: input.practitionerId,
             status: "admitted",
             admittedAt: effective.at,
-            timeZone,
+            attendantName: input.attendantName ?? null,
+            attendantPhone: input.attendantPhone ?? null,
+            medicoLegal: input.medicoLegal,
+            medicoLegalRef: input.medicoLegalRef ?? null,
+            diagnosis: input.diagnosis ?? null,
+            timeZone: settings.timeZone,
             createdBy: scope.userId,
           })
           .returning(admissionSelection);
@@ -1268,8 +1323,6 @@ export const ipdRouter = {
       const admission = await db.transaction(async (tx) => {
         const row = await lockAdmission(tx, scope.orgId, input.admissionId, input.expectedRevision);
         requireStatus(row, ["discharge_ready"], "This admission is not waiting for discharge.");
-        // A billed stay takes no further Charge, so it cannot return to care.
-        await requireUnbilled(tx, scope.orgId, row.id);
 
         const stay = await openStay(tx, scope.orgId, row.id);
 
@@ -1300,51 +1353,291 @@ export const ipdRouter = {
   ),
 
   // Departure never waits for billing or payment; the bed is blocked until cleaned.
-  discharge: orgProcedure({ ipd: ["update"] }, transitionInput.extend(effectiveInput)).handler(
+  discharge: orgProcedure(
+    { ipd: ["update"] },
+    transitionInput.extend({ ...effectiveInput, dischargeType: z.enum(DISCHARGE_TYPES) }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+    const effective = effectiveTime(scope, input.effectiveAt, input.reason);
+
+    const admission = await db.transaction(async (tx) => {
+      const row = await lockAdmission(tx, scope.orgId, input.admissionId, input.expectedRevision);
+      requireStatus(row, ["discharge_ready"], "Mark the Patient ready for discharge first.");
+
+      const stay = await openStay(tx, scope.orgId, row.id);
+      requireNotBeforeStay(effective.at, stay);
+
+      if (row.readyAt && effective.at.getTime() < row.readyAt.getTime()) {
+        throw new ORPCError("BAD_REQUEST", {
+          message: "That time is before the Patient was ready to leave.",
+        });
+      }
+
+      await lockBeds(tx, scope.orgId, [stay.bedId]);
+
+      await tx
+        .update(admissionBedStays)
+        .set({ endedAt: effective.at })
+        .where(and(eq(admissionBedStays.orgId, scope.orgId), eq(admissionBedStays.id, stay.id)));
+
+      await tx
+        .update(beds)
+        .set({ blockedAt: new Date(), blockedReason: AWAITING_CLEANING, updatedAt: new Date() })
+        .where(and(eq(beds.orgId, scope.orgId), eq(beds.id, stay.bedId)));
+
+      const [updated] = await tx
+        .update(admissions)
+        .set({
+          status: "discharged",
+          dischargedAt: effective.at,
+          dischargeType: input.dischargeType,
+          revision: sql`${admissions.revision} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(admissions.orgId, scope.orgId), eq(admissions.id, row.id)))
+        .returning(admissionSelection);
+
+      return admissionView(updated!, null);
+    });
+
+    auditBackdate(scope, "ipd.discharge.backdate", admission.id, effective, input.reason);
+
+    return admission;
+  }),
+
+  // The stay's own facts and its consultant, while the Patient is in the ward.
+  updateDetails: orgProcedure(
+    { ipd: ["update"] },
+    transitionInput.extend({
+      attendantName: stayFacts.attendantName.nullable().optional(),
+      attendantPhone: stayFacts.attendantPhone.nullable().optional(),
+      medicoLegal: z.boolean().optional(),
+      medicoLegalRef: stayFacts.medicoLegalRef.nullable().optional(),
+      diagnosis: stayFacts.diagnosis.nullable().optional(),
+      practitionerId: z.string().optional(),
+      reason: reason.optional(),
+    }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+
+    if (input.practitionerId !== undefined) {
+      await requireInScope(
+        db
+          .select({ id: practitioners.id })
+          .from(practitioners)
+          .where(
+            and(eq(practitioners.orgId, scope.orgId), eq(practitioners.id, input.practitionerId)),
+          )
+          .limit(1),
+        "That practitioner no longer exists.",
+      );
+    }
+
+    const { admission, previousPractitionerId } = await db.transaction(async (tx) => {
+      const row = await lockAdmission(tx, scope.orgId, input.admissionId, input.expectedRevision);
+      requireStatus(row, ACTIVE_ADMISSION_STATUSES, "This admission has ended.");
+
+      const consultantChanged =
+        input.practitionerId !== undefined && input.practitionerId !== row.practitionerId;
+
+      if (consultantChanged && !input.reason) {
+        throw new ORPCError("BAD_REQUEST", {
+          message: "Give a reason for changing the consultant.",
+        });
+      }
+
+      // Turning the flag off clears its reference.
+      const medicoLegal = input.medicoLegal ?? row.medicoLegal;
+
+      const medicoLegalRef =
+        input.medicoLegalRef !== undefined
+          ? input.medicoLegalRef
+          : medicoLegal
+            ? row.medicoLegalRef
+            : null;
+
+      if (medicoLegalRef !== null && !medicoLegal) {
+        throw new ORPCError("BAD_REQUEST", { message: MEDICO_LEGAL_REF_NEEDS_FLAG });
+      }
+
+      const stay = await openStay(tx, scope.orgId, row.id);
+
+      const [updated] = await tx
+        .update(admissions)
+        .set({
+          attendantName: input.attendantName,
+          attendantPhone: input.attendantPhone,
+          diagnosis: input.diagnosis,
+          practitionerId: input.practitionerId,
+          medicoLegal,
+          medicoLegalRef,
+          revision: sql`${admissions.revision} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(admissions.orgId, scope.orgId), eq(admissions.id, row.id)))
+        .returning(admissionSelection);
+
+      return {
+        admission: admissionView(updated!, stay.bedId),
+        previousPractitionerId: consultantChanged ? row.practitionerId : null,
+      };
+    });
+
+    if (previousPractitionerId !== null) {
+      audit({
+        action: "ipd.consultant.change",
+        actorId: scope.userId,
+        orgId: scope.orgId,
+        target: `admission:${admission.id}`,
+        meta: { from: previousPractitionerId, to: admission.practitionerId, reason: input.reason },
+      });
+    }
+
+    return admission;
+  }),
+
+  // Reverses a discharge recorded in error, while nothing has happened to the bed since.
+  // Outside these conditions the answer is a new Admission.
+  reopen: orgProcedure({ ipd: ["correct"] }, transitionInput.extend({ reason })).handler(
     async ({ context, input }) => {
       const { scope } = context;
-      const effective = effectiveTime(scope, input.effectiveAt, input.reason);
+      const refused = (message: string) => new ORPCError("CONFLICT", { message });
 
-      const admission = await db.transaction(async (tx) => {
-        const row = await lockAdmission(tx, scope.orgId, input.admissionId, input.expectedRevision);
-        requireStatus(row, ["discharge_ready"], "Mark the Patient ready for discharge first.");
+      const admission = await db
+        .transaction(async (tx) => {
+          const row = await lockAdmission(
+            tx,
+            scope.orgId,
+            input.admissionId,
+            input.expectedRevision,
+          );
 
-        const stay = await openStay(tx, scope.orgId, row.id);
-        requireNotBeforeStay(effective.at, stay);
+          requireStatus(row, ["discharged"], "Only a discharged admission can be reopened.");
 
-        if (row.readyAt && effective.at.getTime() < row.readyAt.getTime()) {
-          throw new ORPCError("BAD_REQUEST", {
-            message: "That time is before the Patient was ready to leave.",
-          });
-        }
+          const now = new Date();
 
-        await lockBeds(tx, scope.orgId, [stay.bedId]);
+          if (now.getTime() - row.dischargedAt!.getTime() > REOPEN_WINDOW_MS) {
+            throw refused(
+              "A discharge can be undone only within 24 hours. Admit the Patient again.",
+            );
+          }
 
-        await tx
-          .update(admissionBedStays)
-          .set({ endedAt: effective.at })
-          .where(and(eq(admissionBedStays.orgId, scope.orgId), eq(admissionBedStays.id, stay.id)));
+          const [stay] = await tx
+            .select({
+              id: admissionBedStays.id,
+              bedId: admissionBedStays.bedId,
+              startedAt: admissionBedStays.startedAt,
+            })
+            .from(admissionBedStays)
+            .where(
+              and(
+                eq(admissionBedStays.orgId, scope.orgId),
+                eq(admissionBedStays.admissionId, row.id),
+              ),
+            )
+            .orderBy(desc(admissionBedStays.startedAt), desc(admissionBedStays.id))
+            .limit(1);
 
-        await tx
-          .update(beds)
-          .set({ blockedAt: new Date(), blockedReason: AWAITING_CLEANING, updatedAt: new Date() })
-          .where(and(eq(beds.orgId, scope.orgId), eq(beds.id, stay.bedId)));
+          if (!stay) throw impossible(`discharged admission ${row.id} has no stay`);
 
-        const [updated] = await tx
-          .update(admissions)
-          .set({
-            status: "discharged",
-            dischargedAt: effective.at,
-            revision: sql`${admissions.revision} + 1`,
-            updatedAt: new Date(),
-          })
-          .where(and(eq(admissions.orgId, scope.orgId), eq(admissions.id, row.id)))
-          .returning(admissionSelection);
+          const bed = (await lockBeds(tx, scope.orgId, [stay.bedId])).get(stay.bedId);
 
-        return admissionView(updated!, null);
+          if (!bed) throw impossible(`stay ${stay.id} lost its bed`);
+
+          if (!bed.active || (bed.blockedAt && bed.blockedReason !== AWAITING_CLEANING)) {
+            throw refused("That bed is no longer available. Admit the Patient again.");
+          }
+
+          // Another Patient's stay in the bed since, or this Patient's own later stay.
+          const [since] = await tx
+            .select({ id: admissionBedStays.id })
+            .from(admissionBedStays)
+            .innerJoin(
+              admissions,
+              and(
+                eq(admissions.orgId, admissionBedStays.orgId),
+                eq(admissions.id, admissionBedStays.admissionId),
+              ),
+            )
+            .where(
+              and(
+                eq(admissionBedStays.orgId, scope.orgId),
+                ne(admissions.id, row.id),
+                ne(admissions.status, "cancelled"),
+                or(
+                  and(
+                    eq(admissionBedStays.bedId, stay.bedId),
+                    or(
+                      isNull(admissionBedStays.endedAt),
+                      gte(admissionBedStays.startedAt, stay.startedAt),
+                    ),
+                  ),
+                  and(
+                    eq(admissions.patientId, row.patientId),
+                    gte(admissions.admittedAt, row.admittedAt),
+                  ),
+                ),
+              ),
+            )
+            .limit(1);
+
+          if (since) {
+            throw refused("The bed or the Patient has moved on since. Admit the Patient again.");
+          }
+
+          const [held] = await tx
+            .select({ id: bedReservations.id })
+            .from(bedReservations)
+            .where(
+              and(
+                liveHolds(scope.orgId, stay.bedId, now),
+                ne(bedReservations.patientId, row.patientId),
+              ),
+            )
+            .limit(1);
+
+          if (held) {
+            throw refused("That bed is held for another Patient. Admit the Patient again.");
+          }
+
+          await tx
+            .update(admissionBedStays)
+            .set({ endedAt: null })
+            .where(
+              and(eq(admissionBedStays.orgId, scope.orgId), eq(admissionBedStays.id, stay.id)),
+            );
+
+          if (bed.blockedAt) {
+            await tx
+              .update(beds)
+              .set({ blockedAt: null, blockedReason: null, updatedAt: now })
+              .where(and(eq(beds.orgId, scope.orgId), eq(beds.id, bed.id)));
+          }
+
+          const [updated] = await tx
+            .update(admissions)
+            .set({
+              status: "admitted",
+              readyAt: null,
+              dischargedAt: null,
+              dischargeType: null,
+              revision: sql`${admissions.revision} + 1`,
+              updatedAt: now,
+            })
+            .where(and(eq(admissions.orgId, scope.orgId), eq(admissions.id, row.id)))
+            .returning(admissionSelection);
+
+          return admissionView(updated!, stay.bedId);
+        })
+        .catch(occupancyConflict);
+
+      audit({
+        action: "ipd.reopen",
+        actorId: scope.userId,
+        orgId: scope.orgId,
+        target: `admission:${admission.id}`,
+        meta: { reason: input.reason },
       });
-
-      auditBackdate(scope, "ipd.discharge.backdate", admission.id, effective, input.reason);
 
       return admission;
     },
@@ -1430,7 +1723,7 @@ export const ipdRouter = {
     return db.transaction(async (tx) => {
       const admission = await lockAdmissionCharges(tx, scope.orgId, input.admissionId);
 
-      await requireChargeable(tx, scope.orgId, admission, {
+      requireChargeable(admission, {
         allowed: ["admitted", "discharge_ready", "discharged"],
         message: "Services cannot be posted to a cancelled admission.",
         expectedChargeRevision: input.expectedChargeRevision,
@@ -1442,23 +1735,20 @@ export const ipdRouter = {
     });
   }),
 
-  // The Admission bill as it stands: the pending Charges before issuance, the issued
-  // Invoice's stored lines after it.
+  // The stay's bill: what is pending now, and the bills already issued (D066). An issued
+  // Invoice's lines are read through the Invoice procedures.
   previewInvoice: orgProcedure(
     { ipd: ["read"], billing: ["read"] },
     orgInput.extend({ admissionId: z.string() }),
   ).handler(async ({ context, input }) => {
     const { orgId } = context.scope;
+    const settings = await readOrgSettings(orgId);
 
     return db.transaction(
       async (tx) => {
         const [admission] = await tx
-          .select({ chargeRevision: admissions.chargeRevision, invoiceId: invoices.id })
+          .select({ chargeRevision: admissions.chargeRevision })
           .from(admissions)
-          .leftJoin(
-            invoices,
-            and(eq(invoices.orgId, orgId), eq(invoices.admissionId, admissions.id)),
-          )
           .where(and(eq(admissions.orgId, orgId), eq(admissions.id, input.admissionId)))
           .limit(1);
 
@@ -1466,18 +1756,27 @@ export const ipdRouter = {
           throw new ORPCError("NOT_FOUND", { message: "That admission does not exist." });
         }
 
-        const { chargeRevision, invoiceId } = admission;
+        const [pending, issued] = await Promise.all([
+          pendingBill(tx, orgId, input.admissionId),
+          tx
+            .select({
+              invoiceId: invoices.id,
+              invoiceNumber: invoices.invoiceNumber,
+              issuedAt: invoices.createdAt,
+              grandTotal: invoices.grandTotal,
+            })
+            .from(invoices)
+            .where(and(eq(invoices.orgId, orgId), eq(invoices.admissionId, input.admissionId)))
+            .orderBy(asc(invoices.createdAt), asc(invoices.id)),
+        ]);
 
-        // `registered` decides whether a line's words claim GST (D052): today's GSTIN
-        // before issuance, the Invoice's snapshot after it.
-        return invoiceId === null
-          ? {
-              chargeRevision,
-              invoiceId,
-              registered: Boolean((await readOrgSettings(orgId)).gstin),
-              ...(await pendingBill(tx, orgId, input.admissionId)),
-            }
-          : { chargeRevision, invoiceId, ...(await issuedBill(tx, orgId, invoiceId)) };
+        return {
+          chargeRevision: admission.chargeRevision,
+          // Whether a pending line's words may claim GST (D052): today's GSTIN.
+          registered: Boolean(settings.gstin),
+          pending,
+          issued,
+        };
       },
       { isolationLevel: "repeatable read", accessMode: "read only" },
     );
@@ -1500,7 +1799,7 @@ export const ipdRouter = {
     const result = await db.transaction(async (tx) => {
       const admission = await lockAdmissionCharges(tx, scope.orgId, input.admissionId);
 
-      await requireChargeable(tx, scope.orgId, admission, {
+      requireChargeable(admission, {
         allowed: ["discharge_ready", "discharged"],
         message: "Mark the Patient ready for discharge before issuing the bill.",
         expectedChargeRevision: input.expectedChargeRevision,
@@ -1590,10 +1889,17 @@ export const ipdRouter = {
         const stay = await openStay(tx, scope.orgId, row.id);
         await lockBeds(tx, scope.orgId, [stay.bedId]);
 
+        // An erroneous stay occupied nothing: every segment becomes an empty interval, so
+        // it never stands in the way of a backdated occupancy of its beds.
         await tx
           .update(admissionBedStays)
-          .set({ endedAt: sql`greatest(${admissionBedStays.startedAt}, ${now})` })
-          .where(and(eq(admissionBedStays.orgId, scope.orgId), eq(admissionBedStays.id, stay.id)));
+          .set({ endedAt: sql`${admissionBedStays.startedAt}` })
+          .where(
+            and(
+              eq(admissionBedStays.orgId, scope.orgId),
+              eq(admissionBedStays.admissionId, row.id),
+            ),
+          );
 
         const [updated] = await tx
           .update(admissions)
@@ -1728,52 +2034,4 @@ async function pendingBill(tx: Tx, orgId: string, admissionId: string) {
     roundOff: computed.roundOff,
     grandTotal: computed.grandTotal,
   };
-}
-
-async function issuedBill(tx: Tx, orgId: string, invoiceId: string) {
-  const [[invoice], rows] = await Promise.all([
-    tx
-      .select({
-        subtotal: invoices.subtotal,
-        taxTotal: invoices.taxTotal,
-        addedTaxTotal: invoices.addedTaxTotal,
-        roundOff: invoices.roundOff,
-        grandTotal: invoices.grandTotal,
-        orgGstin: invoices.orgGstin,
-      })
-      .from(invoices)
-      .where(and(eq(invoices.orgId, orgId), eq(invoices.id, invoiceId))),
-    tx
-      .select({
-        chargeId: invoiceLines.chargeId,
-        description: invoiceLines.description,
-        qty: invoiceLines.qty,
-        unitPrice: invoiceLines.unitPrice,
-        priceUnits: invoiceLines.priceUnits,
-        lineSubtotal: invoiceLines.lineSubtotal,
-        allocatedDiscount: invoiceLines.allocatedDiscount,
-        taxableValue: invoiceLines.taxableValue,
-        taxRatePercent: invoiceLines.taxRatePercent,
-        taxAmount: invoiceLines.taxAmount,
-        gross: invoiceLines.gross,
-        taxCode: invoiceLines.taxCode,
-        priceBasis: charges.priceBasis,
-        admissionKind: charges.admissionKind,
-        ...billBatch,
-      })
-      .from(invoiceLines)
-      .innerJoin(charges, and(eq(charges.orgId, orgId), eq(charges.id, invoiceLines.chargeId)))
-      .leftJoin(
-        stockBatches,
-        and(eq(stockBatches.orgId, orgId), eq(stockBatches.id, charges.stockBatchId)),
-      )
-      .where(and(eq(invoiceLines.orgId, orgId), eq(invoiceLines.invoiceId, invoiceId)))
-      .orderBy(asc(charges.createdAt), asc(charges.id)),
-  ]);
-
-  if (!invoice) throw impossible(`admission invoice ${invoiceId} vanished in one snapshot`);
-
-  const { orgGstin, ...totals } = invoice;
-
-  return { lines: rows.map(withBatch), registered: Boolean(orgGstin), ...totals };
 }

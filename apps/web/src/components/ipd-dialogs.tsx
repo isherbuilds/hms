@@ -19,6 +19,7 @@ import { FormDialog } from "@/components/form-dialog";
 import { ControlledField, TextField } from "@/components/form-fields";
 import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient-picker";
 import { ErrorNote } from "@/components/page";
+import { DISCHARGE_TYPE_LABELS, DISCHARGE_TYPES } from "@/lib/ipd-slips";
 import { useCan } from "@/lib/membership";
 import { formatDateTime, localInputValue, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
@@ -492,6 +493,18 @@ export function ReadyDialog({
   );
 }
 
+const dischargeSchema = z
+  .object({
+    ...earlierTime,
+    dischargeType: z.union([z.enum(DISCHARGE_TYPES), z.literal("")]).transform((type, context) => {
+      if (type) return type;
+      context.addIssue({ code: "custom", message: "Choose how the Patient left" });
+
+      return z.NEVER;
+    }),
+  })
+  .superRefine(requireEarlierReason);
+
 export function DischargeDialog({
   orgSlug,
   admission,
@@ -508,8 +521,8 @@ export function DischargeDialog({
       title="Record departure"
       description="The bed is blocked for cleaning. Billing and payment can follow later."
       submitLabel="Record departure"
-      schema={timedSchema}
-      defaultValues={{ earlierAt: "", reason: "" }}
+      schema={dischargeSchema}
+      defaultValues={{ earlierAt: "", reason: "", dischargeType: "" }}
       success="Departure recorded"
       onClose={onClose}
       run={(value) => {
@@ -519,11 +532,28 @@ export function DischargeDialog({
           orgSlug,
           admissionId: admission.id,
           expectedRevision: admission.revision,
+          dischargeType: value.dischargeType,
           effectiveAt: earlier.at,
           reason: earlier.reason,
         });
       }}
     >
+      <ControlledField
+        name="dischargeType"
+        label="How the Patient left"
+        render={(field) => (
+          <FormControl>
+            <NativeSelect {...field}>
+              <option value="">Choose</option>
+              {DISCHARGE_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {DISCHARGE_TYPE_LABELS[type]}
+                </option>
+              ))}
+            </NativeSelect>
+          </FormControl>
+        )}
+      />
       <EarlierTimeFields orgSlug={orgSlug} label="Left at" />
     </FormDialog>
   );

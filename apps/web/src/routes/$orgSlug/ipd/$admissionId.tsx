@@ -57,14 +57,16 @@ export const Route = createFileRoute("/$orgSlug/ipd/$admissionId")({
       authorize(roles, { pharmacy: ["read"] })
         ? queryClient.query(admissionIssuesQuery(orgSlug, admissionId))
         : null,
-      // A billed stay shows its Invoice's payments, so that loads with the bill.
+      // A billed stay shows its Invoices' payments, so they load with the bill.
       authorize(roles, { billing: ["read"] })
         ? queryClient
             .query(admissionBillQuery(orgSlug, admissionId))
             .then((bill) =>
-              bill.invoiceId === null
-                ? null
-                : queryClient.query(issuedInvoiceQuery(orgSlug, bill.invoiceId)),
+              Promise.all(
+                bill.issued.map(({ invoiceId }) =>
+                  queryClient.query(issuedInvoiceQuery(orgSlug, invoiceId)),
+                ),
+              ),
             )
         : null,
     ]).catch(() => {});
@@ -131,10 +133,7 @@ function AdmissionRoute() {
   const setIssuing = (open: boolean) =>
     void navigate({ search: open ? { issue: 1 } : {}, replace: true });
 
-  // Medicines go only onto an unbilled stay; the server refuses a billed one either way.
-  const billed = bill.data !== undefined && bill.data.invoiceId !== null;
-
-  const issuable = canIssue && canReadIssues && active && !billed;
+  const issuable = canIssue && canReadIssues && active;
 
   return (
     <>
