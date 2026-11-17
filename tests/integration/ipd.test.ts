@@ -1,4 +1,5 @@
 // Spec: docs/specs/ipd-admission-to-discharge.md, Slice 2 (facility, bed board, lifecycle).
+// Undoing a discharge (Slice 3) is covered in ipd-stay.test.ts.
 import { beforeAll, expect, test } from "bun:test";
 
 import { drainAuditWrites } from "@hms/api/audit";
@@ -839,6 +840,7 @@ test("ready keeps the bed occupied; discharge closes the stay and blocks the bed
     orgSlug,
     admissionId: admission.id,
     expectedRevision: ready.revision,
+    dischargeType: "normal",
   });
 
   expect(discharged.status).toBe("discharged");
@@ -880,6 +882,7 @@ test("discharge requires the ready handoff first", async () => {
       orgSlug: hospital.orgSlug,
       admissionId: admission.id,
       expectedRevision: admission.revision,
+      dischargeType: "normal",
     }),
     "CONFLICT",
   );
@@ -960,7 +963,12 @@ test("a stale terminal cannot discharge", async () => {
   });
 
   await expectORPCCode(
-    api.ipd.discharge({ orgSlug, admissionId: admission.id, expectedRevision: ready.revision }),
+    api.ipd.discharge({
+      orgSlug,
+      admissionId: admission.id,
+      expectedRevision: ready.revision,
+      dischargeType: "normal",
+    }),
     "CONFLICT",
   );
 });
@@ -984,6 +992,7 @@ test("discharge cannot be dated before the current stay began, nor backdated wit
       expectedRevision: ready.revision,
       effectiveAt: hoursAgo(1),
       reason: "Left earlier",
+      dischargeType: "normal",
     }),
     "FORBIDDEN",
   );
@@ -994,6 +1003,7 @@ test("discharge cannot be dated before the current stay began, nor backdated wit
       expectedRevision: ready.revision,
       effectiveAt: hoursAgo(4),
       reason: "Left earlier",
+      dischargeType: "normal",
     }),
     "BAD_REQUEST",
   );
@@ -1003,12 +1013,13 @@ test("discharge cannot be dated before the current stay began, nor backdated wit
       admissionId: admission.id,
       expectedRevision: ready.revision,
       effectiveAt: new Date(Date.now() + HOUR),
+      dischargeType: "normal",
     }),
     "BAD_REQUEST",
   );
 });
 
-test("terminal Admissions never reopen", async () => {
+test("a discharged Admission refuses every ordinary lifecycle command", async () => {
   const hospital = await createHospital("ipd-terminal");
   const { api, orgSlug, beds } = hospital;
   const { admission } = await admit(hospital, beds[0].id, "Terminal Patient");
@@ -1023,12 +1034,18 @@ test("terminal Admissions never reopen", async () => {
     orgSlug,
     admissionId: admission.id,
     expectedRevision: ready.revision,
+    dischargeType: "normal",
   });
 
   const expectedRevision = discharged.revision;
 
   await expectORPCCode(
-    api.ipd.discharge({ orgSlug, admissionId: admission.id, expectedRevision }),
+    api.ipd.discharge({
+      orgSlug,
+      admissionId: admission.id,
+      expectedRevision,
+      dischargeType: "normal",
+    }),
     "CONFLICT",
     "discharge",
   );
@@ -1140,6 +1157,7 @@ test("the Admission list pages with the shared page size and filters by state", 
     orgSlug,
     admissionId: two.admission.id,
     expectedRevision: ready.revision,
+    dischargeType: "normal",
   });
 
   const current = await api.ipd.list({ orgSlug, state: "current" });
@@ -1181,7 +1199,12 @@ test("a backdated admission cannot overlap the same Patient's earlier stay", asy
     expectedRevision: admission.revision,
   });
 
-  await api.ipd.discharge({ orgSlug, admissionId: admission.id, expectedRevision: ready.revision });
+  await api.ipd.discharge({
+    orgSlug,
+    admissionId: admission.id,
+    expectedRevision: ready.revision,
+    dischargeType: "normal",
+  });
 
   await expectORPCCode(
     api.ipd.admit({
@@ -1225,6 +1248,7 @@ test("departure cannot be dated before the ready handoff", async () => {
       expectedRevision: ready.revision,
       effectiveAt: hoursAgo(4),
       reason: "Left earlier",
+      dischargeType: "normal",
     }),
     "BAD_REQUEST",
   );

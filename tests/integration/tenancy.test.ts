@@ -711,9 +711,23 @@ const GUARDED_CALLS = {
       reason: "x",
     }),
   "ipd.discharge": (api, claim) =>
-    api.ipd.discharge({ ...claim, admissionId: "missing", expectedRevision: 0 }),
+    api.ipd.discharge({
+      ...claim,
+      admissionId: "missing",
+      expectedRevision: 0,
+      dischargeType: "normal",
+    }),
   "ipd.cancel": (api, claim) =>
     api.ipd.cancel({ ...claim, admissionId: "missing", expectedRevision: 0, reason: "x" }),
+  "ipd.updateDetails": (api, claim) =>
+    api.ipd.updateDetails({
+      ...claim,
+      admissionId: "missing",
+      expectedRevision: 0,
+      diagnosis: "Intrusion",
+    }),
+  "ipd.reopen": (api, claim) =>
+    api.ipd.reopen({ ...claim, admissionId: "missing", expectedRevision: 0, reason: "x" }),
   "ipd.postServices": (api, claim) =>
     api.ipd.postServices({
       ...claim,

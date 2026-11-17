@@ -1496,6 +1496,7 @@ test("a case attaches only its own Patient's active Admission", async () => {
     orgSlug,
     admissionId: leaverAdmission.id,
     expectedRevision: ready.revision,
+    dischargeType: "normal",
   });
 
   const cancelledAdmission = await admit(theatre, cancelledPatient.id, beds[3].id);
@@ -2119,7 +2120,12 @@ test("a linked case is re-linked to the Patient's next Admission, audited with b
     expectedRevision: first.revision,
   });
 
-  await api.ipd.discharge({ orgSlug, admissionId: first.id, expectedRevision: ready.revision });
+  await api.ipd.discharge({
+    orgSlug,
+    admissionId: first.id,
+    expectedRevision: ready.revision,
+    dischargeType: "normal",
+  });
 
   const second = await admit(theatre, patient.id, beds[1].id);
   const relinked = await attach(theatre, linked, second.id);
