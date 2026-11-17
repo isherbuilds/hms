@@ -204,6 +204,19 @@ previous/new practitioner, actor and reason in a sensitive audit and affects
 subsequent issues, never rewrites prior attribution. Missing consultant remains
 Unassigned. This policy does not create Admission operations in these reports.
 
+## IPD desk report
+
+`report.ipdDesk({asOf})` (`report:readFinancial`) lists three IPD exceptions
+for stays and bills dated on or before `asOf`, at current balances, each with a
+total: Patients discharged (hospital date) with pending Charges or unbilled bed
+days, `ipd` Invoices with a positive outstanding balance whatever the stay's
+state, and discharged or cancelled stays that still hold deposit. Oldest first,
+not paged. SQL only picks candidates; each amount comes from the helper its
+source screen reads (`readRunningBills`, `invoiceBalancesFor`,
+`readDepositsHeld`), so a row reconciles to its Admission or Invoice, in a fixed
+number of queries. `export.ipdDeskXlsx` writes the same read as three sheets with
+a `Total` row each.
+
 ## Financial reports and exports
 
 **GST outward register** reads issued Invoice and Credit Note snapshots across

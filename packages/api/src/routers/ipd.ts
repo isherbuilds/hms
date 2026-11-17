@@ -900,7 +900,7 @@ export const ipdRouter = {
               patientName: row.patientName!,
               mrn: row.mrn!,
               practitionerName: row.practitionerName!,
-              runningBill: runningBills.get(row.admissionId)!,
+              runningBill: runningBills.get(row.admissionId)!.amount,
               depositHeld: depositsHeld.get(row.admissionId)!,
             }
           : null;
@@ -1014,7 +1014,7 @@ export const ipdRouter = {
       // SAFETY: one running bill and one deposit per Admission listed.
       items: items.map((item) => ({
         ...item,
-        runningBill: runningBills.get(item.id)!,
+        runningBill: runningBills.get(item.id)!.amount,
         depositHeld: depositsHeld.get(item.id)!,
       })),
       nextCursor: hasNextPage && last ? { admittedAt: last.admittedAt, id: last.id } : null,
@@ -1105,7 +1105,7 @@ export const ipdRouter = {
             practitionerName,
             stays,
             // SAFETY: one running bill and one deposit per Admission read.
-            runningBill: runningBills.get(row.id)!,
+            runningBill: runningBills.get(row.id)!.amount,
             depositHeld: depositsHeld.get(row.id)!,
           };
         },

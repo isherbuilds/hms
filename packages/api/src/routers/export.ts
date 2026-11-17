@@ -383,6 +383,94 @@ export const exportRouter = {
     },
   ),
 
+  ipdDeskXlsx: orgProcedure({ report: ["readFinancial"] }, asOfInput).handler(
+    async ({ context, input }) => {
+      const [{ unbilled, unpaid, deposits }, { timeZone }] = await Promise.all([
+        call(reportRouter.ipdDesk, input, { context }),
+        readOrgSettings(context.scope.orgId),
+      ]);
+
+      const left = new Intl.DateTimeFormat("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone,
+      });
+
+      const stayColumns: Column[] = [
+        { header: "IPD No.", key: "admissionNumber", width: 16 },
+        { header: "Patient", key: "patientName", width: 28 },
+        { header: "MRN", key: "mrn", width: 16 },
+      ];
+
+      const leftColumn = { header: "Left", key: "left", width: 22 };
+
+      return xlsxFile(`ipd-desk-${input.asOf}.xlsx`, [
+        {
+          name: "Left unbilled",
+          columns: [
+            ...stayColumns,
+            leftColumn,
+            { header: "Pending charges", key: "pendingCharges", width: 16 },
+            { header: "Unbilled days", key: "unbilledDays", width: 14 },
+            { header: "Amount", key: "amount", width: 16 },
+          ],
+          rows: [
+            ...unbilled.rows.map((row) => ({
+              admissionNumber: row.admissionNumber,
+              patientName: row.patientName,
+              mrn: row.mrn,
+              left: left.format(row.dischargedAt),
+              pendingCharges: row.pendingCharges,
+              unbilledDays: row.unbilledDays,
+              amount: rupees(row.amount),
+            })),
+            { admissionNumber: "Total", amount: rupees(unbilled.total) },
+          ],
+        },
+        {
+          name: "Unpaid bills",
+          columns: [
+            ...stayColumns,
+            { header: "Invoice number", key: "invoiceNumber", width: 22 },
+            { header: "Date", key: "businessDate", width: 14 },
+            { header: "Invoice total", key: "grandTotal", width: 16 },
+            { header: "Outstanding", key: "outstanding", width: 16 },
+          ],
+          rows: [
+            ...unpaid.rows.map((row) => ({
+              admissionNumber: row.admissionNumber,
+              patientName: row.patientName,
+              mrn: row.mrn,
+              invoiceNumber: row.invoiceNumber,
+              businessDate: row.businessDate,
+              grandTotal: rupees(row.grandTotal),
+              outstanding: rupees(row.outstanding),
+            })),
+            { admissionNumber: "Total", outstanding: rupees(unpaid.total) },
+          ],
+        },
+        {
+          name: "Deposits held",
+          columns: [
+            ...stayColumns,
+            leftColumn,
+            { header: "Deposit held", key: "depositHeld", width: 16 },
+          ],
+          rows: [
+            ...deposits.rows.map((row) => ({
+              admissionNumber: row.admissionNumber,
+              patientName: row.patientName,
+              mrn: row.mrn,
+              left: left.format(row.endedAt),
+              depositHeld: rupees(row.depositHeld),
+            })),
+            { admissionNumber: "Total", depositHeld: rupees(deposits.total) },
+          ],
+        },
+      ]);
+    },
+  ),
+
   dailyCollectionsXlsx: orgProcedure({ report: ["readDailyCollections"] }, periodInput).handler(
     async ({ context, input }) => {
       const { rows, byMethod, totals } = await call(reportRouter.dailyCollections, input, {

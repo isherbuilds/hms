@@ -405,6 +405,9 @@ export async function readPendingBill(
   };
 }
 
+/** What a stay owes before its next bill, and the pending Charges and bed days behind it. */
+type RunningBill = { amount: bigint; pendingCharges: number; unbilledDays: number };
+
 /**
  * Each Admission's running bill: the pending Charges plus the unbilled bed days through
  * now with a full last day, tax included. Four queries for any number of Admissions;
@@ -415,7 +418,7 @@ export async function readRunningBills(
   orgId: string,
   admissionIds: string[],
   now: Date,
-): Promise<Map<string, bigint>> {
+): Promise<Map<string, RunningBill>> {
   if (admissionIds.length === 0) return new Map();
 
   const [rows, pending, { stays, tariffLines }] = await Promise.all([
@@ -430,9 +433,17 @@ export async function readRunningBills(
   return new Map(
     rows.map((admission) => {
       const bedDay = bedDayBill(admission, stays.get(admission.id) ?? [], tariffLines, "full", now);
-      const { computed } = billLines(pending.get(admission.id) ?? [], bedDay.lines, 0n);
+      const pendingRows = pending.get(admission.id) ?? [];
+      const { computed } = billLines(pendingRows, bedDay.lines, 0n);
 
-      return [admission.id, computed.grandTotal];
+      return [
+        admission.id,
+        {
+          amount: computed.grandTotal,
+          pendingCharges: pendingRows.length,
+          unbilledDays: bedDay.unbilled.length,
+        },
+      ];
     }),
   );
 }

@@ -44,9 +44,11 @@ import {
 } from "drizzle-orm";
 import { z } from "zod";
 
+import { advanceRemaining, readDepositsHeld } from "../lib/advance-credit";
 import { businessDate } from "../lib/business-date";
 import { divideHalfUp } from "../core/money";
-import { invoiceMovements } from "../lib/invoice-balance";
+import { invoiceBalancesFor, invoiceMovements } from "../lib/invoice-balance";
+import { readRunningBills } from "../lib/ipd-bill";
 import { closeExpiredBookings } from "../lib/opd-close";
 import { orgInput, orgProcedure } from "../lib/procedures/factory";
 import { readOrgSettings } from "../lib/settings-cache";
@@ -1420,4 +1422,135 @@ export const reportRouter = {
       nextCursor: page.nextCursor,
     };
   }),
+
+  // What is still open from stays and IPD bills dated on or before `asOf`, at today's
+  // balances. SQL only picks the candidates; every amount comes from the helper its
+  // Admission or Invoice screen reads, so each row reconciles to its source.
+  ipdDesk: orgProcedure({ report: ["readFinancial"] }, asOfInput).handler(
+    async ({ context, input }) => {
+      const { orgId } = context.scope;
+      const generatedAt = new Date();
+      const { timeZone } = await readOrgSettings(orgId);
+      // The first instant after `asOf` in the hospital's time zone.
+      const cutoff = sql`((${input.asOf}::date + 1)::timestamp at time zone ${timeZone})`;
+      const endedAt = sql<Date>`coalesce(${admissions.dischargedAt}, ${admissions.cancelledAt})`;
+      const { movements, joinOn } = invoiceMovements(orgId);
+
+      const stayPatient = {
+        admissionId: admissions.id,
+        admissionNumber: admissions.admissionNumber,
+        patientId: admissions.patientId,
+        patientName: patients.name,
+        mrn: patients.mrn,
+      };
+
+      const patientOf = and(
+        eq(patients.orgId, admissions.orgId),
+        eq(patients.id, admissions.patientId),
+      );
+
+      const [departed, depositStays, invoiceRows] = await Promise.all([
+        db
+          .select({ ...stayPatient, dischargedAt: admissions.dischargedAt })
+          .from(admissions)
+          .innerJoin(patients, patientOf)
+          .where(
+            and(
+              eq(admissions.orgId, orgId),
+              eq(admissions.status, "discharged"),
+              lt(admissions.dischargedAt, cutoff),
+            ),
+          )
+          .orderBy(asc(admissions.dischargedAt), asc(admissions.id)),
+        db
+          .select({ ...stayPatient, endedAt: endedAt.mapWith(admissions.dischargedAt) })
+          .from(admissions)
+          .innerJoin(patients, patientOf)
+          .where(
+            and(
+              eq(admissions.orgId, orgId),
+              inArray(admissions.status, ["discharged", "cancelled"]),
+              lt(endedAt, cutoff),
+              sql`exists (select 1 from ${advanceReceipts}
+                where ${advanceReceipts.orgId} = ${orgId}
+                  and ${advanceReceipts.admissionId} = ${admissions.id}
+                  and ${advanceRemaining(orgId)} > 0)`,
+            ),
+          )
+          .orderBy(asc(endedAt), asc(admissions.id)),
+        db
+          .select({
+            id: invoices.id,
+            invoiceNumber: invoices.invoiceNumber,
+            businessDate: invoices.businessDate,
+            grandTotal: invoices.grandTotal,
+            ...stayPatient,
+          })
+          .from(invoices)
+          .innerJoin(movements, joinOn)
+          .innerJoin(
+            admissions,
+            and(eq(admissions.orgId, invoices.orgId), eq(admissions.id, invoices.admissionId)),
+          )
+          .innerJoin(patients, patientOf)
+          .where(
+            and(
+              eq(invoices.orgId, orgId),
+              eq(invoices.stream, "ipd"),
+              lte(invoices.businessDate, input.asOf),
+              sql`${invoices.grandTotal} - movements.credited - movements.paid
+                - movements.allocated + movements.refunded > 0`,
+            ),
+          )
+          .orderBy(asc(invoices.businessDate), asc(invoices.createdAt), asc(invoices.id)),
+      ]);
+
+      const [runningBills, depositsHeld, balances] = await Promise.all([
+        readRunningBills(
+          db,
+          orgId,
+          departed.map((row) => row.admissionId),
+          generatedAt,
+        ),
+        readDepositsHeld(
+          db,
+          orgId,
+          depositStays.map((row) => row.admissionId),
+        ),
+        invoiceBalancesFor(db, orgId, invoiceRows),
+      ]);
+
+      const sum = (amounts: bigint[]) => amounts.reduce((total, amount) => total + amount, 0n);
+
+      // SAFETY: one running bill, deposit and balance per id read.
+      const unbilled = departed
+        .map(({ dischargedAt, ...row }) => ({
+          ...row,
+          // SAFETY: a discharged Admission has a discharge time (schema check).
+          dischargedAt: dischargedAt!,
+          ...runningBills.get(row.admissionId)!,
+        }))
+        .filter((row) => row.pendingCharges > 0 || row.unbilledDays > 0);
+
+      const unpaid = invoiceRows
+        .map(({ id, ...row }) => ({
+          invoiceId: id,
+          ...row,
+          outstanding: balances.get(id)!.outstanding,
+        }))
+        .filter((row) => row.outstanding > 0n);
+
+      const deposits = depositStays
+        .map((row) => ({ ...row, depositHeld: depositsHeld.get(row.admissionId)! }))
+        .filter((row) => row.depositHeld > 0n);
+
+      return {
+        asOf: input.asOf,
+        generatedAt,
+        unbilled: { rows: unbilled, total: sum(unbilled.map((row) => row.amount)) },
+        unpaid: { rows: unpaid, total: sum(unpaid.map((row) => row.outstanding)) },
+        deposits: { rows: deposits, total: sum(deposits.map((row) => row.depositHeld)) },
+      };
+    },
+  ),
 };
