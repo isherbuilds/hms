@@ -54,7 +54,12 @@ export function returnedUnitsCredit(
     divideHalfUp(amount * after, sold) - divideHalfUp(amount * before, sold);
 
   const gross = min(share(source.gross), left.gross);
-  const taxAmount = max(gross - left.taxableValue, min(share(source.taxAmount), left.taxAmount));
+
+  // GST never exceeds the gross it sits in, so a share worth nothing credits no value.
+  const taxAmount = min(
+    gross,
+    max(gross - left.taxableValue, min(share(source.taxAmount), left.taxAmount)),
+  );
 
   return { taxableValue: gross - taxAmount, taxAmount, gross };
 }

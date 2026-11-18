@@ -35,14 +35,16 @@ import { DataList, ErrorNote, PageBody, PageHeader, Panel } from "@/components/p
 import { DISCHARGE_TYPE_LABELS, slipPdfUrl, type SlipKind } from "@/lib/ipd-slips";
 import { useCan, useMembership } from "@/lib/membership";
 import { currentMinute, useMinuteClock } from "@/lib/minute-clock";
+import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 import { IpdTabs } from "./route";
 
+// The running bill grows at checkout time, so an open page keeps reading it.
 const admissionQuery = (orgSlug: string, admissionId: string) =>
-  orpc.ipd.get.queryOptions({ input: { orgSlug, admissionId } });
+  orpc.ipd.get.queryOptions({ input: { orgSlug, admissionId }, ...OPERATIONAL_REFETCH });
 
 export const Route = createFileRoute("/$orgSlug/ipd/$admissionId")({
   head: () => appHead("Admission"),

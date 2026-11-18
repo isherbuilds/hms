@@ -17,6 +17,7 @@ import {
 import { depositShortLabel } from "@/lib/ipd-deposit";
 import { useMembership } from "@/lib/membership";
 import { formatMoney, ZERO } from "@/lib/money";
+import { OPERATIONAL_INFINITE_REFETCH } from "@/lib/operational-query";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
@@ -40,6 +41,8 @@ const admissionsQuery = (orgSlug: string, state: AdmissionState) =>
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     placeholderData: keepPreviousData,
+    // Running bills grow at checkout time while the list is open.
+    ...OPERATIONAL_INFINITE_REFETCH,
   });
 
 export const Route = createFileRoute("/$orgSlug/ipd/admissions")({

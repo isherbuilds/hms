@@ -361,6 +361,11 @@ before and after the move, not against what each bill charged. A move back to th
 bed type a day was billed at, recorded within the ten-minute tolerance, can be
 refused; no money moves either way, and the desk enters the move at a later time.
 
+A discount close to, but short of, the whole bill can push one line below zero
+through the shared Invoice discount spread (largest line takes the rounding), and
+the ledger then refuses the bill; a discount a paisa different issues it. The spread
+predates this work; the fix is a largest-remainder split in `invoice-math.ts`.
+
 Packages wait for a pilot hospital that quotes them. The no-GSTIN rule (D063) is
 not yet applied to OPD or counter Pharmacy. Whether a nursing line counts
 toward the ₹5,000 room-rent threshold is unverified
