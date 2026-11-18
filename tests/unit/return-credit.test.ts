@@ -85,3 +85,16 @@ test("after a price correction a return credits no more than its share, and no m
     gross: 4_56n,
   });
 });
+
+test("a return worth no money on a line of a few paise credits no value either", () => {
+  // Five units for 4 paise with 1 paisa GST, two back for 2 paise: the third unit's gross
+  // share rounds to nothing while its GST share rounds up to a paisa.
+  const tiny = { qty: 5, gross: 4n, taxableValue: 3n, taxAmount: 1n };
+  const credited: LineMoney = { taxableValue: 2n, taxAmount: 0n, gross: 2n };
+
+  expect(returnedUnitsCredit(tiny, credited, 2, 1)).toEqual({
+    taxableValue: 0n,
+    taxAmount: 0n,
+    gross: 0n,
+  });
+});
