@@ -731,24 +731,28 @@ test("a refused conversion leaves no Admission, no stay and the reservation unch
   const elsewhereBed = await extraBed(hospital, "G-5");
   const walkInBed = await extraBed(hospital, "G-6");
 
-  // Admitted first: a Patient with a live reservation cannot be admitted as a walk-in.
+  // A hold that raced the Patient's walk-in admission: a request takes no lock, so the
+  // refusal to put an admitted Patient on the waiting list cannot stop it.
   const { patient: admittedPatient } = await admitWalkIn(
     hospital,
     walkInBed.id,
     "Already Admitted",
   );
 
-  const admittedRequest = await api.ipd.requestBed({
-    orgSlug,
+  const racedId = Bun.randomUUIDv7();
+
+  await db.insert(bedReservations).values({
+    id: racedId,
+    orgId: hospital.organization.id,
     patientId: admittedPatient.id,
     categoryId: hospital.category.id,
+    bedId: elsewhereBed.id,
     ...dueNow(),
+    status: "confirmed",
+    createdBy: hospital.owner.user.id,
   });
 
-  const admitted = {
-    patient: admittedPatient,
-    reservation: await confirm(hospital, admittedRequest, elsewhereBed.id),
-  };
+  const admitted = { patient: admittedPatient, reservation: await find(hospital, racedId) };
 
   const before = await admissionIds(hospital);
 
