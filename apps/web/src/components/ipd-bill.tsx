@@ -43,6 +43,7 @@ import { formatMoney, ZERO } from "@/lib/money";
 import { useCan } from "@/lib/membership";
 import type { PatientCredit } from "@/lib/patient-credit";
 import type { WalkInQuote } from "@/lib/opd-service-preview";
+import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { orpc } from "@/lib/orpc";
 import { closeOnConflict, errorMessage, errorReason, hasErrorCode } from "@/lib/orpc-error";
 
@@ -58,11 +59,16 @@ const LAST_DAY_LABELS: Record<LastDay, string> = {
   none: "Don't charge",
 };
 
+// Read again while open, with the stay itself: checkout adds a day and another desk may post.
 export const admissionBillQuery = (
   orgSlug: string,
   admissionId: string,
   lastDay: LastDay = "full",
-) => orpc.ipd.previewInvoice.queryOptions({ input: { orgSlug, admissionId, lastDay } });
+) =>
+  orpc.ipd.previewInvoice.queryOptions({
+    input: { orgSlug, admissionId, lastDay },
+    ...OPERATIONAL_REFETCH,
+  });
 
 export const issuedInvoiceQuery = (orgSlug: string, invoiceId: string) =>
   orpc.billing.getInvoice.queryOptions({ input: { orgSlug, invoiceId } });
@@ -515,7 +521,9 @@ export function AdmissionBill({
                 ) : null}
                 <div className="flex flex-wrap gap-2">
                   <Button
-                    disabled={stale || bill.isFetching || issue.isPending}
+                    // Only a bill still loading for a new last-day choice holds the button;
+                    // the background read every few seconds does not.
+                    disabled={stale || bill.isPlaceholderData || issue.isPending}
                     onClick={startIssue}
                   >
                     {closesDaysOnly ? (
