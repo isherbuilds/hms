@@ -426,6 +426,42 @@ test("unknown or foreign patient, category or bed is NOT_FOUND", async () => {
   expect(await listed(hospital, "all")).toEqual([]);
 });
 
+// One stay at a time: the waiting list never holds a second bed for a Patient (owner, 2026-11-18).
+test("a Patient already admitted cannot be put on the waiting list", async () => {
+  const hospital = await createHospital("resv-request-admitted");
+  const { api, orgSlug, category, beds } = hospital;
+  const { patient } = await admitWalkIn(hospital, beds[0].id, "Already In Hospital");
+
+  const refused = api.ipd.requestBed({
+    orgSlug,
+    patientId: patient.id,
+    categoryId: category.id,
+    ...tomorrow(),
+  });
+
+  await expectORPCCode(refused, "CONFLICT", "a Patient in hospital");
+  expect(await listed(hospital, "all")).toEqual([]);
+});
+
+test("a Patient already on the waiting list is not added twice; a cancelled request no longer counts", async () => {
+  const hospital = await createHospital("resv-request-twice");
+  const { api, orgSlug, category } = hospital;
+  const { patient, reservation } = await request(hospital, "Waiting Once");
+
+  const again = () =>
+    api.ipd.requestBed({ orgSlug, patientId: patient.id, categoryId: category.id, ...tomorrow() });
+
+  await expectORPCCode(again(), "CONFLICT", "a second request");
+  expect(await listed(hospital, "all")).toHaveLength(1);
+
+  await cancel(hospital, reservation, "Plans changed");
+  await again();
+  expect((await listed(hospital, "all")).map((entry) => entry.status).sort()).toEqual([
+    "cancelled",
+    "requested",
+  ]);
+});
+
 // ── Slice 2: confirm ────────────────────────────────────────────────────────
 
 test("confirming a request holds one bed: arrivals list it and the board shows it as a hold", async () => {
