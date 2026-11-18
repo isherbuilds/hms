@@ -35,7 +35,6 @@ import {
 } from "../lib/billing-documents";
 import { bumpChargeRevision, lockAdmissionCharges } from "../lib/admission-charges";
 import { impossible } from "../lib/conflict";
-import { requireUnderCashLimit } from "../lib/ipd-cash";
 import { invoiceBalanceFor, invoiceBalancesFor } from "../lib/invoice-balance";
 import { voidPendingCharges } from "../lib/opd-close";
 import { planLabel } from "../lib/treatment-label";
@@ -332,7 +331,7 @@ export const billingRouter = {
         throw new ORPCError("CONFLICT", { message: "That treatment plan is no longer available." });
       }
 
-      // Locked before the receipt (D040): a stay's cash is counted under this lock.
+      // Locked before the receipt (D040), so the stay cannot leave while it takes a deposit.
       const stay = input.admissionId
         ? await tx
             .select({ id: admissions.id, admissionNumber: admissions.admissionNumber })
@@ -352,10 +351,6 @@ export const billingRouter = {
 
       if (input.admissionId && !stay) {
         throw new ORPCError("CONFLICT", { message: "That stay can no longer take a deposit." });
-      }
-
-      if (stay) {
-        await requireUnderCashLimit(tx, scope.orgId, stay.id, [input]);
       }
 
       const sequence = await nextCounter(tx, scope.orgId, `advance:${fiscalYear}`);
@@ -571,20 +566,8 @@ export const billingRouter = {
     const { scope } = context;
     const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
 
-    const recorded = await db.transaction(async (tx) => {
-      // An `ipd` Invoice's cash counts toward its stay's limit; the Admission is locked
-      // before the Invoice (D040). The Invoice's stay never changes, so it is read unlocked.
-      const [target] = await tx
-        .select({ admissionId: invoices.admissionId })
-        .from(invoices)
-        .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.id, input.invoiceId)))
-        .limit(1);
-
-      if (target?.admissionId) {
-        await requireUnderCashLimit(tx, scope.orgId, target.admissionId, input.payments);
-      }
-
-      return recordPaymentsTx(tx, {
+    const recorded = await db.transaction(async (tx) =>
+      recordPaymentsTx(tx, {
         scope,
         invoiceId: input.invoiceId,
         payments: input.payments,
@@ -592,8 +575,8 @@ export const billingRouter = {
         settings,
         now,
         fiscalYear,
-      });
-    });
+      }),
+    );
 
     for (const payment of recorded) {
       audit({

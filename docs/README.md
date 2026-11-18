@@ -315,7 +315,7 @@ On 2026-11-17 Slices 3–7 were replanned from a study of running systems
 - Slice 4: bed-type tariff lines, the checkout setting, derived bed days, the
   last-day choice, the running bill, the interim bill and the estimate.
 - Slice 5: deposits on the Admission, discount and deposit at settlement, the
-  leftover refund and the cash limit.
+  leftover refund.
 - Slice 6: ward medicine returns before and after the bill, and Credit Notes on
   `ipd` Invoices.
 - Slice 7: the IPD desk report with print and XLSX.
@@ -361,16 +361,9 @@ before and after the move, not against what each bill charged. A move back to th
 bed type a day was billed at, recorded within the ten-minute tolerance, can be
 refused; no money moves either way, and the desk enters the move at a later time.
 
-For the hospital's accountant, with the cash limit's legal basis: the
-₹2,00,000 limit counts cash taken against the stay: its cash deposits and the
-cash Payments on its bills, each less the cash handed back from that same
-receipt or bill. Cash taken as an ordinary Patient advance and later applied to
-the stay's bill as credit is not counted.
-
 Packages wait for a pilot hospital that quotes them. The no-GSTIN rule (D063) is
-not yet applied to OPD or counter Pharmacy. The legal basis of the ₹2,00,000
-cash limit and whether a nursing line counts toward the ₹5,000 room-rent
-threshold are unverified
+not yet applied to OPD or counter Pharmacy. Whether a nursing line counts
+toward the ₹5,000 room-rent threshold is unverified
 ([defaults](./specs/ipd-admission-to-discharge.md#defaults-chosen-without-a-hospital)).
 
 ### [Facility booking and theatre](./specs/facility-booking-and-theatre.md)

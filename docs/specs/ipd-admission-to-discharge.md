@@ -122,7 +122,7 @@ Two printables come from the same read. The **interim bill** is labelled "Interi
 
 Nothing blocks care for money. A running bill above the deposit shows **Deposit short by ₹X** on the board and the Admission; that is the whole control.
 
-Cash received for one Admission stays under ₹2,00,000: its cash deposits plus cash Payments on its `ipd` Invoices, each less the cash refunded from that same receipt or Invoice. Cash refunded out of money that arrived another way frees no room, and other methods are not counted. Three commands check it under the Admission lock and refuse (`BAD_REQUEST`, naming ₹2,00,000) a cash amount that would reach the limit: `billing.recordAdvance` with an `admissionId`, `ipd.issueInvoice`, and `billing.recordPayments` on an `ipd` Invoice. The limit is a constant, not a setting.
+Cash has no limit. When banks are closed a family may bring more than ₹2,00,000 in cash, and the hospital takes it (owner, 2026-11-18). Income Tax Act s.269ST is for the hospital and its accountant to answer, not a refusal at the desk.
 
 Preserve D029: the bill addresses the Patient and Sponsor remains measurement only. Patient-only IPD ships for self-pay Admissions; the [Claims contract](./cashless-claims.md) adds its allocation to the same `ipd.issueInvoice`.
 
@@ -142,11 +142,11 @@ Unchanged from D056 and D063. Inpatient healthcare and its naturally bundled med
 
 ### Locks
 
-D040's order holds: Patient (admit only) → OPD Appointment → Admission → Beds by id → Treatment, Charge, Invoice, Product, batch, Advance Receipt. The cash limit locks the Admission before a deposit receipt or an `ipd` Invoice's Payments; a return locks the Admission, then its live Charges, then the Invoice, then the batches. Numbering series are taken after domain locks, invoice then receipt, with the admission series taken inside admit. No new replay keys or automatic retries (D039).
+D040's order holds: Patient (admit only) → OPD Appointment → Admission → Beds by id → Treatment, Charge, Invoice, Product, batch, Advance Receipt. A deposit locks its Admission before the receipt; a return locks the Admission, then its live Charges, then the Invoice, then the batches. Numbering series are taken after domain locks, invoice then receipt, with the admission series taken inside admit. No new replay keys or automatic retries (D039).
 
 ## Test Seams
 
-The module interface is guarded `ipd.*`, the inpatient pharmacy procedures and the extended billing procedures; `clientFor` tests exercise the same permissions and transactions as HTTP. `bedDays` gets pure unit tests for the boundary cases above, a multi-move day, a tie, a time zone other than the default and a tariff change mid-stay. Integration tests follow `tests/integration/ipd-billing.test.ts` and `ipd.test.ts`: a stale total across checkout is refused, a second bill takes only what the first left, an uncharged last day issues no Invoice, credit never crosses Admissions, the cash limit refuses, reopen is refused once the bed is taken, and the exclusion constraints reject an overlapping backdated transfer. New procedures join `GUARDED_CALLS`.
+The module interface is guarded `ipd.*`, the inpatient pharmacy procedures and the extended billing procedures; `clientFor` tests exercise the same permissions and transactions as HTTP. `bedDays` gets pure unit tests for the boundary cases above, a multi-move day, a tie, a time zone other than the default and a tariff change mid-stay. Integration tests follow `tests/integration/ipd-billing.test.ts` and `ipd.test.ts`: a stale total across checkout is refused, a second bill takes only what the first left, an uncharged last day issues no Invoice, credit never crosses Admissions, reopen is refused once the bed is taken, and the exclusion constraints reject an overlapping backdated transfer. New procedures join `GUARDED_CALLS`.
 
 ## Task Plan
 
@@ -169,7 +169,6 @@ Each is ours, taken from the nearest reference practice, and changes only when a
 - A well newborn billed on the mother's Admission.
 - Deposits spent only on the stay's own bills.
 - The estimate's suggested deposit is its total rounded up to a multiple of ₹100; a total already on a multiple stays as it is.
-- The ₹2,00,000 cash limit as a refusal. Its basis is believed to be Income Tax Act s.269ST; the hospital's accountant confirms it before release, including whether cash taken as an ordinary Patient advance and later applied to the stay's bill should count (today it does not).
 - Whether a separately listed nursing line counts toward the ₹5,000 room-rent threshold is a question for the hospital's tax adviser; the product takes whatever rate the Service carries.
 
 ## Out of Scope

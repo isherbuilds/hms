@@ -330,17 +330,6 @@ async function createHospital(seed: string) {
   };
 }
 
-async function messageOf(promise: Promise<unknown>): Promise<string> {
-  try {
-    await promise;
-  } catch (error) {
-    // SAFETY: oRPC client errors are Errors carrying the handler's message.
-    return (error as Error).message;
-  }
-
-  throw new Error("expected the call to be refused");
-}
-
 // ── Taking a deposit ────────────────────────────────────────────────────────
 
 test("a deposit on an Admission is an Advance Receipt tagged to the stay, and shows as deposit held", async () => {
@@ -741,126 +730,14 @@ test("a deposit, a top-up, the bill, a part-payment and a refund reconcile to th
   expect(invoice.balance.outstanding).toBe(3_000_00n);
 });
 
-// ── Cash limit ──────────────────────────────────────────────────────────────
+// ── Cash ────────────────────────────────────────────────────────────────────
 
-test("cash deposits that would take one stay to ₹2,00,000 are refused; other methods and refunds are counted right", async () => {
-  const hospital = await createHospital("deposit-cash-limit");
-  const { api, orgSlug } = hospital;
+// The hospital takes cash beyond ₹2,00,000 when the family brings it (owner, 2026-11-18).
+test("a stay takes a deposit of ₹2,00,000 or more in cash", async () => {
+  const hospital = await createHospital("deposit-large-cash");
   const { patientId, admission } = await hospital.admit(0);
 
-  const first = await hospital.deposit(patientId, admission.id, 150_000_00n);
+  await hospital.deposit(patientId, admission.id, 250_000_00n);
 
-  // Exactly ₹2,00,000 is already too much.
-  const refusal = hospital.deposit(patientId, admission.id, 50_000_00n);
-
-  await expectORPCCode(refusal, "BAD_REQUEST", "reaching the limit");
-  expect(await messageOf(hospital.deposit(patientId, admission.id, 50_000_00n))).toContain(
-    "2,00,000",
-  );
-
-  await hospital.deposit(patientId, admission.id, 49_999_99n);
-
-  // Cash is the only method the limit counts.
-  await hospital.deposit(patientId, admission.id, 100_000_00n, "upi");
-  await expectORPCCode(
-    hospital.deposit(patientId, admission.id, 1n),
-    "BAD_REQUEST",
-    "one paisa more in cash",
-  );
-
-  // Cash handed back makes room again.
-  await api.billing.recordAdvanceRefund({
-    orgSlug,
-    advanceReceiptId: first.id,
-    method: "cash",
-    amount: 20_000_00n,
-  });
-  await hospital.deposit(patientId, admission.id, 20_000_00n);
-  await expectORPCCode(
-    hospital.deposit(patientId, admission.id, 1n),
-    "BAD_REQUEST",
-    "back at the limit",
-  );
-
-  expect(await hospital.receiptRows()).toHaveLength(4);
-
-  // The limit is each stay's own.
-  const other = await hospital.admit(1);
-  await hospital.deposit(other.patientId, other.admission.id, 150_000_00n);
-});
-
-test("cash handed back out of money that did not come in as cash makes no room under the limit", async () => {
-  const hospital = await createHospital("deposit-cash-limit-refund");
-  const { api, orgSlug } = hospital;
-  const { patientId, admission } = await hospital.admit(0);
-  const byUpi = await hospital.deposit(patientId, admission.id, 150_000_00n, "upi");
-
-  await api.billing.recordAdvanceRefund({
-    orgSlug,
-    advanceReceiptId: byUpi.id,
-    method: "cash",
-    amount: 150_000_00n,
-  });
-
-  // The stay has taken no cash at all, so the whole limit applies to it, and no more.
-  await expectORPCCode(
-    hospital.deposit(patientId, admission.id, 200_000_00n),
-    "BAD_REQUEST",
-    "the whole limit in cash",
-  );
-
-  await hospital.deposit(patientId, admission.id, 199_999_99n);
-  await expectORPCCode(
-    hospital.deposit(patientId, admission.id, 1n),
-    "BAD_REQUEST",
-    "one paisa more",
-  );
-});
-
-test("a cash Payment on the bill, at issue or later, counts toward the same limit", async () => {
-  const hospital = await createHospital("deposit-cash-limit-bill");
-  const { api, orgSlug } = hospital;
-  const costly = await hospital.createService("Surgery", 250_000_00n);
-  const { patientId, admission } = await hospital.admit(0);
-  await hospital.deposit(patientId, admission.id, 150_000_00n);
-  await hospital.postService(admission.id, costly.id);
-  await hospital.ready(admission.id);
-
-  // ₹2,51,000 bill. ₹1,50,000 is already in as cash, so ₹50,000 more reaches the limit.
-  await expectORPCCode(
-    hospital.bill(admission.id, {
-      applyCredit: 150_000_00n,
-      payments: [{ method: "cash", amount: 50_000_00n }],
-      outstandingReason: "Balance by cheque",
-    }),
-    "BAD_REQUEST",
-    "cash at issue",
-  );
-  expect(await hospital.invoiceRows()).toEqual([]);
-  expect((await hospital.detail(admission.id)).depositHeld).toBe(150_000_00n);
-
-  const issued = await hospital.bill(admission.id, {
-    applyCredit: 150_000_00n,
-    payments: [
-      { method: "cash", amount: 40_000_00n },
-      { method: "upi", amount: 30_000_00n, reference: "UPI-777" },
-    ],
-    outstandingReason: "Balance by cheque",
-  });
-
-  const pay = (method: "cash" | "bank", amount: bigint) =>
-    api.billing.recordPayments({
-      orgSlug,
-      invoiceId: issued.invoiceId!,
-      payments: [{ method, amount, reference: method === "cash" ? undefined : "CHQ-1" }],
-    });
-
-  await expectORPCCode(pay("cash", 10_000_00n), "BAD_REQUEST", "cash after issue");
-  expect(await messageOf(pay("cash", 10_000_00n))).toContain("2,00,000");
-
-  await pay("cash", 9_999_99n);
-  await pay("bank", 21_000_01n);
-
-  const invoice = await api.billing.getInvoice({ orgSlug, invoiceId: issued.invoiceId! });
-  expect(invoice.balance.outstanding).toBe(0n);
+  expect((await hospital.detail(admission.id)).depositHeld).toBe(250_000_00n);
 });

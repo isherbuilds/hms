@@ -357,10 +357,8 @@ keeps its own locks (D040).
   The bill recomputes bed days under the Admission lock and compares the total
   with the reviewed one, so a checkout crossed since the preview refuses. A
   backdated transfer that would re-type or re-price a billed bed day is refused
-  under the same lock. The IPD cash limit locks the Admission before
-  the deposit receipt it creates or the `ipd` Invoice it pays, so two cash
-  commands on one stay serialize; `billing.recordPayments` reads the Invoice's
-  Admission unlocked first, because it never changes. A ward return locks the
+  under the same lock. A deposit locks its Admission before the receipt it
+  creates, so the stay cannot leave while it takes one. A ward return locks the
   Admission, then the issue lines' live Charges, then their Invoice, then the
   batches.
 - **Counters are locks.** A counter row stays locked until commit, which keeps a

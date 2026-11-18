@@ -65,7 +65,6 @@ import {
   readRunningBills,
   requireBilledDaysKept,
 } from "../lib/ipd-bill";
-import { requireUnderCashLimit } from "../lib/ipd-cash";
 import { orgInput, orgProcedure, requirePermission, type Scope } from "../lib/procedures/factory";
 import { money, pageLimit, paymentLine, reason, shortName } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
@@ -1985,8 +1984,6 @@ export const ipdRouter = {
         message: "Mark the Patient ready for discharge before issuing the bill.",
         expectedChargeRevision: input.expectedChargeRevision,
       });
-
-      await requireUnderCashLimit(tx, scope.orgId, admission.id, input.payments);
 
       const bedDay = await readBedDayBill(tx, scope.orgId, admission, input.lastDay, now);
 

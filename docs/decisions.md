@@ -1578,7 +1578,13 @@ instead of making a coordinator move or cancel the affected cases.
 left every open IPD choice to this review); evidence:
 [IPD reference systems](./research/ipd-reference-systems.md), which pins Marley
 Health, OpenMRS, Bahmni, Danphe, Care, GNU Health, Open Hospital and six
-published Indian hospital policies.** Contract:
+published Indian hospital policies. Amended 2026-11-18 on the owner's
+instruction: the ₹2,00,000 cash refusal is removed. Hospitals take more when
+banks are closed; tribunals have cancelled the penalty for urgent admissions
+([Lilavati, ITAT Mumbai](https://itat.gov.in/public/files/upload/1662633823-ITA%20No.%201568%20%26%201569%20Mum%202021-Ms.%20Lilavati%20Kirtilal%20mehta%20Medical%20Trust.pdf))
+and declined to treat a whole stay as one event
+([KNS Memorial, ITAT Lucknow](https://indiankanoon.org/doc/85330072/)), so the
+call stays with the desk and the accountant.** Contract:
 [IPD admission to discharge](./specs/ipd-admission-to-discharge.md). It replaces
 D056's pro-rata transfer split, reviewed bed days and package engine, and
 D063's one Invoice per Admission.
@@ -1597,8 +1603,9 @@ D063's one Invoice per Admission.
 - **The bill repeats.** Each `ipd` bill takes every pending Charge and every
   unbilled bed day; a stay may have several. Posting stays open after the first.
 - **Deposits are Advance Receipts tagged to the Admission**, applied first to
-  that stay's bills and never to another's. Care is never blocked for money.
-  Cash for one stay is refused at ₹2,00,000.
+  that stay's bills and never to another's. Care is never blocked for money,
+  and cash is never refused: a family may bring more than ₹2,00,000 when banks
+  are closed.
 - **A discharge can be undone** by owner or admin within 24 hours while the bed
   is still free. `cancelled` stays terminal.
 - **The stay carries its paper facts:** IPD number, attendant, medico-legal

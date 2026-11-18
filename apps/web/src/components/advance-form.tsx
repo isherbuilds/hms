@@ -165,7 +165,7 @@ export function TakeDepositDialog({
       defaultValues={{ method: "cash", amount: "", reference: "" }}
       success="Deposit recorded"
       onClose={onClose}
-      // A refusal the desk can act on here, such as the stay's cash limit.
+      // A refusal the desk can act on here, such as a missing Patient address.
       showsInline={(error) => hasErrorCode(error, "BAD_REQUEST")}
       refusalTitle="The deposit was not recorded"
       run={(value) =>
