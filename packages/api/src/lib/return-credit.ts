@@ -29,8 +29,8 @@ export function creditsByLine(rows: ReadonlyArray<LineMoney & { invoiceLineId: s
  * so many small returns never round ahead of the units back. Gross and GST are each
  * rounded half up and the value is their difference, so no return credits negative GST.
  * The last unit takes the exact remainder, so a full return reverses the line to the paisa.
- * A share whose taxable value, tax or gross would go over what is left, a bare price
- * correction among the earlier credits, credits exactly what is left.
+ * After a bare price correction the share is held to what is left: gross to the gross
+ * left, GST to the GST left, and value to the value left.
  */
 export function returnedUnitsCredit(
   source: LineMoney & { qty: number },
@@ -53,11 +53,12 @@ export function returnedUnitsCredit(
   const share = (amount: bigint) =>
     divideHalfUp(amount * after, sold) - divideHalfUp(amount * before, sold);
 
-  const gross = share(source.gross);
-  const taxAmount = share(source.taxAmount);
-  const taxableValue = gross - taxAmount;
+  const gross = min(share(source.gross), left.gross);
+  const taxAmount = max(gross - left.taxableValue, min(share(source.taxAmount), left.taxAmount));
 
-  return taxableValue > left.taxableValue || taxAmount > left.taxAmount || gross > left.gross
-    ? left
-    : { taxableValue, taxAmount, gross };
+  return { taxableValue: gross - taxAmount, taxAmount, gross };
 }
+
+const min = (a: bigint, b: bigint) => (a < b ? a : b);
+
+const max = (a: bigint, b: bigint) => (a > b ? a : b);

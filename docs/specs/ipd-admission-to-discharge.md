@@ -142,7 +142,7 @@ Unchanged from D056 and D063. Inpatient healthcare and its naturally bundled med
 
 ### Locks
 
-D040's order holds: Patient (admit only) → OPD Appointment → Admission → Beds by id → Treatment, Charge, Invoice, Product, batch, Advance Receipt. A deposit locks its Admission before the receipt; a return locks the Admission, then its live Charges, then the Invoice, then the batches. Numbering series are taken after domain locks, invoice then receipt, with the admission series taken inside admit. No new replay keys or automatic retries (D039).
+D040's order holds: Patient (admit and bed request) → OPD Appointment → Admission → Beds by id → Treatment, Charge, Invoice, Product, batch, Advance Receipt. A deposit locks its Admission before the receipt; a return locks the Admission, then its live Charges, then the Invoice, then the batches. Numbering series are taken after domain locks, invoice then receipt, with the admission series taken inside admit. No new replay keys or automatic retries (D039).
 
 ## Test Seams
 

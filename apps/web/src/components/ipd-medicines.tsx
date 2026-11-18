@@ -580,7 +580,7 @@ function ReturnLines({ lines }: { lines: ReturnLine[] }) {
             <div className="min-w-0">
               <p className="font-medium capitalize">{line.productName}</p>
               <p className="text-muted-foreground">
-                <span className="font-mono">{line.batchNumber}</span> ·{" "}
+                <span className="font-mono">{line.batchNumber}</span> · issued {line.issuedAt} ·{" "}
                 <span className="tabular-nums">
                   {line.left} of {line.issued} left
                 </span>{" "}
@@ -596,7 +596,7 @@ function ReturnLines({ lines }: { lines: ReturnLine[] }) {
             </div>
             <TextField
               name={`lines.${index}.qty`}
-              // One batch can be issued more than once: the issue time tells the inputs apart.
+              // One batch can be issued more than once: the issue time tells the rows apart.
               label={
                 <span className="sr-only">
                   {line.productName}, batch {line.batchNumber}, issued {line.issuedAt}, quantity
