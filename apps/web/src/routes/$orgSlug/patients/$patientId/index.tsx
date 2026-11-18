@@ -142,6 +142,13 @@ function RecordTab({
               <Empty>Not recorded</Empty>
             )}
           </Row>
+          <Row label="PAN">
+            {record.pan ? (
+              <span className="font-mono">{record.pan}</span>
+            ) : (
+              <Empty>Not recorded</Empty>
+            )}
+          </Row>
           <Row label="Guardian">
             {guardian ? (
               <span>
