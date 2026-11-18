@@ -32,6 +32,7 @@ import {
   type SystemAccountKey,
 } from "./ledger";
 import type { PaymentMethod } from "./schemas";
+import { creditsByLine } from "./return-credit";
 import { readOrgSettings, type OrgSettings } from "./settings-cache";
 
 export type BillingDocumentContext = {
@@ -716,23 +717,7 @@ export async function postCreditNoteTx(
     });
   }
 
-  const creditedByLine = new Map<
-    string,
-    { taxableValue: bigint; taxAmount: bigint; gross: bigint }
-  >();
-
-  for (const line of priorLines) {
-    const credited = creditedByLine.get(line.invoiceLineId) ?? {
-      taxableValue: 0n,
-      taxAmount: 0n,
-      gross: 0n,
-    };
-
-    credited.taxableValue += line.taxableValue;
-    credited.taxAmount += line.taxAmount;
-    credited.gross += line.gross;
-    creditedByLine.set(line.invoiceLineId, credited);
-  }
+  const creditedByLine = creditsByLine(priorLines);
 
   const sourceById = new Map(sourceLines.map((line) => [line.id, line]));
 

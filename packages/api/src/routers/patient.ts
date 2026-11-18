@@ -158,6 +158,7 @@ export const patientRouter = {
               allergies: fields.allergies ?? null,
               medicalHistory: fields.medicalHistory ?? null,
               uid: fields.uid ?? null,
+              pan: fields.pan ?? null,
               createdBy: scope.userId,
             })
             .returning();
@@ -582,6 +583,7 @@ export const patientRouter = {
             allergies: fields.allergies ?? null,
             medicalHistory: fields.medicalHistory ?? null,
             uid: fields.uid ?? null,
+            pan: fields.pan ?? null,
             updatedAt: sql`greatest(statement_timestamp(), ${patients.updatedAt} + interval '1 millisecond')::timestamptz(3)`,
           })
           .where(

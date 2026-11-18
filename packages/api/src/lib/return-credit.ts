@@ -26,8 +26,9 @@ export function creditsByLine(rows: ReadonlyArray<LineMoney & { invoiceLineId: s
  * The credit for `qty` units coming back on an invoice line, `returnedBefore` of which
  * came back earlier and `prior` of which earlier Credit Notes took off. The share is
  * cumulative: what `returnedBefore + qty` units are worth less what `returnedBefore` were,
- * each rounded half up, so many small returns never round ahead of the units back. The
- * last unit takes the exact remainder, so a full return reverses the line to the paisa.
+ * so many small returns never round ahead of the units back. Gross and GST are each
+ * rounded half up and the value is their difference, so no return credits negative GST.
+ * The last unit takes the exact remainder, so a full return reverses the line to the paisa.
  * A share whose taxable value, tax or gross would go over what is left, a bare price
  * correction among the earlier credits, credits exactly what is left.
  */
@@ -53,8 +54,8 @@ export function returnedUnitsCredit(
     divideHalfUp(amount * after, sold) - divideHalfUp(amount * before, sold);
 
   const gross = share(source.gross);
-  const taxableValue = share(source.taxableValue);
-  const taxAmount = gross - taxableValue;
+  const taxAmount = share(source.taxAmount);
+  const taxableValue = gross - taxAmount;
 
   return taxableValue > left.taxableValue || taxAmount > left.taxAmount || gross > left.gross
     ? left
