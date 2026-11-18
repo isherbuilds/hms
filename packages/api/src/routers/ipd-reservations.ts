@@ -1,6 +1,13 @@
 import { db } from "@hms/db";
 import type { DbTransaction } from "@hms/db/counter";
-import { bedCategories, bedReservations, beds, wards } from "@hms/db/schema/ipd";
+import {
+  ACTIVE_ADMISSION_STATUSES,
+  admissions,
+  bedCategories,
+  bedReservations,
+  beds,
+  wards,
+} from "@hms/db/schema/ipd";
 import { patients } from "@hms/db/schema/patients";
 import { ORPCError } from "@orpc/server";
 import {
@@ -26,6 +33,7 @@ import {
   assertUnoccupied,
   auditReservation,
   BACKDATE_TOLERANCE_MS,
+  liveReservationOf,
   lockBeds,
   requireInScope,
   type LockedBed,
@@ -399,6 +407,36 @@ export const ipdReservationsRouter = {
     ]);
 
     if (bed) requireCategory(bed, input.categoryId);
+
+    // One stay at a time: the waiting list never holds a second bed for a Patient.
+    const [[admitted], [waiting]] = await Promise.all([
+      db
+        .select({ id: admissions.id })
+        .from(admissions)
+        .where(
+          and(
+            eq(admissions.orgId, scope.orgId),
+            eq(admissions.patientId, input.patientId),
+            inArray(admissions.status, ACTIVE_ADMISSION_STATUSES),
+          ),
+        )
+        .limit(1),
+      db
+        .select({ id: bedReservations.id })
+        .from(bedReservations)
+        .where(liveReservationOf(scope.orgId, input.patientId, now))
+        .limit(1),
+    ]);
+
+    if (admitted) {
+      throw new ORPCError("CONFLICT", { message: "This Patient is already admitted." });
+    }
+
+    if (waiting) {
+      throw new ORPCError("CONFLICT", {
+        message: "This Patient already has a reservation. Change that one instead.",
+      });
+    }
 
     const id = Bun.randomUUIDv7();
 

@@ -54,6 +54,7 @@ import {
   BACKDATE_TOLERANCE_MS,
   clearHoldsForOccupancy,
   liveHolds,
+  liveReservationOf,
   lockBeds,
   requireInScope,
 } from "../lib/ipd-beds";
@@ -1198,14 +1199,7 @@ export const ipdRouter = {
           const [reserved] = await tx
             .select({ id: bedReservations.id })
             .from(bedReservations)
-            .where(
-              and(
-                eq(bedReservations.orgId, scope.orgId),
-                eq(bedReservations.patientId, input.patientId),
-                inArray(bedReservations.status, ["requested", "confirmed"]),
-                or(isNull(bedReservations.holdUntil), gt(bedReservations.holdUntil, new Date())),
-              ),
-            )
+            .where(liveReservationOf(scope.orgId, input.patientId, new Date()))
             .limit(1);
 
           if (reserved) {
