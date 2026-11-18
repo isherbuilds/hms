@@ -462,6 +462,29 @@ test("a Patient already on the waiting list is not added twice; a cancelled requ
   ]);
 });
 
+test("two desks adding one Patient to the waiting list at once: exactly one request", async () => {
+  const hospital = await createHospital("resv-request-race");
+  const { api, orgSlug, category } = hospital;
+  const patient = await registerPatient(api, orgSlug, "Race Request");
+
+  const results = await Promise.all(
+    [0, 1].map(() =>
+      settled(
+        api.ipd.requestBed({
+          orgSlug,
+          patientId: patient.id,
+          categoryId: category.id,
+          ...tomorrow(),
+        }),
+      ),
+    ),
+  );
+
+  expect(results.filter((result) => result.ok)).toHaveLength(1);
+  expect(results.find((result) => !result.ok)).toMatchObject({ code: "CONFLICT" });
+  expect(await listed(hospital, "all")).toHaveLength(1);
+});
+
 // ── Slice 2: confirm ────────────────────────────────────────────────────────
 
 test("confirming a request holds one bed: arrivals list it and the board shows it as a hold", async () => {
