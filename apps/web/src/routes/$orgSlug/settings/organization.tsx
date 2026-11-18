@@ -15,7 +15,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { ClientOnly, createFileRoute, useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useFormContext, useFormState } from "react-hook-form";
-import type { z } from "zod";
+import { z } from "zod";
 
 import { appHead } from "@/config/site";
 import { numberText } from "@/lib/form-schema";
@@ -50,8 +50,35 @@ const formSchema = settingsFields
     fiscalYearStartMonth: numberText(settingsFields.shape.fiscalYearStartMonth),
     followUpValidityDays: numberText(settingsFields.shape.followUpValidityDays),
     unbilledAlertHours: numberText(settingsFields.shape.unbilledAlertHours),
+    // Typed as a wall time, stored as minutes after midnight.
+    ipdCheckoutMinutes: z
+      .string()
+      .regex(/^\d{2}:\d{2}$/, "Enter a time")
+      .transform((time) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3)))
+      .pipe(settingsFields.shape.ipdCheckoutMinutes),
   })
   .superRefine(settingsRules);
+
+const wallTime = (minutes: number) =>
+  `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+
+// Every half hour of the day, plus a saved time between them so it is never lost.
+const HALF_HOURS = Array.from({ length: 48 }, (_, index) => wallTime(index * 30));
+
+const checkoutChoices = (current: string) =>
+  HALF_HOURS.includes(current) ? HALF_HOURS : [...HALF_HOURS, current].toSorted();
+
+// "12:00 noon", "9:30 am": the desk reads a clock, not minutes after midnight.
+function clockLabel(time: string) {
+  const hours = Number(time.slice(0, 2));
+  const minutes = Number(time.slice(3));
+
+  if (hours === 12 && minutes === 0) return "12:00 noon";
+
+  if (hours === 0 && minutes === 0) return "12:00 midnight";
+
+  return `${hours % 12 || 12}:${String(minutes).padStart(2, "0")} ${hours < 12 ? "am" : "pm"}`;
+}
 
 function toFormValues(settings: SettingsFields) {
   return {
@@ -59,6 +86,7 @@ function toFormValues(settings: SettingsFields) {
     fiscalYearStartMonth: String(settings.fiscalYearStartMonth),
     followUpValidityDays: String(settings.followUpValidityDays),
     unbilledAlertHours: String(settings.unbilledAlertHours),
+    ipdCheckoutMinutes: wallTime(settings.ipdCheckoutMinutes),
   };
 }
 
@@ -298,6 +326,38 @@ function SettingsForm({ orgSlug, defaults }: { orgSlug: string; defaults: Settin
                 max={168}
                 step={1}
                 description="Checked-in visits with older charges appear as unbilled."
+              />
+            </div>
+          </section>
+
+          <section
+            aria-labelledby="inpatient"
+            className="grid gap-4 border-t border-border pt-6 md:grid-cols-3"
+          >
+            <div className="flex flex-col gap-1">
+              <h2 id="inpatient" className="min-h-6 text-xs text-muted-foreground">
+                Inpatient
+              </h2>
+              <p className="max-w-xs leading-relaxed text-muted-foreground">
+                How an admitted patient's bed is charged.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 md:col-span-2">
+              <ControlledField
+                name="ipdCheckoutMinutes"
+                label="Bed-day checkout time"
+                description="A bed day ends at this time. A change applies to new admissions only."
+                render={(field) => (
+                  <FormControl>
+                    <NativeSelect {...field} className="tabular-nums">
+                      {checkoutChoices(field.value).map((time) => (
+                        <option key={time} value={time}>
+                          {clockLabel(time)}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </FormControl>
+                )}
               />
             </div>
           </section>

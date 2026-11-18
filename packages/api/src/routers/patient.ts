@@ -29,6 +29,7 @@ import {
   guardianRelation,
   likePattern,
   pageLimit,
+  pan,
   personName,
   phone,
   searchQuery,
@@ -56,6 +57,7 @@ const patientFields = z.object({
   allergies: z.string().nullish(),
   medicalHistory: z.string().nullish(),
   uid: z.string().trim().min(1).max(100).nullish(),
+  pan: pan.nullish(),
   // Nested so the shape carries the rule: null, or every required part present.
   guardian: z
     .object({ relation: guardianRelation, name: personName, phone: phone.nullish() })
@@ -156,6 +158,7 @@ export const patientRouter = {
               allergies: fields.allergies ?? null,
               medicalHistory: fields.medicalHistory ?? null,
               uid: fields.uid ?? null,
+              pan: fields.pan ?? null,
               createdBy: scope.userId,
             })
             .returning();
@@ -421,6 +424,8 @@ export const patientRouter = {
             currency: advanceReceipts.currency,
             amount: advanceReceipts.amount,
             remaining: advanceRemaining(scope.orgId),
+            // Set on a stay's deposit, which only that stay's desk refunds.
+            admissionId: advanceReceipts.admissionId,
           })
           .from(advanceReceipts)
           .where(
@@ -578,6 +583,7 @@ export const patientRouter = {
             allergies: fields.allergies ?? null,
             medicalHistory: fields.medicalHistory ?? null,
             uid: fields.uid ?? null,
+            pan: fields.pan ?? null,
             updatedAt: sql`greatest(statement_timestamp(), ${patients.updatedAt} + interval '1 millisecond')::timestamptz(3)`,
           })
           .where(

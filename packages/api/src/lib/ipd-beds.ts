@@ -1,7 +1,7 @@
 import type { DbTransaction } from "@hms/db/counter";
 import { admissionBedStays, bedReservations, beds } from "@hms/db/schema/ipd";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq, gt, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 
 import { audit } from "../audit";
 import { conflict } from "./conflict";
@@ -9,6 +9,16 @@ import type { Scope } from "./procedures/factory";
 
 // A desk entry a few minutes late is ordinary; anything older is a correction.
 export const BACKDATE_TOLERANCE_MS = 10 * 60 * 1_000;
+
+/** The Patient's reservation that still stands: requested or held, and not lapsed. */
+export function liveReservationOf(orgId: string, patientId: string, now: Date) {
+  return and(
+    eq(bedReservations.orgId, orgId),
+    eq(bedReservations.patientId, patientId),
+    inArray(bedReservations.status, ["requested", "confirmed"]),
+    or(isNull(bedReservations.holdUntil), gt(bedReservations.holdUntil, now)),
+  );
+}
 
 export async function requireInScope<T>(promise: Promise<T[]>, message: string): Promise<T> {
   const [row] = await promise;

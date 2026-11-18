@@ -1,6 +1,13 @@
 import { db } from "@hms/db";
 import type { DbTransaction } from "@hms/db/counter";
-import { bedCategories, bedReservations, beds, wards } from "@hms/db/schema/ipd";
+import {
+  ACTIVE_ADMISSION_STATUSES,
+  admissions,
+  bedCategories,
+  bedReservations,
+  beds,
+  wards,
+} from "@hms/db/schema/ipd";
 import { patients } from "@hms/db/schema/patients";
 import { ORPCError } from "@orpc/server";
 import {
@@ -26,6 +33,7 @@ import {
   assertUnoccupied,
   auditReservation,
   BACKDATE_TOLERANCE_MS,
+  liveReservationOf,
   lockBeds,
   requireInScope,
   type LockedBed,
@@ -353,7 +361,8 @@ const windowInput = {
 };
 
 export const ipdReservationsRouter = {
-  // A waitlist entry: it promises no capacity, so it takes no lock.
+  // A waitlist entry promises no capacity. It locks only the Patient, as admit does, so a
+  // request and an admission of one Patient take turns (D040).
   requestBed: orgProcedure(
     { ipd: ["create"] },
     orgInput.extend({
@@ -369,15 +378,7 @@ export const ipdReservationsRouter = {
 
     if (input.holdUntil) requireHoldTime(input, input.holdUntil, now);
 
-    const [, , bed] = await Promise.all([
-      requireInScope(
-        db
-          .select({ id: patients.id })
-          .from(patients)
-          .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, input.patientId)))
-          .limit(1),
-        "That Patient no longer exists.",
-      ),
+    const [, bed] = await Promise.all([
       requireInScope(
         db
           .select({ id: bedCategories.id })
@@ -402,17 +403,58 @@ export const ipdReservationsRouter = {
 
     const id = Bun.randomUUIDv7();
 
-    await db.insert(bedReservations).values({
-      id,
-      orgId: scope.orgId,
-      patientId: input.patientId,
-      categoryId: input.categoryId,
-      bedId: input.bedId ?? null,
-      plannedArrivalAt: input.plannedArrivalAt,
-      plannedDepartureAt: input.plannedDepartureAt,
-      holdUntil: input.holdUntil ?? null,
-      status: "requested",
-      createdBy: scope.userId,
+    await db.transaction(async (tx) => {
+      await requireInScope(
+        tx
+          .select({ id: patients.id })
+          .from(patients)
+          .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, input.patientId)))
+          .for("update"),
+        "That Patient no longer exists.",
+      );
+
+      // One stay at a time: the waiting list never holds a second bed for a Patient.
+      const [[admitted], [waiting]] = await Promise.all([
+        tx
+          .select({ id: admissions.id })
+          .from(admissions)
+          .where(
+            and(
+              eq(admissions.orgId, scope.orgId),
+              eq(admissions.patientId, input.patientId),
+              inArray(admissions.status, ACTIVE_ADMISSION_STATUSES),
+            ),
+          )
+          .limit(1),
+        tx
+          .select({ id: bedReservations.id })
+          .from(bedReservations)
+          .where(liveReservationOf(scope.orgId, input.patientId, now))
+          .limit(1),
+      ]);
+
+      if (admitted) {
+        throw new ORPCError("CONFLICT", { message: "This Patient is already admitted." });
+      }
+
+      if (waiting) {
+        throw new ORPCError("CONFLICT", {
+          message: "This Patient already has a reservation. Change that one instead.",
+        });
+      }
+
+      await tx.insert(bedReservations).values({
+        id,
+        orgId: scope.orgId,
+        patientId: input.patientId,
+        categoryId: input.categoryId,
+        bedId: input.bedId ?? null,
+        plannedArrivalAt: input.plannedArrivalAt,
+        plannedDepartureAt: input.plannedDepartureAt,
+        holdUntil: input.holdUntil ?? null,
+        status: "requested",
+        createdBy: scope.userId,
+      });
     });
 
     return readReservation(db, scope.orgId, id);

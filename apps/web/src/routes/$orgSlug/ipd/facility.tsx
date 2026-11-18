@@ -6,10 +6,11 @@ import { toast } from "sonner";
 
 import { appHead } from "@/config/site";
 import { useConfirm } from "@/components/confirm-dialog";
-import { BedCategoryDialog, BedDialog, TariffDialog, WardDialog } from "@/components/ipd-dialogs";
+import { BedCategoryDialog, BedDialog, WardDialog } from "@/components/ipd-dialogs";
+import { TariffDialog } from "@/components/ipd-tariff-dialog";
 import { DataList, ListState, LoadMore, PageBody, PageHeader, Panel } from "@/components/page";
 import { useMembership } from "@/lib/membership";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
@@ -130,8 +131,25 @@ function FacilityRoute() {
                 columns={[
                   { head: "Bed type", cell: (category) => category.name, mobile: "title" },
                   {
-                    head: "Billed as",
-                    cell: (category) => category.currentTariff?.serviceName ?? "—",
+                    head: "Charged each day",
+                    // One line's price is the day's total, so it shows once, under Per day.
+                    cell: (category) =>
+                      category.currentTariff ? (
+                        <ul className="flex flex-col">
+                          {category.currentTariff.lines.map((line, _, lines) => (
+                            <li key={line.catalogItemId} className="flex justify-between gap-3">
+                              <span className="min-w-0">{line.serviceName}</span>
+                              {lines.length > 1 ? (
+                                <span className="tabular-nums">
+                                  {formatMoney(line.dailyPrice, currency)}
+                                </span>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        "—"
+                      ),
                   },
                   {
                     head: "Since",
@@ -145,11 +163,17 @@ function FacilityRoute() {
                       ),
                   },
                   {
-                    head: "Daily rate",
+                    head: "Per day",
                     cell: (category) =>
                       category.currentTariff ? (
                         <span className="tabular-nums">
-                          {formatMoney(category.currentTariff.dailyPrice, currency)}
+                          {formatMoney(
+                            category.currentTariff.lines.reduce(
+                              (sum, line) => sum + line.dailyPrice,
+                              ZERO,
+                            ),
+                            currency,
+                          )}
                         </span>
                       ) : (
                         <span className="text-destructive">No rate: beds cannot be taken</span>

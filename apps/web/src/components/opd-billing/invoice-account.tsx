@@ -112,6 +112,8 @@ export function InvoiceAccount({
   treatmentPlanId,
   canCredit,
   canPay,
+  stayCredit,
+  medicineCreditNote,
 }: {
   orgSlug: string;
   invoice: InvoiceHeader;
@@ -119,6 +121,10 @@ export function InvoiceAccount({
   treatmentPlanId: string | null;
   canCredit: boolean;
   canPay: boolean;
+  /** An IPD bill's credit: its stay's deposit and untagged credit, read with the bill. */
+  stayCredit?: PatientCredit;
+  /** Said on the credit form when the bill holds medicine whose goods come back another way. */
+  medicineCreditNote?: string;
 }) {
   const queryClient = useQueryClient();
   const [action, setAction] = useState<Action | null>(null);
@@ -130,9 +136,11 @@ export function InvoiceAccount({
   });
 
   const openPayment = async () => {
-    const credit = invoice.patientId
-      ? await openingCredit(queryClient, orgSlug, invoice.patientId, treatmentPlanId)
-      : { usable: ZERO, total: ZERO };
+    const credit =
+      stayCredit ??
+      (invoice.patientId
+        ? await openingCredit(queryClient, orgSlug, invoice.patientId, treatmentPlanId)
+        : { usable: ZERO, total: ZERO });
 
     if (credit === null) return;
     setAction({ kind: "payment", credit });
@@ -269,6 +277,11 @@ export function InvoiceAccount({
             invoiceId={invoice.id}
             lines={detail.data.lines}
             currency={invoice.currency}
+            note={
+              detail.data.lines.some((line) => line.revenueCategory === "pharmacy")
+                ? medicineCreditNote
+                : undefined
+            }
           />
         ) : null}
         {action?.kind === "refund" && detail.data ? (
@@ -338,17 +351,19 @@ function CreditDialog({
   invoiceId,
   lines,
   currency,
+  note,
 }: {
   onClose: () => void;
   orgSlug: string;
   invoiceId: string;
   lines: Array<{ id: string; description: string; gross: bigint }>;
   currency: string;
+  note?: string;
 }) {
   return (
     <FormDialog
       title="Issue credit note"
-      description="Select full lines or enter a partial gross amount."
+      description={`Select full lines or enter a partial gross amount.${note ? ` ${note}` : ""}`}
       submitLabel="Issue credit note"
       schema={creditSchema}
       defaultValues={{

@@ -61,6 +61,7 @@ export const invoices = pgTable(
     patientMrn: text("patient_mrn"),
     patientPhone: text("patient_phone"),
     patientAddress: text("patient_address"),
+    patientPan: text("patient_pan"),
     // "W/o Gurmeet Singh" as printed; snapshotted like the name so the document is stable.
     patientGuardian: text("patient_guardian"),
     issuedBy: text("issued_by")
@@ -121,8 +122,8 @@ export const invoices = pgTable(
     uniqueIndex("invoices_org_pharmacy_sale_idx")
       .on(table.orgId, table.pharmacySaleId)
       .where(sql`${table.pharmacySaleId} is not null`),
-    // One bill per Admission in IPD Slice 1; supplemental invoices replace this later.
-    uniqueIndex("invoices_org_admission_idx")
+    // A stay may take several bills (D066).
+    index("invoices_org_admission_idx")
       .on(table.orgId, table.admissionId)
       .where(sql`${table.admissionId} is not null`),
     index("invoices_org_business_date_idx").on(table.orgId, table.businessDate),

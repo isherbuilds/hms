@@ -30,8 +30,9 @@ export function calculateInvoiceBalance({
   };
 }
 
-type ChargeInput = {
-  chargeId: string;
+// An IPD bed-day line has no Charge until the bill writes it, so its preview id is null.
+export type ChargeInput<Id extends string | null = string> = {
+  chargeId: Id;
   description: string;
   qty: number;
   unitPrice: bigint;
@@ -41,8 +42,8 @@ type ChargeInput = {
   priceBasis: PriceBasis;
 };
 
-type InvoiceLine = {
-  chargeId: string;
+type InvoiceLine<Id extends string | null = string> = {
+  chargeId: Id;
   description: string;
   qty: number;
   unitPrice: bigint;
@@ -77,8 +78,8 @@ function gcd(left: bigint, right: bigint): bigint {
   return left;
 }
 
-export function computeInvoiceLines(
-  charges: ChargeInput[],
+export function computeInvoiceLines<Id extends string | null = string>(
+  charges: ChargeInput<Id>[],
   discountPaise: bigint,
   { roundToRupee }: { roundToRupee: boolean },
 ) {
@@ -147,44 +148,46 @@ export function computeInvoiceLines(
   let addedTaxTotalPaise = 0n;
   let preRoundPaise = 0n;
 
-  const lines = preparedLines.map(({ charge, lineSubtotal, allocatedDiscount }): InvoiceLine => {
-    const netPaise = lineSubtotal - allocatedDiscount;
-    const rate = parseDecimal(charge.taxRatePercent);
-    const inclusive = charge.priceBasis === "inclusive";
+  const lines = preparedLines.map(
+    ({ charge, lineSubtotal, allocatedDiscount }): InvoiceLine<Id> => {
+      const netPaise = lineSubtotal - allocatedDiscount;
+      const rate = parseDecimal(charge.taxRatePercent);
+      const inclusive = charge.priceBasis === "inclusive";
 
-    // Inclusive: the net amount already contains the tax, so it is the gross and the
-    // taxable value is extracted from it. Exclusive: the net is taxable.
-    const taxableValuePaise = inclusive
-      ? divideHalfUp(netPaise * 10_000n, 10_000n + rate)
-      : netPaise;
+      // Inclusive: the net amount already contains the tax, so it is the gross and the
+      // taxable value is extracted from it. Exclusive: the net is taxable.
+      const taxableValuePaise = inclusive
+        ? divideHalfUp(netPaise * 10_000n, 10_000n + rate)
+        : netPaise;
 
-    const taxAmountPaise = inclusive
-      ? netPaise - taxableValuePaise
-      : divideHalfUp(netPaise * rate, 10_000n);
+      const taxAmountPaise = inclusive
+        ? netPaise - taxableValuePaise
+        : divideHalfUp(netPaise * rate, 10_000n);
 
-    const grossPaise = inclusive ? netPaise : netPaise + taxAmountPaise;
+      const grossPaise = inclusive ? netPaise : netPaise + taxAmountPaise;
 
-    taxTotalPaise += taxAmountPaise;
-    preRoundPaise += grossPaise;
+      taxTotalPaise += taxAmountPaise;
+      preRoundPaise += grossPaise;
 
-    if (!inclusive) addedTaxTotalPaise += taxAmountPaise;
+      if (!inclusive) addedTaxTotalPaise += taxAmountPaise;
 
-    return {
-      chargeId: charge.chargeId,
-      description: charge.description,
-      qty: charge.qty,
-      unitPrice: charge.unitPrice,
-      priceUnits: charge.priceUnits,
-      lineSubtotal,
-      allocatedDiscount,
-      taxableValue: taxableValuePaise,
-      taxRatePercent: charge.taxRatePercent,
-      taxAmount: taxAmountPaise,
-      gross: grossPaise,
-      taxCode: charge.taxCode,
-      priceBasis: charge.priceBasis,
-    };
-  });
+      return {
+        chargeId: charge.chargeId,
+        description: charge.description,
+        qty: charge.qty,
+        unitPrice: charge.unitPrice,
+        priceUnits: charge.priceUnits,
+        lineSubtotal,
+        allocatedDiscount,
+        taxableValue: taxableValuePaise,
+        taxRatePercent: charge.taxRatePercent,
+        taxAmount: taxAmountPaise,
+        gross: grossPaise,
+        taxCode: charge.taxCode,
+        priceBasis: charge.priceBasis,
+      };
+    },
+  );
 
   const grandTotal = roundToRupee ? divideHalfUp(preRoundPaise, 100n) * 100n : preRoundPaise;
 

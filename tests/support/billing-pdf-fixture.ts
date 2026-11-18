@@ -38,6 +38,7 @@ export function billingPdfFixture({
       patientMrn: "MRN-0001",
       patientPhone: "+919876543210",
       patientAddress: unicode ? "शिवाजी नगर, पुणे" : "Shivaji Nagar, Pune",
+      patientPan: null,
       patientGuardian: unicode ? "W/o राजेश शर्मा" : "W/o Rajesh Sharma",
       issuedBy: "user-1",
       issuedByName: unicode ? "अनीता देसाई" : "Anita Desai",
@@ -74,5 +75,6 @@ export function billingPdfFixture({
       refundsTotal: 0n,
       outstanding: total,
     },
+    admission: null,
   };
 }

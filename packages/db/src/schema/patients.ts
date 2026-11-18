@@ -26,6 +26,7 @@ export const patients = pgTable(
     allergies: text("allergies"),
     medicalHistory: text("medical_history"),
     uid: text("uid"),
+    pan: text("pan"),
     // Guardian and emergency contact are all-or-nothing pairs, enforced by the
     // API input, not here: their relation vocabularies live in `patient-relations.ts`
     // and change without a migration.

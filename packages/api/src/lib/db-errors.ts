@@ -5,14 +5,14 @@ import { ORPCError } from "@orpc/server";
  * `code` is never on the outermost one. The `seen` set stops a self-referential
  * cause from looping forever.
  */
-export function uniqueViolationConstraint(error: unknown): string | null | undefined {
+function violationConstraint(error: unknown, code: string): string | null | undefined {
   const seen = new Set<unknown>();
   let current = error;
 
   while (current && typeof current === "object" && !seen.has(current)) {
     seen.add(current);
 
-    if ("code" in current && current.code === "23505") {
+    if ("code" in current && current.code === code) {
       const constraint = "constraint" in current ? current.constraint : undefined;
 
       return typeof constraint === "string" ? constraint : null;
@@ -22,6 +22,14 @@ export function uniqueViolationConstraint(error: unknown): string | null | undef
   }
 
   return undefined;
+}
+
+export function uniqueViolationConstraint(error: unknown): string | null | undefined {
+  return violationConstraint(error, "23505");
+}
+
+export function exclusionViolationConstraint(error: unknown): string | null | undefined {
+  return violationConstraint(error, "23P01");
 }
 
 /** A unique-name collision as a CONFLICT naming `what`; any other error rethrows. */

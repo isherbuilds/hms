@@ -1,24 +1,42 @@
 const SEARCH_RADIUS_MS = 36 * 60 * 60 * 1_000;
 
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+
+const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
+
 function dateFormatter(timeZone: string): Intl.DateTimeFormat {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
+  let formatter = dateFormatters.get(timeZone);
+
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    dateFormatters.set(timeZone, formatter);
+  }
+
+  return formatter;
 }
 
 function dateTimeFormatter(timeZone: string): Intl.DateTimeFormat {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  });
+  let formatter = dateTimeFormatters.get(timeZone);
+
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+    dateTimeFormatters.set(timeZone, formatter);
+  }
+
+  return formatter;
 }
 
 function localMinuteKey(instant: number, formatter: Intl.DateTimeFormat): string {
@@ -40,7 +58,11 @@ export function businessDate(instant: Date, timeZone: string): string {
   return dateFormatter(timeZone).format(instant);
 }
 
-export function localDateTime(value: string, timeZone: string): Date {
+/**
+ * The first instant whose local wall time is `value` or later: the wall time itself, or
+ * the end of a daylight-saving gap that skips it.
+ */
+export function localWallTimeAtOrAfter(value: string, timeZone: string): Date {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
     throw new Error(`Invalid local date and time ${value}`);
   }
@@ -61,11 +83,22 @@ export function localDateTime(value: string, timeZone: string): Date {
     else atOrAfter = candidate;
   }
 
-  if (localMinuteKey(atOrAfter, formatter) !== value) {
+  return new Date(atOrAfter);
+}
+
+export function localDateTime(value: string, timeZone: string): Date {
+  const instant = localWallTimeAtOrAfter(value, timeZone);
+
+  if (localMinute(instant, timeZone) !== value) {
     throw new Error(`Local date and time ${value} does not exist in ${timeZone}`);
   }
 
-  return new Date(atOrAfter);
+  return instant;
+}
+
+/** A calendar date (YYYY-MM-DD) moved by whole days. */
+export function addDays(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
 export function businessDateAnchor(instant: Date, timeZone: string): Date {

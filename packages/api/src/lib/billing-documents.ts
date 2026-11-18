@@ -11,11 +11,11 @@ import { opdAppointments } from "@hms/db/schema/opd-appointments";
 import { payments } from "@hms/db/schema/payments";
 import { refunds } from "@hms/db/schema/refunds";
 import { ORPCError } from "@orpc/server";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { advanceRemaining } from "./advance-credit";
 import { businessDate, businessDateAnchor } from "./business-date";
-import { impossible } from "./conflict";
+import { conflict, impossible } from "./conflict";
 import { invoiceBalanceFor } from "./invoice-balance";
 import {
   computeInvoiceLines,
@@ -32,6 +32,7 @@ import {
   type SystemAccountKey,
 } from "./ledger";
 import type { PaymentMethod } from "./schemas";
+import { creditsByLine } from "./return-credit";
 import { readOrgSettings, type OrgSettings } from "./settings-cache";
 
 export type BillingDocumentContext = {
@@ -60,6 +61,7 @@ export type LockedInvoice = {
   patientId: string | null;
   stream: InvoiceStream;
   treatmentPlanId: string | null;
+  admissionId: string | null;
 };
 
 /** The OPD Appointment is a left join: a pharmacy invoice has no appointment. */
@@ -77,6 +79,7 @@ export async function lockInvoice(
       patientId: invoices.patientId,
       stream: invoices.stream,
       treatmentPlanId: opdAppointments.treatmentPlanId,
+      admissionId: invoices.admissionId,
     })
     .from(invoices)
     .leftJoin(
@@ -116,6 +119,16 @@ async function applyPatientCreditTx(
     });
   }
 
+  // A stay's deposit pays only that stay's bills (D066): an `ipd` Invoice draws on its
+  // own Admission's receipts and untagged credit, and no other Invoice on any deposit.
+  const spendable =
+    invoice.admissionId === null
+      ? isNull(advanceReceipts.admissionId)
+      : or(
+          eq(advanceReceipts.admissionId, invoice.admissionId),
+          and(isNull(advanceReceipts.admissionId), isNull(advanceReceipts.treatmentPlanId)),
+        );
+
   // Lock in one stable order, then read balances in a new statement: under READ COMMITTED
   // only a statement that starts after the lock sees allocations committed while it waited.
   // Credit only shrinks, so a receipt already spent in this snapshot is never locked.
@@ -126,6 +139,7 @@ async function applyPatientCreditTx(
       and(
         eq(advanceReceipts.orgId, scope.orgId),
         eq(advanceReceipts.patientId, patientId),
+        spendable,
         sql`${advanceRemaining(scope.orgId)} > 0`,
       ),
     )
@@ -136,6 +150,7 @@ async function applyPatientCreditTx(
     .select({
       id: advanceReceipts.id,
       treatmentPlanId: advanceReceipts.treatmentPlanId,
+      admissionId: advanceReceipts.admissionId,
       remaining: advanceRemaining(scope.orgId),
     })
     .from(advanceReceipts)
@@ -157,15 +172,19 @@ async function applyPatientCreditTx(
     throw new ORPCError("CONFLICT", { message: "That credit is no longer available." });
   }
 
-  // This visit's plan first, then untagged credit, and another plan's advance only last:
-  // money taken for one course is never the first to pay for something else. The sort
-  // is stable, so each group stays oldest-first.
-  const rank = (receipt: { treatmentPlanId: string | null }) =>
-    receipt.treatmentPlanId === invoice.treatmentPlanId
-      ? 0
-      : receipt.treatmentPlanId === null
-        ? 1
-        : 2;
+  // This stay's deposit or this visit's plan first, then untagged credit, and another
+  // plan's advance only last: money taken for one course is never the first to pay for
+  // something else. The sort is stable, so each group stays oldest-first.
+  const rank = (receipt: { treatmentPlanId: string | null; admissionId: string | null }) =>
+    invoice.admissionId !== null
+      ? receipt.admissionId === invoice.admissionId
+        ? 0
+        : 1
+      : receipt.treatmentPlanId === invoice.treatmentPlanId
+        ? 0
+        : receipt.treatmentPlanId === null
+          ? 1
+          : 2;
 
   receipts.sort((first, second) => rank(first) - rank(second));
 
@@ -215,6 +234,7 @@ type RegisteredPatient = {
   mrn: string;
   phone: string;
   address: string | null;
+  pan: string | null;
   guardian: string | null;
 };
 
@@ -234,6 +254,7 @@ export type InvoiceParent =
         mrn: string | null;
         phone: string | null;
         address: string | null;
+        pan: string | null;
         guardian: null;
       };
     };
@@ -311,7 +332,7 @@ export async function issueInvoiceTx(
     });
   }
 
-  let computed: ReturnType<typeof computeInvoiceLines>;
+  let computed: ReturnType<typeof computeInvoiceLines<string>>;
 
   try {
     computed = computeInvoiceLines(pendingCharges, args.discountAmount, {
@@ -399,6 +420,7 @@ export async function issueInvoiceTx(
       patientMrn: parent.patient.mrn,
       patientPhone: parent.patient.phone,
       patientAddress: parent.patient.address,
+      patientPan: parent.patient.pan,
       patientGuardian: parent.patient.guardian,
       issuedBy: scope.userId,
       createdAt: now,
@@ -499,9 +521,7 @@ export async function settleIssuedInvoiceTx(
   const due = args.invoice.grandTotal;
 
   if (due !== args.expectedGrandTotal) {
-    throw new ORPCError("CONFLICT", {
-      message: "The charges changed. Review the invoice and try again",
-    });
+    throw conflict("charges_changed", "The charges changed. Review the invoice and try again");
   }
 
   const collected = args.payments.reduce((sum, payment) => sum + payment.amount, 0n);
@@ -697,23 +717,7 @@ export async function postCreditNoteTx(
     });
   }
 
-  const creditedByLine = new Map<
-    string,
-    { taxableValue: bigint; taxAmount: bigint; gross: bigint }
-  >();
-
-  for (const line of priorLines) {
-    const credited = creditedByLine.get(line.invoiceLineId) ?? {
-      taxableValue: 0n,
-      taxAmount: 0n,
-      gross: 0n,
-    };
-
-    credited.taxableValue += line.taxableValue;
-    credited.taxAmount += line.taxAmount;
-    credited.gross += line.gross;
-    creditedByLine.set(line.invoiceLineId, credited);
-  }
+  const creditedByLine = creditsByLine(priorLines);
 
   const sourceById = new Map(sourceLines.map((line) => [line.id, line]));
 

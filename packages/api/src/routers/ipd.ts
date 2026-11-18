@@ -2,16 +2,19 @@ import { authorize } from "@hms/auth/access";
 import { db } from "@hms/db";
 import { catalogItems } from "@hms/db/schema/catalog-items";
 import { charges } from "@hms/db/schema/charges";
-import { invoiceLines } from "@hms/db/schema/invoice-lines";
+import { nextCounter } from "@hms/db/counter";
+import { advanceReceipts } from "@hms/db/schema/advance-receipts";
 import { invoices } from "@hms/db/schema/invoices";
 import {
   ACTIVE_ADMISSION_STATUSES,
+  DISCHARGE_TYPES,
   ENDED_ADMISSION_STATUSES,
   admissionBedStays,
   admissionPharmacyIssues,
   admissions,
   bedCategories,
   bedReservations,
+  bedTariffLines,
   bedTariffs,
   beds,
   wards,
@@ -20,9 +23,8 @@ import {
 import { guardianLabel } from "@hms/db/schema/patient-relations";
 import { patients } from "@hms/db/schema/patients";
 import { practitioners } from "@hms/db/schema/practitioners";
-import { stockBatches } from "@hms/db/schema/stock-batches";
 import { ORPCError } from "@orpc/server";
-import { and, asc, desc, eq, gt, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { audit } from "../audit";
@@ -32,15 +34,19 @@ import {
   expectedChargeRevision,
   lockAdmissionCharges,
   requireChargeable,
-  requireUnbilled,
 } from "../lib/admission-charges";
 import {
   billingDocumentContext,
   issueInvoiceTx,
   settleIssuedInvoiceTx,
 } from "../lib/billing-documents";
-import { impossible } from "../lib/conflict";
-import { nameConflict, uniqueViolationConstraint } from "../lib/db-errors";
+import { advanceRemaining, readDepositsHeld } from "../lib/advance-credit";
+import { conflict, impossible } from "../lib/conflict";
+import {
+  exclusionViolationConstraint,
+  nameConflict,
+  uniqueViolationConstraint,
+} from "../lib/db-errors";
 import {
   assertUnoccupied,
   auditDisruptions,
@@ -48,11 +54,19 @@ import {
   BACKDATE_TOLERANCE_MS,
   clearHoldsForOccupancy,
   liveHolds,
+  liveReservationOf,
   lockBeds,
   requireInScope,
 } from "../lib/ipd-beds";
+import {
+  billAdmissionSelection,
+  LAST_DAY_CHOICES,
+  readBedDayBill,
+  readPendingBill,
+  readRunningBills,
+  requireBilledDaysKept,
+} from "../lib/ipd-bill";
 import { orgInput, orgProcedure, requirePermission, type Scope } from "../lib/procedures/factory";
-import { computeInvoiceLines } from "../lib/invoice-math";
 import { money, pageLimit, paymentLine, reason, shortName } from "../lib/schemas";
 import { readOrgSettings } from "../lib/settings-cache";
 import {
@@ -97,6 +111,7 @@ const effectiveInput = {
 
 const admissionSelection = {
   id: admissions.id,
+  admissionNumber: admissions.admissionNumber,
   patientId: admissions.patientId,
   practitionerId: admissions.practitionerId,
   status: admissions.status,
@@ -105,6 +120,14 @@ const admissionSelection = {
   dischargedAt: admissions.dischargedAt,
   cancelledAt: admissions.cancelledAt,
   cancelReason: admissions.cancelReason,
+  attendantName: admissions.attendantName,
+  attendantPhone: admissions.attendantPhone,
+  medicoLegal: admissions.medicoLegal,
+  medicoLegalRef: admissions.medicoLegalRef,
+  diagnosis: admissions.diagnosis,
+  dischargeType: admissions.dischargeType,
+  checkoutMinutes: admissions.checkoutMinutes,
+  bedDaysBilled: admissions.bedDaysBilled,
   revision: admissions.revision,
   chargeRevision: admissions.chargeRevision,
 };
@@ -119,7 +142,7 @@ function admissionView(row: AdmissionRow, currentBedId: string | null) {
 
 async function lockAdmission(tx: Tx, orgId: string, admissionId: string, expectedRevision: number) {
   const [row] = await tx
-    .select(admissionSelection)
+    .select({ ...admissionSelection, timeZone: admissions.timeZone })
     .from(admissions)
     .where(and(eq(admissions.orgId, orgId), eq(admissions.id, admissionId)))
     .limit(1)
@@ -225,7 +248,7 @@ async function assertBedFree(
 
 async function tariffAt(tx: Tx, orgId: string, categoryId: string, at: Date) {
   const [tariff] = await tx
-    .select({ id: bedTariffs.id, dailyPrice: bedTariffs.dailyPrice })
+    .select({ id: bedTariffs.id })
     .from(bedTariffs)
     .where(
       and(
@@ -246,6 +269,8 @@ async function tariffAt(tx: Tx, orgId: string, categoryId: string, at: Date) {
   return tariff;
 }
 
+// The database backs the occupancy checks: an active stay per Patient is a unique
+// index, overlapping stay intervals are exclusion constraints.
 function occupancyConflict(error: unknown): never {
   const constraint = uniqueViolationConstraint(error);
 
@@ -256,6 +281,10 @@ function occupancyConflict(error: unknown): never {
           ? "This Patient is already admitted."
           : "That bed was just taken on another screen.",
     });
+  }
+
+  if (exclusionViolationConstraint(error) !== undefined) {
+    throw new ORPCError("CONFLICT", { message: "That bed was just taken on another screen." });
   }
 
   throw error;
@@ -293,24 +322,63 @@ function currentTariffs(orgId: string) {
     .selectDistinctOn([bedTariffs.categoryId], {
       id: bedTariffs.id,
       categoryId: bedTariffs.categoryId,
-      catalogItemId: bedTariffs.catalogItemId,
-      serviceName: catalogItems.name,
-      dailyPrice: bedTariffs.dailyPrice,
       effectiveFrom: bedTariffs.effectiveFrom,
     })
     .from(bedTariffs)
-    .innerJoin(
-      catalogItems,
-      and(eq(catalogItems.orgId, bedTariffs.orgId), eq(catalogItems.id, bedTariffs.catalogItemId)),
-    )
     .where(and(eq(bedTariffs.orgId, orgId), lte(bedTariffs.effectiveFrom, new Date())))
     .orderBy(bedTariffs.categoryId, desc(bedTariffs.effectiveFrom), desc(bedTariffs.id));
+}
+
+// The rates in force now with their daily lines, in billing order.
+function currentTariffLines(orgId: string) {
+  const current = currentTariffs(orgId).as("current_tariffs");
+
+  return db
+    .select({
+      tariffId: current.id,
+      categoryId: current.categoryId,
+      effectiveFrom: current.effectiveFrom,
+      catalogItemId: bedTariffLines.catalogItemId,
+      serviceName: catalogItems.name,
+      dailyPrice: bedTariffLines.dailyPrice,
+      taxRatePercent: catalogItems.taxRatePercent,
+    })
+    .from(current)
+    .innerJoin(
+      bedTariffLines,
+      and(eq(bedTariffLines.orgId, orgId), eq(bedTariffLines.tariffId, current.id)),
+    )
+    .innerJoin(
+      catalogItems,
+      and(eq(catalogItems.orgId, orgId), eq(catalogItems.id, bedTariffLines.catalogItemId)),
+    )
+    .orderBy(asc(bedTariffLines.position));
 }
 
 const transitionInput = orgInput.extend({
   admissionId: z.string(),
   expectedRevision: z.number().int().nonnegative(),
 });
+
+// Trimmed; an empty answer is stored as no answer.
+const stayText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .transform((value) => value || null);
+
+const stayFacts = {
+  attendantName: stayText(200),
+  attendantPhone: stayText(20),
+  medicoLegalRef: stayText(200),
+  diagnosis: stayText(500),
+};
+
+const MEDICO_LEGAL_REF_NEEDS_FLAG = "A medico-legal reference needs the medico-legal flag.";
+
+// A discharge recorded in error may be undone for this long.
+const REOPEN_WINDOW_MS = 24 * 60 * 60 * 1_000;
 
 const ADMISSION_STATES = {
   current: ACTIVE_ADMISSION_STATUSES,
@@ -346,17 +414,33 @@ export const ipdRouter = {
         .from(beds)
         .where(eq(beds.orgId, orgId))
         .orderBy(asc(beds.label)),
-      currentTariffs(orgId),
+      currentTariffLines(orgId),
     ]);
 
-    const currentTariff = new Map(tariffRows.map((tariff) => [tariff.categoryId, tariff]));
+    const tariffLinesByCategory = Map.groupBy(tariffRows, (row) => row.categoryId);
 
     return {
       wards: wardRows,
-      categories: categoryRows.map((category) => ({
-        ...category,
-        currentTariff: currentTariff.get(category.id) ?? null,
-      })),
+      categories: categoryRows.map((category) => {
+        const lines = tariffLinesByCategory.get(category.id) ?? [];
+        const [first] = lines;
+
+        return {
+          ...category,
+          currentTariff: first
+            ? {
+                id: first.tariffId,
+                effectiveFrom: first.effectiveFrom,
+                lines: lines.map(({ catalogItemId, serviceName, dailyPrice, taxRatePercent }) => ({
+                  catalogItemId,
+                  serviceName,
+                  dailyPrice,
+                  taxRatePercent,
+                })),
+              }
+            : null,
+        };
+      }),
       beds: bedRows,
     };
   }),
@@ -413,14 +497,22 @@ export const ipdRouter = {
     { ipd: ["manageFacility"] },
     orgInput.extend({
       categoryId: z.string(),
-      catalogItemId: z.string(),
-      dailyPrice: money,
       effectiveFrom: z.date(),
+      // Billed in this order: the room first, then nursing or similar daily lines.
+      lines: z
+        .array(z.object({ catalogItemId: z.string(), dailyPrice: money }))
+        .min(1)
+        .max(10)
+        .refine(
+          (lines) => new Set(lines.map((line) => line.catalogItemId)).size === lines.length,
+          "List each service once.",
+        ),
     }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
+    const itemIds = input.lines.map((line) => line.catalogItemId);
 
-    await Promise.all([
+    const [, items, settings] = await Promise.all([
       requireInScope(
         db
           .select({ id: bedCategories.id })
@@ -429,25 +521,34 @@ export const ipdRouter = {
           .limit(1),
         "That bed category no longer exists.",
       ),
-      requireInScope(
-        db
-          .select({ id: catalogItems.id })
-          .from(catalogItems)
-          .where(
-            and(
-              eq(catalogItems.orgId, scope.orgId),
-              eq(catalogItems.id, input.catalogItemId),
-              eq(catalogItems.active, true),
-            ),
-          )
-          .limit(1),
-        "That service no longer exists.",
-      ),
+      db
+        .select({ id: catalogItems.id, taxRatePercent: catalogItems.taxRatePercent })
+        .from(catalogItems)
+        .where(
+          and(
+            eq(catalogItems.orgId, scope.orgId),
+            inArray(catalogItems.id, itemIds),
+            eq(catalogItems.active, true),
+          ),
+        ),
+      readOrgSettings(scope.orgId),
     ]);
+
+    if (items.length !== itemIds.length) {
+      throw new ORPCError("NOT_FOUND", { message: "That service no longer exists." });
+    }
+
+    // No GSTIN, no GST (D063), as for services posted to a stay.
+    if (!settings.gstin && items.some((item) => Number(item.taxRatePercent) > 0)) {
+      throw new ORPCError("BAD_REQUEST", {
+        message:
+          "This hospital has no GSTIN, so a daily charge cannot carry GST. Set the service to 0% GST first.",
+      });
+    }
 
     const id = Bun.randomUUIDv7();
 
-    const [tariff] = await db
+    await db
       .transaction(async (tx) => {
         // The category lock serialises its rate writers, so two rates cannot start at one
         // instant and leave the rate in force to an id tiebreak.
@@ -475,21 +576,29 @@ export const ipdRouter = {
           });
         }
 
-        return tx
-          .insert(bedTariffs)
-          .values({
-            id,
+        await tx.insert(bedTariffs).values({
+          id,
+          orgId: scope.orgId,
+          categoryId: input.categoryId,
+          effectiveFrom: input.effectiveFrom,
+          createdBy: scope.userId,
+        });
+
+        await tx.insert(bedTariffLines).values(
+          input.lines.map((line, position) => ({
+            id: Bun.randomUUIDv7(),
             orgId: scope.orgId,
-            categoryId: input.categoryId,
-            catalogItemId: input.catalogItemId,
-            dailyPrice: input.dailyPrice,
-            effectiveFrom: input.effectiveFrom,
-            createdBy: scope.userId,
-          })
-          .returning();
+            tariffId: id,
+            catalogItemId: line.catalogItemId,
+            dailyPrice: line.dailyPrice,
+            position,
+          })),
+        );
         // The unique index backs the check above should the lock ever be bypassed.
       })
       .catch((error: unknown) => nameConflict(error, "A rate starting at that time"));
+
+    const { lines } = input;
 
     audit({
       action: "ipd.tariff.set",
@@ -498,13 +607,15 @@ export const ipdRouter = {
       target: `bed_category:${input.categoryId}`,
       meta: {
         tariffId: id,
-        catalogItemId: input.catalogItemId,
-        dailyPrice: input.dailyPrice.toString(),
         effectiveFrom: input.effectiveFrom.toISOString(),
+        lines: lines.map((line) => ({
+          catalogItemId: line.catalogItemId,
+          dailyPrice: line.dailyPrice.toString(),
+        })),
       },
     });
 
-    return tariff!;
+    return { id, categoryId: input.categoryId, effectiveFrom: input.effectiveFrom, lines };
   }),
 
   createBed: orgProcedure(
@@ -756,13 +867,22 @@ export const ipdRouter = {
       .where(and(eq(beds.orgId, orgId), eq(beds.active, true)))
       .orderBy(asc(wards.name), asc(beds.label));
 
+    const now = new Date();
+
     const [rows, tariffRows, holds] = await Promise.all([
       boardRows,
       currentTariffs(orgId),
-      boardHolds(orgId, new Date()),
+      boardHolds(orgId, now),
     ]);
 
     const priced = new Set(tariffRows.map((tariff) => tariff.categoryId));
+
+    const occupied = rows.flatMap((row) => (row.admissionId ? [row.admissionId] : []));
+
+    const [runningBills, depositsHeld] = await Promise.all([
+      readRunningBills(db, orgId, occupied, now),
+      readDepositsHeld(db, orgId, occupied),
+    ]);
 
     return {
       beds: rows.map((row) => {
@@ -776,6 +896,8 @@ export const ipdRouter = {
               patientName: row.patientName!,
               mrn: row.mrn!,
               practitionerName: row.practitionerName!,
+              runningBill: runningBills.get(row.admissionId)!.amount,
+              depositHeld: depositsHeld.get(row.admissionId)!,
             }
           : null;
 
@@ -817,6 +939,7 @@ export const ipdRouter = {
     const items = await db
       .select({
         id: admissions.id,
+        admissionNumber: admissions.admissionNumber,
         status: admissions.status,
         admittedAt: admissions.admittedAt,
         readyAt: admissions.readyAt,
@@ -876,8 +999,20 @@ export const ipdRouter = {
 
     const last = items.at(-1);
 
+    const ids = items.map((item) => item.id);
+
+    const [runningBills, depositsHeld] = await Promise.all([
+      readRunningBills(db, orgId, ids, new Date()),
+      readDepositsHeld(db, orgId, ids),
+    ]);
+
     return {
-      items,
+      // SAFETY: one running bill and one deposit per Admission listed.
+      items: items.map((item) => ({
+        ...item,
+        runningBill: runningBills.get(item.id)!.amount,
+        depositHeld: depositsHeld.get(item.id)!,
+      })),
       nextCursor: hasNextPage && last ? { admittedAt: last.admittedAt, id: last.id } : null,
     };
   }),
@@ -915,26 +1050,47 @@ export const ipdRouter = {
             throw new ORPCError("NOT_FOUND", { message: "That admission does not exist." });
           }
 
-          const stays = await tx
-            .select({
-              id: admissionBedStays.id,
-              bedId: admissionBedStays.bedId,
-              bedLabel: beds.label,
-              wardName: wards.name,
-              dailyPrice: admissionBedStays.dailyPrice,
-              startedAt: admissionBedStays.startedAt,
-              endedAt: admissionBedStays.endedAt,
-            })
-            .from(admissionBedStays)
-            .innerJoin(
-              beds,
-              and(eq(beds.orgId, admissionBedStays.orgId), eq(beds.id, admissionBedStays.bedId)),
-            )
-            .innerJoin(wards, and(eq(wards.orgId, beds.orgId), eq(wards.id, beds.wardId)))
-            .where(
-              and(eq(admissionBedStays.orgId, orgId), eq(admissionBedStays.admissionId, row.id)),
-            )
-            .orderBy(asc(admissionBedStays.startedAt), asc(admissionBedStays.id));
+          const [stays, runningBills, depositsHeld] = await Promise.all([
+            tx
+              .select({
+                id: admissionBedStays.id,
+                bedId: admissionBedStays.bedId,
+                bedLabel: beds.label,
+                wardName: wards.name,
+                // The tariff a segment started under is its price and its bed type.
+                tariffId: admissionBedStays.tariffId,
+                categoryId: bedTariffs.categoryId,
+                categoryName: bedCategories.name,
+                startedAt: admissionBedStays.startedAt,
+                endedAt: admissionBedStays.endedAt,
+              })
+              .from(admissionBedStays)
+              .innerJoin(
+                beds,
+                and(eq(beds.orgId, admissionBedStays.orgId), eq(beds.id, admissionBedStays.bedId)),
+              )
+              .innerJoin(wards, and(eq(wards.orgId, beds.orgId), eq(wards.id, beds.wardId)))
+              .innerJoin(
+                bedTariffs,
+                and(
+                  eq(bedTariffs.orgId, admissionBedStays.orgId),
+                  eq(bedTariffs.id, admissionBedStays.tariffId),
+                ),
+              )
+              .innerJoin(
+                bedCategories,
+                and(
+                  eq(bedCategories.orgId, bedTariffs.orgId),
+                  eq(bedCategories.id, bedTariffs.categoryId),
+                ),
+              )
+              .where(
+                and(eq(admissionBedStays.orgId, orgId), eq(admissionBedStays.admissionId, row.id)),
+              )
+              .orderBy(asc(admissionBedStays.startedAt), asc(admissionBedStays.id)),
+            readRunningBills(tx, orgId, [row.id], new Date()),
+            readDepositsHeld(tx, orgId, [row.id]),
+          ]);
 
           const { patientName, mrn, practitionerName, ...admission } = row;
           const current = stays.find((stay) => stay.endedAt === null);
@@ -944,6 +1100,9 @@ export const ipdRouter = {
             patient: { id: admission.patientId, name: patientName, mrn },
             practitionerName,
             stays,
+            // SAFETY: one running bill and one deposit per Admission read.
+            runningBill: runningBills.get(row.id)!.amount,
+            depositHeld: depositsHeld.get(row.id)!,
           };
         },
         { isolationLevel: "repeatable read", accessMode: "read only" },
@@ -963,18 +1122,27 @@ export const ipdRouter = {
         // Arrival against a confirmed hold converts it in the same transaction.
         reservationId: z.string().optional(),
         expectedReservationRevision: z.number().int().nonnegative().optional(),
+        attendantName: stayFacts.attendantName.optional(),
+        attendantPhone: stayFacts.attendantPhone.optional(),
+        medicoLegal: z.boolean().default(false),
+        medicoLegalRef: stayFacts.medicoLegalRef.optional(),
+        diagnosis: stayFacts.diagnosis.optional(),
         ...displaceInput,
       })
       .refine(
         (value) =>
           (value.reservationId === undefined) === (value.expectedReservationRevision === undefined),
         { message: "A reservation needs its expected revision.", path: ["reservationId"] },
-      ),
+      )
+      .refine((value) => value.medicoLegal || !value.medicoLegalRef, {
+        message: MEDICO_LEGAL_REF_NEEDS_FLAG,
+        path: ["medicoLegalRef"],
+      }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const effective = effectiveTime(scope, input.admittedAt, input.reason);
     requireDisplaceGrant(scope, input.displace);
-    const { timeZone } = await readOrgSettings(scope.orgId);
+    const { settings, fiscalYear } = await billingDocumentContext(scope.orgId);
 
     await requireInScope(
       db
@@ -1031,14 +1199,7 @@ export const ipdRouter = {
           const [reserved] = await tx
             .select({ id: bedReservations.id })
             .from(bedReservations)
-            .where(
-              and(
-                eq(bedReservations.orgId, scope.orgId),
-                eq(bedReservations.patientId, input.patientId),
-                inArray(bedReservations.status, ["requested", "confirmed"]),
-                or(isNull(bedReservations.holdUntil), gt(bedReservations.holdUntil, new Date())),
-              ),
-            )
+            .where(liveReservationOf(scope.orgId, input.patientId, new Date()))
             .limit(1);
 
           if (reserved) {
@@ -1085,6 +1246,8 @@ export const ipdRouter = {
 
         const tariff = await tariffAt(tx, scope.orgId, bed.categoryId, effective.at);
 
+        // After the domain locks, so a refused admit takes no number.
+        const sequence = await nextCounter(tx, scope.orgId, `admission:${fiscalYear}`);
         const id = Bun.randomUUIDv7();
 
         const [created] = await tx
@@ -1092,11 +1255,18 @@ export const ipdRouter = {
           .values({
             id,
             orgId: scope.orgId,
+            admissionNumber: `${fiscalYear}/${sequence}`,
             patientId: input.patientId,
             practitionerId: input.practitionerId,
             status: "admitted",
             admittedAt: effective.at,
-            timeZone,
+            attendantName: input.attendantName ?? null,
+            attendantPhone: input.attendantPhone ?? null,
+            medicoLegal: input.medicoLegal,
+            medicoLegalRef: input.medicoLegalRef ?? null,
+            diagnosis: input.diagnosis ?? null,
+            timeZone: settings.timeZone,
+            checkoutMinutes: settings.ipdCheckoutMinutes,
             createdBy: scope.userId,
           })
           .returning(admissionSelection);
@@ -1107,7 +1277,6 @@ export const ipdRouter = {
           admissionId: id,
           bedId: bed.id,
           tariffId: tariff.id,
-          dailyPrice: tariff.dailyPrice,
           startedAt: effective.at,
           createdBy: scope.userId,
         });
@@ -1187,6 +1356,13 @@ export const ipdRouter = {
         );
 
         const tariff = await tariffAt(tx, scope.orgId, destination.categoryId, effective.at);
+        const now = new Date();
+
+        await requireBilledDaysKept(tx, scope.orgId, row, now, {
+          startedAt: effective.at,
+          categoryId: destination.categoryId,
+          tariffId: tariff.id,
+        });
 
         await tx
           .update(admissionBedStays)
@@ -1199,7 +1375,6 @@ export const ipdRouter = {
           admissionId: row.id,
           bedId: destination.id,
           tariffId: tariff.id,
-          dailyPrice: tariff.dailyPrice,
           startedAt: effective.at,
           createdBy: scope.userId,
         });
@@ -1268,8 +1443,6 @@ export const ipdRouter = {
       const admission = await db.transaction(async (tx) => {
         const row = await lockAdmission(tx, scope.orgId, input.admissionId, input.expectedRevision);
         requireStatus(row, ["discharge_ready"], "This admission is not waiting for discharge.");
-        // A billed stay takes no further Charge, so it cannot return to care.
-        await requireUnbilled(tx, scope.orgId, row.id);
 
         const stay = await openStay(tx, scope.orgId, row.id);
 
@@ -1300,51 +1473,291 @@ export const ipdRouter = {
   ),
 
   // Departure never waits for billing or payment; the bed is blocked until cleaned.
-  discharge: orgProcedure({ ipd: ["update"] }, transitionInput.extend(effectiveInput)).handler(
+  discharge: orgProcedure(
+    { ipd: ["update"] },
+    transitionInput.extend({ ...effectiveInput, dischargeType: z.enum(DISCHARGE_TYPES) }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+    const effective = effectiveTime(scope, input.effectiveAt, input.reason);
+
+    const admission = await db.transaction(async (tx) => {
+      const row = await lockAdmission(tx, scope.orgId, input.admissionId, input.expectedRevision);
+      requireStatus(row, ["discharge_ready"], "Mark the Patient ready for discharge first.");
+
+      const stay = await openStay(tx, scope.orgId, row.id);
+      requireNotBeforeStay(effective.at, stay);
+
+      if (row.readyAt && effective.at.getTime() < row.readyAt.getTime()) {
+        throw new ORPCError("BAD_REQUEST", {
+          message: "That time is before the Patient was ready to leave.",
+        });
+      }
+
+      await lockBeds(tx, scope.orgId, [stay.bedId]);
+
+      await tx
+        .update(admissionBedStays)
+        .set({ endedAt: effective.at })
+        .where(and(eq(admissionBedStays.orgId, scope.orgId), eq(admissionBedStays.id, stay.id)));
+
+      await tx
+        .update(beds)
+        .set({ blockedAt: new Date(), blockedReason: AWAITING_CLEANING, updatedAt: new Date() })
+        .where(and(eq(beds.orgId, scope.orgId), eq(beds.id, stay.bedId)));
+
+      const [updated] = await tx
+        .update(admissions)
+        .set({
+          status: "discharged",
+          dischargedAt: effective.at,
+          dischargeType: input.dischargeType,
+          revision: sql`${admissions.revision} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(admissions.orgId, scope.orgId), eq(admissions.id, row.id)))
+        .returning(admissionSelection);
+
+      return admissionView(updated!, null);
+    });
+
+    auditBackdate(scope, "ipd.discharge.backdate", admission.id, effective, input.reason);
+
+    return admission;
+  }),
+
+  // The stay's own facts and its consultant, while the Patient is in the ward.
+  updateDetails: orgProcedure(
+    { ipd: ["update"] },
+    transitionInput.extend({
+      attendantName: stayFacts.attendantName.nullable().optional(),
+      attendantPhone: stayFacts.attendantPhone.nullable().optional(),
+      medicoLegal: z.boolean().optional(),
+      medicoLegalRef: stayFacts.medicoLegalRef.nullable().optional(),
+      diagnosis: stayFacts.diagnosis.nullable().optional(),
+      practitionerId: z.string().optional(),
+      reason: reason.optional(),
+    }),
+  ).handler(async ({ context, input }) => {
+    const { scope } = context;
+
+    if (input.practitionerId !== undefined) {
+      await requireInScope(
+        db
+          .select({ id: practitioners.id })
+          .from(practitioners)
+          .where(
+            and(eq(practitioners.orgId, scope.orgId), eq(practitioners.id, input.practitionerId)),
+          )
+          .limit(1),
+        "That practitioner no longer exists.",
+      );
+    }
+
+    const { admission, previousPractitionerId } = await db.transaction(async (tx) => {
+      const row = await lockAdmission(tx, scope.orgId, input.admissionId, input.expectedRevision);
+      requireStatus(row, ACTIVE_ADMISSION_STATUSES, "This admission has ended.");
+
+      const consultantChanged =
+        input.practitionerId !== undefined && input.practitionerId !== row.practitionerId;
+
+      if (consultantChanged && !input.reason) {
+        throw new ORPCError("BAD_REQUEST", {
+          message: "Give a reason for changing the consultant.",
+        });
+      }
+
+      // Turning the flag off clears its reference.
+      const medicoLegal = input.medicoLegal ?? row.medicoLegal;
+
+      const medicoLegalRef =
+        input.medicoLegalRef !== undefined
+          ? input.medicoLegalRef
+          : medicoLegal
+            ? row.medicoLegalRef
+            : null;
+
+      if (medicoLegalRef !== null && !medicoLegal) {
+        throw new ORPCError("BAD_REQUEST", { message: MEDICO_LEGAL_REF_NEEDS_FLAG });
+      }
+
+      const stay = await openStay(tx, scope.orgId, row.id);
+
+      const [updated] = await tx
+        .update(admissions)
+        .set({
+          attendantName: input.attendantName,
+          attendantPhone: input.attendantPhone,
+          diagnosis: input.diagnosis,
+          practitionerId: input.practitionerId,
+          medicoLegal,
+          medicoLegalRef,
+          revision: sql`${admissions.revision} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(admissions.orgId, scope.orgId), eq(admissions.id, row.id)))
+        .returning(admissionSelection);
+
+      return {
+        admission: admissionView(updated!, stay.bedId),
+        previousPractitionerId: consultantChanged ? row.practitionerId : null,
+      };
+    });
+
+    if (previousPractitionerId !== null) {
+      audit({
+        action: "ipd.consultant.change",
+        actorId: scope.userId,
+        orgId: scope.orgId,
+        target: `admission:${admission.id}`,
+        meta: { from: previousPractitionerId, to: admission.practitionerId, reason: input.reason },
+      });
+    }
+
+    return admission;
+  }),
+
+  // Reverses a discharge recorded in error, while nothing has happened to the bed since.
+  // Outside these conditions the answer is a new Admission.
+  reopen: orgProcedure({ ipd: ["correct"] }, transitionInput.extend({ reason })).handler(
     async ({ context, input }) => {
       const { scope } = context;
-      const effective = effectiveTime(scope, input.effectiveAt, input.reason);
+      const refused = (message: string) => new ORPCError("CONFLICT", { message });
 
-      const admission = await db.transaction(async (tx) => {
-        const row = await lockAdmission(tx, scope.orgId, input.admissionId, input.expectedRevision);
-        requireStatus(row, ["discharge_ready"], "Mark the Patient ready for discharge first.");
+      const admission = await db
+        .transaction(async (tx) => {
+          const row = await lockAdmission(
+            tx,
+            scope.orgId,
+            input.admissionId,
+            input.expectedRevision,
+          );
 
-        const stay = await openStay(tx, scope.orgId, row.id);
-        requireNotBeforeStay(effective.at, stay);
+          requireStatus(row, ["discharged"], "Only a discharged admission can be reopened.");
 
-        if (row.readyAt && effective.at.getTime() < row.readyAt.getTime()) {
-          throw new ORPCError("BAD_REQUEST", {
-            message: "That time is before the Patient was ready to leave.",
-          });
-        }
+          const now = new Date();
 
-        await lockBeds(tx, scope.orgId, [stay.bedId]);
+          if (now.getTime() - row.dischargedAt!.getTime() > REOPEN_WINDOW_MS) {
+            throw refused(
+              "A discharge can be undone only within 24 hours. Admit the Patient again.",
+            );
+          }
 
-        await tx
-          .update(admissionBedStays)
-          .set({ endedAt: effective.at })
-          .where(and(eq(admissionBedStays.orgId, scope.orgId), eq(admissionBedStays.id, stay.id)));
+          const [stay] = await tx
+            .select({
+              id: admissionBedStays.id,
+              bedId: admissionBedStays.bedId,
+              startedAt: admissionBedStays.startedAt,
+            })
+            .from(admissionBedStays)
+            .where(
+              and(
+                eq(admissionBedStays.orgId, scope.orgId),
+                eq(admissionBedStays.admissionId, row.id),
+              ),
+            )
+            .orderBy(desc(admissionBedStays.startedAt), desc(admissionBedStays.id))
+            .limit(1);
 
-        await tx
-          .update(beds)
-          .set({ blockedAt: new Date(), blockedReason: AWAITING_CLEANING, updatedAt: new Date() })
-          .where(and(eq(beds.orgId, scope.orgId), eq(beds.id, stay.bedId)));
+          if (!stay) throw impossible(`discharged admission ${row.id} has no stay`);
 
-        const [updated] = await tx
-          .update(admissions)
-          .set({
-            status: "discharged",
-            dischargedAt: effective.at,
-            revision: sql`${admissions.revision} + 1`,
-            updatedAt: new Date(),
-          })
-          .where(and(eq(admissions.orgId, scope.orgId), eq(admissions.id, row.id)))
-          .returning(admissionSelection);
+          const bed = (await lockBeds(tx, scope.orgId, [stay.bedId])).get(stay.bedId);
 
-        return admissionView(updated!, null);
+          if (!bed) throw impossible(`stay ${stay.id} lost its bed`);
+
+          if (!bed.active || (bed.blockedAt && bed.blockedReason !== AWAITING_CLEANING)) {
+            throw refused("That bed is no longer available. Admit the Patient again.");
+          }
+
+          // Another Patient's stay in the bed since, or this Patient's own later stay.
+          const [since] = await tx
+            .select({ id: admissionBedStays.id })
+            .from(admissionBedStays)
+            .innerJoin(
+              admissions,
+              and(
+                eq(admissions.orgId, admissionBedStays.orgId),
+                eq(admissions.id, admissionBedStays.admissionId),
+              ),
+            )
+            .where(
+              and(
+                eq(admissionBedStays.orgId, scope.orgId),
+                ne(admissions.id, row.id),
+                ne(admissions.status, "cancelled"),
+                or(
+                  and(
+                    eq(admissionBedStays.bedId, stay.bedId),
+                    or(
+                      isNull(admissionBedStays.endedAt),
+                      gte(admissionBedStays.startedAt, stay.startedAt),
+                    ),
+                  ),
+                  and(
+                    eq(admissions.patientId, row.patientId),
+                    gte(admissions.admittedAt, row.admittedAt),
+                  ),
+                ),
+              ),
+            )
+            .limit(1);
+
+          if (since) {
+            throw refused("The bed or the Patient has moved on since. Admit the Patient again.");
+          }
+
+          const [held] = await tx
+            .select({ id: bedReservations.id })
+            .from(bedReservations)
+            .where(
+              and(
+                liveHolds(scope.orgId, stay.bedId, now),
+                ne(bedReservations.patientId, row.patientId),
+              ),
+            )
+            .limit(1);
+
+          if (held) {
+            throw refused("That bed is held for another Patient. Admit the Patient again.");
+          }
+
+          await tx
+            .update(admissionBedStays)
+            .set({ endedAt: null })
+            .where(
+              and(eq(admissionBedStays.orgId, scope.orgId), eq(admissionBedStays.id, stay.id)),
+            );
+
+          if (bed.blockedAt) {
+            await tx
+              .update(beds)
+              .set({ blockedAt: null, blockedReason: null, updatedAt: now })
+              .where(and(eq(beds.orgId, scope.orgId), eq(beds.id, bed.id)));
+          }
+
+          const [updated] = await tx
+            .update(admissions)
+            .set({
+              status: "admitted",
+              readyAt: null,
+              dischargedAt: null,
+              dischargeType: null,
+              revision: sql`${admissions.revision} + 1`,
+              updatedAt: now,
+            })
+            .where(and(eq(admissions.orgId, scope.orgId), eq(admissions.id, row.id)))
+            .returning(admissionSelection);
+
+          return admissionView(updated!, stay.bedId);
+        })
+        .catch(occupancyConflict);
+
+      audit({
+        action: "ipd.reopen",
+        actorId: scope.userId,
+        orgId: scope.orgId,
+        target: `admission:${admission.id}`,
+        meta: { reason: input.reason },
       });
-
-      auditBackdate(scope, "ipd.discharge.backdate", admission.id, effective, input.reason);
 
       return admission;
     },
@@ -1430,7 +1843,7 @@ export const ipdRouter = {
     return db.transaction(async (tx) => {
       const admission = await lockAdmissionCharges(tx, scope.orgId, input.admissionId);
 
-      await requireChargeable(tx, scope.orgId, admission, {
+      requireChargeable(admission, {
         allowed: ["admitted", "discharge_ready", "discharged"],
         message: "Services cannot be posted to a cancelled admission.",
         expectedChargeRevision: input.expectedChargeRevision,
@@ -1442,23 +1855,30 @@ export const ipdRouter = {
     });
   }),
 
-  // The Admission bill as it stands: the pending Charges before issuance, the issued
-  // Invoice's stored lines after it.
+  // The stay's bill: the pending Charges and unbilled bed days through `through`, and the
+  // bills already issued (D066). An issued Invoice's lines are read through the Invoice
+  // procedures. Bed days are derived here and written as Charges only by the bill.
   previewInvoice: orgProcedure(
     { ipd: ["read"], billing: ["read"] },
-    orgInput.extend({ admissionId: z.string() }),
+    orgInput.extend({
+      admissionId: z.string(),
+      lastDay: z.enum(LAST_DAY_CHOICES).default("full"),
+      discountAmount: money.default(0n),
+    }),
   ).handler(async ({ context, input }) => {
     const { orgId } = context.scope;
+    const settings = await readOrgSettings(orgId);
+    const now = new Date();
 
     return db.transaction(
       async (tx) => {
         const [admission] = await tx
-          .select({ chargeRevision: admissions.chargeRevision, invoiceId: invoices.id })
+          .select({
+            ...billAdmissionSelection,
+            chargeRevision: admissions.chargeRevision,
+            patientId: admissions.patientId,
+          })
           .from(admissions)
-          .leftJoin(
-            invoices,
-            and(eq(invoices.orgId, orgId), eq(invoices.admissionId, admissions.id)),
-          )
           .where(and(eq(admissions.orgId, orgId), eq(admissions.id, input.admissionId)))
           .limit(1);
 
@@ -1466,18 +1886,55 @@ export const ipdRouter = {
           throw new ORPCError("NOT_FOUND", { message: "That admission does not exist." });
         }
 
-        const { chargeRevision, invoiceId } = admission;
+        const remaining = advanceRemaining(orgId);
+        const ofThisStay = eq(advanceReceipts.admissionId, admission.id);
 
-        // `registered` decides whether a line's words claim GST (D052): today's GSTIN
-        // before issuance, the Invoice's snapshot after it.
-        return invoiceId === null
-          ? {
-              chargeRevision,
-              invoiceId,
-              registered: Boolean((await readOrgSettings(orgId)).gstin),
-              ...(await pendingBill(tx, orgId, input.admissionId)),
-            }
-          : { chargeRevision, invoiceId, ...(await issuedBill(tx, orgId, invoiceId)) };
+        const [bill, issued, [credit]] = await Promise.all([
+          readPendingBill(tx, orgId, admission, input.lastDay, input.discountAmount, now),
+          tx
+            .select({
+              invoiceId: invoices.id,
+              invoiceNumber: invoices.invoiceNumber,
+              issuedAt: invoices.createdAt,
+              grandTotal: invoices.grandTotal,
+            })
+            .from(invoices)
+            .where(and(eq(invoices.orgId, orgId), eq(invoices.admissionId, input.admissionId)))
+            .orderBy(asc(invoices.createdAt), asc(invoices.id)),
+          // What the bill may draw on: this stay's deposit, then credit tagged to nothing.
+          tx
+            .select({
+              deposit:
+                sql<bigint>`coalesce(sum(${remaining}) filter (where ${ofThisStay}), 0)::bigint`.mapWith(
+                  BigInt,
+                ),
+              other:
+                sql<bigint>`coalesce(sum(${remaining}) filter (where ${advanceReceipts.admissionId} is null), 0)::bigint`.mapWith(
+                  BigInt,
+                ),
+            })
+            .from(advanceReceipts)
+            .where(
+              and(
+                eq(advanceReceipts.orgId, orgId),
+                eq(advanceReceipts.patientId, admission.patientId),
+                or(
+                  ofThisStay,
+                  and(isNull(advanceReceipts.admissionId), isNull(advanceReceipts.treatmentPlanId)),
+                ),
+              ),
+            ),
+        ]);
+
+        return {
+          chargeRevision: admission.chargeRevision,
+          // Whether a pending line's words may claim GST (D052): today's GSTIN.
+          registered: Boolean(settings.gstin),
+          ...bill,
+          issued,
+          // SAFETY: an aggregate without GROUP BY returns exactly one row.
+          credit: credit!,
+        };
       },
       { isolationLevel: "repeatable read", accessMode: "read only" },
     );
@@ -1485,13 +1942,29 @@ export const ipdRouter = {
 
   issueInvoice: orgProcedure(
     { ipd: ["read"], billing: ["write"] },
-    orgInput.extend({
-      admissionId: z.string(),
-      expectedChargeRevision,
-      expectedGrandTotal: money,
-      payments: z.array(paymentLine).max(4).default([]),
-      outstandingReason: reason.optional(),
-    }),
+    orgInput
+      .extend({
+        admissionId: z.string(),
+        expectedChargeRevision,
+        expectedGrandTotal: money,
+        // The cashier's call on the last unbilled day; anything but full needs a reason.
+        lastDay: z.enum(LAST_DAY_CHOICES).default("full"),
+        lastDayReason: reason.optional(),
+        discountAmount: money.default(0n),
+        discountReason: reason.optional(),
+        // Drawn from this stay's deposit first, then the Patient's untagged credit.
+        applyCredit: money.default(0n),
+        payments: z.array(paymentLine).max(4).default([]),
+        outstandingReason: reason.optional(),
+      })
+      .refine((value) => value.lastDay === "full" || value.lastDayReason !== undefined, {
+        message: "Give a reason for the last day.",
+        path: ["lastDayReason"],
+      })
+      .refine((value) => value.discountAmount === 0n || value.discountReason !== undefined, {
+        message: "Add a reason for the discount",
+        path: ["discountReason"],
+      }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
@@ -1500,11 +1973,70 @@ export const ipdRouter = {
     const result = await db.transaction(async (tx) => {
       const admission = await lockAdmissionCharges(tx, scope.orgId, input.admissionId);
 
-      await requireChargeable(tx, scope.orgId, admission, {
+      requireChargeable(admission, {
         allowed: ["discharge_ready", "discharged"],
         message: "Mark the Patient ready for discharge before issuing the bill.",
         expectedChargeRevision: input.expectedChargeRevision,
       });
+
+      const bedDay = await readBedDayBill(tx, scope.orgId, admission, input.lastDay, now);
+
+      // Bed-day Charges exist only once billed: written here, invoiced below in the same
+      // transaction. Created after every pending Charge, in bill order, so the Invoice
+      // lists them as the preview does.
+      if (bedDay.lines.length > 0) {
+        const createdAt = new Date();
+        const ids = bedDay.lines.map(() => Bun.randomUUIDv7()).toSorted();
+
+        await tx.insert(charges).values(
+          bedDay.lines.map((line, index) => ({
+            ...line,
+            id: ids[index]!,
+            orgId: scope.orgId,
+            admissionId: admission.id,
+            admissionKind: "bed_day" as const,
+            sourceType: "admission" as const,
+            sourceId: admission.id,
+            status: "pending" as const,
+            createdBy: scope.userId,
+            createdAt,
+            updatedAt: createdAt,
+          })),
+        );
+      }
+
+      const billed = async () => {
+        const [row] = await tx
+          .update(admissions)
+          .set({
+            bedDaysBilled: Math.max(admission.bedDaysBilled, bedDay.days),
+            chargeRevision: sql`${admissions.chargeRevision} + 1`,
+          })
+          .where(and(eq(admissions.orgId, scope.orgId), eq(admissions.id, admission.id)))
+          .returning({ chargeRevision: admissions.chargeRevision });
+
+        if (!row) throw impossible("locked admission vanished before billing");
+
+        return row.chargeRevision;
+      };
+
+      // Days to deal with but nothing to charge, such as one uncharged last day: no
+      // Invoice, only the billed days advance.
+      if (
+        bedDay.lines.length === 0 &&
+        bedDay.unbilled.length > 0 &&
+        !(await hasPendingCharges(tx, scope.orgId, admission.id))
+      ) {
+        if (input.payments.length > 0 || input.applyCredit > 0n || input.discountAmount > 0n) {
+          throw new ORPCError("BAD_REQUEST", { message: "There is nothing to collect." });
+        }
+
+        if (input.expectedGrandTotal !== 0n) {
+          throw conflict("charges_changed", "The charges changed. Review the bill and try again");
+        }
+
+        return { invoice: null, payments: [], chargeRevision: await billed(), bedDay };
+      }
 
       const guardian = guardianLabel(admission.patient);
 
@@ -1519,11 +2051,17 @@ export const ipdRouter = {
             mrn: admission.patient.mrn,
             phone: admission.patient.phone,
             address: admission.patient.address,
+            pan: admission.patient.pan,
             guardian: guardian ? `${guardian.relation} ${guardian.name}` : null,
           },
         },
-        discountAmount: 0n,
-        note: input.outstandingReason,
+        discountAmount: input.discountAmount,
+        // The Invoice keeps both reasons, once when the desk gave one for both; each was
+        // required above or by the settlement.
+        note:
+          [...new Set([input.discountReason, input.outstandingReason])]
+            .filter(Boolean)
+            .join(" · ") || undefined,
         settings,
         now,
         fiscalYear,
@@ -1535,29 +2073,46 @@ export const ipdRouter = {
         invoice: issued.invoice,
         expectedGrandTotal: input.expectedGrandTotal,
         payments: input.payments,
-        applyCredit: 0n,
+        applyCredit: input.applyCredit,
         outstandingReason: input.outstandingReason,
         settings,
         now,
         fiscalYear,
       });
 
-      const chargeRevision = await bumpChargeRevision(tx, scope.orgId, admission.id);
-
-      return { invoice: issued.invoice, payments, chargeRevision };
+      return { invoice: issued.invoice, payments, chargeRevision: await billed(), bedDay };
     });
 
-    audit({
-      action: "ipd.issueInvoice",
-      actorId: scope.userId,
-      orgId: scope.orgId,
-      target: `invoice:${invoiceId}`,
-      meta: {
-        admissionId: input.admissionId,
-        invoiceNumber: result.invoice.invoiceNumber,
-        grandTotal: formatDecimal(result.invoice.grandTotal),
-      },
-    });
+    const { adjusted } = result.bedDay;
+
+    if (adjusted) {
+      audit({
+        action: "ipd.lastDay.adjust",
+        actorId: scope.userId,
+        orgId: scope.orgId,
+        target: `admission:${input.admissionId}`,
+        meta: {
+          lastDay: input.lastDay,
+          reason: input.lastDayReason,
+          day: adjusted.day,
+          date: adjusted.date,
+        },
+      });
+    }
+
+    if (result.invoice) {
+      audit({
+        action: "ipd.issueInvoice",
+        actorId: scope.userId,
+        orgId: scope.orgId,
+        target: `invoice:${invoiceId}`,
+        meta: {
+          admissionId: input.admissionId,
+          invoiceNumber: result.invoice.invoiceNumber,
+          grandTotal: formatDecimal(result.invoice.grandTotal),
+        },
+      });
+    }
 
     for (const payment of result.payments) {
       audit({
@@ -1570,7 +2125,7 @@ export const ipdRouter = {
     }
 
     return {
-      invoiceId,
+      invoiceId: result.invoice ? invoiceId : null,
       receiptIds: result.payments.map((payment) => payment.id),
       chargeRevision: result.chargeRevision,
     };
@@ -1590,10 +2145,17 @@ export const ipdRouter = {
         const stay = await openStay(tx, scope.orgId, row.id);
         await lockBeds(tx, scope.orgId, [stay.bedId]);
 
+        // An erroneous stay occupied nothing: every segment becomes an empty interval, so
+        // it never stands in the way of a backdated occupancy of its beds.
         await tx
           .update(admissionBedStays)
-          .set({ endedAt: sql`greatest(${admissionBedStays.startedAt}, ${now})` })
-          .where(and(eq(admissionBedStays.orgId, scope.orgId), eq(admissionBedStays.id, stay.id)));
+          .set({ endedAt: sql`${admissionBedStays.startedAt}` })
+          .where(
+            and(
+              eq(admissionBedStays.orgId, scope.orgId),
+              eq(admissionBedStays.admissionId, row.id),
+            ),
+          );
 
         const [updated] = await tx
           .update(admissions)
@@ -1659,45 +2221,10 @@ async function requireNoCare(tx: Tx, orgId: string, admissionId: string) {
   }
 }
 
-const billBatch = {
-  batchId: stockBatches.id,
-  batchNumber: stockBatches.batchNumber,
-  expiryDate: stockBatches.expiryDate,
-};
-
-// Medicine lines carry their batch to the bill; a left join leaves services without one.
-function withBatch<
-  T extends { batchId: string | null; batchNumber: string | null; expiryDate: string | null },
->(row: T) {
-  const { batchId, batchNumber, expiryDate, ...line } = row;
-
-  return {
-    ...line,
-    batch: batchId === null || batchNumber === null ? null : { batchId, batchNumber, expiryDate },
-  };
-}
-
-// Ordered by (createdAt, id): the leftover subtotal paisa must land on the same line
-// in the preview and the Invoice, since on an exclusive line it attracts tax.
-async function pendingBill(tx: Tx, orgId: string, admissionId: string) {
-  const rows = await tx
-    .select({
-      chargeId: charges.id,
-      admissionKind: charges.admissionKind,
-      description: charges.description,
-      qty: charges.qty,
-      unitPrice: charges.unitPrice,
-      priceUnits: charges.priceUnits,
-      taxRatePercent: charges.taxRatePercent,
-      taxCode: charges.taxCode,
-      priceBasis: charges.priceBasis,
-      ...billBatch,
-    })
+async function hasPendingCharges(tx: Tx, orgId: string, admissionId: string) {
+  const [pending] = await tx
+    .select({ id: charges.id })
     .from(charges)
-    .leftJoin(
-      stockBatches,
-      and(eq(stockBatches.orgId, orgId), eq(stockBatches.id, charges.stockBatchId)),
-    )
     .where(
       and(
         eq(charges.orgId, orgId),
@@ -1705,75 +2232,7 @@ async function pendingBill(tx: Tx, orgId: string, admissionId: string) {
         eq(charges.status, "pending"),
       ),
     )
-    .orderBy(asc(charges.createdAt), asc(charges.id));
+    .limit(1);
 
-  const computed = computeInvoiceLines(rows, 0n, { roundToRupee: false });
-
-  // computeInvoiceLines keeps the input order, so each line pairs with its row.
-  return {
-    lines: computed.lines.map((line, index) => {
-      const row = rows[index]!;
-
-      return withBatch({
-        ...line,
-        admissionKind: row.admissionKind,
-        batchId: row.batchId,
-        batchNumber: row.batchNumber,
-        expiryDate: row.expiryDate,
-      });
-    }),
-    subtotal: computed.subtotal,
-    taxTotal: computed.taxTotal,
-    addedTaxTotal: computed.addedTaxTotal,
-    roundOff: computed.roundOff,
-    grandTotal: computed.grandTotal,
-  };
-}
-
-async function issuedBill(tx: Tx, orgId: string, invoiceId: string) {
-  const [[invoice], rows] = await Promise.all([
-    tx
-      .select({
-        subtotal: invoices.subtotal,
-        taxTotal: invoices.taxTotal,
-        addedTaxTotal: invoices.addedTaxTotal,
-        roundOff: invoices.roundOff,
-        grandTotal: invoices.grandTotal,
-        orgGstin: invoices.orgGstin,
-      })
-      .from(invoices)
-      .where(and(eq(invoices.orgId, orgId), eq(invoices.id, invoiceId))),
-    tx
-      .select({
-        chargeId: invoiceLines.chargeId,
-        description: invoiceLines.description,
-        qty: invoiceLines.qty,
-        unitPrice: invoiceLines.unitPrice,
-        priceUnits: invoiceLines.priceUnits,
-        lineSubtotal: invoiceLines.lineSubtotal,
-        allocatedDiscount: invoiceLines.allocatedDiscount,
-        taxableValue: invoiceLines.taxableValue,
-        taxRatePercent: invoiceLines.taxRatePercent,
-        taxAmount: invoiceLines.taxAmount,
-        gross: invoiceLines.gross,
-        taxCode: invoiceLines.taxCode,
-        priceBasis: charges.priceBasis,
-        admissionKind: charges.admissionKind,
-        ...billBatch,
-      })
-      .from(invoiceLines)
-      .innerJoin(charges, and(eq(charges.orgId, orgId), eq(charges.id, invoiceLines.chargeId)))
-      .leftJoin(
-        stockBatches,
-        and(eq(stockBatches.orgId, orgId), eq(stockBatches.id, charges.stockBatchId)),
-      )
-      .where(and(eq(invoiceLines.orgId, orgId), eq(invoiceLines.invoiceId, invoiceId)))
-      .orderBy(asc(charges.createdAt), asc(charges.id)),
-  ]);
-
-  if (!invoice) throw impossible(`admission invoice ${invoiceId} vanished in one snapshot`);
-
-  const { orgGstin, ...totals } = invoice;
-
-  return { lines: rows.map(withBatch), registered: Boolean(orgGstin), ...totals };
+  return pending !== undefined;
 }

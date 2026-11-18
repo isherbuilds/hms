@@ -54,6 +54,12 @@ export const settingsFields = z.object({
     .int()
     .min(1, "Between 1 and 168 hours")
     .max(168, "Between 1 and 168 hours"),
+  // Bed-day checkout as minutes after local midnight.
+  ipdCheckoutMinutes: z
+    .number()
+    .int()
+    .min(0, "Between 00:00 and 23:59")
+    .max(1439, "Between 00:00 and 23:59"),
 });
 
 export type SettingsFields = z.infer<typeof settingsFields>;

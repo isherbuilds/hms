@@ -77,6 +77,7 @@ test("desk money and dashboard collections are scoped, concurrent, and revoke wi
     orgSlug: one.slug,
     ...settings,
     unbilledAlertHours: 1,
+    ipdCheckoutMinutes: 720,
   });
 
   const patient = await api.patient.register({
@@ -297,6 +298,7 @@ const GUARDED_CALLS = {
       fiscalYearStartMonth: 4,
       followUpValidityDays: 14,
       unbilledAlertHours: 24,
+      ipdCheckoutMinutes: 720,
     }),
   "audit.list": (api, claim) => api.audit.list({ ...claim }),
   "file.list": (api, claim) => api.file.list({ ...claim }),
@@ -668,6 +670,14 @@ const GUARDED_CALLS = {
       expectedChargeRevision: 0,
       lines: [{ batchId: "missing", qty: 1 }],
     }),
+  "pharmacy.returnFromAdmission": (api, claim) =>
+    api.pharmacy.returnFromAdmission({
+      ...claim,
+      admissionId: "missing",
+      expectedChargeRevision: 0,
+      lines: [{ issueLineId: "missing", qty: 1 }],
+      reason: "Guarded-call tenant probe",
+    }),
   "pharmacy.listAdmissionIssues": (api, claim) =>
     api.pharmacy.listAdmissionIssues({ ...claim, admissionId: "missing" }),
   "ipd.facility": (api, claim) => api.ipd.facility({ ...claim }),
@@ -678,8 +688,7 @@ const GUARDED_CALLS = {
     api.ipd.setBedTariff({
       ...claim,
       categoryId: "missing",
-      catalogItemId: "missing",
-      dailyPrice: 1n,
+      lines: [{ catalogItemId: "missing", dailyPrice: 1n }],
       effectiveFrom: new Date(),
     }),
   "ipd.createBed": (api, claim) =>
@@ -711,9 +720,23 @@ const GUARDED_CALLS = {
       reason: "x",
     }),
   "ipd.discharge": (api, claim) =>
-    api.ipd.discharge({ ...claim, admissionId: "missing", expectedRevision: 0 }),
+    api.ipd.discharge({
+      ...claim,
+      admissionId: "missing",
+      expectedRevision: 0,
+      dischargeType: "normal",
+    }),
   "ipd.cancel": (api, claim) =>
     api.ipd.cancel({ ...claim, admissionId: "missing", expectedRevision: 0, reason: "x" }),
+  "ipd.updateDetails": (api, claim) =>
+    api.ipd.updateDetails({
+      ...claim,
+      admissionId: "missing",
+      expectedRevision: 0,
+      diagnosis: "Intrusion",
+    }),
+  "ipd.reopen": (api, claim) =>
+    api.ipd.reopen({ ...claim, admissionId: "missing", expectedRevision: 0, reason: "x" }),
   "ipd.postServices": (api, claim) =>
     api.ipd.postServices({
       ...claim,
@@ -764,6 +787,8 @@ const GUARDED_CALLS = {
       payments: [],
       outstandingReason: "Guarded-call tenant probe",
     }),
+  "report.ipdDesk": (api, claim) => api.report.ipdDesk({ ...claim, asOf: "2026-11-17" }),
+  "export.ipdDeskXlsx": (api, claim) => api.export.ipdDeskXlsx({ ...claim, asOf: "2026-11-17" }),
   "theatre.resources": (api, claim) => api.theatre.resources({ ...claim }),
   "theatre.createRoom": (api, claim) =>
     api.theatre.createRoom({ ...claim, name: "Intrusion", kind: "operating_theatre" }),
@@ -1272,6 +1297,7 @@ async function createScopedInvoice(
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
     unbilledAlertHours: 24,
+    ipdCheckoutMinutes: 720,
   });
 
   const patient = await api.patient.register({

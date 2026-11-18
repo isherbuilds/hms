@@ -7,9 +7,11 @@ import { type WalkInQuote } from "@/lib/opd-service-preview";
 export function FinancialSummary({
   quote,
   discountRow,
+  totalLabel = "Payable",
 }: {
   quote: WalkInQuote;
   discountRow?: ReactNode;
+  totalLabel?: string;
 }) {
   const { currency, addedTaxTotal } = quote;
   const claimsGst = quote.registered !== false;
@@ -46,7 +48,7 @@ export function FinancialSummary({
       ) : null}
       <Separator />
       <div className="flex items-baseline justify-between pt-1 text-xs font-medium">
-        <dt>Payable</dt>
+        <dt>{totalLabel}</dt>
         <dd className="tabular-nums">{formatMoney(quote.grandTotal, currency)}</dd>
       </div>
       {/* Already inside the MRP lines, so it reads after the total it does not add to. */}

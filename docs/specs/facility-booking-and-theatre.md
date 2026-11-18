@@ -38,6 +38,10 @@ expiry, never stored. Disrupted
 holds make no capacity promise and require explicit re-confirmation on a ready bed
 or cancellation. Effective expiry is derived from time, without requiring a cleanup job.
 Expired holds cannot convert. Extensions and reschedules recheck all conflicts.
+One stay at a time: a Patient who is admitted, or already has a live (requested or
+held, unexpired) reservation, cannot be put on the waiting list again; the desk
+changes the reservation they have (owner, 2026-11-18). A request locks the Patient, as
+admission does, so the two take turns.
 
 Confirm/reschedule/convert under Patient and stable Bed locks, with current
 revision checks and tenant predicates. Confirmed unexpired holds cannot overlap;

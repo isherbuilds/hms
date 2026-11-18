@@ -34,10 +34,11 @@ export function PageHeader({
   return (
     <div
       data-slot="page-header"
-      className="z-10 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-card px-3 [&:has(+nav)]:border-transparent lg:pr-4 lg:pl-6 print:h-auto print:px-4 print:py-3"
+      className="z-10 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-card px-3 max-sm:h-auto max-sm:min-h-12 max-sm:py-1.5 [&:has(+nav)]:border-transparent lg:pr-4 lg:pl-6 print:h-auto print:px-4 print:py-3"
     >
       <SidebarTrigger className="print:hidden lg:hidden" />
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+      {/* On a phone, actions that do not fit beside the title wrap below it, unclipped. */}
+      <div className="flex min-w-0 flex-1 items-center gap-3 max-sm:flex-wrap max-sm:gap-y-2">
         <div className="flex min-w-0 flex-col">
           <h1 className="min-w-0 truncate text-sm/5 font-medium">{title}</h1>
           {description && (

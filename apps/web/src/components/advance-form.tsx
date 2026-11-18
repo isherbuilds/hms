@@ -11,13 +11,14 @@ import { OptionCombobox } from "@/components/option-combobox";
 import { PaymentLineFields } from "@/components/payment-lines";
 import { advancePdfUrl } from "@/lib/billing-document";
 import { orpc } from "@/lib/orpc";
+import { hasErrorCode } from "@/lib/orpc-error";
 import { paymentLineFields } from "@/lib/settlement";
 
 const advanceSchema = paymentLineFields
   .extend({ treatmentPlanId: z.string(), note: z.string().trim().max(500).optional() })
   .superRefine(requirePaymentReference);
 
-const refundSchema = paymentLineFields.superRefine(requirePaymentReference);
+const lineSchema = paymentLineFields.superRefine(requirePaymentReference);
 
 export function AdvanceReceiptLink({
   orgSlug,
@@ -145,22 +146,70 @@ function TakeAdvanceDialog({
   );
 }
 
+/** A deposit for one stay: an Advance Receipt spent only on that stay's bills. */
+export function TakeDepositDialog({
+  orgSlug,
+  admission,
+  onClose,
+}: {
+  orgSlug: string;
+  admission: { id: string; patientId: string };
+  onClose: () => void;
+}) {
+  return (
+    <FormDialog
+      title="Take deposit"
+      description="Held for this stay and spent only on its bills."
+      submitLabel="Record deposit"
+      schema={lineSchema}
+      defaultValues={{ method: "cash", amount: "", reference: "" }}
+      success="Deposit recorded"
+      onClose={onClose}
+      // A refusal the desk can act on here, such as a missing Patient address.
+      showsInline={(error) => hasErrorCode(error, "BAD_REQUEST")}
+      refusalTitle="The deposit was not recorded"
+      run={(value) =>
+        orpc.billing.recordAdvance.call({
+          orgSlug,
+          patientId: admission.patientId,
+          admissionId: admission.id,
+          method: value.method,
+          amount: value.amount,
+          reference: value.reference || undefined,
+        })
+      }
+      done={(advance) => ({
+        label: `Advance Receipt ${advance.receiptNumber}`,
+        href: advancePdfUrl(orgSlug, advance.id),
+        action: "Print receipt",
+      })}
+    >
+      <PaymentLineFields />
+    </FormDialog>
+  );
+}
+
 export function AdvanceRefundDialog({
   orgSlug,
   receipt,
+  title = "Refund advance",
+  description = "Return unused patient credit from this receipt.",
   onClose,
 }: {
   orgSlug: string;
   /** The receipt as the desk saw it when it chose Refund. */
   receipt: { id: string; remaining: bigint };
+  /** An Admission's deposit is refunded under its own name. */
+  title?: string;
+  description?: string;
   onClose: () => void;
 }) {
   return (
     <FormDialog
-      title="Refund advance"
-      description="Return unused patient credit from this receipt."
+      title={title}
+      description={description}
       submitLabel="Record refund"
-      schema={refundSchema}
+      schema={lineSchema}
       defaultValues={{ method: "cash", amount: formatDecimal(receipt.remaining), reference: "" }}
       success="Refund recorded"
       onClose={onClose}

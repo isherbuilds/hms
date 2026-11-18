@@ -19,7 +19,9 @@ import {
   BlockBedDialog,
 } from "@/components/ipd-dialogs";
 import { ListState, PageBody, PageHeader, Panel } from "@/components/page";
-import { useCan } from "@/lib/membership";
+import { depositShortLabel } from "@/lib/ipd-deposit";
+import { useCan, useMembership } from "@/lib/membership";
+import { formatMoney, ZERO } from "@/lib/money";
 import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
@@ -165,6 +167,7 @@ function BedTile({
   onBlock: () => void;
 }) {
   const { timeZone } = useOrgDateTime();
+  const currency = useMembership(orgSlug, (membership) => membership.currency);
   const canAdmit = useCan(orgSlug, { ipd: ["create"] });
   const canUpdate = useCan(orgSlug, { ipd: ["update"] });
 
@@ -187,6 +190,7 @@ function BedTile({
 
   if (bed.admission) {
     const { admission } = bed;
+    const short = depositShortLabel(admission.runningBill, admission.depositHeld, currency);
 
     return (
       <li>
@@ -203,6 +207,18 @@ function BedTile({
             <span className="font-mono">{admission.mrn}</span> · since{" "}
             {formatDateTime(admission.admittedAt, timeZone)}
           </span>
+          <span className="tabular-nums">
+            <span className="text-muted-foreground">Running bill</span>{" "}
+            {formatMoney(admission.runningBill, currency)}
+            {admission.depositHeld === ZERO ? null : (
+              <>
+                {" · "}
+                <span className="text-muted-foreground">Deposit</span>{" "}
+                {formatMoney(admission.depositHeld, currency)}
+              </>
+            )}
+          </span>
+          {short ? <span className="font-medium tabular-nums">{short}</span> : null}
           <BedHolds holds={bed.holds} />
         </Link>
       </li>

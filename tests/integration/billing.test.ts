@@ -72,6 +72,7 @@ async function createBillingFixture(seed: string) {
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
     unbilledAlertHours: 1,
+    ipdCheckoutMinutes: 720,
   });
 
   const patient = await api.patient.register({

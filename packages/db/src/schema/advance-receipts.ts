@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { orgIdColumn, user } from "./auth";
+import { admissions } from "./ipd";
 import { patients } from "./patients";
 import { type PaymentMethod } from "./payment-methods";
 import { treatmentPlans } from "./treatment-plans";
@@ -24,6 +25,8 @@ export const advanceReceipts = pgTable(
     orgId: orgIdColumn(),
     patientId: text("patient_id").notNull(),
     treatmentPlanId: text("treatment_plan_id"),
+    // A deposit for one stay, spent only on that stay's bills.
+    admissionId: text("admission_id"),
     method: text("method").$type<PaymentMethod>().notNull(),
     amount: bigint("amount", { mode: "bigint" }).notNull(),
     reference: text("reference"),
@@ -49,6 +52,10 @@ export const advanceReceipts = pgTable(
   },
   (table) => [
     check("advance_receipts_amount_check", sql`${table.amount} > 0`),
+    check(
+      "advance_receipts_plan_or_admission_check",
+      sql`${table.treatmentPlanId} is null or ${table.admissionId} is null`,
+    ),
     unique("advance_receipts_org_id_id_unique").on(table.orgId, table.id),
     uniqueIndex("advance_receipts_org_number_idx").on(table.orgId, table.receiptNumber),
     foreignKey({
@@ -58,6 +65,11 @@ export const advanceReceipts = pgTable(
     foreignKey({
       columns: [table.orgId, table.treatmentPlanId],
       foreignColumns: [treatmentPlans.orgId, treatmentPlans.id],
+    }),
+    // The stay is the receipt's Patient's.
+    foreignKey({
+      columns: [table.orgId, table.admissionId, table.patientId],
+      foreignColumns: [admissions.orgId, admissions.id, admissions.patientId],
     }),
     index("advance_receipts_org_patient_created_idx").on(
       table.orgId,
@@ -70,5 +82,9 @@ export const advanceReceipts = pgTable(
     index("advance_receipts_org_plan_idx")
       .on(table.orgId, table.treatmentPlanId)
       .where(sql`${table.treatmentPlanId} is not null`),
+    // The deposit held on each stay.
+    index("advance_receipts_org_admission_idx")
+      .on(table.orgId, table.admissionId)
+      .where(sql`${table.admissionId} is not null`),
   ],
 );

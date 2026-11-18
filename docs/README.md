@@ -305,11 +305,71 @@ A hospital without a GSTIN cannot add GST to an inpatient bill or issue a
 separately taxed medicine (D063); the demo hospital has none, so its seeded
 inpatient bills carry no GST.
 
-Still owed, in order: Credit Notes for service lines on `ipd` Invoices, before
-any live hospital bills inpatients; then Slices 3–6 (bed-day review, interim
-bill, packages, inpatient returns, deposits and final settlement, IPD reports).
-An Admission takes one Invoice until supplemental billing in Slice 5 (D063).
-The same no-GSTIN rule is not yet applied to OPD or counter Pharmacy.
+On 2026-11-17 Slices 3–7 were replanned from a study of running systems
+([D066](./decisions.md#d066--bed-days-are-derived-bills-repeat-and-a-wrong-discharge-can-be-undone),
+[research](./research/ipd-reference-systems.md)) and built the same day:
+
+- Slice 3: IPD number, attendant, medico-legal flag, diagnosis, how the Patient
+  left, editing details, undoing a wrong departure, the database overlap
+  constraints, the admission and discharge slips and a repeatable bill.
+- Slice 4: bed-type tariff lines, the checkout setting, derived bed days, the
+  last-day choice, the running bill, the interim bill and the estimate.
+- Slice 5: deposits on the Admission, discount and deposit at settlement, the
+  leftover refund.
+- Slice 6: ward medicine returns before and after the bill, and Credit Notes on
+  `ipd` Invoices.
+- Slice 7: the IPD desk report with print and XLSX.
+
+They are covered by `tests/integration/ipd-stay.test.ts`,
+`ipd-bed-charges.test.ts`, `ipd-deposits.test.ts`, `ipd-returns.test.ts`,
+`ipd-desk-report.test.ts`, the updated `ipd.test.ts` and `ipd-billing.test.ts`,
+the tenancy guard table, and `tests/unit/bed-days.test.ts`,
+`ipd-estimate.test.ts`, `ipd-print.test.ts` and `ipd-pdf.test.ts`.
+
+Browser verification, 2026-11-17 on the seeded demo hospital at desktop and
+phone width and in dark theme: admit with the stay facts, edit details, the
+running bill and "Deposit short by" on the board, list and Admission, the tariff
+lines form, the estimate, the interim bill, slips and `ipd` Invoice PDFs, take a
+deposit, issue a bill with a discount, deposit and a
+part payment, a second bill, a bill with nothing chargeable, record and undo a
+departure, medicine returns before and after the bill, Credit Notes on bed-day
+and service lines with the refund, the leftover deposit refund, the desk report
+with its XLSX, the checkout setting, and reception's narrower actions. On
+2026-11-18 the council's fixes were driven the same way: the issue form's cash
+line following a discount, "Use deposit" only for a deposit, inline refusals in
+the deposit, move-bed and undo-departure dialogs, the empty bill, "Deposit short
+by" on the Admission page with or without a deposit, a stay's deposit refunded
+only from its stay, the desk report's print header and the interim bill's facts.
+The phone header now wraps its actions on every page.
+
+Known limit: the desk report checks every discharged stay up to its date,
+because unbilled bed days are derived, not stored. The read grows with history
+and would exceed PostgreSQL's bind-parameter limit at about 65,000 discharged
+stays. The fix is to narrow the candidates before the bill helper runs.
+
+Known limit: a bill issued before the Patient leaves fixes the bed day in
+progress at that moment's bed type and last-day choice. A later move or a longer
+stay inside that day is not re-billed and no report lists it; the desk corrects
+it by Credit Note or a posted Service.
+
+Known limit: an `ipd` Invoice PDF prints the stay's IPD No., admission and
+departure times and diagnosis as they are now, not as they were when it was
+issued; a snapshot needs columns on the Invoice.
+
+Known limit: a backdated move is checked against the billed days as derived now,
+before and after the move, not against what each bill charged. A move back to the
+bed type a day was billed at, recorded within the ten-minute tolerance, can be
+refused; no money moves either way, and the desk enters the move at a later time.
+
+A discount close to, but short of, the whole bill can push one line below zero
+through the shared Invoice discount spread (largest line takes the rounding), and
+the ledger then refuses the bill; a discount a paisa different issues it. The spread
+predates this work; the fix is a largest-remainder split in `invoice-math.ts`.
+
+Packages wait for a pilot hospital that quotes them. The no-GSTIN rule (D063) is
+not yet applied to OPD or counter Pharmacy. Whether a nursing line counts
+toward the ₹5,000 room-rent threshold is unverified
+([defaults](./specs/ipd-admission-to-discharge.md#defaults-chosen-without-a-hospital)).
 
 ### [Facility booking and theatre](./specs/facility-booking-and-theatre.md)
 

@@ -24,6 +24,7 @@ test("advance receipt and refund voucher render from the stored receipt snapshot
     orgId: "org-1",
     patientId: "patient-1",
     treatmentPlanId: "plan-1",
+    admissionId: null,
     method: "cash",
     amount: 300_00n,
     reference: null,
@@ -106,6 +107,22 @@ test("an invoice prints its round-off", async () => {
     });
 
   expect((await render(40n)).bytes).not.toEqual((await render(0n)).bytes);
+});
+
+test("an invoice prints the Patient's PAN on A4 and thermal when it has one", async () => {
+  const data = billingPdfFixture({ unicode: false });
+
+  for (const layout of ["a4", "thermal"] as const) {
+    const render = (patientPan: string | null) =>
+      renderBillingPdf({
+        kind: "invoice",
+        data: { ...data, invoice: { ...data.invoice, patientPan } },
+        documentId: null,
+        layout,
+      });
+
+    expect((await render("ABCDE1234F")).bytes).not.toEqual((await render(null)).bytes);
+  }
 });
 
 test("invoice and receipt PDFs ignore later account activity", async () => {

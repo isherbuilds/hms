@@ -17,9 +17,16 @@ import {
   ReceiptDocument,
   RefundDocument,
 } from "@/components/pdf/billing-documents";
+import { InterimBillDocument } from "@/components/pdf/ipd-interim-bill";
+import { SlipDocument } from "@/components/pdf/ipd-slip";
 import { invoiceDocumentTitle } from "@/lib/invoice-print";
+import { INTERIM_BILL_TITLE } from "@/lib/ipd-interim-bill";
+import { admissionSlip, dischargeSlip, stayIdentity, type SlipKind } from "@/lib/ipd-slips";
+import { formatDateTime } from "@/lib/org-datetime";
 import { siteConfig } from "@/config/site";
 import type { BillingDocumentRequest } from "@/lib/billing-document";
+import type { AppRouter } from "@hms/api/routers/index";
+import type { RouterClient } from "@orpc/server";
 
 const PAGE_MARGIN = { bottom: 46, left: 44, right: 44, top: 40 };
 
@@ -99,7 +106,12 @@ function findDocument(data: InvoiceBundle, request: BillingDocumentRequest) {
     case "invoice":
       return {
         element: (
-          <InvoiceDocument invoice={data.invoice} lines={data.lines} layout={request.layout} />
+          <InvoiceDocument
+            invoice={data.invoice}
+            lines={data.lines}
+            admission={data.admission}
+            layout={request.layout}
+          />
         ),
         number: data.invoice.invoiceNumber,
         title: invoiceDocumentTitle(data.invoice, data.lines),
@@ -212,6 +224,105 @@ export async function renderAdvancePdf(data: AdvanceBundle, refundId: string | n
           title: advanceReceiptTitle(receipt),
         },
     receipt.orgLegalName,
+    false,
+  );
+}
+
+type Client = RouterClient<AppRouter>;
+
+type StayDetail = Awaited<ReturnType<Client["ipd"]["get"]>>;
+
+type OrgSettings = Awaited<ReturnType<Client["settings"]["get"]>>;
+
+/** What every stay paper prints from: the slip's input, at the bed the Patient is in or
+ * left from, and the hospital's letterhead. */
+function stayPaper(detail: StayDetail, settings: OrgSettings) {
+  const { admission, patient, practitionerName, stays } = detail;
+  const bed = stays.at(-1);
+
+  if (!bed) throw new Error(`Admission ${admission.id} has no bed stay`);
+
+  return {
+    input: {
+      admission,
+      patient,
+      practitionerName,
+      bedLabel: bed.bedLabel,
+      wardName: bed.wardName,
+      timeZone: settings.timeZone,
+    },
+    document: {
+      orgLegalName: settings.legalName,
+      orgAddress: settings.address,
+      orgTaxId: settings.taxId,
+      orgGstin: settings.gstin,
+      currency: settings.currency,
+      patientName: patient.name,
+      patientMrn: patient.mrn,
+    },
+  };
+}
+
+/** An admission's slip on the hospital's letterhead. A discharge slip needs a departure. */
+export async function renderSlipPdf(detail: StayDetail, settings: OrgSettings, kind: SlipKind) {
+  const { admission } = detail;
+
+  if (admission.status === "cancelled" || (kind === "discharge" && !admission.dischargedAt)) {
+    throw new ORPCError("NOT_FOUND", { message: "This stay has no such slip" });
+  }
+
+  const { input, document } = stayPaper(detail, settings);
+  const slip = kind === "discharge" ? dischargeSlip(input) : admissionSlip(input);
+
+  return renderDocument(
+    {
+      element: (
+        <SlipDocument slip={slip} admissionNumber={admission.admissionNumber} document={document} />
+      ),
+      number: `IPD No. ${admission.admissionNumber}`,
+      title: slip.title,
+    },
+    settings.legalName,
+    false,
+  );
+}
+
+/** The running bill of a stay still in hospital, printed for the deposit desk. */
+export async function renderInterimBillPdf(
+  detail: StayDetail,
+  bill: Awaited<ReturnType<Client["ipd"]["previewInvoice"]>>,
+  settings: OrgSettings,
+) {
+  const { admission } = detail;
+
+  if (admission.status !== "admitted" && admission.status !== "discharge_ready") {
+    throw new ORPCError("NOT_FOUND", { message: "Only a stay in hospital has an interim bill" });
+  }
+
+  const { input, document } = stayPaper(detail, settings);
+
+  // The IPD No. heads the paper; the attendant and a medico-legal reference stay on the slips.
+  const facts = [
+    ...stayIdentity(input),
+    ...(admission.diagnosis ? [{ label: "Diagnosis", value: admission.diagnosis }] : []),
+    { label: "Charges up to", value: formatDateTime(bill.through, settings.timeZone) },
+  ];
+
+  return renderDocument(
+    {
+      element: (
+        <InterimBillDocument
+          bill={bill}
+          depositHeld={detail.depositHeld}
+          admissionNumber={admission.admissionNumber}
+          facts={facts}
+          document={document}
+        />
+      ),
+      number: `IPD No. ${admission.admissionNumber}`,
+      title: INTERIM_BILL_TITLE,
+    },
+    settings.legalName,
     false,
   );
 }

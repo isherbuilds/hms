@@ -16,8 +16,9 @@ import type { DefaultValues, FieldValues } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
 
+import { ErrorNote } from "@/components/page";
 import { useZodForm } from "@/hooks/use-zod-form";
-import { closeOnConflict } from "@/lib/orpc-error";
+import { closeOnConflict, errorMessage } from "@/lib/orpc-error";
 
 type Printed = { label: string; href: string; action: string };
 
@@ -34,6 +35,7 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   onClose,
   onError,
   showsInline,
+  refusalTitle,
   onSubmit,
   contentClassName,
   children,
@@ -45,13 +47,15 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
   defaultValues: DefaultValues<z.input<T>>;
   success: string;
   run: (value: z.output<T>) => Promise<R>;
-  /** Keeps the dialog open on success, showing the document the call produced. */
-  done?: (result: R) => Printed;
+  /** Keeps the dialog open on success, showing the document the call produced, if any. */
+  done?: (result: R) => Printed | null;
   onClose: () => void;
-  /** Replaces closing on CONFLICT, for a dialog that shows a refusal and offers a way on. */
+  /** Replaces closing on a CONFLICT not shown inline, for a dialog that offers a way on. */
   onError?: (error: Error, value: z.output<T>) => void;
-  /** True for an error `onError` renders in the dialog; it then raises no toast. */
+  /** True for an error the dialog shows; it then raises no toast. */
   showsInline?: (error: Error, value: z.output<T>) => boolean;
+  /** Titles the note showing an inline error; without it the children show the refusal. */
+  refusalTitle?: string;
   /** Runs as the form is submitted, before the call: a dialog clears its last refusal. */
   onSubmit?: () => void;
   contentClassName?: string;
@@ -68,12 +72,23 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
       ? { showsInline: (error, value) => showsInline(error, value as z.output<T>) }
       : undefined,
     onSuccess: (result) => {
-      if (done) setPrinted(done(result));
+      const printable = done?.(result) ?? null;
+
+      if (printable) setPrinted(printable);
       else onClose();
       toast.success(success);
     },
-    onError: onError ?? closeOnConflict(onClose),
+    onError:
+      onError ??
+      ((error, value) => {
+        if (!showsInline?.(error, value)) closeOnConflict(onClose)(error);
+      }),
   });
+
+  const refusal =
+    submit.isError && showsInline?.(submit.error, submit.variables)
+      ? errorMessage(submit.error)
+      : null;
 
   return (
     <ClientOnly fallback={null}>
@@ -105,6 +120,9 @@ export function FormDialog<T extends z.ZodType<FieldValues, FieldValues>, R>({
                 <fieldset disabled={submit.isPending} className="contents">
                   {children}
                 </fieldset>
+                {refusalTitle === undefined || refusal === null ? null : (
+                  <ErrorNote title={refusalTitle} detail={refusal} />
+                )}
                 <DialogFooter>
                   <SubmitButton isSubmitting={submit.isPending}>{submitLabel}</SubmitButton>
                 </DialogFooter>

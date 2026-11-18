@@ -14,6 +14,10 @@ import {
   PageHeader,
   Panel,
 } from "@/components/page";
+import { depositShortLabel } from "@/lib/ipd-deposit";
+import { useMembership } from "@/lib/membership";
+import { formatMoney, ZERO } from "@/lib/money";
+import { OPERATIONAL_INFINITE_REFETCH } from "@/lib/operational-query";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
@@ -37,6 +41,8 @@ const admissionsQuery = (orgSlug: string, state: AdmissionState) =>
     initialPageParam: undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     placeholderData: keepPreviousData,
+    // Running bills grow at checkout time while the list is open.
+    ...OPERATIONAL_INFINITE_REFETCH,
   });
 
 export const Route = createFileRoute("/$orgSlug/ipd/admissions")({
@@ -56,6 +62,7 @@ function AdmissionsRoute() {
   const { orgSlug } = Route.useParams();
   const { state } = Route.useSearch();
   const { timeZone } = useOrgDateTime();
+  const currency = useMembership(orgSlug, (membership) => membership.currency);
   const admissions = useInfiniteQuery(admissionsQuery(orgSlug, state));
   const items = admissions.data?.pages.flatMap((page) => page.items) ?? [];
 
@@ -105,6 +112,12 @@ function AdmissionsRoute() {
                   ),
                 },
                 {
+                  head: "IPD No.",
+                  cell: (item) => (
+                    <span className="font-mono whitespace-nowrap">{item.admissionNumber}</span>
+                  ),
+                },
+                {
                   head: "Bed",
                   cell: (item) =>
                     item.bedLabel ? (
@@ -131,6 +144,54 @@ function AdmissionsRoute() {
                       {formatDateTime(item.admittedAt, timeZone)}
                     </span>
                   ),
+                },
+                {
+                  head: "Running bill",
+                  // A stay that ended shows only what is still unbilled. The compact row
+                  // has no column heads, so it names its amounts.
+                  cell: (item) => (
+                    <>
+                      <span className="md:hidden">Bill </span>
+                      {item.status === "cancelled" ||
+                      (item.status === "discharged" && item.runningBill === ZERO) ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <span className="whitespace-nowrap tabular-nums">
+                          {formatMoney(item.runningBill, currency)}
+                        </span>
+                      )}
+                    </>
+                  ),
+                  className: "text-right",
+                },
+                {
+                  head: "Deposit",
+                  // What the stay holds, and how far the running bill has passed it.
+                  cell: (item) => {
+                    // Only a stay still in hospital is asked for more deposit.
+                    const short =
+                      item.status === "admitted" || item.status === "discharge_ready"
+                        ? depositShortLabel(item.runningBill, item.depositHeld, currency)
+                        : null;
+
+                    return (
+                      <>
+                        <span className="whitespace-nowrap tabular-nums md:block">
+                          <span className="md:hidden">Deposit </span>
+                          {formatMoney(item.depositHeld, currency)}
+                        </span>
+                        {short ? (
+                          <>
+                            <span className="md:hidden"> · </span>
+                            <span className="whitespace-nowrap font-medium tabular-nums md:block">
+                              {short}
+                            </span>
+                          </>
+                        ) : null}
+                      </>
+                    );
+                  },
+                  className: "text-right",
                 },
                 {
                   head: "Status",

@@ -12,6 +12,7 @@ import { OpdPatientSearch, type SelectedPatient } from "@/components/opd-patient
 import { Refusal, useRefusal } from "@/components/refusal";
 import { formatDateTime, localInputValue, nextHalfHour, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
+import { hasErrorCode } from "@/lib/orpc-error";
 
 export type Reservation = Awaited<
   ReturnType<typeof orpc.ipd.listBedReservations.call>
@@ -182,6 +183,9 @@ export function RequestBedDialog({ orgSlug, onClose }: { orgSlug: string; onClos
       }}
       success="Added to the waiting list"
       onClose={onClose}
+      // Already admitted or already waiting: the desk picks another Patient here.
+      showsInline={(error) => hasErrorCode(error, "CONFLICT")}
+      refusalTitle="The Patient was not added"
       run={(value) =>
         orpc.ipd.requestBed.call({
           orgSlug,

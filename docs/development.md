@@ -205,7 +205,10 @@ range; a passing TypeScript build cannot prove an auth database is migratable.
   migration on `origin/main` is applied, because a push to `main` deploys;
   `scripts/check-migrations.ts` (part of `bun run check`) fails when one changes.
   A local database whose journal no longer matches is recreated with
-  `bun run db:seed -- --reset`.
+  `bun run db:seed -- --reset`. So is one that held Admissions before
+  migrations `0014`–`0016`, which add required columns with no backfill; see
+  [Operations](./operations.md#deployment-topology) for the `btree_gist` extension
+  they need.
 - A write that checks more than one row, creates money, or changes a Charge set
   follows [Writes and concurrency](./architecture.md#writes-and-concurrency):
   conditional updates, the documented lock order, and the shared void path.

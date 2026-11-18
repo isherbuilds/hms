@@ -1,0 +1,4 @@
+ALTER TABLE "advance_receipts" ADD COLUMN "admission_id" text;--> statement-breakpoint
+ALTER TABLE "advance_receipts" ADD CONSTRAINT "advance_receipts_org_id_admission_id_patient_id_admissions_org_id_id_patient_id_fk" FOREIGN KEY ("org_id","admission_id","patient_id") REFERENCES "public"."admissions"("org_id","id","patient_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "advance_receipts_org_admission_idx" ON "advance_receipts" USING btree ("org_id","admission_id") WHERE "advance_receipts"."admission_id" is not null;--> statement-breakpoint
+ALTER TABLE "advance_receipts" ADD CONSTRAINT "advance_receipts_plan_or_admission_check" CHECK ("advance_receipts"."treatment_plan_id" is null or "advance_receipts"."admission_id" is null);

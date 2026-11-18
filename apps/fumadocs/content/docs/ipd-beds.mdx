@@ -1,11 +1,11 @@
 ---
 title: IPD beds and admissions
-description: Admit Patients to beds, issue their medicines, bill the stay, and record when they leave
+description: Admit Patients to beds, issue their medicines, take deposits, bill the stay, and record when they leave
 ---
 
 IPD tracks who is in which bed, the medicines and services given during the
-stay, and the one bill for it. Bed days are not billed yet: add them to the
-bill as a service, or keep them on paper, as your administrator decides.
+stay, the deposit held, and the bill. Bed days are worked out from the bed the
+Patient was in, so nobody posts them each day.
 
 ## Set up wards and beds
 
@@ -13,11 +13,18 @@ An administrator opens **IPD**, then **Wards and beds**:
 
 1. **New ward**, for example General Ward or ICU.
 2. **New bed type**, for example General bed or Private room, then **Set rate**
-   on its row. Choose the service the day is billed as, the daily rate, and
-   when the rate starts. A new rate applies to beds taken after it starts;
-   Patients already in a bed keep their rate.
+   on its row. Under **Charged each day**, choose the service the room is billed
+   as and its **Daily price**. Use **Add line** for anything else charged every
+   day in that bed, such as nursing or a duty doctor (up to ten lines). Set
+   **Starts** and choose **Save rate**. A new rate applies to beds taken after
+   it starts; Patients already in a bed keep their rate. A line with a daily
+   price of 0 adds nothing to the bill.
 3. **New bed**: choose the ward and bed type and give the label staff use, such
    as GW-01. A label can repeat in another ward.
+
+The form reminds you that non-ICU room rent above ₹5,000 a day carries 5% GST
+on the whole amount: set that rate on the room service in the catalog. A
+hospital without a GSTIN cannot use a service that charges GST.
 
 A bed type with no rate shows **No rate**, and its beds cannot take a Patient.
 **Retire** removes a bed from the board without losing its history. A bed with a
@@ -26,10 +33,16 @@ Patient in it cannot be retired.
 ## The bed board
 
 **IPD** opens on **Beds**: one panel per ward, each bed **Free**, **Occupied**
-or **Blocked**. An occupied bed shows the Patient and opens their admission.
+or **Blocked**. An occupied bed shows the Patient, the **Running bill** and any **Deposit**,
+and opens their admission. **Deposit short by** means the running bill is
+higher than the deposit: ask the family for more. Care is never stopped for
+money.
 
 - **Admit** on a free bed: find or register the Patient and choose the admitting
-  doctor.
+  doctor. Add the **Attendant** and **Attendant phone**, a one-line
+  **Diagnosis**, and tick **Medico-legal case** with the **Police intimation or
+  MLC number** when it applies. Each new admission gets an **IPD No.**, such as
+  2026-27/14. After saving, choose **Print admission slip**.
 - **⋯ → Block bed** takes a free bed out of use, with a reason, for example
   repairs.
 - **Release bed** puts a blocked bed back in use once it is clean.
@@ -49,6 +62,9 @@ find the Patient, choose the bed type and the planned arrival and departure.
 Only a free bed can be held. A bed with a Patient in it cannot be held, even for
 next week: nobody knows for certain when that Patient will leave. Put the
 Patient on the waiting list and hold a bed once one is free.
+
+A Patient who is already admitted, or already waiting or holding a bed, cannot
+be added again. Change the reservation they have instead.
 
 The views:
 
@@ -95,12 +111,44 @@ Open the admission from the board or from **Admissions**.
 - **Move bed** moves the Patient to a free bed. The old bed is free at once.
 - **Ready to leave** records the signed discharge handoff. The Patient keeps
   the bed until they leave.
-- **Record departure** ends the stay. Payment is not needed first. The bed
-  becomes **Blocked** until someone releases it after cleaning.
+- **Record departure** ends the stay. Choose **How the Patient left**: normal
+  discharge, against medical advice, absconded, referred to another hospital,
+  or death. Payment is not needed first. The bed becomes **Blocked** until
+  someone releases it after cleaning. Then **Print discharge slip**: it has a
+  signature line for the discharge summary, the ward nurse, pharmacy and
+  billing.
 - **⋯ → Not leaving yet** returns a ready Patient to admitted, with a reason.
+- **⋯ → Edit details** changes the attendant, diagnosis, medico-legal details
+  or the **Doctor** while the Patient is in hospital. Changing the doctor needs
+  a reason.
+- **⋯ → Print admission slip** prints the slip again at any time.
 
 If someone else changed the admission on another screen, HMS refuses your
 change. Refresh and check before trying again.
+
+### Undo a departure recorded by mistake
+
+For an owner or administrator, within 24 hours of the departure. Open the
+admission and choose **⋯ → Undo departure**. Say **What went wrong** and
+choose **Undo departure**. The Patient goes back to the same bed. Bills already
+issued stay as they are; anything added later goes on a further bill.
+
+HMS refuses, and the departure stays recorded, when:
+
+- the bed was retired or blocked for anything other than cleaning;
+- another Patient has used the bed, or this Patient was admitted again;
+- the bed is held for another Patient.
+
+Then admit the Patient again.
+
+## Give a family an estimate
+
+Before admission, open **IPD**, then **Estimate**. Choose the **Bed type** and
+**Expected days**, add any **Expected services**, and fill **For (optional)**
+with the name to print. The panel shows bed charges, services, GST where it
+applies, the total, and a **Suggested deposit**: the total rounded up to a
+whole ₹100. Choose **Print estimate**. The paper says **Estimate — not a bill**.
+HMS does not save it.
 
 ## Issue medicines to an inpatient
 
@@ -122,7 +170,38 @@ admission, not sold at the counter.
 
 The stock leaves the shelf at once. Nothing is paid now: each line waits on the
 admission until the stay is billed. You can issue while the Patient is admitted
-or ready to leave, not after the bill is issued.
+or ready to leave, also after a bill has been issued: the new lines go on the
+next bill.
+
+## Return ward medicine
+
+For the pharmacist. Medicine that comes back from the ward unused is returned
+to the admission, not sold back.
+
+1. On the admission, find **Medicines issued** and choose **Return**.
+2. Enter how many came back on each line, in the same smallest units as the
+   issue. HMS shows how many are left to return.
+3. Give the **Reason** and choose **Return**.
+
+Returned medicine goes to quarantine, not back on the shelf. Medicine not yet
+billed comes off the bill. Medicine already billed gets a credit note on its
+bill: choose **Print credit note**. Return medicines from one bill at a time.
+The line then shows how many were returned.
+
+## Take a deposit
+
+For the billing desk, while the Patient is in hospital.
+
+1. Open the admission. In **Bill**, choose **Take deposit**.
+2. Enter the amount and method, and the reference for a non-cash payment.
+3. Choose **Record deposit**, then **Print receipt**.
+
+The deposit is an Advance Receipt for this stay only. It pays only this stay's
+bills, never a pharmacy counter sale or an OPD visit. The admission shows the
+**Deposit** beside the **Running bill**.
+
+To show the family what the stay has cost so far, choose **Print interim bill**.
+It says **Interim bill — not an Invoice or Receipt** and has no invoice or receipt number.
 
 ## Bill an inpatient stay
 
@@ -130,13 +209,44 @@ For the billing desk.
 
 1. Wait for **Ready to leave**, the signed discharge handoff. The bill cannot
    be issued before it.
-2. Open the admission. The bill lists every service and medicine not yet
-   billed. Use **Add service** for anything missing, such as a procedure,
-   before you issue.
-3. Check the total. Services show their rate; medicines show their MRP, batch
+2. Open the admission. **Bill** lists every service and medicine not yet
+   billed, and the bed days: **Bed days to bill** gives the count and dates.
+   Use **Add service** for anything missing, such as a procedure.
+3. Choose the **Last day**: **Full**, **Half** or **Don't charge**. Half and
+   Don't charge need a **Reason**.
+4. Check the total. Services show their rate; medicines show their MRP, batch
    and expiry. For a GST-registered hospital the bill also shows **GST added**
    on services and **GST included in MRP** for medicines.
-4. **Issue invoice**, and take payment now or record why some is left to pay.
+5. Choose **Issue invoice**. In **Review and collect**, **Use advance credit**
+   starts with this stay's deposit. Enter a **Discount** if one is approved,
+   take payment for the rest, and write the **Note**: it is needed for a
+   discount or for anything left to pay.
+
+### How bed days are counted
+
+The first day runs from admission to the checkout time on the next calendar
+day. Each later day runs from checkout to checkout. Leaving exactly at the
+checkout time adds no day. With a noon checkout: admitted Monday 15:00 and left
+Tuesday 12:00 is one day; left Tuesday 12:01 is two. A day split between two
+beds is charged at the bed type the Patient spent longest in that day. Your
+administrator sets the checkout time; see
+[Organization](/docs/administration-and-handover#1-check-organization).
+
+If a new bed day starts at checkout while you are collecting, HMS refuses the
+bill and shows the current one. Check the total and issue again.
+
+When only an uncharged last day is left, there is nothing to charge: choose
+**Mark day as dealt with**. No invoice is issued.
+
+### After the bill
+
+A stay can have more than one bill. A service or medicine added after the first
+bill goes on the next one. An issued bill shows under **Bill** with **Record
+payment**, **⋯ → Issue credit note** and **Record refund**, as for an OPD visit;
+see [Correct an issued invoice](/docs/billing-and-corrections#correct-an-issued-invoice).
+
+When nothing is left to bill and the stay still holds deposit, choose **Refund
+deposit** beside the receipt to give the rest back.
 
 A GST-registered hospital needs the Patient's address on file before the
 invoice can be issued. If it is missing, add it to the Patient's record first.
@@ -146,12 +256,8 @@ service set to charge GST: set it to 0% in the catalog first. If a service with
 GST is already on the bill (the GSTIN was removed later), the invoice is
 refused: remove that line and add the service at 0%.
 
-A service added by mistake can be taken off before the bill is issued: on its
-line, **⋯ → Remove**, and give the reason. Issued medicines cannot be taken
-back yet.
-
-An admission has one bill. Once issued, it cannot be edited or corrected yet,
-and nothing more can be added to the stay.
+A service added by mistake can be taken off before it is billed: on its line,
+**⋯ → Remove**, and give the reason. Medicine comes back through **Return**.
 
 If someone else issued medicines or added a service while you were reviewing,
 HMS refuses the bill. Refresh, check the new lines, and issue again.
@@ -162,7 +268,9 @@ Only an owner or administrator can:
 
 - record an admission, move, ready or departure that happened more than ten
   minutes ago. Fill **Only if it happened earlier** with the time and a reason.
-  HMS refuses a time that clashes with another Patient's stay in that bed.
+  HMS refuses a time that clashes with another Patient's stay in that bed, or
+  an earlier move that would change a bed day already billed. A bed day billed
+  in error is corrected with a credit note on its bill.
 - **⋯ → Cancel admission**, for an admission made in error. Once the Patient
   received care, or any medicine or service was recorded, record their
   departure instead.

@@ -164,6 +164,7 @@ type IpdTab = NavEntry<
   | "/$orgSlug/ipd"
   | "/$orgSlug/ipd/admissions"
   | "/$orgSlug/ipd/reservations"
+  | "/$orgSlug/ipd/estimate"
   | "/$orgSlug/ipd/facility"
 >;
 
@@ -172,6 +173,7 @@ export const IPD_TABS: readonly IpdTab[] = [
   { to: "/$orgSlug/ipd", label: "Beds", permission: { ipd: ["read"] } },
   { to: "/$orgSlug/ipd/admissions", label: "Admissions", permission: { ipd: ["read"] } },
   { to: "/$orgSlug/ipd/reservations", label: "Reservations", permission: { ipd: ["read"] } },
+  { to: "/$orgSlug/ipd/estimate", label: "Estimate", permission: { ipd: ["read"] } },
   {
     to: "/$orgSlug/ipd/facility",
     label: "Wards and beds",
@@ -199,6 +201,7 @@ type ReportLink = NavEntry<
   | "/$orgSlug/reports/opd-register"
   | "/$orgSlug/reports/invoice-register"
   | "/$orgSlug/reports/revenue-control"
+  | "/$orgSlug/reports/ipd-desk"
 > & { icon: LucideIcon; description: string };
 
 export const REPORT_LINKS: readonly ReportLink[] = [
@@ -208,6 +211,14 @@ export const REPORT_LINKS: readonly ReportLink[] = [
     description:
       "Billed revenue by stream, doctor and category, review signals, and expiry exposure.",
     icon: ListChecksIcon,
+    permission: { report: ["readFinancial"] },
+  },
+  {
+    to: "/$orgSlug/reports/ipd-desk",
+    label: "IPD desk",
+    description:
+      "Patients who left with something unbilled, unpaid IPD bills, and deposits still held.",
+    icon: BedDoubleIcon,
     permission: { report: ["readFinancial"] },
   },
   {

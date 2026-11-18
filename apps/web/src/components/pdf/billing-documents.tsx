@@ -5,6 +5,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { formatBusinessDate } from "@/lib/business-date";
 import { formatDecimal } from "@hms/api/core/money";
 import { formatMoney, ZERO } from "@/lib/money";
+import { formatDateTime } from "@/lib/org-datetime";
 import { methodLabel } from "@/lib/settlement";
 import { gstStateLabel } from "@hms/api/lib/gst-state";
 import {
@@ -23,6 +24,8 @@ export type AdvanceBundle = Awaited<
 >;
 
 type Invoice = InvoiceBundle["invoice"];
+
+type Stay = NonNullable<InvoiceBundle["admission"]>;
 
 type Payment = InvoiceBundle["payments"][number];
 
@@ -57,7 +60,7 @@ function registrationRows(gstin: string) {
 
 const personName = { textTransform: "capitalize" } as const;
 
-const colors = {
+export const colors = {
   ink: "#18181b",
   muted: "#71717a",
   border: "#d4d4d8",
@@ -71,13 +74,13 @@ const documentStyle: CSSProperties = {
   lineHeight: 1.45,
 };
 
-const tableStyle: CSSProperties = {
+export const tableStyle: CSSProperties = {
   borderCollapse: "collapse",
   marginTop: 8,
   width: "100%",
 };
 
-const headingCellStyle: CSSProperties = {
+export const headingCellStyle: CSSProperties = {
   backgroundColor: colors.panel,
   borderBottom: `1px solid ${colors.border}`,
   color: colors.muted,
@@ -88,13 +91,13 @@ const headingCellStyle: CSSProperties = {
   textTransform: "uppercase",
 };
 
-const cellStyle: CSSProperties = {
+export const cellStyle: CSSProperties = {
   borderBottom: `1px solid ${colors.border}`,
   padding: "7px 6px",
   verticalAlign: "top",
 };
 
-function DocumentShell({
+export function DocumentShell({
   document,
   title,
   number,
@@ -173,7 +176,7 @@ function DocumentShell({
   );
 }
 
-function SectionTitle({ children }: { children: ReactNode }) {
+export function SectionTitle({ children }: { children: ReactNode }) {
   return (
     <h2
       style={{
@@ -189,7 +192,7 @@ function SectionTitle({ children }: { children: ReactNode }) {
   );
 }
 
-function Details({
+export function Details({
   rows,
   roomy = false,
 }: {
@@ -217,7 +220,11 @@ function Details({
   );
 }
 
-function SummaryBox({ rows }: { rows: Array<{ label: string; value: string; total?: boolean }> }) {
+export function SummaryBox({
+  rows,
+}: {
+  rows: Array<{ label: string; value: string; total?: boolean }>;
+}) {
   return (
     <div
       style={{
@@ -290,13 +297,27 @@ function TaxSummary({
   );
 }
 
+/** The stay an ipd Invoice bills; a fact the stay does not have is left out. */
+function stayRows(stay: Stay) {
+  return [
+    { label: "IPD No.", value: stay.admissionNumber },
+    { label: "Admitted", value: formatDateTime(stay.admittedAt, stay.timeZone) },
+    ...(stay.dischargedAt
+      ? [{ label: "Left", value: formatDateTime(stay.dischargedAt, stay.timeZone) }]
+      : []),
+    ...(stay.diagnosis ? [{ label: "Diagnosis", value: stay.diagnosis }] : []),
+  ];
+}
+
 export function InvoiceDocument({
   invoice,
   lines,
+  admission,
   layout,
 }: {
   invoice: Invoice;
   lines: InvoiceBundle["lines"];
+  admission: InvoiceBundle["admission"];
   layout: "a4" | "thermal";
 }) {
   const currency = invoice.currency;
@@ -384,6 +405,7 @@ export function InvoiceDocument({
             ...(invoice.patientAddress
               ? [{ label: "Address", value: invoice.patientAddress }]
               : []),
+            ...(invoice.patientPan ? [{ label: "PAN", value: invoice.patientPan }] : []),
             ...registrationRows(invoice.orgGstin),
           ]}
         />
@@ -440,7 +462,16 @@ export function InvoiceDocument({
           {invoice.patientAddress ? (
             <div style={{ color: colors.muted }}>{invoice.patientAddress.replace(/\n/g, ", ")}</div>
           ) : null}
+          {invoice.patientPan ? (
+            <div style={{ color: colors.muted }}>PAN {invoice.patientPan}</div>
+          ) : null}
         </div>
+        {admission ? (
+          <div style={{ flex: 1 }}>
+            <SectionTitle>Stay</SectionTitle>
+            <Details rows={stayRows(admission)} />
+          </div>
+        ) : null}
       </section>
 
       <SectionTitle>Items</SectionTitle>

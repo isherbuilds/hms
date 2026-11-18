@@ -19,7 +19,9 @@ import {
   AdmissionStatusBadge,
   CancelAdmissionDialog,
   DischargeDialog,
+  EditDetailsDialog,
   ReadyDialog,
+  ReopenDialog,
   TransferDialog,
   UndoReadyDialog,
 } from "@/components/ipd-dialogs";
@@ -27,18 +29,22 @@ import {
   AdmissionMedicines,
   admissionIssuesQuery,
   IssueMedicinesDialog,
+  ReturnMedicinesDialog,
 } from "@/components/ipd-medicines";
 import { DataList, ErrorNote, PageBody, PageHeader, Panel } from "@/components/page";
+import { DISCHARGE_TYPE_LABELS, slipPdfUrl, type SlipKind } from "@/lib/ipd-slips";
 import { useCan, useMembership } from "@/lib/membership";
-import { formatMoney } from "@/lib/money";
+import { currentMinute, useMinuteClock } from "@/lib/minute-clock";
+import { OPERATIONAL_REFETCH } from "@/lib/operational-query";
 import { formatDateTime, useOrgDateTime } from "@/lib/org-datetime";
 import { orpc } from "@/lib/orpc";
 import { requireOrgPermission } from "@/lib/route-permission";
 
 import { IpdTabs } from "./route";
 
+// The running bill grows at checkout time, so an open page keeps reading it.
 const admissionQuery = (orgSlug: string, admissionId: string) =>
-  orpc.ipd.get.queryOptions({ input: { orgSlug, admissionId } });
+  orpc.ipd.get.queryOptions({ input: { orgSlug, admissionId }, ...OPERATIONAL_REFETCH });
 
 export const Route = createFileRoute("/$orgSlug/ipd/$admissionId")({
   head: () => appHead("Admission"),
@@ -57,22 +63,29 @@ export const Route = createFileRoute("/$orgSlug/ipd/$admissionId")({
       authorize(roles, { pharmacy: ["read"] })
         ? queryClient.query(admissionIssuesQuery(orgSlug, admissionId))
         : null,
-      // A billed stay shows its Invoice's payments, so that loads with the bill.
+      // A billed stay shows its Invoices' payments, so they load with the bill.
       authorize(roles, { billing: ["read"] })
         ? queryClient
             .query(admissionBillQuery(orgSlug, admissionId))
             .then((bill) =>
-              bill.invoiceId === null
-                ? null
-                : queryClient.query(issuedInvoiceQuery(orgSlug, bill.invoiceId)),
+              Promise.all(
+                bill.issued.map(({ invoiceId }) =>
+                  queryClient.query(issuedInvoiceQuery(orgSlug, invoiceId)),
+                ),
+              ),
             )
         : null,
     ]).catch(() => {});
+
+    return { now: currentMinute() };
   },
   component: AdmissionRoute,
 });
 
-type DialogKind = "transfer" | "ready" | "discharge" | "undo" | "cancel";
+type DialogKind = "transfer" | "ready" | "discharge" | "undo" | "cancel" | "details" | "reopen";
+
+// The server refuses to undo a departure after this long.
+const REOPEN_WINDOW_MS = 24 * 60 * 60 * 1_000;
 
 // A dialog acts on the Admission as it was when it opened, never a newer refresh.
 type OpenDialog = { kind: DialogKind; admission: { id: string; revision: number } };
@@ -84,15 +97,17 @@ function AdmissionRoute() {
   const canUpdate = useCan(orgSlug, { ipd: ["update"] });
   const canCorrect = useCan(orgSlug, { ipd: ["correct"] });
   const canIssue = useCan(orgSlug, { pharmacy: ["issueAdmission"] });
+  const canReturn = useCan(orgSlug, { pharmacy: ["returnAdmission"] });
   const canReadIssues = useCan(orgSlug, { pharmacy: ["read"] });
   const canReadBill = useCan(orgSlug, { billing: ["read"] });
   const canWriteBill = useCan(orgSlug, { billing: ["write"] });
   const [opened, setOpened] = useState<OpenDialog | null>(null);
+  // The return is checked against the charges as they were when the form opened.
+  const [returning, setReturning] = useState<{ id: string; chargeRevision: number } | null>(null);
   const issuing = Route.useSearch().issue === 1;
   const navigate = Route.useNavigate();
+  const now = useMinuteClock(Route.useLoaderData().now);
   const detail = useQuery(admissionQuery(orgSlug, admissionId));
-
-  const bill = useQuery({ ...admissionBillQuery(orgSlug, admissionId), enabled: canReadBill });
 
   if (!detail.data) {
     return (
@@ -131,52 +146,87 @@ function AdmissionRoute() {
   const setIssuing = (open: boolean) =>
     void navigate({ search: open ? { issue: 1 } : {}, replace: true });
 
-  // Medicines go only onto an unbilled stay; the server refuses a billed one either way.
-  const billed = bill.data !== undefined && bill.data.invoiceId !== null;
+  // A ward issue entered late still reaches the bill, so only a cancelled stay refuses one.
+  const issuable = canIssue && canReadIssues && admission.status !== "cancelled";
 
-  const issuable = canIssue && canReadIssues && active && !billed;
+  const discharged = admission.status === "discharged";
+
+  const reopenable =
+    canCorrect &&
+    discharged &&
+    admission.dischargedAt !== null &&
+    now - admission.dischargedAt.getTime() < REOPEN_WINDOW_MS;
+
+  const slip = (kind: SlipKind) => (
+    <a href={slipPdfUrl(orgSlug, admission.id, kind)} target="_blank" rel="noreferrer" />
+  );
 
   return (
     <>
       <PageHeader
         title="Admission"
+        description={
+          <>
+            IPD No. <span className="font-mono">{admission.admissionNumber}</span>
+          </>
+        }
         action={
-          active && canUpdate ? (
+          admission.status === "cancelled" ? undefined : (
             <>
-              <Button variant="outline" onClick={() => open("transfer")}>
-                Move bed
-              </Button>
-              {admission.status === "admitted" ? (
-                <Button onClick={() => open("ready")}>Ready to leave</Button>
-              ) : (
-                <Button onClick={() => open("discharge")}>Record departure</Button>
-              )}
-              {admission.status === "discharge_ready" || canCorrect ? (
-                <ClientOnly fallback={null}>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={<Button variant="ghost" size="icon" />}
-                      aria-label="More actions"
-                    >
-                      <MoreHorizontalIcon />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="min-w-44">
-                      {admission.status === "discharge_ready" ? (
-                        <DropdownMenuItem onClick={() => open("undo")}>
-                          Not leaving yet
-                        </DropdownMenuItem>
-                      ) : null}
-                      {canCorrect ? (
-                        <DropdownMenuItem variant="destructive" onClick={() => open("cancel")}>
-                          Cancel admission
-                        </DropdownMenuItem>
-                      ) : null}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </ClientOnly>
+              {active && canUpdate ? (
+                <>
+                  <Button variant="outline" onClick={() => open("transfer")}>
+                    Move bed
+                  </Button>
+                  {admission.status === "admitted" ? (
+                    <Button onClick={() => open("ready")}>Ready to leave</Button>
+                  ) : (
+                    <Button onClick={() => open("discharge")}>Record departure</Button>
+                  )}
+                </>
               ) : null}
+              {discharged ? (
+                <Button variant="outline" nativeButton={false} render={slip("discharge")}>
+                  Print discharge slip
+                </Button>
+              ) : null}
+              <ClientOnly fallback={null}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={<Button variant="ghost" size="icon" />}
+                    aria-label="More actions"
+                  >
+                    <MoreHorizontalIcon />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-44">
+                    <DropdownMenuItem render={slip("admission")}>
+                      Print admission slip
+                    </DropdownMenuItem>
+                    {active && canUpdate ? (
+                      <DropdownMenuItem onClick={() => open("details")}>
+                        Edit details
+                      </DropdownMenuItem>
+                    ) : null}
+                    {admission.status === "discharge_ready" && canUpdate ? (
+                      <DropdownMenuItem onClick={() => open("undo")}>
+                        Not leaving yet
+                      </DropdownMenuItem>
+                    ) : null}
+                    {reopenable ? (
+                      <DropdownMenuItem onClick={() => open("reopen")}>
+                        Undo departure
+                      </DropdownMenuItem>
+                    ) : null}
+                    {active && canUpdate && canCorrect ? (
+                      <DropdownMenuItem variant="destructive" onClick={() => open("cancel")}>
+                        Cancel admission
+                      </DropdownMenuItem>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </ClientOnly>
             </>
-          ) : undefined
+          )
         }
       />
       <IpdTabs orgSlug={orgSlug} />
@@ -221,6 +271,31 @@ function AdmissionRoute() {
             {admission.dischargedAt ? (
               <Fact label="Left">{formatDateTime(admission.dischargedAt, timeZone)}</Fact>
             ) : null}
+            {admission.dischargeType ? (
+              <Fact label="How the Patient left">
+                {DISCHARGE_TYPE_LABELS[admission.dischargeType]}
+              </Fact>
+            ) : null}
+            {admission.attendantName || admission.attendantPhone ? (
+              <Fact label="Attendant">
+                {admission.attendantName ? (
+                  <span className="capitalize">{admission.attendantName}</span>
+                ) : null}
+                {admission.attendantName && admission.attendantPhone ? " · " : null}
+                {admission.attendantPhone ? (
+                  <a
+                    href={`tel:${admission.attendantPhone}`}
+                    className="tabular-nums underline-offset-4 [@media(hover:hover)_and_(pointer:fine)]:hover:underline"
+                  >
+                    {admission.attendantPhone}
+                  </a>
+                ) : null}
+              </Fact>
+            ) : null}
+            {admission.diagnosis ? <Fact label="Diagnosis">{admission.diagnosis}</Fact> : null}
+            {admission.medicoLegal ? (
+              <Fact label="Medico-legal">{admission.medicoLegalRef ?? "Yes"}</Fact>
+            ) : null}
             {admission.cancelledAt ? (
               <Fact label="Cancelled">
                 {formatDateTime(admission.cancelledAt, timeZone)} · {admission.cancelReason}
@@ -257,13 +332,7 @@ function AdmissionRoute() {
                   </span>
                 ),
               },
-              {
-                head: "Daily rate",
-                cell: (stay) => (
-                  <span className="tabular-nums">{formatMoney(stay.dailyPrice, currency)}</span>
-                ),
-                className: "text-right",
-              },
+              { head: "Bed type", cell: (stay) => stay.categoryName },
             ]}
             rows={stays}
             rowKey={(stay) => stay.id}
@@ -274,6 +343,11 @@ function AdmissionRoute() {
           <AdmissionMedicines
             orgSlug={orgSlug}
             admissionId={admission.id}
+            onReturn={
+              canReturn && admission.status !== "cancelled"
+                ? () => setReturning({ id: admission.id, chargeRevision: admission.chargeRevision })
+                : undefined
+            }
             action={
               issuable ? (
                 <Button size="xs" variant="outline" onClick={() => setIssuing(true)}>
@@ -288,7 +362,6 @@ function AdmissionRoute() {
           <AdmissionBill
             orgSlug={orgSlug}
             admission={admission}
-            bill={bill}
             canWrite={canWriteBill}
             currency={currency}
           />
@@ -300,6 +373,14 @@ function AdmissionRoute() {
           orgSlug={orgSlug}
           admission={admission}
           onClose={() => setIssuing(false)}
+        />
+      ) : null}
+
+      {returning?.id === admission.id ? (
+        <ReturnMedicinesDialog
+          orgSlug={orgSlug}
+          admission={returning}
+          onClose={() => setReturning(null)}
         />
       ) : null}
 
@@ -322,6 +403,17 @@ function AdmissionRoute() {
       ) : null}
       {ref && dialog === "cancel" ? (
         <CancelAdmissionDialog orgSlug={orgSlug} admission={ref} onClose={close} />
+      ) : null}
+      {ref && dialog === "details" ? (
+        <EditDetailsDialog
+          orgSlug={orgSlug}
+          admission={ref}
+          details={{ ...admission, practitionerName }}
+          onClose={close}
+        />
+      ) : null}
+      {ref && dialog === "reopen" ? (
+        <ReopenDialog orgSlug={orgSlug} admission={ref} onClose={close} />
       ) : null}
     </>
   );

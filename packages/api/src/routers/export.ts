@@ -139,7 +139,9 @@ export const exportRouter = {
           { header: "Fiscal year", key: "fiscalYear", width: 12 },
           { header: "Patient", key: "patientName", width: 28 },
           { header: "MRN", key: "patientMrn", width: 16 },
+          { header: "PAN", key: "patientPan", width: 14 },
           ...registerMoneyColumns,
+          { header: "Cash received", key: "cashReceived", width: 16 },
         ],
         rows: [
           ...rows.map(registerRow).map((row) => ({
@@ -149,7 +151,9 @@ export const exportRouter = {
             fiscalYear: row.fiscalYear,
             patientName: row.patientName ?? "Counter sale",
             patientMrn: row.patientMrn ?? "",
+            patientPan: row.patientPan ?? "",
             ...Object.fromEntries(registerMoneyColumns.map(({ key }) => [key, rupees(row[key])])),
+            cashReceived: rupees(row.cashReceived),
           })),
           {
             invoiceNumber: "Total",
@@ -377,6 +381,95 @@ export const exportRouter = {
               name: "Total liabilities and equity",
               balance: Number(totals.liabilitiesAndEquity),
             },
+          ],
+        },
+      ]);
+    },
+  ),
+
+  ipdDeskXlsx: orgProcedure({ report: ["readFinancial"] }, asOfInput).handler(
+    async ({ context, input }) => {
+      const [{ unbilled, unpaid, deposits }, { timeZone }] = await Promise.all([
+        call(reportRouter.ipdDesk, input, { context }),
+        readOrgSettings(context.scope.orgId),
+      ]);
+
+      const left = new Intl.DateTimeFormat("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone,
+      });
+
+      const stayColumns: Column[] = [
+        { header: "IPD No.", key: "admissionNumber", width: 16 },
+        { header: "Patient", key: "patientName", width: 28 },
+        { header: "MRN", key: "mrn", width: 16 },
+      ];
+
+      // A stay in the deposits sheet may have been cancelled, so it ended rather than left.
+      const endColumn = (header: string) => ({ header, key: "left", width: 22 });
+
+      return xlsxFile(`ipd-desk-${input.asOf}.xlsx`, [
+        {
+          name: "Left unbilled",
+          columns: [
+            ...stayColumns,
+            endColumn("Left"),
+            { header: "Pending charges", key: "pendingCharges", width: 16 },
+            { header: "Unbilled days", key: "unbilledDays", width: 14 },
+            { header: "Amount", key: "amount", width: 16 },
+          ],
+          rows: [
+            ...unbilled.rows.map((row) => ({
+              admissionNumber: row.admissionNumber,
+              patientName: row.patientName,
+              mrn: row.mrn,
+              left: left.format(row.dischargedAt),
+              pendingCharges: row.pendingCharges,
+              unbilledDays: row.unbilledDays,
+              amount: rupees(row.amount),
+            })),
+            { admissionNumber: "Total", amount: rupees(unbilled.total) },
+          ],
+        },
+        {
+          name: "Unpaid bills",
+          columns: [
+            ...stayColumns,
+            { header: "Invoice number", key: "invoiceNumber", width: 22 },
+            { header: "Date", key: "businessDate", width: 14 },
+            { header: "Invoice total", key: "grandTotal", width: 16 },
+            { header: "Outstanding", key: "outstanding", width: 16 },
+          ],
+          rows: [
+            ...unpaid.rows.map((row) => ({
+              admissionNumber: row.admissionNumber,
+              patientName: row.patientName,
+              mrn: row.mrn,
+              invoiceNumber: row.invoiceNumber,
+              businessDate: row.businessDate,
+              grandTotal: rupees(row.grandTotal),
+              outstanding: rupees(row.outstanding),
+            })),
+            { admissionNumber: "Total", outstanding: rupees(unpaid.total) },
+          ],
+        },
+        {
+          name: "Deposits held",
+          columns: [
+            ...stayColumns,
+            endColumn("Stay ended"),
+            { header: "Deposit held", key: "depositHeld", width: 16 },
+          ],
+          rows: [
+            ...deposits.rows.map((row) => ({
+              admissionNumber: row.admissionNumber,
+              patientName: row.patientName,
+              mrn: row.mrn,
+              left: left.format(row.endedAt),
+              depositHeld: rupees(row.depositHeld),
+            })),
+            { admissionNumber: "Total", depositHeld: rupees(deposits.total) },
           ],
         },
       ]);

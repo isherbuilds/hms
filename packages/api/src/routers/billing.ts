@@ -7,6 +7,7 @@ import { creditNoteLines } from "@hms/db/schema/credit-note-lines";
 import { creditNotes } from "@hms/db/schema/credit-notes";
 import { invoiceLines } from "@hms/db/schema/invoice-lines";
 import { invoices } from "@hms/db/schema/invoices";
+import { ACTIVE_ADMISSION_STATUSES, admissions } from "@hms/db/schema/ipd";
 import { patients } from "@hms/db/schema/patients";
 import { guardianLabel } from "@hms/db/schema/patient-relations";
 import { payments } from "@hms/db/schema/payments";
@@ -32,11 +33,7 @@ import {
   recordPaymentsTx,
   settleIssuedInvoiceTx,
 } from "../lib/billing-documents";
-import {
-  bumpChargeRevision,
-  lockAdmissionCharges,
-  requireUnbilled,
-} from "../lib/admission-charges";
+import { bumpChargeRevision, lockAdmissionCharges } from "../lib/admission-charges";
 import { impossible } from "../lib/conflict";
 import { invoiceBalanceFor, invoiceBalancesFor } from "../lib/invoice-balance";
 import { voidPendingCharges } from "../lib/opd-close";
@@ -95,6 +92,7 @@ export async function settleInvoiceTx(
       patientMrn: patients.mrn,
       patientPhone: patients.phone,
       patientAddress: patients.address,
+      patientPan: patients.pan,
       patientGuardianRelation: patients.guardianRelation,
       patientGuardianName: patients.guardianName,
     })
@@ -140,6 +138,7 @@ export async function settleInvoiceTx(
         mrn: appointmentAndPatient.patientMrn,
         phone: appointmentAndPatient.patientPhone,
         address: appointmentAndPatient.patientAddress,
+        pan: appointmentAndPatient.patientPan,
         guardian: guardian ? `${guardian.relation} ${guardian.name}` : null,
       },
     },
@@ -213,7 +212,6 @@ export const billingRouter = {
           });
         }
 
-        await requireUnbilled(tx, scope.orgId, admission.id);
         await bumpChargeRevision(tx, scope.orgId, admission.id);
       } else if (candidate?.appointmentId) {
         await tx
@@ -264,12 +262,18 @@ export const billingRouter = {
       .extend({
         patientId: z.string(),
         treatmentPlanId: z.string().optional(),
+        // A deposit for this stay, spent only on its bills.
+        admissionId: z.string().optional(),
         method: paymentLine.shape.method,
         amount: positiveMoney,
         reference: paymentLine.shape.reference,
         note,
       })
-      .superRefine(requirePaymentReference),
+      .superRefine(requirePaymentReference)
+      .refine((value) => !(value.treatmentPlanId && value.admissionId), {
+        message: "An advance is for a treatment plan or a stay, not both.",
+        path: ["admissionId"],
+      }),
   ).handler(async ({ context, input }) => {
     const { scope } = context;
 
@@ -329,6 +333,28 @@ export const billingRouter = {
         throw new ORPCError("CONFLICT", { message: "That treatment plan is no longer available." });
       }
 
+      // Locked before the receipt (D040), so the stay cannot leave while it takes a deposit.
+      const stay = input.admissionId
+        ? await tx
+            .select({ id: admissions.id, admissionNumber: admissions.admissionNumber })
+            .from(admissions)
+            .where(
+              and(
+                eq(admissions.orgId, scope.orgId),
+                eq(admissions.id, input.admissionId),
+                eq(admissions.patientId, patient.id),
+                inArray(admissions.status, ACTIVE_ADMISSION_STATUSES),
+              ),
+            )
+            .limit(1)
+            .for("update")
+            .then((rows) => rows[0])
+        : undefined;
+
+      if (input.admissionId && !stay) {
+        throw new ORPCError("CONFLICT", { message: "That stay can no longer take a deposit." });
+      }
+
       const sequence = await nextCounter(tx, scope.orgId, `advance:${fiscalYear}`);
       const receiptNumber = documentNumber(settings.advanceReceiptPrefix, fiscalYear, sequence);
 
@@ -339,11 +365,14 @@ export const billingRouter = {
           orgId: scope.orgId,
           patientId: patient.id,
           treatmentPlanId: plan?.id ?? null,
+          admissionId: stay?.id ?? null,
           method: input.method,
           amount: input.amount,
           reference: input.reference ?? null,
           note: input.note ?? null,
-          purpose: plan?.label ?? "Future services",
+          purpose: stay
+            ? `IPD deposit · IPD No. ${stay.admissionNumber}`
+            : (plan?.label ?? "Future services"),
           receiptNumber,
           fiscalYear,
           businessDate: businessDate(now, settings.timeZone),
@@ -400,6 +429,7 @@ export const billingRouter = {
   ).handler(async ({ context, input }) => {
     const { scope } = context;
     const remaining = advanceRemaining(scope.orgId);
+
     const untagged = isNull(advanceReceipts.treatmentPlanId);
 
     const usableReceipt =
@@ -409,6 +439,7 @@ export const billingRouter = {
 
     // `usable` is what the desk offers on this bill: untagged credit plus this plan's
     // own advance. Another plan's advance stays out of the default (it is spent last).
+    // A stay's deposit is never spent outside that stay's bills, so it is in neither figure.
     const [credit] = await db
       .select({
         total: sql<bigint>`coalesce(sum(${remaining}), 0)`.mapWith(BigInt),
@@ -419,7 +450,11 @@ export const billingRouter = {
       .from(patients)
       .leftJoin(
         advanceReceipts,
-        and(eq(advanceReceipts.orgId, scope.orgId), eq(advanceReceipts.patientId, patients.id)),
+        and(
+          eq(advanceReceipts.orgId, scope.orgId),
+          eq(advanceReceipts.patientId, patients.id),
+          isNull(advanceReceipts.admissionId),
+        ),
       )
       .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, input.patientId)))
       .groupBy(patients.id);
@@ -533,8 +568,8 @@ export const billingRouter = {
     const { scope } = context;
     const { settings, now, fiscalYear } = await billingDocumentContext(scope.orgId);
 
-    const recorded = await db.transaction(async (tx) => {
-      return recordPaymentsTx(tx, {
+    const recorded = await db.transaction(async (tx) =>
+      recordPaymentsTx(tx, {
         scope,
         invoiceId: input.invoiceId,
         payments: input.payments,
@@ -542,8 +577,8 @@ export const billingRouter = {
         settings,
         now,
         fiscalYear,
-      });
-    });
+      }),
+    );
 
     for (const payment of recorded) {
       audit({
@@ -630,10 +665,10 @@ export const billingRouter = {
           throw new ORPCError("CONFLICT", {
             message: "Pharmacy invoices are corrected by a return.",
           });
+        // Service, bed-day and medicine lines alike (D066). A credit on a medicine line
+        // corrects money only; the goods come back through `pharmacy.returnFromAdmission`.
         case "ipd":
-          throw new ORPCError("CONFLICT", {
-            message: "Inpatient bills are corrected from the admission",
-          });
+          break;
       }
 
       const posted = await postCreditNoteTx(tx, {
@@ -917,9 +952,24 @@ export const billingRouter = {
 
     // `user` is the global auth table: attribution only; the org predicate stays on `invoices`.
     const [row] = await db
-      .select({ invoice: invoices, issuedByName: user.name })
+      .select({
+        invoice: invoices,
+        issuedByName: user.name,
+        // The stay an ipd Invoice bills, printed on it; null for every other Invoice.
+        admission: {
+          admissionNumber: admissions.admissionNumber,
+          admittedAt: admissions.admittedAt,
+          dischargedAt: admissions.dischargedAt,
+          diagnosis: admissions.diagnosis,
+          timeZone: admissions.timeZone,
+        },
+      })
       .from(invoices)
       .innerJoin(user, eq(user.id, invoices.issuedBy))
+      .leftJoin(
+        admissions,
+        and(eq(admissions.orgId, scope.orgId), eq(admissions.id, invoices.admissionId)),
+      )
       .where(and(eq(invoices.orgId, scope.orgId), eq(invoices.id, input.invoiceId)))
       .limit(1);
 
@@ -1010,6 +1060,7 @@ export const billingRouter = {
       creditNotes: notesWithLines,
       refunds: invoiceRefunds,
       balance,
+      admission: row.admission,
     };
   }),
 };

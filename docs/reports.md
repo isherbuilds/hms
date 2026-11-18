@@ -2,8 +2,8 @@
 
 Reports are Organization-scoped read models over source records. They never
 become a second write model, and clinical notes are excluded. Revenue Control,
-Invoice Register, GST, Trial Balance, Balance Sheet, Daily Collections, and the
-OPD Register ship; the billing worklists below are the shipped exception lists.
+Invoice Register, GST, Trial Balance, Balance Sheet, Daily Collections, the
+OPD Register and the IPD desk ship; the billing worklists below are the shipped exception lists.
 
 ## Billing exceptions
 
@@ -87,7 +87,10 @@ workbook say **Invoices issued in period; balances now** and carry generation
 time; this is not historical as-of debt. The page links authorized users to
 guarded Invoice documents, OPD visits and pharmacy sales. Print includes loaded
 rows only; `export.invoiceRegisterXlsx` drains all filtered pages, includes full
-totals and series, and does not export only the visible page.
+totals and series, and does not export only the visible page. The workbook also
+lists each Invoice's snapshotted PAN and its cash received: cash Payments plus
+cash Advance Receipts allocated to it, untotalled, for the accountant's list of
+bills paid over ₹2,00,000 in cash (D067).
 
 ### Billed revenue and correction bridge
 
@@ -193,16 +196,41 @@ numbering with duplicate prevention; migration through an automatic type must
 retain original voucher numbers and prove no renumbering. A Tally importer is
 not part of these XLSX exports.
 
-No Admission, claim adjustment, historical as-of balance, earning-department
+No claim adjustment, historical as-of balance, earning-department
 snapshot, purchase-cost model or denominator-capture feature is fabricated.
-Future IPD adds the Admission source and stream to these same reports; the
-Claims increment owns patient/payer balance extensions at the shared Invoice
+The Claims increment owns patient/payer balance extensions at the shared Invoice
 balance seam, without duplicate revenue or fake Payments.
 Future IPD attribution defaults to the admitting/primary consultant, snapshotted
 at Invoice issue and inherited on credits; authorized reassignment records
 previous/new practitioner, actor and reason in a sensitive audit and affects
 subsequent issues, never rewrites prior attribution. Missing consultant remains
 Unassigned. This policy does not create Admission operations in these reports.
+
+## IPD desk report
+
+`/$orgSlug/reports/ipd-desk` reads `report.ipdDesk({asOf})` under
+`report:readFinancial` (owner, admin and accountant). It lists three IPD
+exceptions, each with a total, oldest first and not paged:
+
+- **Left with something unbilled:** Admissions discharged on or before `asOf`
+  (hospital date) with a pending Charge or an unbilled bed day: departure time,
+  pending Charge count, unbilled days and the running bill.
+- **Unpaid bills:** `ipd` Invoices dated on or before `asOf` with a positive
+  outstanding balance, whatever the stay's state.
+- **Deposits still held:** stays discharged or cancelled on or before `asOf`
+  that still hold deposit, with the time the stay ended.
+
+`asOf` (default today) decides who is listed; every amount is the current
+balance, not a balance as of that date, so each row reconciles to its Admission
+or Invoice today. SQL only picks candidates; each amount comes from the helper
+its source screen reads (`readRunningBills`, the Invoice movement sums with
+`calculateInvoiceBalance`, `readDepositsHeld`), in a fixed number of queries. The IPD No. links to the
+Admission for readers with `ipd:read`.
+
+The page offers **Print / PDF** and **Export Excel**. `export.ipdDeskXlsx` writes
+the same read to `ipd-desk-{asOf}.xlsx`: sheets **Left unbilled**, **Unpaid
+bills** and **Deposits held**, each starting with `IPD No.`, `Patient` and
+`MRN`, amounts in rupees, and a final `Total` row.
 
 ## Financial reports and exports
 
@@ -218,7 +246,7 @@ and closing balances by account. **Balance Sheet** reads the same billing ledger
 as of the selected date. Both cover HMS billing activity only; they omit expense,
 payroll, inventory valuation, and manual journal accounting.
 
-All seven report pages offer **Print / PDF** and **Export Excel**. Each `export.*Xlsx`
+All eight report pages offer **Print / PDF** and **Export Excel**. Each `export.*Xlsx`
 procedure builds a workbook on the server by calling the matching report procedure
 with the same request context, or the same row helpers for the paged OPD and GST
 registers, so the workbook holds every row rather than the loaded page. It reuses

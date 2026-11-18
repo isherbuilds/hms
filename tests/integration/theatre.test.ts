@@ -1436,8 +1436,7 @@ async function createWard(theatre: Theatre) {
   await api.ipd.setBedTariff({
     orgSlug,
     categoryId: category.id,
-    catalogItemId: roomService.id,
-    dailyPrice: 1_000_00n,
+    lines: [{ catalogItemId: roomService.id, dailyPrice: 1_000_00n }],
     effectiveFrom: fromNow(-30 * DAY),
   });
 
@@ -1496,6 +1495,7 @@ test("a case attaches only its own Patient's active Admission", async () => {
     orgSlug,
     admissionId: leaverAdmission.id,
     expectedRevision: ready.revision,
+    dischargeType: "normal",
   });
 
   const cancelledAdmission = await admit(theatre, cancelledPatient.id, beds[3].id);
@@ -1554,11 +1554,14 @@ async function moneyTrail(theatre: Theatre, patientIds: string[], admissionId: s
   const day = (offset: number) =>
     new Date(today.getTime() + offset * DAY).toISOString().slice(0, 10);
 
+  // `through` is the clock on an open stay; everything else the bill reads is the trail.
+  const { through: _clock, ...bill } = await api.ipd.previewInvoice({ orgSlug, admissionId });
+
   return {
     accounts: await Promise.all(
       patientIds.map((patientId) => api.patient.account({ orgSlug, patientId })),
     ),
-    admissionBill: await api.ipd.previewInvoice({ orgSlug, admissionId }),
+    admissionBill: bill,
     stockMovements: await api.pharmacy.listMovements({ orgSlug }),
     trialBalance: await api.report.trialBalance({ orgSlug, from: day(-2), to: day(2) }),
   };
@@ -2119,7 +2122,12 @@ test("a linked case is re-linked to the Patient's next Admission, audited with b
     expectedRevision: first.revision,
   });
 
-  await api.ipd.discharge({ orgSlug, admissionId: first.id, expectedRevision: ready.revision });
+  await api.ipd.discharge({
+    orgSlug,
+    admissionId: first.id,
+    expectedRevision: ready.revision,
+    dischargeType: "normal",
+  });
 
   const second = await admit(theatre, patient.id, beds[1].id);
   const relinked = await attach(theatre, linked, second.id);

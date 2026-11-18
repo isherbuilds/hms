@@ -23,6 +23,7 @@ export const SETTINGS_DEFAULTS = {
   fiscalYearStartMonth: 4,
   followUpValidityDays: 14,
   unbilledAlertHours: 24,
+  ipdCheckoutMinutes: 720,
 } as const;
 
 export const organizationSettings = pgTable(
@@ -52,6 +53,8 @@ export const organizationSettings = pgTable(
     timeZone: text("time_zone").notNull().default("Asia/Kolkata"),
     followUpValidityDays: integer("follow_up_validity_days").notNull().default(14),
     unbilledAlertHours: integer("unbilled_alert_hours").notNull().default(24),
+    // Bed-day checkout, minutes after local midnight (D066).
+    ipdCheckoutMinutes: integer("ipd_checkout_minutes").notNull().default(720),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -67,6 +70,10 @@ export const organizationSettings = pgTable(
     check(
       "organization_settings_unbilled_alert_hours_check",
       sql`${table.unbilledAlertHours} between 1 and 168`,
+    ),
+    check(
+      "organization_settings_ipd_checkout_minutes_check",
+      sql`${table.ipdCheckoutMinutes} between 0 and 1439`,
     ),
   ],
 );

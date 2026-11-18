@@ -258,6 +258,7 @@ test("patient fields round-trip and a missing date of birth is refused", async (
     allergies: "Penicillin",
     medicalHistory: "Hypertension",
     uid: "  NATIONAL-123  ",
+    pan: " abcde1234f ",
     guardian: { relation: "W/o", name: "gurmeet SINGH", phone: "5550554" },
     emergencyContact: { name: "harpreet kaur", phone: "5550551" },
   });
@@ -277,6 +278,7 @@ test("patient fields round-trip and a missing date of birth is refused", async (
     allergies: "Penicillin",
     medicalHistory: "Hypertension",
     uid: "NATIONAL-123",
+    pan: "ABCDE1234F",
     guardianRelation: "W/o",
     guardianName: "gurmeet singh",
     guardianPhone: "5550554",
@@ -289,6 +291,13 @@ test("patient fields round-trip and a missing date of birth is refused", async (
     api.patient.register({
       ...registration(organization.slug, "Missing Date of Birth", "5550500"),
       dateOfBirth: "",
+    }),
+    "BAD_REQUEST",
+  );
+  await expectORPCCode(
+    api.patient.register({
+      ...registration(organization.slug, "Short PAN", "5550501"),
+      pan: "ABCDE1234",
     }),
     "BAD_REQUEST",
   );

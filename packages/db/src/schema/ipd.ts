@@ -15,6 +15,7 @@ import {
 
 import { orgIdColumn, user } from "./auth";
 import { catalogItems } from "./catalog-items";
+import { creditNotes } from "./credit-notes";
 import { patients } from "./patients";
 import { practitioners } from "./practitioners";
 import { stockBatches } from "./stock-batches";
@@ -58,8 +59,6 @@ export const bedTariffs = pgTable(
     id: text("id").primaryKey(),
     orgId: orgIdColumn(),
     categoryId: text("category_id").notNull(),
-    catalogItemId: text("catalog_item_id").notNull(),
-    dailyPrice: bigint("daily_price", { mode: "bigint" }).notNull(),
     effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull(),
     createdBy: text("created_by")
       .notNull()
@@ -67,15 +66,10 @@ export const bedTariffs = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    check("bed_tariffs_daily_price_check", sql`${table.dailyPrice} >= 0`),
     unique("bed_tariffs_org_id_id_unique").on(table.orgId, table.id),
     foreignKey({
       columns: [table.orgId, table.categoryId],
       foreignColumns: [bedCategories.orgId, bedCategories.id],
-    }),
-    foreignKey({
-      columns: [table.orgId, table.catalogItemId],
-      foreignColumns: [catalogItems.orgId, catalogItems.id],
     }),
     index("bed_tariffs_org_category_effective_idx").on(
       table.orgId,
@@ -88,6 +82,42 @@ export const bedTariffs = pgTable(
       table.orgId,
       table.categoryId,
       table.effectiveFrom,
+    ),
+  ],
+);
+
+// A bed day costs every line of its tariff: the room plus any nursing, duty-doctor or
+// similar daily charge, billed in `position` order. Never edited, like its tariff.
+export const bedTariffLines = pgTable(
+  "bed_tariff_lines",
+  {
+    id: text("id").primaryKey(),
+    orgId: orgIdColumn(),
+    tariffId: text("tariff_id").notNull(),
+    catalogItemId: text("catalog_item_id").notNull(),
+    dailyPrice: bigint("daily_price", { mode: "bigint" }).notNull(),
+    position: integer("position").notNull(),
+  },
+  (table) => [
+    check("bed_tariff_lines_daily_price_check", sql`${table.dailyPrice} >= 0`),
+    check("bed_tariff_lines_position_check", sql`${table.position} >= 0`),
+    foreignKey({
+      columns: [table.orgId, table.tariffId],
+      foreignColumns: [bedTariffs.orgId, bedTariffs.id],
+    }),
+    foreignKey({
+      columns: [table.orgId, table.catalogItemId],
+      foreignColumns: [catalogItems.orgId, catalogItems.id],
+    }),
+    uniqueIndex("bed_tariff_lines_org_tariff_position_uq").on(
+      table.orgId,
+      table.tariffId,
+      table.position,
+    ),
+    uniqueIndex("bed_tariff_lines_org_tariff_item_uq").on(
+      table.orgId,
+      table.tariffId,
+      table.catalogItemId,
     ),
   ],
 );
@@ -145,6 +175,16 @@ export const ENDED_ADMISSION_STATUSES = [
   "cancelled",
 ] as const satisfies readonly AdmissionStatus[];
 
+export const DISCHARGE_TYPES = [
+  "normal",
+  "against_advice",
+  "absconded",
+  "referred",
+  "death",
+] as const;
+
+export type DischargeType = (typeof DISCHARGE_TYPES)[number];
+
 // An inpatient stay with its own lifecycle (D013/D019): not an Encounter or Visit.
 export const admissions = pgTable(
   "admissions",
@@ -153,14 +193,29 @@ export const admissions = pgTable(
     orgId: orgIdColumn(),
     patientId: text("patient_id").notNull(),
     practitionerId: text("practitioner_id").notNull(),
+    // Printed as IPD No.: `${fiscalYear}/${n}` from the `admission:${fiscalYear}` counter.
+    admissionNumber: text("admission_number").notNull(),
     status: text("status", { enum: ADMISSION_STATUSES }).notNull(),
     admittedAt: timestamp("admitted_at", { withTimezone: true }).notNull(),
     readyAt: timestamp("ready_at", { withTimezone: true }),
     dischargedAt: timestamp("discharged_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     cancelReason: text("cancel_reason"),
+    attendantName: text("attendant_name"),
+    attendantPhone: text("attendant_phone"),
+    medicoLegal: boolean("medico_legal").notNull().default(false),
+    // Police intimation or register number.
+    medicoLegalRef: text("medico_legal_ref"),
+    // One line for the bill, the slips and insurer paperwork; not a clinical record.
+    diagnosis: text("diagnosis"),
+    dischargeType: text("discharge_type", { enum: DISCHARGE_TYPES }),
     // Snapshotted so later setting changes never re-time a stay.
     timeZone: text("time_zone").notNull(),
+    // Bed-day checkout, minutes after local midnight; snapshotted like the time zone.
+    checkoutMinutes: integer("checkout_minutes").notNull(),
+    // Bed days already billed. A bill takes every unbilled day in order, so billed days
+    // are a prefix and this count is the whole record (D066). It never moves backwards.
+    bedDaysBilled: integer("bed_days_billed").notNull().default(0),
     // Optimistic lifecycle version: every state change or transfer advances it.
     revision: integer("revision").notNull().default(0),
     // Optimistic version of this stay's pending/invoiced charge set (D020).
@@ -181,6 +236,14 @@ export const admissions = pgTable(
       sql`(${table.status} = 'discharged') = (${table.dischargedAt} is not null)`,
     ),
     check(
+      "admissions_discharge_type_check",
+      sql`(${table.status} = 'discharged') = (${table.dischargeType} is not null)`,
+    ),
+    check(
+      "admissions_medico_legal_ref_check",
+      sql`${table.medicoLegal} or ${table.medicoLegalRef} is null`,
+    ),
+    check(
       "admissions_cancelled_check",
       sql`(${table.status} = 'cancelled') = (${table.cancelledAt} is not null) and (${table.status} = 'cancelled') = (${table.cancelReason} is not null)`,
     ),
@@ -188,7 +251,10 @@ export const admissions = pgTable(
       "admissions_timeline_check",
       sql`(${table.readyAt} is null or ${table.readyAt} >= ${table.admittedAt}) and (${table.dischargedAt} is null or ${table.dischargedAt} >= coalesce(${table.readyAt}, ${table.admittedAt}))`,
     ),
+    check("admissions_checkout_minutes_check", sql`${table.checkoutMinutes} between 0 and 1439`),
+    check("admissions_bed_days_billed_check", sql`${table.bedDaysBilled} >= 0`),
     unique("admissions_org_id_id_unique").on(table.orgId, table.id),
+    uniqueIndex("admissions_org_number_uq").on(table.orgId, table.admissionNumber),
     // Lets an ipd Invoice prove its patient is the Admission's patient.
     unique("admissions_org_id_patient_unique").on(table.orgId, table.id, table.patientId),
     foreignKey({
@@ -212,7 +278,9 @@ export const admissions = pgTable(
 );
 
 // Occupancy history: a transfer closes one stay and opens the next at the same
-// instant. A stay snapshots the tariff it started under.
+// instant. A stay's `tariffId` is the price snapshot it started under. Two exclusion constraints,
+// hand-authored in migration 0015, forbid overlapping `[startedAt, endedAt)` intervals
+// per bed and per Admission; a cancelled Admission's stay is an empty interval.
 export const admissionBedStays = pgTable(
   "admission_bed_stays",
   {
@@ -221,7 +289,6 @@ export const admissionBedStays = pgTable(
     admissionId: text("admission_id").notNull(),
     bedId: text("bed_id").notNull(),
     tariffId: text("tariff_id").notNull(),
-    dailyPrice: bigint("daily_price", { mode: "bigint" }).notNull(),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
     endedAt: timestamp("ended_at", { withTimezone: true }),
     createdBy: text("created_by")
@@ -234,7 +301,6 @@ export const admissionBedStays = pgTable(
       "admission_bed_stays_interval_check",
       sql`${table.endedAt} is null or ${table.endedAt} >= ${table.startedAt}`,
     ),
-    check("admission_bed_stays_daily_price_check", sql`${table.dailyPrice} >= 0`),
     unique("admission_bed_stays_org_id_id_unique").on(table.orgId, table.id),
     foreignKey({
       columns: [table.orgId, table.admissionId],
@@ -248,12 +314,6 @@ export const admissionBedStays = pgTable(
       columns: [table.orgId, table.tariffId],
       foreignColumns: [bedTariffs.orgId, bedTariffs.id],
     }),
-    uniqueIndex("admission_bed_stays_org_bed_open_uq")
-      .on(table.orgId, table.bedId)
-      .where(sql`${table.endedAt} is null`),
-    uniqueIndex("admission_bed_stays_org_admission_open_uq")
-      .on(table.orgId, table.admissionId)
-      .where(sql`${table.endedAt} is null`),
     index("admission_bed_stays_org_bed_started_idx").on(table.orgId, table.bedId, table.startedAt),
     index("admission_bed_stays_org_admission_started_idx").on(
       table.orgId,
@@ -264,7 +324,7 @@ export const admissionBedStays = pgTable(
 );
 
 // What an Admission Charge records; later kinds are a constant change (D042).
-export const ADMISSION_CHARGE_KINDS = ["service", "pharmacy_issue"] as const;
+export const ADMISSION_CHARGE_KINDS = ["service", "pharmacy_issue", "bed_day"] as const;
 
 export type AdmissionChargeKind = (typeof ADMISSION_CHARGE_KINDS)[number];
 
@@ -321,6 +381,7 @@ export const admissionPharmacyIssueLines = pgTable(
   },
   (table) => [
     check("admission_pharmacy_issue_lines_qty_check", sql`${table.qty} > 0`),
+    unique("admission_pharmacy_issue_lines_org_id_id_unique").on(table.orgId, table.id),
     index("admission_pharmacy_issue_lines_org_issue_idx").on(table.orgId, table.issueId),
     unique("admission_pharmacy_issue_lines_org_id_admission_batch_unique").on(
       table.orgId,
@@ -340,6 +401,60 @@ export const admissionPharmacyIssueLines = pgTable(
       columns: [table.orgId, table.batchId],
       foreignColumns: [stockBatches.orgId, stockBatches.id],
     }),
+  ],
+);
+
+// Ward medicine given back. The goods go to quarantine (D041); a pending Charge is
+// voided and reposted for what remains, and a billed one is credited by `creditNoteId`.
+// What an issue line still holds is its quantity less the sum of its return lines.
+export const admissionPharmacyReturns = pgTable(
+  "admission_pharmacy_returns",
+  {
+    id: text("id").primaryKey(),
+    orgId: orgIdColumn(),
+    admissionId: text("admission_id").notNull(),
+    reason: text("reason").notNull(),
+    creditNoteId: text("credit_note_id"),
+    returnedBy: text("returned_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique("admission_pharmacy_returns_org_id_id_unique").on(table.orgId, table.id),
+    foreignKey({
+      columns: [table.orgId, table.admissionId],
+      foreignColumns: [admissions.orgId, admissions.id],
+    }),
+    foreignKey({
+      columns: [table.orgId, table.creditNoteId],
+      foreignColumns: [creditNotes.orgId, creditNotes.id],
+    }),
+    index("admission_pharmacy_returns_org_admission_idx").on(table.orgId, table.admissionId),
+  ],
+);
+
+export const admissionPharmacyReturnLines = pgTable(
+  "admission_pharmacy_return_lines",
+  {
+    id: text("id").primaryKey(),
+    orgId: orgIdColumn(),
+    returnId: text("return_id").notNull(),
+    issueLineId: text("issue_line_id").notNull(),
+    qty: integer("qty").notNull(),
+  },
+  (table) => [
+    check("admission_pharmacy_return_lines_qty_check", sql`${table.qty} > 0`),
+    foreignKey({
+      columns: [table.orgId, table.returnId],
+      foreignColumns: [admissionPharmacyReturns.orgId, admissionPharmacyReturns.id],
+    }),
+    foreignKey({
+      columns: [table.orgId, table.issueLineId],
+      foreignColumns: [admissionPharmacyIssueLines.orgId, admissionPharmacyIssueLines.id],
+    }),
+    // A return line's cap sums the earlier returns of its issue line.
+    index("admission_pharmacy_return_lines_org_issue_line_idx").on(table.orgId, table.issueLineId),
   ],
 );
 

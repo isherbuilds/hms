@@ -89,7 +89,15 @@ function settingsInput(
     fiscalYearStartMonth: 4,
     followUpValidityDays: 14,
     unbilledAlertHours: 1,
+    ipdCheckoutMinutes: 720,
   };
+}
+
+/** Every bill in this suite holds a Charge, so each one issues an Invoice. */
+function invoiced<T extends { invoiceId: string | null }>(result: T): T & { invoiceId: string } {
+  if (result.invoiceId === null) throw new Error("expected the bill to issue an Invoice");
+
+  return { ...result, invoiceId: result.invoiceId };
 }
 
 let phoneSequence = 5_570_000;
@@ -125,11 +133,11 @@ async function createHospital(seed: string, options: { gstin?: string } = {}) {
 
   const ward = await api.ipd.createWard({ orgSlug, name: "General" });
   const category = await api.ipd.createBedCategory({ orgSlug, name: "General bed" });
+  // A ₹0 room writes no bed-day Charge, so these bills hold only what a test posts.
   await api.ipd.setBedTariff({
     orgSlug,
     categoryId: category.id,
-    catalogItemId: roomService.id,
-    dailyPrice: 1_000_00n,
+    lines: [{ catalogItemId: roomService.id, dailyPrice: 0n }],
     effectiveFrom: new Date(Date.now() - 24 * 30 * HOUR),
   });
 
@@ -265,7 +273,12 @@ async function createHospital(seed: string, options: { gstin?: string } = {}) {
   async function discharge(admissionId: string) {
     const ready = await markReady(admissionId);
 
-    return api.ipd.discharge({ orgSlug, admissionId, expectedRevision: ready.revision });
+    return api.ipd.discharge({
+      orgSlug,
+      admissionId,
+      expectedRevision: ready.revision,
+      dischargeType: "normal",
+    });
   }
 
   async function member(role: Parameters<typeof joinOrganization>[2]) {
@@ -315,16 +328,18 @@ async function createHospital(seed: string, options: { gstin?: string } = {}) {
     const client = settlement.client ?? api;
     const preview = await client.ipd.previewInvoice({ orgSlug, admissionId });
 
-    return client.ipd.issueInvoice({
+    const issued = await client.ipd.issueInvoice({
       orgSlug,
       admissionId,
       expectedChargeRevision: preview.chargeRevision,
-      expectedGrandTotal: preview.grandTotal,
+      expectedGrandTotal: preview.pending.grandTotal,
       payments: settlement.payments ?? [],
       outstandingReason:
         settlement.outstandingReason ??
         (settlement.payments === undefined ? "Settling with the family later" : undefined),
     });
+
+    return invoiced(issued);
   }
 
   return {
@@ -588,7 +603,7 @@ test("loose units issue against the pack MRP and carry its price units", async (
     admissionId: admission.id,
   });
 
-  expect(preview.lines[0]).toMatchObject({ qty: 4, priceUnits: 10, lineSubtotal: 44_80n });
+  expect(preview.pending.lines[0]).toMatchObject({ qty: 4, priceUnits: 10, lineSubtotal: 44_80n });
 });
 
 test("a bundled issue snapshots exempt 0% tax and an independent issue keeps the Product's GST, both inclusive at MRP", async () => {
@@ -796,7 +811,7 @@ test("a stale charge revision is a CONFLICT and writes nothing", async () => {
   expect(await hospital.shelfQty(batchId)).toBe(4);
 });
 
-test("a cancelled or discharged Admission refuses issues; a discharge-ready one accepts them", async () => {
+test("a cancelled Admission refuses issues; a discharge-ready or discharged one accepts them", async () => {
   const hospital = await createHospital("ipd-issue-states");
   const medicine = await hospital.createMedicine();
   const { batchId } = await hospital.receive(medicine.productId, { qty: 10 });
@@ -814,14 +829,6 @@ test("a cancelled or discharged Admission refuses issues; a discharge-ready one 
     "a cancelled Admission",
   );
 
-  const departed = await hospital.admit(1);
-  await hospital.discharge(departed.admission.id);
-  await expectORPCCode(
-    hospital.issue(departed.admission.id, [{ batchId, qty: 1 }]),
-    "CONFLICT",
-    "a discharged Admission",
-  );
-
   expect(await issueRows(hospital.orgId)).toEqual([]);
   expect(await hospital.shelfQty(batchId)).toBe(10);
 
@@ -831,6 +838,14 @@ test("a cancelled or discharged Admission refuses issues; a discharge-ready one 
 
   expect(await admissionCharges(hospital.orgId, ready.admission.id)).toHaveLength(1);
   expect(await hospital.shelfQty(batchId)).toBe(9);
+
+  // A ward issue entered after the Patient left still reaches the bill (D066).
+  const departed = await hospital.admit(1);
+  await hospital.discharge(departed.admission.id);
+  await hospital.issue(departed.admission.id, [{ batchId, qty: 2 }]);
+
+  expect(await admissionCharges(hospital.orgId, departed.admission.id)).toHaveLength(1);
+  expect(await hospital.shelfQty(batchId)).toBe(7);
 });
 
 test("two Admissions issuing the last unit at once: exactly one wins and stock never goes negative", async () => {
@@ -986,6 +1001,8 @@ test("the Admission's issues list their batch, expiry and Charge", async () => {
       qty: 2,
       chargeId: charge!.id,
       chargeStatus: "pending",
+      returnedQty: 0,
+      bill: null,
     },
   ]);
 });
@@ -1178,17 +1195,21 @@ test("the bill preview totals the pending Charges and writes nothing", async () 
     admissionId: admission.id,
   });
 
-  expect(preview).toMatchObject({
-    chargeRevision: revision,
+  expect(preview.chargeRevision).toBe(revision);
+  expect(preview.registered).toBe(true);
+  expect(preview.issued).toEqual([]);
+  expect(preview.pending).toMatchObject({
     subtotal: 6_224_00n,
     taxTotal: 300_00n,
     roundOff: 0n,
     grandTotal: 6_524_00n,
-    invoiceId: null,
   });
 
-  const serviceLine = preview.lines.find((line) => line.admissionKind === "service");
-  const medicineLine = preview.lines.find((line) => line.admissionKind === "pharmacy_issue");
+  const serviceLine = preview.pending.lines.find((line) => line.admissionKind === "service");
+
+  const medicineLine = preview.pending.lines.find(
+    (line) => line.admissionKind === "pharmacy_issue",
+  );
 
   expect(serviceLine).toMatchObject({
     description: "Physiotherapy session",
@@ -1255,16 +1276,18 @@ test("the mixed-basis Invoice: exclusive taxed service, bundled and independent 
   await hospital.markReady(admission.id);
 
   const preview = await api.ipd.previewInvoice({ orgSlug, admissionId: admission.id });
-  expect(preview.grandTotal).toBe(6_636_00n);
+  expect(preview.pending.grandTotal).toBe(6_636_00n);
 
-  const result = await api.ipd.issueInvoice({
-    orgSlug,
-    admissionId: admission.id,
-    expectedChargeRevision: preview.chargeRevision,
-    expectedGrandTotal: preview.grandTotal,
-    payments: [],
-    outstandingReason: "Family settles tomorrow",
-  });
+  const result = invoiced(
+    await api.ipd.issueInvoice({
+      orgSlug,
+      admissionId: admission.id,
+      expectedChargeRevision: preview.chargeRevision,
+      expectedGrandTotal: preview.pending.grandTotal,
+      payments: [],
+      outstandingReason: "Family settles tomorrow",
+    }),
+  );
 
   expect(result.receiptIds).toEqual([]);
   expect(result.chargeRevision).toBeGreaterThan(preview.chargeRevision);
@@ -1385,7 +1408,13 @@ test("the mixed-basis Invoice: exclusive taxed service, bundled and independent 
   expect(tracedCharge.stockBatchId).toBe(batchId);
 
   const after = await api.ipd.previewInvoice({ orgSlug, admissionId: admission.id });
-  expect(after.invoiceId).toBe(result.invoiceId);
+  expect(after.issued.map((issued) => issued.invoiceId)).toEqual([result.invoiceId]);
+  expect(after.issued[0]).toMatchObject({
+    invoiceNumber: invoice!.invoiceNumber,
+    grandTotal: 6_636_00n,
+  });
+  expect(after.pending.lines).toEqual([]);
+  expect(after.pending.grandTotal).toBe(0n);
 });
 
 test("an IPD Invoice whose total has paise is never rounded to the rupee", async () => {
@@ -1459,7 +1488,7 @@ test("an unpaid or part-paid Invoice needs an outstanding reason", async () => {
       orgSlug: hospital.orgSlug,
       admissionId: admission.id,
       expectedChargeRevision: preview.chargeRevision,
-      expectedGrandTotal: preview.grandTotal,
+      expectedGrandTotal: preview.pending.grandTotal,
       payments: paid === 0n ? [] : [{ method: "cash", amount: paid }],
       outstandingReason,
     });
@@ -1468,7 +1497,7 @@ test("an unpaid or part-paid Invoice needs an outstanding reason", async () => {
   await expectORPCCode(attempt(1_000_00n), "BAD_REQUEST", "part paid, no reason");
   expect(await db.select().from(invoices).where(eq(invoices.orgId, hospital.orgId))).toEqual([]);
 
-  const result = await attempt(1_000_00n, "Balance after insurer letter");
+  const result = invoiced(await attempt(1_000_00n, "Balance after insurer letter"));
 
   const detail = await hospital.api.billing.getInvoice({
     orgSlug: hospital.orgSlug,
@@ -1509,8 +1538,8 @@ test("a stale charge revision rolls the Invoice back completely", async () => {
       orgSlug: hospital.orgSlug,
       admissionId: admission.id,
       expectedChargeRevision: preview.chargeRevision - 1,
-      expectedGrandTotal: preview.grandTotal,
-      payments: [{ method: "cash", amount: preview.grandTotal }],
+      expectedGrandTotal: preview.pending.grandTotal,
+      payments: [{ method: "cash", amount: preview.pending.grandTotal }],
     }),
     "CONFLICT",
   );
@@ -1535,8 +1564,8 @@ test("a stale grand total rolls the Invoice back completely", async () => {
       orgSlug: hospital.orgSlug,
       admissionId: admission.id,
       expectedChargeRevision: preview.chargeRevision,
-      expectedGrandTotal: preview.grandTotal - 1n,
-      payments: [{ method: "cash", amount: preview.grandTotal - 1n }],
+      expectedGrandTotal: preview.pending.grandTotal - 1n,
+      payments: [{ method: "cash", amount: preview.pending.grandTotal - 1n }],
     }),
     "CONFLICT",
   );
@@ -1561,8 +1590,8 @@ test("overcollection is refused and rolls the Invoice back completely", async ()
       orgSlug: hospital.orgSlug,
       admissionId: admission.id,
       expectedChargeRevision: preview.chargeRevision,
-      expectedGrandTotal: preview.grandTotal,
-      payments: [{ method: "cash", amount: preview.grandTotal + 1_00n }],
+      expectedGrandTotal: preview.pending.grandTotal,
+      payments: [{ method: "cash", amount: preview.pending.grandTotal + 1_00n }],
     }),
     "BAD_REQUEST",
   );
@@ -1596,8 +1625,8 @@ test("an issue racing the Invoice leaves one consistent state: either it waits f
         orgSlug: hospital.orgSlug,
         admissionId: admission.id,
         expectedChargeRevision: preview.chargeRevision,
-        expectedGrandTotal: preview.grandTotal,
-        payments: [{ method: "cash", amount: preview.grandTotal }],
+        expectedGrandTotal: preview.pending.grandTotal,
+        payments: [{ method: "cash", amount: preview.pending.grandTotal }],
       }),
     ),
   ]);
@@ -1624,8 +1653,9 @@ test("an issue racing the Invoice leaves one consistent state: either it waits f
   }
 });
 
-test("after the Invoice, a second Invoice, further issues and further services are refused", async () => {
+test("a stay takes a second Invoice for what was posted after the first, and nothing is billed twice", async () => {
   const hospital = await createHospital("ipd-after-invoice");
+  const { orgId, orgSlug, api } = hospital;
   const medicine = await hospital.createMedicine();
   const { batchId } = await hospital.receive(medicine.productId, { qty: 5 });
   const { admission, service } = await readyAdmissionWithService(hospital);
@@ -1636,9 +1666,10 @@ test("after the Invoice, a second Invoice, further issues and further services a
 
   expect(await hospital.chargeRevision(admission.id)).toBe(first.chargeRevision);
 
+  // Nothing is left, so a second bill has nothing to take.
   await expectORPCCode(
-    hospital.api.ipd.issueInvoice({
-      orgSlug: hospital.orgSlug,
+    api.ipd.issueInvoice({
+      orgSlug,
       admissionId: admission.id,
       expectedChargeRevision: first.chargeRevision,
       expectedGrandTotal: 0n,
@@ -1646,34 +1677,97 @@ test("after the Invoice, a second Invoice, further issues and further services a
       outstandingReason: "nothing left",
     }),
     "CONFLICT",
-    "a second Invoice",
+    "a bill with nothing to bill",
   );
-  await expectORPCCode(
-    hospital.api.pharmacy.issueToAdmission({
-      orgSlug: hospital.orgSlug,
-      admissionId: admission.id,
-      expectedChargeRevision: first.chargeRevision,
-      lines: [{ batchId, qty: 1 }],
-    }),
-    "CONFLICT",
-    "an issue after the Invoice",
-  );
-  await expectORPCCode(
-    hospital.api.ipd.postServices({
-      orgSlug: hospital.orgSlug,
-      admissionId: admission.id,
-      expectedChargeRevision: first.chargeRevision,
-      lines: [{ catalogItemId: service.id, qty: 1 }],
-    }),
-    "CONFLICT",
-    "a service after the Invoice",
-  );
+  expect(await db.select().from(invoices).where(eq(invoices.orgId, orgId))).toHaveLength(1);
 
-  expect(await db.select().from(invoices).where(eq(invoices.orgId, hospital.orgId))).toHaveLength(
-    1,
-  );
-  expect(await admissionCharges(hospital.orgId, admission.id)).toHaveLength(1);
-  expect(await hospital.shelfQty(batchId)).toBe(5);
+  // Posting stays open after the first bill.
+  await hospital.issue(admission.id, [{ batchId, qty: 1 }]);
+  await hospital.postServices(admission.id, [{ catalogItemId: service.id, qty: 1 }]);
+  expect(await hospital.shelfQty(batchId)).toBe(4);
+
+  const preview = await api.ipd.previewInvoice({ orgSlug, admissionId: admission.id });
+
+  expect(preview.issued.map((issued) => issued.invoiceId)).toEqual([first.invoiceId]);
+  expect(preview.pending.lines.map((line) => line.admissionKind).sort()).toEqual([
+    "pharmacy_issue",
+    "service",
+  ]);
+  expect(preview.pending.grandTotal).toBe(6_300_00n + MRP);
+
+  const second = await hospital.issueInvoice(admission.id, {
+    payments: [{ method: "upi", amount: 6_300_00n + MRP, reference: "UPI-2" }],
+  });
+
+  expect(second.invoiceId).not.toBe(first.invoiceId);
+
+  const issued = await db
+    .select()
+    .from(invoices)
+    .where(eq(invoices.orgId, orgId))
+    .orderBy(invoices.createdAt);
+
+  expect(issued.map((invoice) => invoice.invoiceNumber)).toEqual([
+    `IP${fiscalYearNow()}/1`,
+    `IP${fiscalYearNow()}/2`,
+  ]);
+  expect(issued.map((invoice) => invoice.admissionId)).toEqual([admission.id, admission.id]);
+  expect(issued.map((invoice) => invoice.grandTotal)).toEqual([6_300_00n, 6_300_00n + MRP]);
+
+  // Each Charge sits on exactly one Invoice.
+  const charged = await admissionCharges(orgId, admission.id);
+  expect(charged).toHaveLength(3);
+  expect(charged.every((charge) => charge.status === "invoiced")).toBe(true);
+  expect(charged.filter((charge) => charge.invoiceId === first.invoiceId)).toHaveLength(1);
+  expect(charged.filter((charge) => charge.invoiceId === second.invoiceId)).toHaveLength(2);
+
+  const firstLines = await db
+    .select()
+    .from(invoiceLines)
+    .where(and(eq(invoiceLines.orgId, orgId), eq(invoiceLines.invoiceId, first.invoiceId)));
+
+  const secondLines = await db
+    .select()
+    .from(invoiceLines)
+    .where(and(eq(invoiceLines.orgId, orgId), eq(invoiceLines.invoiceId, second.invoiceId)));
+
+  expect(firstLines).toHaveLength(1);
+  expect(secondLines).toHaveLength(2);
+
+  const after = await api.ipd.previewInvoice({ orgSlug, admissionId: admission.id });
+
+  expect(after.issued.map((invoice) => invoice.invoiceId)).toEqual([
+    first.invoiceId,
+    second.invoiceId,
+  ]);
+  expect(after.pending.lines).toEqual([]);
+  expect(after.pending.grandTotal).toBe(0n);
+});
+
+test("services and issues post to a discharged Admission after its bill and go on a further one", async () => {
+  const hospital = await createHospital("ipd-late-posting");
+  const { orgSlug, api } = hospital;
+  const { admission, service } = await readyAdmissionWithService(hospital);
+  const ready = await api.ipd.get({ orgSlug, admissionId: admission.id });
+
+  await api.ipd.discharge({
+    orgSlug,
+    admissionId: admission.id,
+    expectedRevision: ready.admission.revision,
+    dischargeType: "normal",
+  });
+
+  const first = await hospital.issueInvoice(admission.id);
+  await hospital.postServices(admission.id, [{ catalogItemId: service.id, qty: 2 }]);
+
+  const preview = await api.ipd.previewInvoice({ orgSlug, admissionId: admission.id });
+  expect(preview.pending.grandTotal).toBe(12_600_00n);
+
+  const second = await hospital.issueInvoice(admission.id);
+  expect(second.invoiceId).not.toBe(first.invoiceId);
+
+  const detail = await api.ipd.get({ orgSlug, admissionId: admission.id });
+  expect(detail.admission.status).toBe("discharged");
 });
 
 // ── Tenancy ─────────────────────────────────────────────────────────────────
@@ -1890,33 +1984,32 @@ test("existing OPD Charges and lines are exclusive, counter Pharmacy ones are in
 
 // ── Corrections before and after the Invoice ────────────────────────────────
 
-test("undoing ready after the Invoice is refused", async () => {
+test("a billed stay returns to care, and what it then accrues goes on a further bill", async () => {
   const hospital = await createHospital("ipd-undo-after-invoice");
-  const { admission } = await readyAdmissionWithService(hospital);
-  await hospital.issueInvoice(admission.id);
+  const { orgSlug, api } = hospital;
+  const { admission, service } = await readyAdmissionWithService(hospital);
+  const first = await hospital.issueInvoice(admission.id);
 
-  const detail = await hospital.api.ipd.get({
-    orgSlug: hospital.orgSlug,
+  const detail = await api.ipd.get({ orgSlug, admissionId: admission.id });
+
+  const undone = await api.ipd.undoDischargeReady({
+    orgSlug,
     admissionId: admission.id,
+    expectedRevision: detail.admission.revision,
+    reason: "Patient stays another night",
   });
 
-  await expectORPCCode(
-    hospital.api.ipd.undoDischargeReady({
-      orgSlug: hospital.orgSlug,
-      admissionId: admission.id,
-      expectedRevision: detail.admission.revision,
-      reason: "Patient stays another night",
-    }),
-    "CONFLICT",
-  );
+  expect(undone.status).toBe("admitted");
 
-  const after = await hospital.api.ipd.get({
-    orgSlug: hospital.orgSlug,
-    admissionId: admission.id,
-  });
+  await hospital.postServices(admission.id, [{ catalogItemId: service.id, qty: 1 }]);
+  await hospital.markReady(admission.id);
+  const second = await hospital.issueInvoice(admission.id);
 
-  expect(after.admission.status).toBe("discharge_ready");
-  expect(after.admission.revision).toBe(detail.admission.revision);
+  expect(second.invoiceId).not.toBe(first.invoiceId);
+
+  const preview = await api.ipd.previewInvoice({ orgSlug, admissionId: admission.id });
+  expect(preview.issued).toHaveLength(2);
+  expect(preview.issued.map((invoice) => invoice.grandTotal)).toEqual([6_300_00n, 6_300_00n]);
 });
 
 test("a wrongly posted service is voided with a reason before the Invoice: it leaves the bill, bumps the charge revision, and is audited like an OPD void", async () => {
@@ -1929,7 +2022,7 @@ test("a wrongly posted service is voided with a reason before the Invoice: it le
   await hospital.postServices(admission.id, [{ catalogItemId: wrong.id, qty: 1 }]);
 
   const before = await hospital.api.ipd.previewInvoice({ orgSlug, admissionId: admission.id });
-  expect(before.grandTotal).toBe(12_600_00n);
+  expect(before.pending.grandTotal).toBe(12_600_00n);
 
   const wrongCharge = (await admissionCharges(orgId, admission.id)).find(
     (charge) => charge.catalogItemId === wrong.id,
@@ -1947,8 +2040,8 @@ test("a wrongly posted service is voided with a reason before the Invoice: it le
   const after = await hospital.api.ipd.previewInvoice({ orgSlug, admissionId: admission.id });
 
   expect(after.chargeRevision).toBe(before.chargeRevision + 1);
-  expect(after.grandTotal).toBe(6_300_00n);
-  expect(after.lines.map((line) => line.description)).toEqual(["Dressing"]);
+  expect(after.pending.grandTotal).toBe(6_300_00n);
+  expect(after.pending.lines.map((line) => line.description)).toEqual(["Dressing"]);
 
   const [voided] = await db
     .select()
@@ -1987,12 +2080,12 @@ test("a wrongly posted service is voided with a reason before the Invoice: it le
   expect(cancelled.status).toBe("cancelled");
 });
 
-test("an issued medicine Charge cannot be voided, and nothing can be voided after the Invoice", async () => {
+test("an issued medicine Charge cannot be voided, a billed Charge cannot be voided, and a service posted after the bill still can", async () => {
   const hospital = await createHospital("ipd-void-refused");
   const { orgId, orgSlug, api } = hospital;
   const medicine = await hospital.createMedicine();
   const { batchId } = await hospital.receive(medicine.productId, { qty: 5 });
-  const { admission } = await readyAdmissionWithService(hospital);
+  const { admission, service } = await readyAdmissionWithService(hospital);
   await hospital.issue(admission.id, [{ batchId, qty: 2 }]);
 
   const charged = await admissionCharges(orgId, admission.id);
@@ -2019,16 +2112,34 @@ test("an issued medicine Charge cannot be voided, and nothing can be voided afte
   await expectORPCCode(
     api.billing.voidCharge({ orgSlug, chargeId: serviceCharge.id, reason: "Too late" }),
     "CONFLICT",
-    "voiding a service after the Invoice",
+    "voiding a billed service",
   );
   await expectORPCCode(
     api.billing.voidCharge({ orgSlug, chargeId: medicineCharge.id, reason: "Too late" }),
     "CONFLICT",
-    "voiding a medicine after the Invoice",
+    "voiding a billed medicine",
   );
 
   expect(await hospital.shelfQty(batchId)).toBe(3);
   expect(await admissionCharges(orgId, admission.id)).toEqual(billed);
+
+  // A service posted after the bill is pending, so it can still be taken off.
+  await hospital.postServices(admission.id, [{ catalogItemId: service.id, qty: 1 }]);
+
+  const late = (await admissionCharges(orgId, admission.id)).find(
+    (charge) => charge.status === "pending",
+  );
+
+  if (!late) throw new Error("expected the late service's pending Charge");
+
+  const beforeVoid = await hospital.chargeRevision(admission.id);
+  await api.billing.voidCharge({ orgSlug, chargeId: late.id, reason: "Posted twice" });
+
+  expect(await hospital.chargeRevision(admission.id)).toBe(beforeVoid + 1);
+
+  const preview = await api.ipd.previewInvoice({ orgSlug, admissionId: admission.id });
+  expect(preview.pending.lines).toEqual([]);
+  expect(preview.issued).toHaveLength(1);
 });
 
 test("another organization cannot void this one's Admission Charge", async () => {
