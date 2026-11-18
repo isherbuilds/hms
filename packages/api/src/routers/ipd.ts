@@ -2057,6 +2057,7 @@ export const ipdRouter = {
             mrn: admission.patient.mrn,
             phone: admission.patient.phone,
             address: admission.patient.address,
+            pan: admission.patient.pan,
             guardian: guardian ? `${guardian.relation} ${guardian.name}` : null,
           },
         },

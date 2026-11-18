@@ -61,6 +61,7 @@ export const invoices = pgTable(
     patientMrn: text("patient_mrn"),
     patientPhone: text("patient_phone"),
     patientAddress: text("patient_address"),
+    patientPan: text("patient_pan"),
     // "W/o Gurmeet Singh" as printed; snapshotted like the name so the document is stable.
     patientGuardian: text("patient_guardian"),
     issuedBy: text("issued_by")

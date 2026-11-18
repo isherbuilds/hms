@@ -139,7 +139,9 @@ export const exportRouter = {
           { header: "Fiscal year", key: "fiscalYear", width: 12 },
           { header: "Patient", key: "patientName", width: 28 },
           { header: "MRN", key: "patientMrn", width: 16 },
+          { header: "PAN", key: "patientPan", width: 14 },
           ...registerMoneyColumns,
+          { header: "Cash received", key: "cashReceived", width: 16 },
         ],
         rows: [
           ...rows.map(registerRow).map((row) => ({
@@ -149,7 +151,9 @@ export const exportRouter = {
             fiscalYear: row.fiscalYear,
             patientName: row.patientName ?? "Counter sale",
             patientMrn: row.patientMrn ?? "",
+            patientPan: row.patientPan ?? "",
             ...Object.fromEntries(registerMoneyColumns.map(({ key }) => [key, rupees(row[key])])),
+            cashReceived: rupees(row.cashReceived),
           })),
           {
             invoiceNumber: "Total",

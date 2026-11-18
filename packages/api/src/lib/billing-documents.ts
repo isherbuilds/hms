@@ -233,6 +233,7 @@ type RegisteredPatient = {
   mrn: string;
   phone: string;
   address: string | null;
+  pan: string | null;
   guardian: string | null;
 };
 
@@ -252,6 +253,7 @@ export type InvoiceParent =
         mrn: string | null;
         phone: string | null;
         address: string | null;
+        pan: string | null;
         guardian: null;
       };
     };
@@ -417,6 +419,7 @@ export async function issueInvoiceTx(
       patientMrn: parent.patient.mrn,
       patientPhone: parent.patient.phone,
       patientAddress: parent.patient.address,
+      patientPan: parent.patient.pan,
       patientGuardian: parent.patient.guardian,
       issuedBy: scope.userId,
       createdAt: now,

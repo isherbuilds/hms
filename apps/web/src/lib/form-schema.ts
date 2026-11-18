@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { emergencyContactRelation, guardianRelation } from "@hms/api/lib/schemas";
+import { emergencyContactRelation, guardianRelation, pan } from "@hms/api/lib/schemas";
 
 // Every native input and select hands back a string, so form values are strings and
 // the schema is what turns them into what the API stores.
@@ -46,6 +46,7 @@ export const patientFieldSchema = z.object({
   allergies: optionalText(z.string()),
   medicalHistory: optionalText(z.string()),
   uid: optionalText(z.string().max(100)),
+  pan: optionalText(pan),
   // A group left entirely blank is "not recorded"; touch one input and the rest apply.
   guardian: z
     .object({ relation: z.string(), name: z.string().trim(), phone: z.string().trim() })

@@ -273,6 +273,7 @@ export function registerRows(
       invoiceNumber: invoices.invoiceNumber,
       patientName: invoices.patientName,
       patientMrn: invoices.patientMrn,
+      patientPan: invoices.patientPan,
       subtotal: invoices.subtotal,
       discountAmount: invoices.discountAmount,
       taxTotal: invoices.taxTotal,
@@ -282,6 +283,17 @@ export function registerRows(
       paymentsTotal: sql`movements.paid`.mapWith(BigInt),
       allocationsTotal: sql`movements.allocated`.mapWith(BigInt),
       refundsTotal: sql`movements.refunded`.mapWith(BigInt),
+      // Cash taken for the bill, paid on it or as a cash deposit applied to it: the
+      // accountant's list of cash over ₹2,00,000 per bill reads this.
+      cashReceived: sql`(coalesce((select sum(${payments.amount}) from ${payments}
+          where ${payments.orgId} = ${orgId} and ${payments.invoiceId} = ${invoices.id}
+            and ${payments.method} = 'cash'), 0)
+        + coalesce((select sum(${advanceAllocations.amount}) from ${advanceAllocations}
+          join ${advanceReceipts} on ${advanceReceipts.orgId} = ${advanceAllocations.orgId}
+            and ${advanceReceipts.id} = ${advanceAllocations.advanceReceiptId}
+          where ${advanceAllocations.orgId} = ${orgId}
+            and ${advanceAllocations.invoiceId} = ${invoices.id}
+            and ${advanceReceipts.method} = 'cash'), 0))::bigint`.mapWith(BigInt),
       opdAppointmentId: invoices.opdAppointmentId,
       pharmacySaleId: invoices.pharmacySaleId,
       admissionId: invoices.admissionId,

@@ -92,6 +92,7 @@ export async function settleInvoiceTx(
       patientMrn: patients.mrn,
       patientPhone: patients.phone,
       patientAddress: patients.address,
+      patientPan: patients.pan,
       patientGuardianRelation: patients.guardianRelation,
       patientGuardianName: patients.guardianName,
     })
@@ -137,6 +138,7 @@ export async function settleInvoiceTx(
         mrn: appointmentAndPatient.patientMrn,
         phone: appointmentAndPatient.patientPhone,
         address: appointmentAndPatient.patientAddress,
+        pan: appointmentAndPatient.patientPan,
         guardian: guardian ? `${guardian.relation} ${guardian.name}` : null,
       },
     },

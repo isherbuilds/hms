@@ -10,6 +10,7 @@ import { advanceReceipts } from "@hms/db/schema/advance-receipts";
 import { charges } from "@hms/db/schema/charges";
 import { creditNotes } from "@hms/db/schema/credit-notes";
 import { opdAppointments } from "@hms/db/schema/opd-appointments";
+import { patients } from "@hms/db/schema/patients";
 import { invoices } from "@hms/db/schema/invoices";
 import { journalEntries } from "@hms/db/schema/journal-entries";
 import { journalLines } from "@hms/db/schema/journal-lines";
@@ -1704,4 +1705,52 @@ test("review signals distinguish free care, voided care and zero-priced Charges 
     }),
     "BAD_REQUEST",
   );
+});
+
+test("a bill keeps the Patient's PAN, and the register export lists it with the cash taken", async () => {
+  const fixture = await createAccountingFixture("accounting-pan-cash");
+  const { api, patient } = fixture;
+  const orgSlug = fixture.organization.slug;
+
+  await db
+    .update(patients)
+    .set({ pan: "ABCDE1234F" })
+    .where(and(eq(patients.orgId, fixture.organization.id), eq(patients.id, patient.id)));
+
+  // ₹118 bill: a ₹60 cash advance applied and ₹30 cash are cash; ₹28 by UPI is not.
+  await api.billing.recordAdvance({
+    orgSlug,
+    patientId: patient.id,
+    method: "cash",
+    amount: 60_00n,
+  });
+  const issued = await issueConsultationInvoice(fixture, "PAN");
+  await api.billing.recordPayments({
+    orgSlug,
+    invoiceId: issued.invoice.id,
+    applyCredit: 60_00n,
+    payments: [
+      { method: "cash", amount: 30_00n },
+      { method: "upi", amount: 28_00n, reference: "UPI-PAN" },
+    ],
+  });
+
+  const [stored] = await db
+    .select({ patientPan: invoices.patientPan })
+    .from(invoices)
+    .where(and(eq(invoices.orgId, fixture.organization.id), eq(invoices.id, issued.invoice.id)));
+
+  expect(stored?.patientPan).toBe("ABCDE1234F");
+
+  const day = issued.invoice.businessDate;
+
+  const book = await workbookSheets(
+    await api.export.invoiceRegisterXlsx({ orgSlug, from: day, to: day }),
+  );
+
+  expect(
+    book
+      .get("Invoice register")!
+      .find((row) => row["Invoice number"] === issued.invoice.invoiceNumber),
+  ).toMatchObject({ PAN: "ABCDE1234F", "Invoice total": 118, "Cash received": 90 });
 });

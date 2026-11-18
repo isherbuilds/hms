@@ -264,6 +264,7 @@ export const pharmacyRouter = {
             mrn: null,
             phone: input.buyer.phone ?? null,
             address: null,
+            pan: null,
           };
         }
 
@@ -274,6 +275,7 @@ export const pharmacyRouter = {
             mrn: patients.mrn,
             phone: patients.phone,
             address: patients.address,
+            pan: patients.pan,
           })
           .from(patients)
           .where(and(eq(patients.orgId, scope.orgId), eq(patients.id, input.buyer.patientId)))
@@ -388,6 +390,7 @@ export const pharmacyRouter = {
           mrn: buyer.mrn,
           phone: buyer.phone,
           address: buyer.address,
+          pan: buyer.pan,
           guardian: null,
         },
       };

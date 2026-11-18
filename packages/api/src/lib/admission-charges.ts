@@ -25,6 +25,7 @@ export async function lockAdmissionCharges(tx: DbTransaction, orgId: string, adm
         mrn: patients.mrn,
         phone: patients.phone,
         address: patients.address,
+        pan: patients.pan,
         guardianRelation: patients.guardianRelation,
         guardianName: patients.guardianName,
       },

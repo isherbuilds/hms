@@ -405,6 +405,7 @@ export function InvoiceDocument({
             ...(invoice.patientAddress
               ? [{ label: "Address", value: invoice.patientAddress }]
               : []),
+            ...(invoice.patientPan ? [{ label: "PAN", value: invoice.patientPan }] : []),
             ...registrationRows(invoice.orgGstin),
           ]}
         />
@@ -460,6 +461,9 @@ export function InvoiceDocument({
           ) : null}
           {invoice.patientAddress ? (
             <div style={{ color: colors.muted }}>{invoice.patientAddress.replace(/\n/g, ", ")}</div>
+          ) : null}
+          {invoice.patientPan ? (
+            <div style={{ color: colors.muted }}>PAN {invoice.patientPan}</div>
           ) : null}
         </div>
         {admission ? (

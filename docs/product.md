@@ -303,7 +303,7 @@ and D/o identify a parent; W/o and H/o identify a spouse; C/o leaves the
 emergency relation unspecified. The copy fills the visible fields, which the
 desk can then correct before saving. An emergency contact requires a name and
 phone; its relation is optional. Invoice issuance snapshots the patient relation
-label with the patient identity.
+label and PAN with the patient identity (D067).
 
 The relation label carries its own capitalisation, because both the browser and
 the PDF renderer break words at the slash and would print "W/O".

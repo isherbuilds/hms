@@ -84,6 +84,7 @@ function defaultValues(
       allergies: "",
       medicalHistory: "",
       uid: "",
+      pan: "",
       guardian: { relation: "", name: "", phone: "" },
       emergencyContact: { name: "", phone: "", relation: "" },
       sponsorPayerId: "",
@@ -106,6 +107,7 @@ function defaultValues(
     allergies: patient.allergies ?? "",
     medicalHistory: patient.medicalHistory ?? "",
     uid: patient.uid ?? "",
+    pan: patient.pan ?? "",
     guardian: {
       relation: patient.guardianRelation ?? "",
       name: patient.guardianName ?? "",
@@ -692,6 +694,19 @@ export function PatientForm({
                   <FormLabel>National ID / UID</FormLabel>
                   <FormControl>
                     <Input {...field} className="font-mono" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <RegisteredFormField
+              name="pan"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>PAN</FormLabel>
+                  <FormControl>
+                    <Input {...field} className="font-mono uppercase" autoComplete="off" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

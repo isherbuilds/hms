@@ -46,6 +46,13 @@ export const personName = shortName.toLowerCase();
 
 export const phone = z.string().trim().min(4).max(20);
 
+/** Five letters, four digits, a letter. A bill over ₹2,00,000 needs the payer's PAN (Rule 159). */
+export const pan = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "Enter the 10-character PAN, such as ABCDE1234F");
+
 export const reason = z.string().trim().min(1).max(500);
 
 export const note = z.string().trim().max(500).optional();

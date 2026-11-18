@@ -1622,3 +1622,24 @@ separate supplemental path, which the repeatable bill makes unnecessary; a
 stored bed status or running balance, the root of the drift bugs found in
 Marley and Care; and service prices by room type or admission without a bed,
 which wait for a hospital that asks.
+
+### D067 — A bill keeps the Patient's PAN, and the register export shows cash per bill
+
+**Accepted 2026-11-18 on the owner's instruction (autonomous decision); evidence:
+[Income-tax Rules, 2026](https://www.incometax.gov.in/iec/foportal/sites/default/files/2026-03/En-Notified-IT-Rules-2026-20-03-2026.pdf),
+Rules 159 and 237, which replace Rules 114B and 114E.** A transaction over
+₹2,00,000 needs the payer's PAN on its documents, however it is paid, and a
+hospital under tax audit reports each bill paid over ₹2,00,000 in cash.
+
+- **The Patient carries an optional PAN**, checked as five letters, four digits
+  and a letter, and stored upper-case. Each Invoice snapshots it at issue beside
+  the address and prints it when present.
+- **The invoice register workbook lists the PAN and the cash received for each
+  bill:** cash Payments plus cash Advance Receipts allocated to it. The
+  accountant filters it for the yearly statement.
+
+**Rejected:** refusing or warning on a bill over ₹2,00,000 without a PAN, which
+blocks the desk on a paper matter (Form 97 covers a payer with none); a
+separate PAN per payer, which waits for a hospital whose payers are not the
+Patient; and a cash-over-limit report or screen column, when one workbook
+column answers the accountant.

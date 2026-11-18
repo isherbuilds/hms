@@ -87,7 +87,10 @@ workbook say **Invoices issued in period; balances now** and carry generation
 time; this is not historical as-of debt. The page links authorized users to
 guarded Invoice documents, OPD visits and pharmacy sales. Print includes loaded
 rows only; `export.invoiceRegisterXlsx` drains all filtered pages, includes full
-totals and series, and does not export only the visible page.
+totals and series, and does not export only the visible page. The workbook also
+lists each Invoice's snapshotted PAN and its cash received: cash Payments plus
+cash Advance Receipts allocated to it, untotalled, for the accountant's list of
+bills paid over ₹2,00,000 in cash (D067).
 
 ### Billed revenue and correction bridge
 

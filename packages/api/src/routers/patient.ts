@@ -29,6 +29,7 @@ import {
   guardianRelation,
   likePattern,
   pageLimit,
+  pan,
   personName,
   phone,
   searchQuery,
@@ -56,6 +57,7 @@ const patientFields = z.object({
   allergies: z.string().nullish(),
   medicalHistory: z.string().nullish(),
   uid: z.string().trim().min(1).max(100).nullish(),
+  pan: pan.nullish(),
   // Nested so the shape carries the rule: null, or every required part present.
   guardian: z
     .object({ relation: guardianRelation, name: personName, phone: phone.nullish() })
