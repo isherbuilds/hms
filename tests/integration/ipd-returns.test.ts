@@ -786,7 +786,7 @@ test("service and bed-day lines on an IPD Invoice are credited through the Credi
   );
 });
 
-test("a medicine line on an IPD Invoice can be credited without a return, and a later return credits only what is left", async () => {
+test("a medicine line on an IPD Invoice can be credited without a return, and a later return credits its share of what is left", async () => {
   const hospital = await createHospital("return-credit-medicine");
   const { api, orgSlug } = hospital;
   const batchId = await hospital.stock(10);
@@ -811,18 +811,23 @@ test("a medicine line on an IPD Invoice can be credited without a return, and a 
   expect(corrected.creditNote.total).toBe(200_00n);
   expect(await hospital.onHand(batchId)).toEqual({ shelf: 8, quarantine: 0 });
 
-  // One unit comes back. Its share is ₹112, but only ₹24 of the line is left to credit.
+  // One unit comes back. ₹24 is left on the line for the two units out, so it credits ₹12:
+  // the kept unit still carries its ₹12.
   const first = await hospital.giveBack(admission.id, [{ issueLineId, qty: 1 }]);
 
   expect(first.creditNoteId).toBeTruthy();
-  expect((await hospital.creditNoteRows()).map((note) => note.total)).toEqual([200_00n, 24_00n]);
+  expect((await hospital.creditNoteRows()).map((note) => note.total)).toEqual([200_00n, 12_00n]);
   expect(await hospital.onHand(batchId)).toEqual({ shelf: 8, quarantine: 1 });
 
-  // The last unit still comes back, though no money is left on the line.
+  // The last unit takes the rest.
   const second = await hospital.giveBack(admission.id, [{ issueLineId, qty: 1 }]);
 
-  expect(second.creditNoteId).toBeNull();
-  expect(await hospital.creditNoteRows()).toHaveLength(2);
+  expect(second.creditNoteId).toBeTruthy();
+  expect((await hospital.creditNoteRows()).map((note) => note.total)).toEqual([
+    200_00n,
+    12_00n,
+    12_00n,
+  ]);
   expect(await hospital.onHand(batchId)).toEqual({ shelf: 8, quarantine: 2 });
   expect(await hospital.issueLine(admission.id, issueLineId)).toMatchObject({
     qty: 2,
@@ -833,7 +838,7 @@ test("a medicine line on an IPD Invoice can be credited without a return, and a 
   expect(invoice.balance.outstanding).toBe(-2n * MRP);
 });
 
-test("a part return after a price correction on a taxed medicine line credits no more tax or taxable value than is left", async () => {
+test("a part return after a price correction on a taxed medicine line credits its share of the value and tax left", async () => {
   const hospital = await createHospital("return-credit-taxed", { gstin: "27ABCDE1234F1Z5" });
   const { api, orgSlug } = hospital;
   // Four tablets at ₹10.00 MRP with 12% GST inside: taxable ₹35.71, tax ₹4.29.
@@ -865,8 +870,7 @@ test("a part return after a price correction on a taxed medicine line credits no
     lines: [{ invoiceLineId: medicine.id, gross: 30_00n }],
   });
 
-  // One tablet comes back. Its share is ₹10.00, all that is left, so the return credits
-  // exactly what is left and is not refused over a paisa of rounding.
+  // One tablet of the four comes back: a quarter of what is left, ₹2.50 with ₹0.27 tax.
   const returned = await hospital.giveBack(admission.id, [{ issueLineId, qty: 1 }]);
 
   expect(returned.creditNoteId).toBeTruthy();
@@ -882,9 +886,9 @@ test("a part return after a price correction on a taxed medicine line credits no
       ),
     );
 
-  expect(credited.reduce((sum, entry) => sum + entry.gross, 0n)).toBe(40_00n);
-  expect(credited.reduce((sum, entry) => sum + entry.taxableValue, 0n)).toBe(35_71n);
-  expect(credited.reduce((sum, entry) => sum + entry.taxAmount, 0n)).toBe(4_29n);
+  expect(credited.reduce((sum, entry) => sum + entry.gross, 0n)).toBe(32_50n);
+  expect(credited.reduce((sum, entry) => sum + entry.taxableValue, 0n)).toBe(29_02n);
+  expect(credited.reduce((sum, entry) => sum + entry.taxAmount, 0n)).toBe(3_48n);
 });
 
 test("the accountant credits an IPD line; the cashier cannot", async () => {

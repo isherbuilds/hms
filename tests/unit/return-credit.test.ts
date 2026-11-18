@@ -1,6 +1,6 @@
 // Spec: docs/specs/ipd-admission-to-discharge.md, "Returns and corrections" — a return
-// after the bill credits the returned quantity's share of the line, the last unit taking
-// the exact remainder.
+// after the bill credits the returned quantity's share of what is left on the line across
+// the units still out, the last unit taking the exact remainder.
 import { expect, test } from "bun:test";
 import { divideHalfUp } from "@hms/api/core/money";
 import { returnedUnitsCredit, type LineMoney } from "@hms/api/lib/return-credit";
@@ -30,8 +30,17 @@ function returnInBatches(batches: number[]) {
     };
     returned += qty;
 
-    // Whatever the batches, what has come back is credited at its share, never more.
-    expect(credited).toEqual(shareOf(returned));
+    // Whatever the batches, what has come back is credited at its share, within a paisa.
+    expect(credit.taxAmount).toBeGreaterThanOrEqual(0n);
+    expect(credit.taxableValue).toBeGreaterThanOrEqual(0n);
+
+    const fair = shareOf(returned);
+
+    for (const key of ["gross", "taxAmount"] as const) {
+      const off = credited[key] - fair[key];
+
+      expect(off >= -1n && off <= 1n).toBe(true);
+    }
   }
 
   return credited;
@@ -70,4 +79,26 @@ test("a cheap taxed line returned one unit at a time never credits negative GST 
   }
 
   expect(credited).toEqual({ taxableValue: 66n, taxAmount: 3n, gross: 69n });
+});
+
+test("after a price correction a return credits its share of what is left, not the whole line", () => {
+  // Two tablets for ₹9.12 with 5% GST inside; a ₹4.52 correction leaves ₹4.60, ₹0.21 of it tax.
+  const pair = { qty: 2, gross: 9_12n, taxableValue: 8_69n, taxAmount: 43n };
+  const correction: LineMoney = { taxableValue: 4_30n, taxAmount: 22n, gross: 4_52n };
+
+  const first = returnedUnitsCredit(pair, correction, 0, 1);
+
+  expect(first).toEqual({ taxableValue: 2_19n, taxAmount: 11n, gross: 2_30n });
+
+  const afterFirst: LineMoney = {
+    taxableValue: correction.taxableValue + first.taxableValue,
+    taxAmount: correction.taxAmount + first.taxAmount,
+    gross: correction.gross + first.gross,
+  };
+
+  expect(returnedUnitsCredit(pair, afterFirst, 1, 1)).toEqual({
+    taxableValue: 2_20n,
+    taxAmount: 10n,
+    gross: 2_30n,
+  });
 });
