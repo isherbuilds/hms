@@ -754,8 +754,9 @@ test("a refused conversion leaves no Admission, no stay and the reservation unch
   const elsewhereBed = await extraBed(hospital, "G-5");
   const walkInBed = await extraBed(hospital, "G-6");
 
-  // A hold that raced the Patient's walk-in admission: a request takes no lock, so the
-  // refusal to put an admitted Patient on the waiting list cannot stop it.
+  // Seeded directly: a live hold for a Patient who is already admitted, which the API no
+  // longer creates (a request locks the Patient and refuses one in hospital). Conversion
+  // must still refuse it.
   const { patient: admittedPatient } = await admitWalkIn(
     hospital,
     walkInBed.id,
