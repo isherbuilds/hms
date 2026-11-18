@@ -223,8 +223,8 @@ exceptions, each with a total, oldest first and not paged:
 `asOf` (default today) decides who is listed; every amount is the current
 balance, not a balance as of that date, so each row reconciles to its Admission
 or Invoice today. SQL only picks candidates; each amount comes from the helper
-its source screen reads (`readRunningBills`, `invoiceBalancesFor`,
-`readDepositsHeld`), in a fixed number of queries. The IPD No. links to the
+its source screen reads (`readRunningBills`, the Invoice movement sums with
+`calculateInvoiceBalance`, `readDepositsHeld`), in a fixed number of queries. The IPD No. links to the
 Admission for readers with `ipd:read`.
 
 The page offers **Print / PDF** and **Export Excel**. `export.ipdDeskXlsx` writes

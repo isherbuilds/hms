@@ -207,7 +207,7 @@ function EstimateRoute() {
             >
               <header className="flex items-start justify-between gap-6 border-b-2 border-black pb-3">
                 <div className="min-w-0">
-                  <h1 className="text-base font-bold">{settings.data?.legalName ?? orgName}</h1>
+                  <h1 className="text-base font-bold">{settings.data?.legalName || orgName}</h1>
                   {settings.data?.address ? (
                     <p className="mt-1 whitespace-pre-line">{settings.data.address}</p>
                   ) : null}

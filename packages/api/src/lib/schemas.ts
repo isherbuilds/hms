@@ -50,8 +50,10 @@ export const phone = z.string().trim().min(4).max(20);
 export const pan = z
   .string()
   .trim()
-  .toUpperCase()
-  .regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "Enter the 10-character PAN, such as ABCDE1234F");
+  // Checked before upper-casing, so only ASCII letters pass: some other letters upper-case
+  // to ASCII ones and would be stored as a different PAN.
+  .regex(/^[A-Za-z]{5}[0-9]{4}[A-Za-z]$/, "Enter the 10-character PAN, such as ABCDE1234F")
+  .toUpperCase();
 
 export const reason = z.string().trim().min(1).max(500);
 

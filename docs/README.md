@@ -330,7 +330,7 @@ Browser verification, 2026-11-17 on the seeded demo hospital at desktop and
 phone width and in dark theme: admit with the stay facts, edit details, the
 running bill and "Deposit short by" on the board, list and Admission, the tariff
 lines form, the estimate, the interim bill, slips and `ipd` Invoice PDFs, take a
-deposit and the cash-limit refusal, issue a bill with a discount, deposit and a
+deposit, issue a bill with a discount, deposit and a
 part payment, a second bill, a bill with nothing chargeable, record and undo a
 departure, medicine returns before and after the bill, Credit Notes on bed-day
 and service lines with the refund, the leftover deposit refund, the desk report

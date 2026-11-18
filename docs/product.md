@@ -90,7 +90,7 @@ known.
 | Pharmacy return   | Pharmacy sale Sheet               | Pharmacy return / `pharmacyReturns` | Goods coming back against a sale into quarantine, with its Credit Note and any refund                                                                                                                                                                                             |
 | IPD               | `/$orgSlug/ipd`                   | Admission / `admissions`            | One inpatient stay, numbered **IPD No.**: bed occupancy history (`admission_bed_stays`) from admission to departure or cancellation, how the Patient left, its Admission Charges, deposits and IPD bills                                                                          |
 | Inpatient issue   | Admission page, Pharmacy          | `admissionPharmacyIssues`           | Medicines handed to the ward for one admitted Patient: stock leaves the shelf and each line waits as an Admission Charge. No sale, Invoice or Payment                                                                                                                             |
-| IPD bill          | Admission page                    | `ipd` Invoice                       | An Invoice for everything on the stay not yet billed, including its bed days, issued after the discharge handoff; a stay may have more than one. Services carrying GST add it on top only when the hospital has a GSTIN, medicines carry MRP                                      |
+| IPD bill          | Admission page                    | `ipd` Invoice                       | An Invoice for everything on the stay not yet billed, including its bed days, issued when the Patient is ready to leave or has left; a stay may have more than one. Services carrying GST add it on top only when the hospital has a GSTIN, medicines carry MRP                   |
 | Reservation       | IPD → Reservations                | Bed reservation / `bedReservations` | A planned admission's future claim on a bed type or one bed, for a dated window                                                                                                                                                                                                   |
 | Theatre room      | Theatre → Rooms and equipment     | `theatreRooms`                      | An operating theatre or procedure room that a confirmed case holds, buffers included                                                                                                                                                                                              |
 | Equipment unit    | Theatre → Rooms and equipment     | `equipmentUnits`                    | One named reusable machine, such as "C-arm 1"; booked by name, never as a pooled count. Consumables are stock                                                                                                                                                                     |
@@ -191,7 +191,8 @@ with any GST inside, so one bill mixes both bases; it never rounds to the rupee.
 GST is added to a service only when the Service carries a rate and the hospital
 has a GSTIN; without one, the bill carries no GST (D063).
 An issued IPD bill cannot be edited; a Credit Note corrects it, and a ward
-medicine return credits it in the same step. The rules are in the
+medicine return after the bill credits it in the same step. A return before the
+bill takes the medicine off the stay's Charges. The rules are in the
 [IPD contract](./specs/ipd-admission-to-discharge.md) and D066.
 
 Never label a Payment Receipt as the itemized bill. [D052](./decisions.md#d052--gst-registration-determines-document-particulars-and-bounded-numbering)

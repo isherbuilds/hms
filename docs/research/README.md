@@ -25,7 +25,7 @@ implementation; the [work registry](../README.md#work-lifecycle) owns that statu
 - [IPD reference systems](./ipd-reference-systems.md) — Marley, OpenMRS, Bahmni,
   Danphe, Care, GNU Health, Open Hospital and six Indian hospital policies read
   2026-11-17; none guards a bed in the database, none splits a transfer day by
-  time, and all carry a discharge type. Basis of D066 and the replanned IPD
+  time, and all but Marley carry a discharge type. Basis of D066 and the replanned IPD
   slices; the Indian evidence is large metro hospitals only.
 - [Pharmacy reference flows](./pharmacy-reference-flows.md) — Bahmni, Danphe,
   and Marley observed 2026-09-18; the shared item, batch, movement-ledger,

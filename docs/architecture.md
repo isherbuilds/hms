@@ -287,8 +287,8 @@ Bed days are a pure function of the segments (`packages/api/src/lib/bed-days.ts`
 unbilled day in order, so billed days are always a prefix and one integer is
 the whole record. The running bill is a read, not a column: `readRunningBills`
 (`packages/api/src/lib/ipd-bill.ts`) returns it for any number of Admissions in
-four queries, and the bed board, admissions list, Admission, bill preview and
-IPD desk report share it. A deposit is an Advance Receipt with `admission_id`,
+four queries, and the bed board, admissions list, Admission and IPD desk report
+share it; the bill preview reads the same pending Charges and bed days for one stay. A deposit is an Advance Receipt with `admission_id`,
 never also a treatment plan, whose composite foreign key proves the Admission
 belongs to the receipt's Patient.
 

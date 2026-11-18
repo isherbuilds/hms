@@ -108,8 +108,8 @@ export function TariffDialog({
       <TariffLines services={choices} />
       {servicesFooter}
       <p className="text-muted-foreground">
-        Non-ICU room rent above ₹5,000 a day carries 5% GST on the whole amount. Set that rate on
-        the room&apos;s service.
+        In a GST-registered hospital, non-ICU room rent above ₹5,000 a day carries 5% GST on the
+        whole amount. Set that rate on the room&apos;s service.
       </p>
       <TextField
         name="effectiveFrom"

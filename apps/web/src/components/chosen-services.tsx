@@ -21,7 +21,8 @@ export function ChosenServices({
 
   // Uncontrolled until committed, so typing a quantity re-renders nothing.
   const commitQty = (line: ServiceLine, input: HTMLInputElement) => {
-    const qty = Math.max(1, Math.trunc(input.valueAsNumber) || 1);
+    // The same bounds as an OPD visit's services: a pasted huge number cannot reach the math.
+    const qty = Math.min(999, Math.max(1, Math.trunc(input.valueAsNumber) || 1));
     input.value = String(qty);
     onChange(
       lines.map((each) => (each.catalogItemId === line.catalogItemId ? { ...each, qty } : each)),
@@ -46,6 +47,7 @@ export function ChosenServices({
             key={`${line.catalogItemId}:${line.qty}`}
             type="number"
             min={1}
+            max={999}
             step={1}
             defaultValue={line.qty}
             aria-label={`${line.name} quantity`}
